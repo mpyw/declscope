@@ -19,7 +19,7 @@ func main() {
 	// The subcommand is matched before singlechecker sees the arguments, since
 	// singlechecker treats every non-flag argument as a package pattern.
 	if len(os.Args) > 1 && os.Args[1] == "baseline" {
-		baselineMain(os.Args[2:])
+		runBaseline(os.Args[2:])
 		return
 	}
 	singlechecker.Main(declscope.Analyzer)

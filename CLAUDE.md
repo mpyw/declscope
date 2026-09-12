@@ -54,7 +54,7 @@ internal/
 cmd/declscope/            singlechecker entry point, plus the `baseline` subcommand
 ```
 
-`internal/{analyzer,collect,options,report}.go` form one logical unit and declare `//declscope:namespace analyzer` so that declscope passes its own check. Keep that directive when adding files to that unit.
+`internal/{analyzer,collect,options,report}.go` form one logical unit and declare `//declscope:namespace analyzer` so that declscope passes its own check. `cmd/declscope/{main,baseline}.go` are one command and declare `//declscope:namespace main` for the same reason. Keep those directives when adding files to either unit — without them the label rule asks every declaration to carry a `baseline`/`analyzer` prefix, which is the tool reporting a boundary that is not really there.
 
 ### Structural constraints
 

@@ -1,3 +1,5 @@
+//declscope:namespace main
+
 package main
 
 import (
@@ -16,17 +18,17 @@ import (
 	"github.com/mpyw/declscope/internal/config"
 )
 
-// baselineDefaultName is used when no config file names one.
-const baselineDefaultName = ".declscope-baseline.yaml"
+// defaultBaselineName is used when no config file names one.
+const defaultBaselineName = ".declscope-baseline.yaml"
 
-const baselineUsage = `Usage: declscope baseline [flags] [packages]
+const usage = `Usage: declscope baseline [flags] [packages]
 
 Records every current violation so that adopting declscope does not require
 fixing them all at once. New violations are still reported.
 
 `
 
-// baselineMain regenerates the baseline file from the current state of the
+// runBaseline regenerates the baseline file from the current state of the
 // code.
 //
 // It does not go through singlechecker, because a baseline entry has to
@@ -36,12 +38,12 @@ fixing them all at once. New violations are still reported.
 // few lines and avoids parsing our own messages back out of strings.
 //
 //declscope:package
-func baselineMain(args []string) {
+func runBaseline(args []string) {
 	fs := flag.NewFlagSet("declscope baseline", flag.ExitOnError)
-	out := fs.String("o", "", "output path (default: the baseline named by the config file, else "+baselineDefaultName+")")
+	out := fs.String("o", "", "output path (default: the baseline named by the config file, else "+defaultBaselineName+")")
 	configPath := fs.String("config", "", "path to a declscope YAML config file")
 	fs.Usage = func() {
-		_, _ = io.WriteString(fs.Output(), baselineUsage)
+		_, _ = io.WriteString(fs.Output(), usage)
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -53,24 +55,24 @@ func baselineMain(args []string) {
 		patterns = []string{"./..."}
 	}
 
-	path, err := baselineOutputPath(*out, *configPath)
+	path, err := outputPath(*out, *configPath)
 	if err != nil {
-		baselineFail(err)
+		fail(err)
 	}
 
-	keys, err := baselineCollect(patterns, *configPath)
+	keys, err := collect(patterns, *configPath)
 	if err != nil {
-		baselineFail(err)
+		fail(err)
 	}
 	if err := baseline.Save(path, keys); err != nil {
-		baselineFail(err)
+		fail(err)
 	}
 	fmt.Fprintf(os.Stderr, "declscope: recorded %d violation(s) in %s\n", len(keys), path)
 }
 
-// baselineOutputPath prefers an explicit -o, then the baseline named by the config
+// outputPath prefers an explicit -o, then the baseline named by the config
 // nearest the working directory, then a default in the working directory.
-func baselineOutputPath(out, configPath string) (string, error) {
+func outputPath(out, configPath string) (string, error) {
 	if out != "" {
 		return out, nil
 	}
@@ -85,10 +87,10 @@ func baselineOutputPath(out, configPath string) (string, error) {
 	if opts.BaselinePath != "" {
 		return opts.BaselinePath, nil
 	}
-	return filepath.Join(dir, baselineDefaultName), nil
+	return filepath.Join(dir, defaultBaselineName), nil
 }
 
-func baselineCollect(patterns []string, configPath string) ([]baseline.Key, error) {
+func collect(patterns []string, configPath string) ([]baseline.Key, error) {
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles |
 			packages.NeedImports | packages.NeedDeps | packages.NeedTypes |
@@ -113,7 +115,7 @@ func baselineCollect(patterns []string, configPath string) ([]baseline.Key, erro
 		// Options are resolved per package, since a subtree may configure its
 		// own rules. The baseline itself is deliberately not consulted here:
 		// regeneration records the current state from scratch.
-		opts, _, err := config.Resolve(baselinePackageDir(pkg), configPath)
+		opts, _, err := config.Resolve(packageDir(pkg), configPath)
 		if err != nil {
 			return nil, err
 		}
@@ -132,7 +134,7 @@ func baselineCollect(patterns []string, configPath string) ([]baseline.Key, erro
 	return keys, nil
 }
 
-func baselinePackageDir(pkg *packages.Package) string {
+func packageDir(pkg *packages.Package) string {
 	for _, f := range pkg.GoFiles {
 		return filepath.Dir(f)
 	}
@@ -142,7 +144,7 @@ func baselinePackageDir(pkg *packages.Package) string {
 	return ""
 }
 
-func baselineFail(err error) {
+func fail(err error) {
 	fmt.Fprintf(os.Stderr, "declscope baseline: %v\n", err)
 	os.Exit(1)
 }
