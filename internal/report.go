@@ -171,9 +171,9 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 //
 // Whether it applies at all depends on rules.qualify, which defaults to
 // requiring the label only once a package has a second namespace to
-// distinguish. See QualifyMode.
+// distinguish. See Mode.
 func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.Qualify.required(c.namespaces) || !t.renameable {
+	if !opts.Qualify.Applies(c.namespaces) || !t.renameable {
 		return finding{}, false
 	}
 	// A namespace is always an identity, but not always a label: 2fa.go
@@ -212,10 +212,10 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 // the label and never part of the concept, since nothing in the name can tell
 // userID-the-label from userID-the-word.
 func (c *collection) checkUnqualify(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.CheckUnqualify || !t.renameable || !namespace.IsLabel(t.ownerNS) {
+	if !opts.Unqualify.Applies(c.namespaces) || !t.renameable || !namespace.IsLabel(t.ownerNS) {
 		return finding{}, false
 	}
-	if opts.Qualify.required(c.namespaces) {
+	if opts.Qualify.Applies(c.namespaces) {
 		return finding{}, false
 	}
 	name := t.obj.Name()

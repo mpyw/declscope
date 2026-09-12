@@ -1,4 +1,4 @@
 rules:
-  qualify: true
+  qualify: always
 exclude:
   - "**/ext.go"

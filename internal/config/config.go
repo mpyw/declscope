@@ -11,10 +11,10 @@
 //
 //	rules:
 //	  qualify: ondemand    # always | never | ondemand (only once a package has two namespaces)
-//	  unqualify: false     # and where it is not required, forbid it
+//	  unqualify: never     # always | never: where the label is not required, forbid it
 //
-// rules.qualify is one enum: always, never and ondemand are the documented
-// spellings, and true and false are accepted as aliases of always and never.
+// Both rules read an internal.Mode. rules.qualify accepts always, never and
+// ondemand; rules.unqualify accepts always and never.
 //
 // Unknown keys are an error.
 package config
@@ -41,10 +41,16 @@ var Names = []string{".declscope.yaml", ".declscope.yml"}
 // as the config file when none is configured explicitly.
 var BaselineNames = []string{".declscope-baseline.yaml", ".declscope-baseline.yml"}
 
-// File is the on-disk configuration. Every field is optional; pointers and
-// empty strings distinguish "not set" from "set to the zero value", so that
-// omitting a key keeps the built-in default rather than silently disabling a
-// rule.
+// The values each naming rule accepts.
+var (
+	qualifyModes   = internal.ModeSet{internal.Always, internal.Never, internal.OnDemand}
+	unqualifyModes = internal.ModeSet{internal.Always, internal.Never}
+)
+
+// File is the on-disk configuration. Every field is optional, and no setting
+// has a zero value that means anything, so a field left empty is skipped by
+// Apply: omitting a key keeps the built-in default rather than silently
+// disabling a rule.
 type File struct {
 	Defaults struct {
 		Exported   string `yaml:"exported"`
@@ -52,9 +58,8 @@ type File struct {
 	} `yaml:"defaults"`
 
 	Rules struct {
-		// Qualify is tri-state, so it arrives as a bool or as a string.
-		Qualify   any   `yaml:"qualify"`
-		Unqualify *bool `yaml:"unqualify"`
+		Qualify   string `yaml:"qualify"`
+		Unqualify string `yaml:"unqualify"`
 	} `yaml:"rules"`
 
 	Exclude []string `yaml:"exclude"`
@@ -263,15 +268,23 @@ func (f *File) Apply(opts *internal.Options) error {
 		*field.dst = s
 	}
 
-	if f.Rules.Qualify != nil {
-		mode, ok := internal.ParseQualifyMode(f.Rules.Qualify)
-		if !ok {
-			return fmt.Errorf("rules.qualify: want always, never or ondemand (true and false are aliases of always and never), got %v", f.Rules.Qualify)
+	for _, rule := range []struct {
+		name    string
+		value   string
+		accepts internal.ModeSet
+		dst     *internal.Mode
+	}{
+		{"rules.qualify", f.Rules.Qualify, qualifyModes, &opts.Qualify},
+		{"rules.unqualify", f.Rules.Unqualify, unqualifyModes, &opts.Unqualify},
+	} {
+		if rule.value == "" {
+			continue
 		}
-		opts.Qualify = mode
-	}
-	if f.Rules.Unqualify != nil {
-		opts.CheckUnqualify = *f.Rules.Unqualify
+		m, ok := rule.accepts.Parse(rule.value)
+		if !ok {
+			return fmt.Errorf("%s: unknown mode %q (want %s)", rule.name, rule.value, rule.accepts)
+		}
+		*rule.dst = m
 	}
 	if f.Exclude != nil {
 		opts.Exclude = f.Exclude

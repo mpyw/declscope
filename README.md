@@ -191,8 +191,6 @@ Exported identifiers are exempt: they are already qualified by the package name 
 | `always` | Required unconditionally. Costs a little stutter in single-file packages, but means a package gaining its second namespace is not a mass rename. |
 | `never` | Off, leaving reach enforcement without any naming discipline. |
 
-`true` and `false` are accepted as aliases of `always` and `never`.
-
 The label is matched **ignoring case**, and then has to end at a word boundary: in `user_id.go` (namespace `userID`) `userIDCache`, `userIdCache` and `userIdcache` all carry it, while `useridentity` does not. You never have to guess which spelling of an initialism the linter chose. The rename it offers spells both halves the way Go does — `id` in `user.go` becomes `userID`, `urlPath` becomes `userURLPath` — never `userId`.
 
 A rename is offered only when it is provably safe; otherwise the violation is reported without a fix. See [When a rename is withheld](#when-a-rename-is-withheld). Where the namespace cannot be a label at all (`2fa.go`), `qualify` and `unqualify` stay silent instead: there is no prefix they could ask for.
@@ -200,6 +198,13 @@ A rename is offered only when it is provably safe; otherwise the violation is re
 ### `unqualify`
 
 The mirror of `qualify`: where the label is not required, it must not be there. With both on, the spelling of every unexported package-level name is determined in both directions and fixable either way.
+
+| `rules.unqualify` | Effect |
+| --- | --- |
+| `never` *(default)* | Off. |
+| `always` | Forbidden wherever `qualify` does not require the label. |
+
+There is no `ondemand`: `unqualify` is inert wherever `qualify` requires the label, so the namespace count already decides where it applies.
 
 Enabling it asserts that a namespace prefix in this codebase *always* means the label — nothing in a name can tell `userID`-the-label from `userID`-the-word, and `unqualify` will offer to rename it to `id`. Where the prefix is part of the concept, say so on the declaration:
 
@@ -366,8 +371,8 @@ defaults:                # these resolve members too, not only package-level dec
   unexported: file
 
 rules:
-  qualify: ondemand     # always | never | ondemand (true/false: aliases of always/never)
-  unqualify: false
+  qualify: ondemand     # always | never | ondemand
+  unqualify: never      # always | never
 
 exclude:
   - "**/mock_*.go"
@@ -379,8 +384,8 @@ baseline: .declscope-baseline.yaml   # relative to this file; found automaticall
 | --- | --- | --- |
 | `defaults.exported` | `public` *(default)*, `package`, `file` | Scope of an exported declaration or member that carries no scope directive |
 | `defaults.unexported` | `file` *(default)*, `package`, `public` | Scope of an unexported declaration or member that carries no scope directive |
-| `rules.qualify` | `ondemand` *(default)*, `always`, `never`; `true`/`false` as aliases of `always`/`never` | When the namespace label is required; see [`qualify`](#qualify) |
-| `rules.unqualify` | `false` *(default)*, `true` | Whether a label is forbidden where it is not required; see [`unqualify`](#unqualify) |
+| `rules.qualify` | `ondemand` *(default)*, `always`, `never` | When the namespace label is required; see [`qualify`](#qualify) |
+| `rules.unqualify` | `never` *(default)*, `always` | Whether a label is forbidden where it is not required; see [`unqualify`](#unqualify) |
 | `exclude` | Glob patterns; `**` matches across directories | Files that are neither checked nor treated as reference sites |
 | `baseline` | A path relative to the config file | The baseline to consult; a default-named file is found without this key |
 
