@@ -227,6 +227,31 @@ Being unable to spell the new name is a limit of the fix, not a reason to let th
 
 An ignore names rules from the table above, so a declaration can opt out of one check while staying subject to the rest.
 
+### File-level ignore
+
+Written before the package clause, an ignore applies to every declaration in the file. It takes the same argument, so the directive means one thing wherever it appears:
+
+```go
+//declscope:ignore promote,demote
+
+package util
+```
+
+This is what a file full of small helpers wants, rather than a directive on each of them. A utility file whose whole contents are meant to be package-wide can say so in one line:
+
+```go
+//declscope:ignore escape,promote
+
+package util
+
+func must(err error) { ... }
+func first[T any](s []T) T { ... }
+```
+
+Keeping `escape` and writing `//declscope:package` per declaration is the stricter option, and the one to prefer when the file is not wholly shared — silencing `escape` removes the boundary for everything in the file, including declarations added later. For violations that already exist, a [baseline](#adopting-on-an-existing-codebase) suppresses them without standing future ones down.
+
+A file-level ignore that silences nothing is reported, like any other.
+
 Placement: the doc comment of a declaration, or a trailing comment on the same line. A directive on a parenthesized `var`/`const`/`type` block applies to every spec in it, and a directive on a spec overrides it. A trailing `// reason` is allowed.
 
 ```go
@@ -236,7 +261,7 @@ func userHelper() {}
 func userHelper() {} //declscope:package
 ```
 
-Unused `//declscope:ignore` directives are reported, so suppressions do not outlive the problem. Each directive is judged on its own: `//declscope:ignore demote` is unused if nothing but `demote` would have fired.
+Unused `//declscope:ignore` directives are reported, so suppressions do not outlive the problem. Each directive is judged on its own: `//declscope:ignore demote` is unused if nothing but `demote` would have fired. Where a file-level and a declaration-level directive both cover a rule, both count as used.
 
 ## Configuration
 

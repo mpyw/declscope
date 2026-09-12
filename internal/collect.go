@@ -28,6 +28,13 @@ type fileInfo struct {
 	// that trailing directives can be found on declarations that carry no
 	// comment field of their own, such as ast.FuncDecl.
 	lineComments map[int]*ast.CommentGroup
+
+	// ignores stands the whole file outside a naming rule. They apply on top
+	// of whatever each declaration says for itself.
+	ignores []directive.Ignore
+	// ignoresUsed tracks which of them silenced something, so that one that
+	// silenced nothing can be reported.
+	ignoresUsed []bool
 }
 
 // trailingAt returns the comment group trailing the declaration starting at
@@ -133,18 +140,20 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 			continue
 		}
 		fi := &fileInfo{file: f, path: path, lineComments: make(map[int]*ast.CommentGroup)}
+		fileDir := directive.ParseFile(f)
+		fi.ignores = fileDir.Ignores
+		fi.ignoresUsed = make([]bool, len(fileDir.Ignores))
+		c.problems = append(c.problems, fileDir.Problems...)
 		for _, g := range f.Comments {
 			line := pass.Fset.Position(g.Pos()).Line
 			if _, seen := fi.lineComments[line]; !seen {
 				fi.lineComments[line] = g
 			}
 		}
-		if name, _, ok, problems := directive.FileNamespace(f); ok {
-			fi.ns, fi.explicit = name, true
-			c.problems = append(c.problems, problems...)
+		if fileDir.HasNamespace {
+			fi.ns, fi.explicit = fileDir.Namespace, true
 		} else {
 			fi.ns = namespace.Of(path)
-			c.problems = append(c.problems, problems...)
 		}
 		c.files = append(c.files, fi)
 		c.byFile[f] = fi

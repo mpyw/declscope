@@ -95,3 +95,10 @@ func TestDemoteInert(t *testing.T) {
 func TestIgnoreScope(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ignorescope")
 }
+
+// TestFileIgnore checks that an ignore directive before the package clause
+// applies to every declaration in the file, and is reported when it silences
+// nothing.
+func TestFileIgnore(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "fileignore")
+}

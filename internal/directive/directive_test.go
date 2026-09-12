@@ -164,18 +164,78 @@ func TestMerge(t *testing.T) {
 	}
 }
 
-func TestFileNamespace(t *testing.T) {
-	f := parse(t, "//declscope:namespace user\npackage repo\n\nfunc f() {}\n")
-	name, _, ok, problems := directive.FileNamespace(f)
-	if !ok || name != "user" {
-		t.Fatalf("FileNamespace = %q, %v, want \"user\", true", name, ok)
+func TestParseFileNamespace(t *testing.T) {
+	f := directive.ParseFile(parse(t, "//declscope:namespace user\npackage repo\n\nfunc f() {}\n"))
+	if !f.HasNamespace || f.Namespace != "user" {
+		t.Fatalf("Namespace = %q, %v, want \"user\", true", f.Namespace, f.HasNamespace)
 	}
-	if len(problems) != 0 {
-		t.Errorf("unexpected problems: %v", problems)
+	if len(f.Problems) != 0 {
+		t.Errorf("unexpected problems: %v", f.Problems)
 	}
 }
 
-func TestFileNamespaceProblems(t *testing.T) {
+// TestParseFileIgnore checks that a file-level ignore takes the same argument
+// as the declaration-level one, so the directive means one thing wherever it
+// is written.
+func TestParseFileIgnore(t *testing.T) {
+	tests := []struct {
+		name    string
+		comment string
+		covers  []rule.Rule
+		misses  []rule.Rule
+	}{
+		{
+			name:    "named rules",
+			comment: "//declscope:ignore promote,demote",
+			covers:  []rule.Rule{rule.Promote, rule.Demote},
+			misses:  []rule.Rule{rule.Escape},
+		},
+		{
+			name:    "reach may be silenced too",
+			comment: "//declscope:ignore escape",
+			covers:  []rule.Rule{rule.Escape},
+			misses:  []rule.Rule{rule.Promote},
+		},
+		{
+			name:    "bare covers everything",
+			comment: "//declscope:ignore",
+			covers:  rule.All,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := directive.ParseFile(parse(t, tt.comment+"\n\npackage repo\n\nfunc f() {}\n"))
+			if len(f.Problems) != 0 {
+				t.Fatalf("unexpected problems: %v", f.Problems)
+			}
+			if len(f.Ignores) != 1 {
+				t.Fatalf("got %d ignores, want 1", len(f.Ignores))
+			}
+			for _, r := range tt.covers {
+				if !f.Ignores[0].Covers(r) {
+					t.Errorf("Covers(%q) = false, want true", r)
+				}
+			}
+			for _, r := range tt.misses {
+				if f.Ignores[0].Covers(r) {
+					t.Errorf("Covers(%q) = true, want false", r)
+				}
+			}
+		})
+	}
+}
+
+// TestParseFileRejectsDeclarationDirectives checks that a scope directive
+// written before the package clause is reported rather than silently ignored,
+// since it would otherwise look as though it applied to the file.
+func TestParseFileRejectsDeclarationDirectives(t *testing.T) {
+	f := directive.ParseFile(parse(t, "//declscope:package\n\npackage repo\n"))
+	if len(f.Problems) == 0 {
+		t.Error("want a problem for a declaration directive at file level")
+	}
+}
+
+func TestParseFileNamespaceProblems(t *testing.T) {
 	tests := []struct {
 		name string
 		src  string
@@ -187,19 +247,19 @@ func TestFileNamespaceProblems(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, _, problems := directive.FileNamespace(parse(t, tt.src))
-			if len(problems) == 0 {
+			f := directive.ParseFile(parse(t, tt.src))
+			if len(f.Problems) == 0 {
 				t.Error("want a problem, got none")
 			}
 		})
 	}
 }
 
-// TestFileNamespaceIgnoresDeclarations checks that a namespace directive after
-// the package clause is not mistaken for a file-level one.
-func TestFileNamespaceIgnoresDeclarations(t *testing.T) {
-	f := parse(t, "package repo\n\n//declscope:namespace user\nfunc f() {}\n")
-	if _, _, ok, _ := directive.FileNamespace(f); ok {
+// TestParseFileIgnoresDeclarations checks that a namespace directive after the
+// package clause is not mistaken for a file-level one.
+func TestParseFileIgnoresDeclarations(t *testing.T) {
+	f := directive.ParseFile(parse(t, "package repo\n\n//declscope:namespace user\nfunc f() {}\n"))
+	if f.HasNamespace {
 		t.Error("a namespace directive below the package clause should not apply to the file")
 	}
 }

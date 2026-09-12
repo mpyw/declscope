@@ -39,8 +39,11 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 		for _, f := range c.check(pass, opts, t) {
 			// Ignores are consulted before the baseline: a suppression that
 			// the baseline would also have absorbed still counts as the
-			// directive doing its job.
-			if ignored(t.dir.Ignores, f.rule, used) {
+			// directive doing its job. Both levels are consulted, and both
+			// marked, so neither is reported unused for overlapping.
+			declIgnored := ignored(t.dir.Ignores, f.rule, used)
+			fileIgnored := ignored(t.file.ignores, f.rule, t.file.ignoresUsed)
+			if declIgnored || fileIgnored {
 				continue
 			}
 			if opts.Baseline.Has(f.key(pass)) {
@@ -57,6 +60,14 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 		for i, ig := range t.dir.Ignores {
 			if !used[i] {
 				pass.Reportf(ig.Pos, "unused %s on %s", ig, t.name())
+			}
+		}
+	}
+
+	for _, fi := range c.files {
+		for i, ig := range fi.ignores {
+			if !fi.ignoresUsed[i] {
+				pass.Reportf(ig.Pos, "unused file-level %s", ig)
 			}
 		}
 	}
@@ -79,7 +90,9 @@ func (c *collection) keys(pass *analysis.Pass, opts Options) []baseline.Key {
 	for _, t := range c.targets {
 		used := make([]bool, len(t.dir.Ignores))
 		for _, f := range c.check(pass, opts, t) {
-			if ignored(t.dir.Ignores, f.rule, used) {
+			declIgnored := ignored(t.dir.Ignores, f.rule, used)
+			fileIgnored := ignored(t.file.ignores, f.rule, t.file.ignoresUsed)
+			if declIgnored || fileIgnored {
 				continue
 			}
 			out = append(out, f.key(pass))

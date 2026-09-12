@@ -24,6 +24,14 @@
 //	//declscope:namespace user
 //	package repo
 //
+// File level, standing a whole file outside one or more rules. It takes the
+// same argument as the declaration-level form, so a bare one silences
+// everything in the file:
+//
+//	//declscope:ignore promote,demote
+//
+//	package util
+//
 // # Placement
 //
 // Declaration level directives go in the doc comment of a declaration or in a
@@ -130,19 +138,10 @@ func ParseDecl(groups ...*ast.CommentGroup) Decl {
 func (d *Decl) consume(pos token.Pos, keyword, arg string) {
 	switch keyword {
 	case "ignore":
-		ignore := Ignore{Pos: pos}
-		for _, name := range strings.Split(arg, ",") {
-			name = strings.TrimSpace(name)
-			if name == "" {
-				continue
-			}
-			r, ok := rule.Parse(name)
-			if !ok {
-				d.problem(pos, fmt.Sprintf("unknown rule %q in declscope:ignore (want one of %s)",
-					name, strings.Join(rule.Names(), ", ")))
-				return
-			}
-			ignore.Rules = append(ignore.Rules, r)
+		ignore, problem := parseIgnore(pos, arg)
+		if problem != nil {
+			d.Problems = append(d.Problems, *problem)
+			return
 		}
 		d.Ignores = append(d.Ignores, ignore)
 
@@ -171,9 +170,20 @@ func (d *Decl) problem(pos token.Pos, msg string) {
 	d.Problems = append(d.Problems, Problem{Pos: pos, Msg: msg})
 }
 
-// FileNamespace reports the namespace declared before the package clause.
-// It returns ok=false when the file declares none.
-func FileNamespace(file *ast.File) (name string, pos token.Pos, ok bool, problems []Problem) {
+// File holds the directives that apply to a whole file.
+type File struct {
+	Namespace    string
+	HasNamespace bool
+	NamespacePos token.Pos
+
+	Ignores []Ignore
+
+	Problems []Problem
+}
+
+// ParseFile collects the directives written before the package clause.
+func ParseFile(file *ast.File) File {
+	var f File
 	for _, g := range file.Comments {
 		// Directives after the package clause belong to declarations.
 		if g.Pos() > file.Package {
@@ -181,22 +191,66 @@ func FileNamespace(file *ast.File) (name string, pos token.Pos, ok bool, problem
 		}
 		for _, c := range g.List {
 			keyword, arg, found := split(c.Text)
-			if !found || keyword != "namespace" {
+			if !found {
 				continue
 			}
-			switch {
-			case arg == "":
-				problems = append(problems, Problem{c.Pos(), "declscope:namespace requires a name"})
-			case !isLowerIdent(arg):
-				problems = append(problems, Problem{c.Pos(), fmt.Sprintf("namespace %q is not a valid lowerCamelCase identifier", arg)})
-			case ok:
-				problems = append(problems, Problem{c.Pos(), "duplicate declscope:namespace directive"})
+			switch keyword {
+			case "namespace":
+				f.namespace(c.Pos(), arg)
+			case "ignore":
+				f.ignore(c.Pos(), arg)
 			default:
-				name, pos, ok = arg, c.Pos(), true
+				f.problem(c.Pos(), fmt.Sprintf("declscope:%s is not a file-level directive", keyword))
 			}
 		}
 	}
-	return name, pos, ok, problems
+	return f
+}
+
+func (f *File) namespace(pos token.Pos, arg string) {
+	switch {
+	case arg == "":
+		f.problem(pos, "declscope:namespace requires a name")
+	case !isLowerIdent(arg):
+		f.problem(pos, fmt.Sprintf("namespace %q is not a valid lowerCamelCase identifier", arg))
+	case f.HasNamespace:
+		f.problem(pos, "duplicate declscope:namespace directive")
+	default:
+		f.Namespace, f.NamespacePos, f.HasNamespace = arg, pos, true
+	}
+}
+
+func (f *File) ignore(pos token.Pos, arg string) {
+	ignore, problem := parseIgnore(pos, arg)
+	if problem != nil {
+		f.Problems = append(f.Problems, *problem)
+		return
+	}
+	f.Ignores = append(f.Ignores, ignore)
+}
+
+// parseIgnore reads an ignore directive's rule list. Both levels share it, so
+// //declscope:ignore means the same thing wherever it is written: named rules
+// only, or everything when it names none.
+func parseIgnore(pos token.Pos, arg string) (Ignore, *Problem) {
+	ignore := Ignore{Pos: pos}
+	for _, name := range strings.Split(arg, ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		r, ok := rule.Parse(name)
+		if !ok {
+			return Ignore{}, &Problem{pos, fmt.Sprintf("unknown rule %q in declscope:ignore (want one of %s)",
+				name, strings.Join(rule.Names(), ", "))}
+		}
+		ignore.Rules = append(ignore.Rules, r)
+	}
+	return ignore, nil
+}
+
+func (f *File) problem(pos token.Pos, msg string) {
+	f.Problems = append(f.Problems, Problem{Pos: pos, Msg: msg})
 }
 
 // split extracts the keyword and argument from a comment holding a declscope

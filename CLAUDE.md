@@ -83,9 +83,12 @@ A `foreign-method` rule existed briefly and was removed. `checkEscape` reports a
 //declscope:ignore            // silence every rule for the declaration
 //declscope:ignore demote     // silence named rules only (escape, promote, demote)
 //declscope:namespace <name>  // file level, before the package clause
+//declscope:ignore <rules>    // also valid at file level, applying to the whole file
 ```
 
-Ignores accumulate (`Decl.Ignores`) and each is reported unused on its own. `ignored()` marks **every** directive covering a rule as used, not just the first, so overlapping directives are not misreported as unused.
+`parseIgnore` is shared by both levels, so `//declscope:ignore` cannot come to mean different things depending on where it is written. File-level directives live on `fileInfo.ignores`; declaration-level ones on `Decl.Ignores`.
+
+Each directive is reported unused on its own. `ignored()` marks **every** directive covering a rule as used, not just the first, so a file-level and a declaration-level one overlapping does not make either look unused.
 
 `//declscope:namespace` matches Go's directive syntax, so `go/doc` strips it from rendered documentation. In a file with a package comment it belongs at the bottom of that comment after a blank `//` line; in a file without one it is separated from the package clause by a blank line, because flush against `package` it becomes an empty package comment and adds a stray blank line to the rendered package doc. `FileNamespace` scans `file.Comments` rather than `file.Doc`, so every placement is recognised.
 
