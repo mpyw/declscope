@@ -35,17 +35,26 @@
 // # Placement
 //
 // Declaration level directives go in the doc comment of a declaration or in a
-// trailing comment on the same line:
+// trailing comment on its first or last line, which for a multi-line
+// declaration is the line of its opening or closing brace:
 //
 //	//declscope:package
 //	func helper() {}
 //
 //	func helper() {} //declscope:package
 //
+//	type user struct { //declscope:ignore escape
+//		name string
+//	}
+//
 // A directive on a parenthesized var/const/type block applies to every spec in
 // the block. A spec may carry directives of its own: a scope directive on the
 // spec replaces the block's, while ignores accumulate, so the spec is covered
 // by both its own and the block's.
+//
+// A directive written anywhere else after the package clause — separated from
+// its declaration by a blank line, or inside a function body — binds to
+// nothing and is reported as misplaced rather than dropped.
 //
 // A trailing "// reason" is allowed after any directive:
 //
@@ -173,6 +182,28 @@ func (d *Decl) consume(pos token.Pos, keyword, arg string) {
 
 func (d *Decl) problem(pos token.Pos, msg string) {
 	d.Problems = append(d.Problems, Problem{Pos: pos, Msg: msg})
+}
+
+// Stray reports every directive in a comment group that reached no
+// declaration and no file: one separated from its declaration by a blank line,
+// one inside a function body, one on an import. Such a directive would
+// otherwise be dropped without a word, and for a suppression that is the worst
+// outcome, since the author believes something is silenced.
+func Stray(g *ast.CommentGroup) []Problem {
+	var out []Problem
+	for _, c := range g.List {
+		keyword, _, ok := split(c.Text)
+		if !ok {
+			continue
+		}
+		msg := fmt.Sprintf("misplaced declscope:%s: no declaration here for it to bind to; "+
+			"write it in a declaration's doc comment or trailing its first or last line", keyword)
+		if keyword == "namespace" {
+			msg = "declscope:namespace must appear before the package clause"
+		}
+		out = append(out, Problem{Pos: c.Pos(), Msg: msg})
+	}
+	return out
 }
 
 // File holds the directives that apply to a whole file.

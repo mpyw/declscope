@@ -39,12 +39,6 @@ type renameState struct {
 	// text, which a rename cannot follow.
 	directives     map[string]bool
 	directivesDone bool
-
-	// unseenTests reports whether the package directory holds in-package
-	// _test.go files that are not in pass.Files, which is what the non-test
-	// variant of a package with tests sees.
-	unseenTests     bool
-	unseenTestsDone bool
 }
 
 func (c *collection) renames() *renameState {
@@ -113,7 +107,7 @@ func (c *collection) renameSafe(pass *analysis.Pass, t *target, newName string) 
 	// pass can check proves the rename safe. The test variant sees every
 	// file and decides on its own, and its fix rewrites the non-test files
 	// too, so under -test (the default) nothing is lost by deferring to it.
-	return !rs.hasUnseenTests(pass)
+	return !c.hasUnseenTests(pass)
 }
 
 // reserve records that a fix emitted in this pass renames something to name.
@@ -202,11 +196,11 @@ func (rs *renameState) namedByDirective(pass *analysis.Pass) map[string]bool {
 // pass itself; the config lookup already reads the filesystem, so this adds no
 // new assumption about the driver. A directory that cannot be read is treated
 // as holding tests, which withholds rather than risks.
-func (rs *renameState) hasUnseenTests(pass *analysis.Pass) bool {
-	if rs.unseenTestsDone {
-		return rs.unseenTests
+func (c *collection) hasUnseenTests(pass *analysis.Pass) bool {
+	if c.unseenTestsDone {
+		return c.unseenTests
 	}
-	rs.unseenTestsDone = true
+	c.unseenTestsDone = true
 
 	dir, inPass := "", make(map[string]bool)
 	for _, f := range pass.Files {
@@ -224,7 +218,7 @@ func (rs *renameState) hasUnseenTests(pass *analysis.Pass) bool {
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		rs.unseenTests = true
+		c.unseenTests = true
 		return true
 	}
 	fset := token.NewFileSet()
@@ -238,7 +232,7 @@ func (rs *renameState) hasUnseenTests(pass *analysis.Pass) bool {
 		}
 		f, err := parser.ParseFile(fset, p, nil, parser.PackageClauseOnly)
 		if err != nil || f.Name.Name == pass.Pkg.Name() {
-			rs.unseenTests = true
+			c.unseenTests = true
 			return true
 		}
 	}

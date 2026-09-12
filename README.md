@@ -287,7 +287,7 @@ type User struct {
 func (u *User) normalize() { ... }
 ```
 
-Each directive is judged on its own, so one used up only by a member still counts as used, and one that silences nothing is reported wherever it was written.
+Each directive is judged on its own, so one used up only by a member still counts as used, and one that silences nothing is reported wherever it was written. A directive is one comment however many declarations it reaches: one on a `var (...)` block, or on `var a, b`, or on `x, y int` in a struct, is used as soon as **any** of them needed it, and is reported once — not once per name — when none did.
 
 ### File-level ignore
 
@@ -318,14 +318,25 @@ Keeping `escape` and writing `//declscope:package` per declaration is the strict
 
 A file-level ignore that silences nothing is reported, like any other.
 
-Placement: the doc comment of a declaration, or a trailing comment on the same line. A trailing `// reason` is allowed.
+Placement: the doc comment of a declaration, or a trailing comment on its first or last line — for a multi-line declaration, the line of its opening or closing brace or parenthesis. A trailing `// reason` is allowed.
 
 ```go
 //declscope:package // shared with the reporting code
 func userHelper() {}
 
 func userHelper() {} //declscope:package
+
+type user struct { //declscope:ignore escape
+	name string
+}
+
+var ( //declscope:package
+	userLimit = 10
+	userSeed  = 1
+)
 ```
+
+A comment on the brace line that belongs to a field (`struct { n int //declscope:ignore`) is the field's, as it would be on any other line. A directive written anywhere else after the package clause — separated from its declaration by a blank line, inside a function body, on a line in the middle of a struct — binds to nothing, and is reported as **misplaced** rather than silently dropped, since an author who wrote a suppression believes something is silenced.
 
 A directive on a parenthesized `var`/`const`/`type` block applies to every spec in it. A spec may carry its own, and the two kinds combine differently: a **scope** directive on the spec replaces the block's, since a declaration has exactly one scope, while **ignores accumulate** — the spec's are added to the block's, so a narrower ignore never re-enables a rule the block turned off.
 
@@ -339,6 +350,8 @@ var (
 ```
 
 Unused `//declscope:ignore` directives are reported, so suppressions do not outlive the problem. `//declscope:ignore demote` is unused if nothing but `demote` would have fired. Where directives at different levels both cover a rule, all of them count as used, so overlapping never makes one look unused.
+
+A directive is called unused only by a pass that sees **every** reference in the package. When a package has in-package `_test.go` files, the ordinary variant cannot see what they use, so a directive needed only by a test would be unused there and necessary in the test variant, with no way to satisfy both; the ordinary variant therefore leaves the judgement to the test variant, which sees every file. Under `-test` (the default) that variant runs and nothing is lost. With `-test=false`, a package with in-package tests gets no unused-directive report at all.
 
 ## Configuration
 

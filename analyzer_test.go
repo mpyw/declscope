@@ -166,3 +166,27 @@ func TestNamespaceNormalize(t *testing.T) {
 func TestNamespaceInitialism(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nsinitialism")
 }
+
+// TestBlockIgnore checks that an ignore directive is judged once per comment,
+// not once per declaration it reaches: one on a block, or shared by the names
+// of one spec, is used as soon as any of them needed it, and is reported once
+// when none did.
+func TestBlockIgnore(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "blockignore")
+}
+
+// TestTestOnlyIgnore checks that a directive needed only by a reference in a
+// _test.go file is not reported unused by the ordinary variant of the package,
+// which cannot see that reference. Only the test variant, which sees every
+// file, judges, and a directive in a test file shows that it does.
+func TestTestOnlyIgnore(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "testonlyignore")
+}
+
+// TestBraceIgnore checks the two placements go/parser attaches to nothing: a
+// trailing comment on the first or last line of a multi-line declaration binds
+// to it, and a directive anywhere else after the package clause is reported as
+// misplaced rather than silently dropped.
+func TestBraceIgnore(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "braceignore")
+}
