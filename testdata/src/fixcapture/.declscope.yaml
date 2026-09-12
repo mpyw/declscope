@@ -1,2 +1,2 @@
 rules:
-  qualify: true
+  qualify: always

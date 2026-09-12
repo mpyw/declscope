@@ -1,2 +1,2 @@
 rules:
-  unqualify: true
+  unqualify: always

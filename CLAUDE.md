@@ -20,7 +20,7 @@ Everything unexported is private to its namespace; `//declscope:package` is the 
 
 The prefix does a separate job: it is an **ownership label** on unexported package-level declarations, making the owning unit legible at every use site. Only the naming rules (`qualify`, `unqualify`) are configurable. Reach enforcement is not, and neither is whether members are checked — a key that gates the collection of methods and fields switches off more than its name suggests. A cross-cutting toggle in a map keyed by rule names is the shape to avoid.
 
-`rules.qualify` is tri-state (`internal.QualifyMode`) and defaults to `ondemand`, requiring the label only once a package has a second namespace — in a package with one, every other rule is structurally inert anyway, since every reference is already inside the single namespace. The documented spellings are `always`, `never` and `ondemand`, one enum rather than two booleans and a string; `true` and `false` are accepted as aliases, which is why `ParseQualifyMode` takes both a bool and a string, and `QualifyMode.String()` returns the documented spelling so nothing printed points at an alias.
+Both naming rules read an `internal.Mode` — `Always`, `Never` or `OnDemand` — and `Mode.Applies` is the one predicate they gate on. `rules.qualify` defaults to `ondemand`, requiring the label only once a package has a second namespace — in a package with one, every other rule is structurally inert anyway, since every reference is already inside the single namespace. `rules.unqualify` defaults to `never` and accepts only `always` and `never`. Each setting declares the values it accepts as an `internal.ModeSet`, so a rejected value is answered with what that setting accepts rather than with everything the type can hold. The settings take the words `always`, `never` and `ondemand` and nothing else; `Mode.String()` returns the same spelling, so an error message names exactly what can be written.
 
 **Methods and struct fields are governed differently.** They are already namespaced by the type that owns them and cannot collide, so a label would produce `u.userSave()`, exactly the stutter Go idiom avoids. Their problem is encapsulation, not naming, so the boundary is the namespace of the **type**, not of the file, and a member violation is never fixed by renaming.
 
@@ -47,7 +47,7 @@ analyzer.go               Analyzer definition, -config flag, config discovery
 internal/
   analyzer.go             Run: collect files -> targets -> refs -> report
   collect.go              fileInfo, target, reference collection
-  options.go              resolved configuration, scope resolution, exclude globs
+  options.go              resolved configuration, the Mode of each naming rule, scope resolution, exclude globs
   report.go               diagnostics and suggested fixes
   ignore.go               ignore accounting: which comment silenced what, and which bound to nothing
   rename.go               the conditions under which a rename fix is offered at all
@@ -90,7 +90,7 @@ The files of `internal/` form one logical unit and declare `//declscope:namespac
 | `qualify` | An unexported package-level declaration missing its namespace label | Rename via `namespace.Qualify`, when provably safe |
 | `unqualify` | A namespace label present where it is not required | Rename via `namespace.Unqualify`, when derivable and provably safe |
 
-`qualify` and `unqualify` are exclusive **by construction**: `checkUnqualify` returns early wherever `opts.Qualify.required(c.namespaces)` holds, so they can never contradict each other on one declaration. Preserve that property when adding checks.
+`qualify` and `unqualify` are exclusive **by construction**: `checkUnqualify` returns early wherever `opts.Qualify.Applies(c.namespaces)` holds, so they can never contradict each other on one declaration. Preserve that property when adding checks.
 
 There is no declaration-site rule for a method grown on another namespace's type. `checkBoundary` reports a method at its *declaration*, not at the call, so such a method is already caught wherever it is used — a declaration-site rule would only add a second diagnostic at the same position. The one case it would cover alone is a foreign method that is never called, which is dead code and an unused-code linter's business, the same reasoning that keeps "exported but unused outside the package" out of scope.
 
@@ -98,7 +98,7 @@ There is no declaration-site rule for a method grown on another namespace's type
 
 `checkUnqualify` exempts a name identical to its namespace. The causality usually runs the other way there — `user.go` is named after the `user` it declares — so there is no label to strip, and the only advice available would be "rename it by hand". `qualify` accepts such a name too.
 
-**Not being able to derive a rename is never a reason to stay silent.** `checkUnqualify` gates on `namespace.HasPrefix` — whether there is a label at all — and then reports either way, embedding `Unqualify`'s reason when it has no suggestion. Skipping the declaration would leave a codebase half-converted under `unqualify: true` with nothing saying why. `checkQualify` behaves the same way when its rename target is taken; keep new rules consistent with both.
+**Not being able to derive a rename is never a reason to stay silent.** `checkUnqualify` gates on `namespace.HasPrefix` — whether there is a label at all — and then reports either way, embedding `Unqualify`'s reason when it has no suggestion. Skipping the declaration would leave a codebase half-converted under `unqualify: always` with nothing saying why. `checkQualify` behaves the same way when its rename target is taken; keep new rules consistent with both.
 
 ## Directives
 

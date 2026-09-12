@@ -11,73 +11,82 @@ import (
 	"github.com/mpyw/declscope/internal/scope"
 )
 
-// QualifyMode says when the namespace label is required on unexported
-// package-level declarations.
-type QualifyMode int
+// Mode says when a naming rule applies: always, never, or only once a package
+// has a second namespace. Both naming rules read one, so one settings block
+// spells the same idea one way.
+type Mode int
 
 const (
-	// QualifyOnDemand requires the label only in a package with more than one
-	// namespace. In a package with one, there is no boundary for a label to
+	// Never disables the rule.
+	Never Mode = iota
+
+	// Always applies the rule to every package. For the label rule this
+	// means a package gaining its second namespace is not a mass rename.
+	Always
+
+	// OnDemand applies the rule only to a package with more than one
+	// namespace. In a package with one there is no boundary for a label to
 	// mark: every other rule is structurally inert there, since every
 	// reference is already inside the single namespace, and a prefix repeated
 	// on every declaration would distinguish nothing.
-	QualifyOnDemand QualifyMode = iota
-	// QualifyAlways requires the label unconditionally, so that a package
-	// gaining its second namespace does not turn into a mass rename.
-	QualifyAlways
-	// QualifyNever disables the rule.
-	QualifyNever
+	OnDemand
 )
 
-func (m QualifyMode) String() string {
+// String returns the spelling the settings use.
+func (m Mode) String() string {
 	switch m {
-	case QualifyOnDemand:
-		return "ondemand"
-	case QualifyAlways:
-		return "always"
-	case QualifyNever:
+	case Never:
 		return "never"
+	case Always:
+		return "always"
+	case OnDemand:
+		return "ondemand"
 	default:
 		return "unknown"
 	}
 }
 
-// ParseQualifyMode reads the tri-state value of the rules.qualify setting.
-// The documented spellings are the strings always, never and ondemand, so the
-// setting is one enum rather than two booleans and a string. true and false
-// are kept as aliases for always and never; YAML hands those over as bools
-// unless quoted, so both a bool and a string are read.
-func ParseQualifyMode(value any) (QualifyMode, bool) {
-	switch v := value.(type) {
-	case bool:
-		if v {
-			return QualifyAlways, true
-		}
-		return QualifyNever, true
-	case string:
-		switch v {
-		case "ondemand":
-			return QualifyOnDemand, true
-		case "always", "true":
-			return QualifyAlways, true
-		case "never", "false":
-			return QualifyNever, true
+// Applies reports whether the rule applies to a package with the given number
+// of namespaces.
+func (m Mode) Applies(namespaces int) bool {
+	switch m {
+	case Always:
+		return true
+	case OnDemand:
+		return namespaces > 1
+	default:
+		return false
+	}
+}
+
+// ModeSet is the values one setting accepts, in the order an error message
+// names them. Each setting declares its own, so that a rejected value is
+// answered with what that setting accepts rather than with everything Mode
+// can hold.
+type ModeSet []Mode
+
+// Parse reads a setting's value: always, never or ondemand, and of those only
+// the members of the set.
+func (s ModeSet) Parse(value string) (Mode, bool) {
+	for _, m := range s {
+		if value == m.String() {
+			return m, true
 		}
 	}
 	return 0, false
 }
 
-// required reports whether the label rule applies to a package with the given
-// number of namespaces.
-func (m QualifyMode) required(namespaces int) bool {
-	switch m {
-	case QualifyAlways:
-		return true
-	case QualifyOnDemand:
-		return namespaces > 1
-	default:
-		return false
+// String lists the accepted spellings the way an error message names them:
+// "always, never or ondemand".
+func (s ModeSet) String() string {
+	names := make([]string, len(s))
+	for i, m := range s {
+		names[i] = m.String()
 	}
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
 }
 
 // Options is the resolved configuration for a run.
@@ -91,13 +100,13 @@ type Options struct {
 
 	// Qualify says when an unexported package-level declaration must carry its
 	// namespace as a label.
-	Qualify QualifyMode
+	Qualify Mode
 
-	// CheckUnqualify is the mirror of Qualify: where the label is not required, it
+	// Unqualify is the mirror of Qualify: where the label is not required, it
 	// must not be present either. Together the two settle the spelling of
 	// every unexported package-level name, in both directions. It is inert
-	// under QualifyAlways, where the label is always required.
-	CheckUnqualify bool
+	// wherever Qualify applies, so it holds Always or Never.
+	Unqualify Mode
 
 	// Exclude holds glob patterns matched against file paths.
 	Exclude []string
@@ -123,10 +132,10 @@ type Options struct {
 // has a second namespace, that grants nothing by itself.
 func DefaultOptions() Options {
 	return Options{
-		Exported:       scope.Public,
-		Unexported:     scope.FilePrivate,
-		Qualify:        QualifyOnDemand,
-		CheckUnqualify: false,
+		Exported:   scope.Public,
+		Unexported: scope.FilePrivate,
+		Qualify:    OnDemand,
+		Unqualify:  Never,
 	}
 }
 
