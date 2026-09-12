@@ -88,7 +88,9 @@ A `foreign-method` rule existed briefly and was removed. `checkEscape` reports a
 
 `parseIgnore` is shared by both levels, so `//declscope:ignore` cannot come to mean different things depending on where it is written. File-level directives live on `fileInfo.ignores`; declaration-level ones on `Decl.Ignores`. A file-level ignore is scoped to its **file**, not to its namespace, so files sharing a namespace each need their own — one file silently changing another's diagnostics would be much harder to trace back.
 
-Each directive is reported unused on its own. `ignored()` marks **every** directive covering a rule as used, not just the first, so a file-level and a declaration-level one overlapping does not make either look unused.
+`collection.silenced` walks the levels: the declaration, then the type that owns it (`target.ownerObj`, for methods and fields, wherever the member is declared), then the file. It consults **all** of them rather than stopping at the first hit, and `ignored()` marks **every** directive covering the rule as used, so overlapping directives at different levels never make each other look unused.
+
+Unused directives are therefore reported in a **second pass**, after every finding has been seen: a type's directive is often used up by a member reached later in the target list. `target.ignoresUsed` lives on the target for the same reason, rather than in the reporting loop.
 
 `//declscope:namespace` matches Go's directive syntax, so `go/doc` strips it from rendered documentation. In a file with a package comment it belongs at the bottom of that comment after a blank `//` line; in a file without one it is separated from the package clause by a blank line, because flush against `package` it becomes an empty package comment and adds a stray blank line to the rendered package doc. `FileNamespace` scans `file.Comments` rather than `file.Doc`, so every placement is recognised.
 

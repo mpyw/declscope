@@ -227,6 +227,32 @@ Being unable to spell the new name is a limit of the fix, not a reason to let th
 
 An ignore names rules from the table above, so a declaration can opt out of one check while staying subject to the rest.
 
+### Where an ignore can be written
+
+A diagnostic is silenced by the nearest directive that covers its rule, and the levels stack:
+
+| Level | Covers |
+| --- | --- |
+| the declaration | itself |
+| the **type**, for a method or field | every member the type owns, wherever the member is declared |
+| the file, before the package clause | every declaration in that file |
+| a [baseline](#adopting-on-an-existing-codebase) | violations recorded when the linter was adopted |
+
+A directive on a type is what an open struct wants, rather than one on every field:
+
+```go
+//declscope:ignore escape
+type User struct {
+	name string
+	id   int
+}
+
+// covered too, even from another file
+func (u *User) normalize() { ... }
+```
+
+Each directive is judged on its own, so one used up only by a member still counts as used, and one that silences nothing is reported wherever it was written.
+
 ### File-level ignore
 
 Written before the package clause, an ignore applies to every declaration in the file. It takes the same argument, so the directive means one thing wherever it appears:
@@ -265,7 +291,7 @@ func userHelper() {}
 func userHelper() {} //declscope:package
 ```
 
-Unused `//declscope:ignore` directives are reported, so suppressions do not outlive the problem. Each directive is judged on its own: `//declscope:ignore demote` is unused if nothing but `demote` would have fired. Where a file-level and a declaration-level directive both cover a rule, both count as used.
+Unused `//declscope:ignore` directives are reported, so suppressions do not outlive the problem. `//declscope:ignore demote` is unused if nothing but `demote` would have fired. Where directives at different levels both cover a rule, all of them count as used, so overlapping never makes one look unused.
 
 ## Configuration
 

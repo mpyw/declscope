@@ -35,15 +35,11 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	})
 
 	for _, t := range c.targets {
-		used := make([]bool, len(t.dir.Ignores))
 		for _, f := range c.check(pass, opts, t) {
-			// Ignores are consulted before the baseline: a suppression that
-			// the baseline would also have absorbed still counts as the
-			// directive doing its job. Both levels are consulted, and both
-			// marked, so neither is reported unused for overlapping.
-			declIgnored := ignored(t.dir.Ignores, f.rule, used)
-			fileIgnored := ignored(t.file.ignores, f.rule, t.file.ignoresUsed)
-			if declIgnored || fileIgnored {
+			// Ignores are consulted before the baseline: a suppression the
+			// baseline would also have absorbed still counts as the directive
+			// doing its job.
+			if c.silenced(t, f.rule) {
 				continue
 			}
 			if opts.Baseline.Has(f.key(pass)) {
@@ -57,13 +53,18 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 				SuggestedFixes: f.fixes,
 			})
 		}
+	}
+
+	// Unused directives are reported only once every finding has been seen,
+	// since a type's directive may be used up by one of its members, which is
+	// reached later in the loop above.
+	for _, t := range c.targets {
 		for i, ig := range t.dir.Ignores {
-			if !used[i] {
+			if !t.ignoresUsed[i] {
 				pass.Reportf(ig.Pos, "unused %s on %s", ig, t.name())
 			}
 		}
 	}
-
 	for _, fi := range c.files {
 		for i, ig := range fi.ignores {
 			if !fi.ignoresUsed[i] {
@@ -88,17 +89,29 @@ func (f finding) key(pass *analysis.Pass) baseline.Key {
 func (c *collection) keys(pass *analysis.Pass, opts Options) []baseline.Key {
 	var out []baseline.Key
 	for _, t := range c.targets {
-		used := make([]bool, len(t.dir.Ignores))
 		for _, f := range c.check(pass, opts, t) {
-			declIgnored := ignored(t.dir.Ignores, f.rule, used)
-			fileIgnored := ignored(t.file.ignores, f.rule, t.file.ignoresUsed)
-			if declIgnored || fileIgnored {
+			if c.silenced(t, f.rule) {
 				continue
 			}
 			out = append(out, f.key(pass))
 		}
 	}
 	return out
+}
+
+// silenced reports whether any ignore directive covering t silences r.
+//
+// A member inherits the directives written on the type that owns it, so the
+// chain runs declaration, then owning type, then file. Every level is
+// consulted rather than stopping at the first hit, and every directive that
+// covers the rule is marked used, so overlapping directives at different
+// levels do not make each other look unused.
+func (c *collection) silenced(t *target, r rule.Rule) bool {
+	hit := ignored(t.dir.Ignores, r, t.ignoresUsed)
+	if owner, ok := c.byObj[t.ownerObj]; ok && owner != t {
+		hit = ignored(owner.dir.Ignores, r, owner.ignoresUsed) || hit
+	}
+	return ignored(t.file.ignores, r, t.file.ignoresUsed) || hit
 }
 
 // ignored reports whether any directive silences r, marking every directive

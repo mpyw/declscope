@@ -108,3 +108,10 @@ func TestFileIgnore(t *testing.T) {
 func TestFileIgnoreIsFileScoped(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "fileignorescope")
 }
+
+// TestTypeIgnore checks that a member inherits the ignore directives written
+// on the type that owns it, wherever the member is declared, and that a
+// directive used up only by a member still counts as used.
+func TestTypeIgnore(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "typeignore")
+}

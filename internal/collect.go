@@ -85,9 +85,16 @@ type target struct {
 	ownerKey string
 	// owner names the type a member belongs to, empty for package-level.
 	owner string
+	// ownerObj is that type's object, through which a member inherits the
+	// ignore directives written on its type.
+	ownerObj types.Object
 
 	scope scope.Scope
 	dir   directive.Decl
+	// ignoresUsed tracks which of dir.Ignores silenced something. It lives on
+	// the target rather than in the reporting loop because a type's directive
+	// can be used up by one of its members.
+	ignoresUsed []bool
 
 	// anchor is where a scope directive would be inserted.
 	anchor token.Pos
@@ -204,10 +211,15 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 		return
 	}
 
-	owner, ownerNS, ownerKey := c.receiver(pass, obj, fi)
+	ownerObj, ownerNS, ownerKey := c.receiver(pass, obj, fi)
+	owner := ""
+	if ownerObj != nil {
+		owner = ownerObj.Name()
+	}
 	c.add(&target{
 		obj: obj, ident: d.Name, kind: kindMethod, file: fi,
-		owner: owner, ownerNS: ownerNS, ownerKey: ownerKey, dir: dir, anchor: d.Pos(),
+		owner: owner, ownerObj: ownerObj, ownerNS: ownerNS, ownerKey: ownerKey,
+		dir: dir, anchor: d.Pos(),
 		scope: opts.resolveMember(d.Name.Name, dir),
 	})
 }
@@ -237,7 +249,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 					renameable: true,
 				})
 			}
-			c.addFields(pass, opts, fi, spec)
+			c.addFields(pass, opts, fi, spec, pass.TypesInfo.Defs[spec.Name])
 
 		case *ast.ValueSpec:
 			dir := outer.Merge(directive.ParseDecl(spec.Doc, spec.Comment))
@@ -268,7 +280,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 // addFields registers the fields of a named struct type. The owning namespace
 // is the one declaring the type, so that a type shared across the package can
 // still keep its internals to itself.
-func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, spec *ast.TypeSpec) {
+func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, spec *ast.TypeSpec, ownerObj types.Object) {
 	st, ok := spec.Type.(*ast.StructType)
 	if !ok || st.Fields == nil {
 		return
@@ -287,7 +299,8 @@ func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, 
 			}
 			c.add(&target{
 				obj: obj, ident: name, kind: kindField, file: fi,
-				owner: spec.Name.Name, ownerNS: fi.ns, ownerKey: fi.key(), dir: dir,
+				owner: spec.Name.Name, ownerObj: ownerObj,
+				ownerNS: fi.ns, ownerKey: fi.key(), dir: dir,
 				anchor: field.Pos(),
 				scope:  opts.resolveMember(name.Name, dir),
 			})
@@ -297,10 +310,10 @@ func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, 
 
 // receiver resolves the type a method belongs to and the namespace of the file
 // declaring that type.
-func (c *collection) receiver(pass *analysis.Pass, fn *types.Func, fallback *fileInfo) (owner, ownerNS, ownerKey string) {
+func (c *collection) receiver(pass *analysis.Pass, fn *types.Func, fallback *fileInfo) (owner types.Object, ownerNS, ownerKey string) {
 	sig, ok := fn.Type().(*types.Signature)
 	if !ok || sig.Recv() == nil {
-		return "", fallback.ns, fallback.key()
+		return nil, fallback.ns, fallback.key()
 	}
 	t := sig.Recv().Type()
 	if ptr, ok := types.Unalias(t).(*types.Pointer); ok {
@@ -308,10 +321,10 @@ func (c *collection) receiver(pass *analysis.Pass, fn *types.Func, fallback *fil
 	}
 	named, ok := types.Unalias(t).(*types.Named)
 	if !ok {
-		return "", fallback.ns, fallback.key()
+		return nil, fallback.ns, fallback.key()
 	}
-	owner = named.Obj().Name()
-	pos := pass.Fset.Position(named.Obj().Pos())
+	owner = named.Obj()
+	pos := pass.Fset.Position(owner.Pos())
 	for _, fi := range c.files {
 		if fi.path == pos.Filename {
 			return owner, fi.ns, fi.key()
@@ -321,6 +334,7 @@ func (c *collection) receiver(pass *analysis.Pass, fn *types.Func, fallback *fil
 }
 
 func (c *collection) add(t *target) {
+	t.ignoresUsed = make([]bool, len(t.dir.Ignores))
 	c.targets = append(c.targets, t)
 	c.byObj[t.obj] = t
 	c.problems = append(c.problems, t.dir.Problems...)
