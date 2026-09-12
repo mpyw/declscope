@@ -83,6 +83,12 @@ type target struct {
 	// is already namespaced by its receiver and must not be namespaced twice.
 	ownerNS  string
 	ownerKey string
+	// ownerFile is the file that namespace comes from: the declaring file for
+	// package-level declarations and fields, the file declaring the type for
+	// methods. Diagnostics describe the boundary through it, since a method
+	// may be written in a different file from its type and describing that
+	// file would name the wrong one.
+	ownerFile *fileInfo
 	// owner names the type a member belongs to, empty for package-level.
 	owner string
 	// ownerObj is that type's object, through which a member inherits the
@@ -204,21 +210,21 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 		}
 		c.add(&target{
 			obj: obj, ident: d.Name, kind: kindFunc, file: fi,
-			ownerNS: fi.ns, ownerKey: fi.key(), dir: dir, anchor: d.Pos(),
+			ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: d.Pos(),
 			scope:      opts.resolve(d.Name.Name, dir),
 			renameable: true,
 		})
 		return
 	}
 
-	ownerObj, ownerNS, ownerKey := c.receiver(pass, obj, fi)
+	ownerObj, ownerNS, ownerKey, ownerFile := c.receiver(pass, obj, fi)
 	owner := ""
 	if ownerObj != nil {
 		owner = ownerObj.Name()
 	}
 	c.add(&target{
 		obj: obj, ident: d.Name, kind: kindMethod, file: fi,
-		owner: owner, ownerObj: ownerObj, ownerNS: ownerNS, ownerKey: ownerKey,
+		owner: owner, ownerObj: ownerObj, ownerNS: ownerNS, ownerKey: ownerKey, ownerFile: ownerFile,
 		dir: dir, anchor: d.Pos(),
 		scope: opts.resolve(d.Name.Name, dir),
 	})
@@ -228,8 +234,8 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 	if d.Tok == token.IMPORT {
 		return
 	}
-	// A directive on the block applies to every spec; a directive on a spec
-	// overrides it.
+	// A directive on the block applies to every spec. A spec's own scope
+	// directive replaces the block's; its ignores are added to the block's.
 	outer := directive.ParseDecl(d.Doc)
 	grouped := d.Lparen.IsValid()
 
@@ -244,7 +250,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 			if obj, ok := pass.TypesInfo.Defs[spec.Name]; ok && spec.Name.Name != "_" {
 				c.add(&target{
 					obj: obj, ident: spec.Name, kind: kindType, file: fi,
-					ownerNS: fi.ns, ownerKey: fi.key(), dir: dir, anchor: anchor,
+					ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: anchor,
 					scope:      opts.resolve(spec.Name.Name, dir),
 					renameable: true,
 				})
@@ -268,7 +274,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 				}
 				c.add(&target{
 					obj: obj, ident: name, kind: k, file: fi,
-					ownerNS: fi.ns, ownerKey: fi.key(), dir: dir, anchor: anchor,
+					ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: anchor,
 					scope:      opts.resolve(name.Name, dir),
 					renameable: true,
 				})
@@ -300,7 +306,7 @@ func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, 
 			c.add(&target{
 				obj: obj, ident: name, kind: kindField, file: fi,
 				owner: spec.Name.Name, ownerObj: ownerObj,
-				ownerNS: fi.ns, ownerKey: fi.key(), dir: dir,
+				ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir,
 				anchor: field.Pos(),
 				scope:  opts.resolve(name.Name, dir),
 			})
@@ -308,12 +314,13 @@ func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, 
 	}
 }
 
-// receiver resolves the type a method belongs to and the namespace of the file
-// declaring that type.
-func (c *collection) receiver(pass *analysis.Pass, fn *types.Func, fallback *fileInfo) (owner types.Object, ownerNS, ownerKey string) {
+// receiver resolves the type a method belongs to and the file declaring that
+// type, along with that file's namespace. It falls back to the method's own
+// file when the type cannot be traced to one in the package.
+func (c *collection) receiver(pass *analysis.Pass, fn *types.Func, fallback *fileInfo) (owner types.Object, ownerNS, ownerKey string, ownerFile *fileInfo) {
 	sig, ok := fn.Type().(*types.Signature)
 	if !ok || sig.Recv() == nil {
-		return nil, fallback.ns, fallback.key()
+		return nil, fallback.ns, fallback.key(), fallback
 	}
 	t := sig.Recv().Type()
 	if ptr, ok := types.Unalias(t).(*types.Pointer); ok {
@@ -321,7 +328,7 @@ func (c *collection) receiver(pass *analysis.Pass, fn *types.Func, fallback *fil
 	}
 	named, ok := types.Unalias(t).(*types.Named)
 	if !ok {
-		return nil, fallback.ns, fallback.key()
+		return nil, fallback.ns, fallback.key(), fallback
 	}
 	// A method on a generic type receives List[T], an instantiation of List
 	// with its own type parameters. Obj() already names the origin's type name,
@@ -330,10 +337,10 @@ func (c *collection) receiver(pass *analysis.Pass, fn *types.Func, fallback *fil
 	pos := pass.Fset.Position(owner.Pos())
 	for _, fi := range c.files {
 		if fi.path == pos.Filename {
-			return owner, fi.ns, fi.key()
+			return owner, fi.ns, fi.key(), fi
 		}
 	}
-	return owner, fallback.ns, fallback.key()
+	return owner, fallback.ns, fallback.key(), fallback
 }
 
 func (c *collection) add(t *target) {

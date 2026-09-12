@@ -137,3 +137,11 @@ func TestGenerics(t *testing.T) {
 func TestEmbedded(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "embedded")
 }
+
+// TestMemberOwnerFile checks that a member violation names the file declaring
+// the type, not the file the member happens to be written in. The two differ
+// for a method declared away from its type, and the message reads as a
+// contradiction when the wrong one is named.
+func TestMemberOwnerFile(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "memberowner")
+}

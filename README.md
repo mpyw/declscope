@@ -282,13 +282,24 @@ Keeping `escape` and writing `//declscope:package` per declaration is the strict
 
 A file-level ignore that silences nothing is reported, like any other.
 
-Placement: the doc comment of a declaration, or a trailing comment on the same line. A directive on a parenthesized `var`/`const`/`type` block applies to every spec in it, and a directive on a spec overrides it. A trailing `// reason` is allowed.
+Placement: the doc comment of a declaration, or a trailing comment on the same line. A trailing `// reason` is allowed.
 
 ```go
 //declscope:package // shared with the reporting code
 func userHelper() {}
 
 func userHelper() {} //declscope:package
+```
+
+A directive on a parenthesized `var`/`const`/`type` block applies to every spec in it. A spec may carry its own, and the two kinds combine differently: a **scope** directive on the spec replaces the block's, since a declaration has exactly one scope, while **ignores accumulate** — the spec's are added to the block's, so a narrower ignore never re-enables a rule the block turned off.
+
+```go
+//declscope:ignore escape
+var (
+	userSeed = 1
+	//declscope:ignore promote
+	limit = 2 // escape is still silenced by the block; promote by the spec
+)
 ```
 
 Unused `//declscope:ignore` directives are reported, so suppressions do not outlive the problem. `//declscope:ignore demote` is unused if nothing but `demote` would have fired. Where directives at different levels both cover a rule, all of them count as used, so overlapping never makes one look unused.
