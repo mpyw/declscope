@@ -121,11 +121,10 @@ type Options struct {
 // nothing by itself.
 func DefaultOptions() Options {
 	return Options{
-		Exported:     scope.Public,
-		Unexported:   scope.FilePrivate,
-		CheckMembers: true,
-		Promote:      PromoteOnDemand,
-		CheckDemote:  false,
+		Exported:    scope.Public,
+		Unexported:  scope.FilePrivate,
+		Promote:     PromoteOnDemand,
+		CheckDemote: false,
 	}
 }
 

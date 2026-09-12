@@ -12,7 +12,11 @@
 //	rules:
 //	  promote: ondemand    # true | false | ondemand (only once a package has two namespaces)
 //	  demote: false        # and where it is not required, forbid it
-//	  members: true        # bound unexported methods/fields by their type's namespace
+//
+// Only the naming rules are configurable. Reach enforcement is the point of
+// the linter and is not something a config file can switch off; silence an
+// individual declaration with //declscope:ignore, or record what a codebase
+// already has with a baseline.
 //
 //	exclude:
 //	  - "**/mock_*.go"
@@ -53,7 +57,6 @@ type File struct {
 		// Promote is tri-state, so it arrives as a bool or as a string.
 		Promote any   `yaml:"promote"`
 		Demote  *bool `yaml:"demote"`
-		Members *bool `yaml:"members"`
 	} `yaml:"rules"`
 
 	Exclude []string `yaml:"exclude"`
@@ -170,9 +173,6 @@ func (f *File) Apply(opts *internal.Options) error {
 	}
 	if f.Rules.Demote != nil {
 		opts.CheckDemote = *f.Rules.Demote
-	}
-	if f.Rules.Members != nil {
-		opts.CheckMembers = *f.Rules.Members
 	}
 	if f.Exclude != nil {
 		opts.Exclude = f.Exclude

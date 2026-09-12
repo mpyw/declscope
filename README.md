@@ -326,13 +326,14 @@ defaults:
 rules:
   promote: ondemand     # true | false | ondemand (required once a package has two namespaces)
   demote: false         # and where it is not required, forbid it
-  members: true         # bound unexported methods/fields by their type's namespace
 
 exclude:
   - "**/mock_*.go"
 
 baseline: .declscope-baseline.yaml   # relative to this file; found automatically if named by default
 ```
+
+Only the **naming** rules are configurable. Reach enforcement — `escape` and `foreign-method`, on package-level declarations and on members alike — is the point of the linter and cannot be switched off from a config file: silence an individual declaration with `//declscope:ignore`, or record what a codebase already has with a [baseline](#adopting-on-an-existing-codebase).
 
 Unknown keys are an error rather than a silent no-op: a typo in a rule name would otherwise leave the rule at its default with no sign of it.
 

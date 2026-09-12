@@ -29,7 +29,7 @@ defaults:
   unexported: package
 rules:
   promote: false
-  members: false
+  demote: true
 exclude:
   - "**/mock_*.go"
 `)
@@ -45,7 +45,7 @@ exclude:
 	if opts.Exported != scope.PackageInternal || opts.Unexported != scope.PackageInternal {
 		t.Errorf("defaults not applied: %+v", opts)
 	}
-	if opts.Promote != internal.PromoteNever || opts.CheckMembers {
+	if opts.Promote != internal.PromoteNever || !opts.CheckDemote {
 		t.Errorf("rules not applied: %+v", opts)
 	}
 	if len(opts.Exclude) != 1 || opts.Exclude[0] != "**/mock_*.go" {
@@ -69,7 +69,7 @@ func TestApplyKeepsDefaults(t *testing.T) {
 	if opts.Exported != want.Exported || opts.Unexported != want.Unexported {
 		t.Errorf("defaults should be untouched, got %+v", opts)
 	}
-	if opts.CheckMembers != want.CheckMembers || opts.Promote != want.Promote {
+	if opts.Promote != want.Promote {
 		t.Errorf("unnamed rules should be untouched, got %+v", opts)
 	}
 	if !opts.CheckDemote {
@@ -85,7 +85,7 @@ func TestLoadEmptyFile(t *testing.T) {
 }
 
 func TestLoadRejectsUnknownKey(t *testing.T) {
-	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  memberz: true\n")
+	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  demotte: true\n")
 	if _, err := config.Load(path); err == nil {
 		t.Fatal("a misspelled rule must not silently keep its default")
 	}

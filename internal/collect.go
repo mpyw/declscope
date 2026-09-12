@@ -195,9 +195,6 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 		return
 	}
 
-	if !opts.CheckMembers {
-		return
-	}
 	owner, ownerNS, ownerKey := c.receiver(pass, obj, fi)
 	c.add(&target{
 		obj: obj, ident: d.Name, kind: kindMethod, file: fi,
@@ -231,9 +228,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 					renameable: true,
 				})
 			}
-			if opts.CheckMembers {
-				c.addFields(pass, opts, fi, spec)
-			}
+			c.addFields(pass, opts, fi, spec)
 
 		case *ast.ValueSpec:
 			dir := outer.Merge(directive.ParseDecl(spec.Doc, spec.Comment))
