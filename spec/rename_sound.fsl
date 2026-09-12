@@ -62,14 +62,14 @@ spec RenameSound {
     else Unresolved
 
   // The guard modelled here: package scope only.
-  def guardToday() = otherPkg != BindsNew
+  def guardPackageScopeOnly() = otherPkg != BindsNew
 
   fair action rename() {
     requires configured
     requires not renamed
     requires declName == OldName
     requires resolve(OldName) == ToDecl   // The reference resolves correctly before
-    requires guardToday()
+    requires guardPackageScopeOnly()
     declName = NewName
     renamed = true
     elsewhereBefore = resolveElsewhere()   // Reads the pre-rename state
