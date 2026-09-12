@@ -283,6 +283,8 @@ packages:
     escape:
       - User.name
       - helper
+    promote:
+      - helper
 ```
 
 An entry is keyed by **package, rule and declaration** — never by position — so it survives the code being moved, the file being renamed and the package being reformatted. Regenerate rather than edit:
@@ -294,7 +296,13 @@ git diff .declscope-baseline.yaml   # the record of what was cleaned up
 
 Entries for violations that have since been fixed simply disappear, which is why the analyzer never reports an entry as stale: a package's test variant sees references the ordinary variant does not, so "matched nothing" is not a reliable signal from inside one pass.
 
-A baseline suppresses, it does not endorse. Nothing is written into the source, the convention still applies to every new declaration, and an entry can only be removed by actually fixing the violation. That is the difference between this and a `-fix` mode that writes `//declscope:package` everywhere: the latter would permanently opt the codebase out of the convention it was adopted for.
+A baseline suppresses, it does not endorse. Nothing is written into the source, so the convention still applies to every new declaration, and an entry can only be removed by actually fixing the violation — which is what makes it different from silencing the same violations with directives.
+
+```console
+declscope baseline [-o path] [-config path] [packages]
+```
+
+Without `-o` it writes to the baseline named by the config file, or `.declscope-baseline.yaml` in the working directory.
 
 ## Installation & Usage
 
@@ -394,7 +402,7 @@ The point of declscope is that the boundary stops being tacit knowledge, so put 
 
 ```bash
 declscope ./...        # in CI, and in the agent's build/verify loop
-declscope -fix ./...   # deterministic: one fix per diagnostic, no alternatives to choose between
+declscope -fix ./...   # deterministic: at most one fix per diagnostic
 ```
 
 On an existing codebase, run `declscope baseline ./...` once first, so the agent is only ever shown the boundaries *it* crossed.
