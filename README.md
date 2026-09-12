@@ -474,7 +474,8 @@ That last clause matters. Left to itself an agent will take the cheapest path ou
 - Generated files (`// Code generated ... DO NOT EDIT.`) are excluded entirely — neither checked nor treated as reference sites.
 - Everything is checked **within a single package**. Namespaces are therefore implicitly package-qualified and never collide across packages.
 - Whether an *exported* identifier is used outside its package is out of scope: `go/analysis` has no upward view of the program, and answering it would require a separate whole-program mode. Combine with an unused-code linter for that.
-- Embedded fields are skipped, since their name comes from the embedded type.
+- An embedded field is not checked as a member: it has no name of its own, only the embedded type's. Embedding a type is still a **use** of that type, so `type B struct{ aCount }` written outside `aCount`'s namespace is an `escape`, and renaming the type rewrites the embedding and every `b.aCount` selection through it.
+- Members of generic types are checked like any other: `List[int].items` and `l.items` inside `List[T]`'s own methods are uses of `List.items`.
 - Fields of anonymous structs, and of types declared inside a function, are not checked.
 - An unexported method grown on another namespace's type but **never called** is not reported. `escape` needs a reference to find, and a method with none is dead code — the business of an unused-code linter, not this one.
 

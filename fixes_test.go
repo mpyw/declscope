@@ -25,3 +25,10 @@ func TestSuggestedFixInlineStruct(t *testing.T) {
 func TestSuggestedFixPromote(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixpromote")
 }
+
+// TestSuggestedFixEmbedded checks that renaming a type also rewrites the
+// idents that embed it, and the selections that reach the embedded field by
+// the type's name.
+func TestSuggestedFixEmbedded(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixembedded")
+}
