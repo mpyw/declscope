@@ -122,3 +122,47 @@ func TestTypeIgnore(t *testing.T) {
 func TestDefaultsReachMembers(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "defaultsmembers")
 }
+
+// TestGenerics checks that the members of a generic type are bounded like
+// those of any other type. go/types records the instantiated field or method
+// for a selection on List[int], and on List[T] inside the type's own methods,
+// so the lookup has to normalise to the origin object.
+func TestGenerics(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "generics")
+}
+
+// TestEmbedded checks that embedding a type is a use of it. The embedded
+// field's ident is both a definition (the field) and a use (the type), and
+// the second role is the one escape has to see.
+func TestEmbedded(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "embedded")
+}
+
+// TestMemberOwnerFile checks that a member violation names the file declaring
+// the type, not the file the member happens to be written in. The two differ
+// for a method declared away from its type, and the message reads as a
+// contradiction when the wrong one is named.
+func TestMemberOwnerFile(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "memberowner")
+}
+
+// TestNamespaceIdentity checks that a file whose stem cannot be a label, such
+// as 2fa.go, is still a namespace: its test file shares it, a use from another
+// namespace is reported, and the label rule asks nothing of it.
+func TestNamespaceIdentity(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nsidentity")
+}
+
+// TestNamespaceNormalize checks that separators other than _ and a PascalCase
+// stem yield a lowerCamelCase namespace, so that the rename offered by promote
+// is a valid unexported identifier.
+func TestNamespaceNormalize(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nsnormalize")
+}
+
+// TestNamespaceInitialism checks that a namespace spells its initialisms the
+// way Go does, that the label is matched ignoring case, and that the rename
+// offered by promote spells the name's first word the same way.
+func TestNamespaceInitialism(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nsinitialism")
+}

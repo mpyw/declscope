@@ -45,7 +45,11 @@ By default a namespace is derived from the file name, which makes **each file it
 | `user_repository_test.go` | `userRepository` — a test shares its subject's namespace |
 | `parser_linux.go`, `parser_linux_amd64.go` | `parser` — GOOS/GOARCH suffixes are build constraints, not namespaces |
 | `v2_client.go` | `v2Client` |
-| `2fa_auth.go` | *(none — no identifier may start with a digit)* |
+| `user_id.go`, `parse_json.go` | `userID`, `parseJSON` — an initialism is spelled the way Go spells it |
+| `foo-bar.go`, `Foo.go` | `fooBar`, `foo` — any separator, and a PascalCase stem, normalise to lowerCamelCase |
+| `2fa_auth.go` | `2faAuth` — a namespace, but never a label (see below) |
+
+A namespace does two jobs. As an **identity** it answers "is this use inside the same namespace?", and every file with a stem has one — `2fa_test.go` shares the namespace of `2fa.go` like any other test. As a **label** it is the prefix [`promote`](#promote) asks a declaration to carry, and only a namespace that can start an unexported identifier qualifies. No identifier begins with a digit, so `2faAuth` bounds its declarations but the naming rules ask nothing of them.
 
 Files can opt into a **shared** namespace, which is how one logical unit spans several files:
 
@@ -187,7 +191,9 @@ Exported identifiers are exempt: they are already qualified by the package name 
 | `true` | Required unconditionally. Costs a little stutter in single-file packages, but means a package gaining its second namespace is not a mass rename. |
 | `false` | Off, leaving reach enforcement without any naming discipline. |
 
-Where the rename target is already taken, the violation is reported without a fix.
+The label is matched **ignoring case**, and then has to end at a word boundary: in `user_id.go` (namespace `userID`) `userIDCache`, `userIdCache` and `userIdcache` all carry it, while `useridentity` does not. You never have to guess which spelling of an initialism the linter chose. The rename it offers spells both halves the way Go does — `id` in `user.go` becomes `userID`, `urlPath` becomes `userURLPath` — never `userId`.
+
+Where the rename cannot be shown safe — the target is already taken, or renaming would change what the code resolves to — the violation is reported without a fix. See [When a rename is withheld](#when-a-rename-is-withheld). Where the namespace cannot be a label at all (`2fa.go`), `promote` and `demote` stay silent instead: there is no prefix they could ask for.
 
 ### `demote`
 
@@ -210,6 +216,36 @@ but "type" is a keyword; rename it by hand
 ```
 
 Being unable to spell the new name is a limit of the fix, not a reason to let the label stand.
+
+### When a rename is withheld
+
+A rename is offered only when it provably changes nothing but the spelling. Go resolves a name from the inside out — local scope, then the file's imports, then the package, then the predeclared names — so a new name that is free at package level can still be bound at a use site, and the wrong rename **compiles and computes something else**:
+
+```go
+var count = 10
+func Add(fooCount int) int { return fooCount + count } // Add(1) == 11
+```
+```go
+// after a careless rename of count to fooCount
+func Add(fooCount int) int { return fooCount + fooCount } // Add(1) == 2
+```
+
+The violation is still reported, but the fix is withheld and the rename left to a human, when any of the following holds:
+
+| Condition | Why |
+| --- | --- |
+| the new name is already declared in the package | would not compile |
+| the new name is predeclared (`len`, `error`, `string`, …) | the declaration compiles and shadows the builtin for the whole package |
+| any file of the package imports the new name | Go rejects a package-level name that any file imports |
+| at some use of the declaration, the new name is bound by a local, parameter, result or type parameter | the use would silently resolve to that instead |
+| the declaration is used from a generated or `exclude`d file | those files are never rewritten, so the use would dangle |
+| a `//go:linkname` or `//export` directive names the declaration | the directive names it as text, which a rename cannot follow |
+| another fix in the same run already renames something to that name | two declarations would end up with one name (`a.go:bX` and `a_b.go:x` both label to `aBX`; `fooBar` and `fooBAR` both drop to `bar`) |
+| the package has in-package `_test.go` files that this variant does not see | the test files may declare or use the name; the test variant, which sees every file, decides and its fix covers the non-test files too |
+
+The last row means that with `-test=false`, no rename is offered in a package that has tests. Under the default `-test=true` nothing changes: `go vet` and `declscope` analyze the test variant as well, and its fix is the one applied.
+
+Every check errs towards withholding. A rename that is withheld costs one manual edit; a rename that is wrong is a bug the linter itself cannot see.
 
 ## Directives
 
@@ -282,13 +318,24 @@ Keeping `escape` and writing `//declscope:package` per declaration is the strict
 
 A file-level ignore that silences nothing is reported, like any other.
 
-Placement: the doc comment of a declaration, or a trailing comment on the same line. A directive on a parenthesized `var`/`const`/`type` block applies to every spec in it, and a directive on a spec overrides it. A trailing `// reason` is allowed.
+Placement: the doc comment of a declaration, or a trailing comment on the same line. A trailing `// reason` is allowed.
 
 ```go
 //declscope:package // shared with the reporting code
 func userHelper() {}
 
 func userHelper() {} //declscope:package
+```
+
+A directive on a parenthesized `var`/`const`/`type` block applies to every spec in it. A spec may carry its own, and the two kinds combine differently: a **scope** directive on the spec replaces the block's, since a declaration has exactly one scope, while **ignores accumulate** — the spec's are added to the block's, so a narrower ignore never re-enables a rule the block turned off.
+
+```go
+//declscope:ignore escape
+var (
+	userSeed = 1
+	//declscope:ignore promote
+	limit = 2 // escape is still silenced by the block; promote by the spec
+)
 ```
 
 Unused `//declscope:ignore` directives are reported, so suppressions do not outlive the problem. `//declscope:ignore demote` is unused if nothing but `demote` would have fired. Where directives at different levels both cover a rule, all of them count as used, so overlapping never makes one look unused.
@@ -441,7 +488,7 @@ On Windows, download `declscope_${VERSION}_windows_${ARCH}.zip` and extract `dec
 | `-test` | `true` | Analyze test files (`*_test.go`) — built-in driver flag |
 | `-fix` | `false` | Apply suggested fixes automatically — built-in driver flag |
 
-Every diagnostic carries **at most one** fix, so `-fix` is unambiguous: a boundary crossing is fixed by inserting `//declscope:package`, a label by renaming. The two can never conflict, because a rename does not change a declaration's reach.
+Every diagnostic carries **at most one** fix, so `-fix` is unambiguous: a boundary crossing is fixed by inserting `//declscope:package`, a label by renaming. The two can never conflict, because a rename does not change a declaration's reach. A rename is offered only when it is [provably safe](#when-a-rename-is-withheld); in a package with in-package tests it comes from the test variant, so `-test=false` withholds it.
 
 ## Using it with an AI agent
 
@@ -474,7 +521,8 @@ That last clause matters. Left to itself an agent will take the cheapest path ou
 - Generated files (`// Code generated ... DO NOT EDIT.`) are excluded entirely — neither checked nor treated as reference sites.
 - Everything is checked **within a single package**. Namespaces are therefore implicitly package-qualified and never collide across packages.
 - Whether an *exported* identifier is used outside its package is out of scope: `go/analysis` has no upward view of the program, and answering it would require a separate whole-program mode. Combine with an unused-code linter for that.
-- Embedded fields are skipped, since their name comes from the embedded type.
+- An embedded field is not checked as a member: it has no name of its own, only the embedded type's. Embedding a type is still a **use** of that type, so `type B struct{ aCount }` written outside `aCount`'s namespace is an `escape`, and renaming the type rewrites the embedding and every `b.aCount` selection through it.
+- Members of generic types are checked like any other: `List[int].items` and `l.items` inside `List[T]`'s own methods are uses of `List.items`.
 - Fields of anonymous structs, and of types declared inside a function, are not checked.
 - An unexported method grown on another namespace's type but **never called** is not reported. `escape` needs a reference to find, and a method with none is dead code — the business of an unused-code linter, not this one.
 

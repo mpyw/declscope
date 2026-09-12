@@ -34,7 +34,11 @@ The namespace count that `rules.promote: ondemand` keys off is taken from the pa
 
 The indirection is deliberate: using the file name *itself* would mean renaming a file cascades into renaming every identifier it declares. It also makes `_test.go` sharing its subject's namespace fall out naturally rather than needing a special case.
 
-Normalization rules live in `internal/namespace` and are covered by a table test. GOOS/GOARCH suffixes are stripped because they are build constraints, not namespaces.
+Normalization rules live in `internal/namespace` and are covered by a table test. GOOS/GOARCH suffixes are stripped because they are build constraints, not namespaces. Every run of non-identifier characters is a separator (`foo-bar.go` → `fooBar`), a PascalCase stem is lowered (`Foo.go` → `foo`), and an initialism in a later segment is spelled the way Go spells it (`user_id.go` → `userID`) using golint's `commonInitialisms` list, vendored rather than pulled in as a dependency.
+
+**A namespace is an identity first and a label second, and the two are kept apart.** `namespace.Of` always returns the normalised stem — `2fa.go` yields `2fa` — so that `fileInfo.key()` never falls back to the file path and `2fa_test.go` shares its subject's namespace like every other test. `namespace.IsLabel` separately says whether that stem can be prepended to an unexported identifier; `checkPromote` and `checkDemote` gate on it and stay silent when it is false, because the alternative was suggesting `2faTotp` or `FooBar`. An earlier version had `Of` return `""` for a digit-leading stem, which lost the identity in order to protect the label — the second job was allowed to kill the first.
+
+`namespace.HasPrefix` matches the label **ignoring case** and then requires a word boundary, so `userIDCache`, `userIdCache` and `userIdcache` all carry `userID` while `useridentity` does not: a word break the name reproduces inside a multi-word namespace already confirms the label, and only a single word running on in lowercase is a fragment. This is what stops the linter guessing which spelling of an initialism the author chose and demanding `userIdUserIDCache`. `Qualify` spells the first word of the name the same way (`id` → `userID`).
 
 ## Architecture
 
@@ -45,6 +49,7 @@ internal/
   collect.go              fileInfo, target, reference collection
   options.go              resolved configuration, scope resolution, exclude globs
   report.go               diagnostics and suggested fixes
+  rename.go               the conditions under which a rename fix is offered at all
   rule/                   the rule vocabulary, shared by diagnostics, config, baseline and ignores
   namespace/              file name -> namespace, prefix matching, qualify/unqualify
   scope/                  the three-level Scope enum
@@ -54,13 +59,22 @@ internal/
 cmd/declscope/            singlechecker entry point, plus the `baseline` subcommand
 ```
 
-`internal/{analyzer,collect,options,report}.go` form one logical unit and declare `//declscope:namespace analyzer` so that declscope passes its own check. `cmd/declscope/{main,baseline}.go` are one command and declare `//declscope:namespace main` for the same reason. Keep those directives when adding files to either unit — without them the label rule asks every declaration to carry a `baseline`/`analyzer` prefix, which is the tool reporting a boundary that is not really there.
+`internal/{analyzer,collect,options,report,rename}.go` form one logical unit and declare `//declscope:namespace analyzer` so that declscope passes its own check. `cmd/declscope/{main,baseline}.go` are one command and declare `//declscope:namespace main` for the same reason. Keep those directives when adding files to either unit — without them the label rule asks every declaration to carry a `baseline`/`analyzer` prefix, which is the tool reporting a boundary that is not really there.
 
 ### Structural constraints
 
 - Everything is checked **within a single package**. Namespaces are therefore implicitly package-qualified; `pass.Pkg` scoping does that for free and no `analysis.Fact` is needed.
 - Whether an *exported* identifier is used outside its package is deliberately **out of scope**: `go/analysis` has no upward view of the program. Answering it would require a separate whole-program mode driven by `packages.Load`, which would not fit a plain Analyzer. Combine with an unused-code linter instead.
 - Generated files are excluded as declaration sites **and** as reference sites, since a violation in generated code is not actionable.
+
+### Reference collection
+
+`collectRefs` is where every rule gets its evidence, and two facts about `go/types` shape it:
+
+- **An ident can be a definition and a use at once.** An embedded field's ident is in `Defs` as the field `Var` *and* in `Uses` as the `TypeName`. `Defs` and `Uses` are therefore consulted independently; an earlier version returned after `Defs`, which dropped the type use and with it both a rename edit and an `escape` diagnostic. The embedded field itself is deliberately **not** a target (`addFields` skips it) — it has no name of its own to hide or label — but a selection through it (`u.count`) is spelled with the type's name, so `embeddedTypeName` adds those idents to the type's rename set. Aliases are kept as aliases there: a field embedding `A` is spelled `A`, whatever `A` denotes.
+- **`Uses` records the instantiated member of a generic type**, for a selection on `List[int]` and even on `List[T]` inside `List`'s own methods, while `byObj` is keyed by the declared object. Every object taken from `Uses` goes through `origin()` (`(*types.Var).Origin()` / `(*types.Func).Origin()`) before the lookup and before it joins `idents`. Without that, every field and method of a generic type was silently unchecked. `receiver` needs no such step: `(*types.Named).Obj()` already names the origin's type name.
+
+`testdata/src/generics`, `embedded` and `fixembedded` pin both, including the receiver resolution of a method on `List[T]`.
 
 ## Rules
 
@@ -96,7 +110,7 @@ Unused directives are therefore reported in a **second pass**, after every findi
 
 `//declscope:namespace` matches Go's directive syntax, so `go/doc` strips it from rendered documentation. In a file with a package comment it belongs at the bottom of that comment after a blank `//` line; in a file without one it is separated from the package clause by a blank line, because flush against `package` it becomes an empty package comment and adds a stray blank line to the rendered package doc. `FileNamespace` scans `file.Comments` rather than `file.Doc`, so every placement is recognised.
 
-Placement of declaration-level directives: a declaration's doc comment, or a trailing comment on the same line. `ast.FuncDecl` has no `Comment` field, so trailing directives on functions are found through `fileInfo.lineComments`. A directive on a parenthesized block applies to every spec in it; a spec's own directive overrides it (`directive.Decl.Merge`).
+Placement of declaration-level directives: a declaration's doc comment, or a trailing comment on the same line. `ast.FuncDecl` has no `Comment` field, so trailing directives on functions are found through `fileInfo.lineComments`. A directive on a parenthesized block applies to every spec in it, and `directive.Decl.Merge` layers the spec's own over it: a scope directive on the spec replaces the block's, while ignores accumulate. The union is deliberate — a narrower ignore must not silently re-enable a rule the block turned off — and `testdata/src/ignorescope` pins it, so keep the docs and that test in step.
 
 Unused ignore directives are reported, matching the convention in `mpyw/gormreuse` and `mpyw/zerologlintctx`. Ignores are consulted **before** the baseline, so a suppression the baseline would also have absorbed still counts as the directive doing its job.
 
@@ -109,7 +123,18 @@ Every diagnostic carries **at most one** fix, which is what makes `-fix` unambig
 
 They can never conflict, because a rename does not change reach. (`x/tools`' `ApplyFixes` applies only the first fix of a diagnostic and logs `ignoring alternative fix` for the rest, so carrying alternatives was always a liability.)
 
-Renames are skipped when `pass.Pkg.Scope().Lookup(newName)` is non-nil, since renaming into an existing package-level name would not compile. They are also never offered for members, or for a file whose name yields no valid namespace.
+**A rename is offered only when it is provably safe** (`renameSafe` in `internal/rename.go`); the diagnostic is reported either way. This is the agreed answer to a class of P0s (#1, #2, #3, #5, #6) where `-fix` produced code that did not compile or, worse, compiled into a program computing something else: the old guard checked only `pass.Pkg.Scope().Lookup(newName)`, but Go resolves a name from the inside out, so `var count` renamed to `fooCount` inside `func Add(fooCount int) int { return fooCount + count }` silently became `fooCount + fooCount`. Writing a full renamer was rejected in favour of withholding; a withheld fix costs one manual edit, a wrong one is a bug the linter cannot see. `spec/rename_sound.fsl` and `spec/rename_siblings.fsl` model the resolution order and the sibling collision.
+
+The conditions, each conservative:
+
+- the new name is not in package scope, not predeclared (`types.Universe`), and not bound in **any** file scope (`fileScopesBind`) — Go rejects a package-level name that any file imports, so this cannot be limited to files with references
+- at every ident naming the object, `pass.Pkg.Scope().Innermost(pos).LookupParent(newName, pos)` finds nothing. Verified experimentally: this catches parameters, named results, locals declared before the reference, closure parameters, range variables, type parameters, receivers, the same file's imports and the universe; it correctly ignores locals declared after the reference, field names and labels; and it does **not** see another file's imports, which is why the file-scope check above is separate
+- the object is not named from a file the pass did not collect (generated or `exclude`d), since those are never rewritten (`usedOutside`, normalised the same way as `collectRefs`)
+- no `//go:linkname` or `//export` in the package names the object as text
+- no earlier fix in the same pass has claimed the name (`reserved`). Fixes are generated from one pre-fix state and cannot see each other; `Qualify` is not injective across namespaces and `Unqualify` lowers initialisms, so two declarations can target one name. Reservation makes the **order** of targets load-bearing, which is why `report` sorts by (file name, offset) rather than `token.Pos`: go/packages parses files concurrently, so the order files enter the FileSet differs between runs, and sorting by `Pos` made a different sibling win in the `-json` run than in the `-fix` run
+- the package has no in-package `_test.go` files that this pass does not see (`hasUnseenTests`, a directory listing plus `parser.PackageClauseOnly`). The non-test variant cannot see what test files declare or use, so it withholds every rename and defers to the test variant, which sees every file and whose fix rewrites the non-test files too. The driver coalesces identical edits from both variants, so with `-test` on (the default) nothing is lost; with `-test=false`, packages with tests get no rename fix. An earlier draft parsed the sibling test files and summarised what they spell, import and would themselves be renamed to; that was more permissive but heuristic (an unaliased import's name is only known by loading it), and the blunt rule is the one that is provably consistent between the two variants.
+
+Renames are also never offered for members. A namespace that cannot be a label at all (`namespace.IsLabel` is false) produces no naming diagnostic in the first place, rather than a diagnostic without a rename.
 
 **A declaration whose scope came from a directive gets no fix at all** (`t.dir.HasScope`). Both the directive and the use site are deliberate, so `-fix` must not overwrite the author's directive. An earlier version emitted `//declscope:package` next to an existing `//declscope:file`, producing code the linter itself rejected.
 
@@ -134,6 +159,8 @@ go test ./...          # analysistest + unit tests
 
 - `testdata/src/*` are `analysistest` packages. `promotealways/`, `demote/` and `demoteinert/` carry their own `.declscope.yaml`, which also exercises config discovery end to end.
 - Goldens are plain files, not txtar archives, because no diagnostic carries alternative fixes any more.
+- `convergence_test.go` applies `-fix` through the real binary in **one** pass and checks that the result type-checks, that every diagnostic which offered a fix is gone, and that no diagnostic appeared that was not there before. It type-checks with `go vet`, not `go build`, because vet also compiles the test variant — a rename applied to the non-test files alone builds and then fails the first `go test`. Keep it to one pass: repeating it would hide a fix that only works the second time. Each way a rename can be unsafe has a case there, arranged so that the wrong rename fails to type-check (a captured parameter is given a type the expression rejects), since the test cannot run the result.
+- `testdata/src/fix*` pin where a fix is offered and where it is withheld. `RunWithSuggestedFixes` compares a golden only for files that received edits, so a package that tests withholding also carries one declaration that *is* renamed: a wrongly offered fix then fails for want of a golden, and the golden shows the guard is precise rather than merely off.
 - Keep each testdata package focused on one rule. `promoterule/order.go` deliberately touches nothing in namespace `user`, so the label rule is tested without escape diagnostics landing on the same lines.
 - Diagnostics on directives are reported at the comment, so their `// want` comments belong on the directive line, not the declaration line.
 - Do not add a `.declscope.yaml` or `.declscope-baseline.yaml` at the repository root: both are found by an upward lookup from each analyzed package, so a default-named file at the root would reach every `testdata` package and change what the tests assert. The settings declscope holds itself to live in `.declscope-strict.yaml` and are applied with an explicit `-config` in CI and `test_all.sh`.

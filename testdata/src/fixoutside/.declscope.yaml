@@ -1,0 +1,4 @@
+rules:
+  promote: true
+exclude:
+  - "**/ext.go"

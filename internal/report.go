@@ -3,6 +3,7 @@
 package internal
 
 import (
+	"cmp"
 	"fmt"
 	"go/token"
 	"path/filepath"
@@ -30,8 +31,13 @@ type finding struct {
 }
 
 func (c *collection) report(pass *analysis.Pass, opts Options) {
+	// The order decides which of two fixes claiming the same new name gets
+	// it, so it must be the same in every run. token.Pos alone is not:
+	// go/packages parses files concurrently, so the order in which they
+	// enter the FileSet, and with it the relative order of positions in
+	// different files, differs from one run to the next.
 	slices.SortStableFunc(c.targets, func(a, b *target) int {
-		return int(a.ident.Pos() - b.ident.Pos())
+		return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos())
 	})
 
 	for _, t := range c.targets {
@@ -77,6 +83,15 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	for _, p := range c.problems {
 		pass.Reportf(p.Pos, "%s", p.Msg)
 	}
+}
+
+// comparePos orders positions by file name, then by offset within the file.
+func comparePos(fset *token.FileSet, a, b token.Pos) int {
+	pa, pb := fset.Position(a), fset.Position(b)
+	if c := strings.Compare(pa.Filename, pb.Filename); c != 0 {
+		return c
+	}
+	return cmp.Compare(pa.Offset, pb.Offset)
 }
 
 // key identifies the finding for the baseline, independently of position.
@@ -162,12 +177,14 @@ func (c *collection) checkEscape(pass *analysis.Pass, opts Options, t *target) (
 	case t.dir.HasScope:
 		f.msg = fmt.Sprintf("%s %s is declared %s by %s, but is used from %s",
 			t.kind, t.name(), t.scope, t.scope.Directive(), describeFile(offenders[0].file))
+	// The boundary is the owner's: for a method that is the file declaring
+	// its type, which need not be the file the method is written in.
 	case t.owner != "":
 		f.msg = fmt.Sprintf("%s %s is private to %s, but is used from %s",
-			t.kind, t.name(), describe(t.ownerNS, t.file.path), describeFile(offenders[0].file))
+			t.kind, t.name(), describeFile(t.ownerFile), describeFile(offenders[0].file))
 	default:
 		f.msg = fmt.Sprintf("%s %s is file-private to %s, but is used from %s",
-			t.kind, t.name(), describe(t.ownerNS, t.file.path), describeFile(offenders[0].file))
+			t.kind, t.name(), describeFile(t.ownerFile), describeFile(offenders[0].file))
 	}
 	for _, r := range offenders {
 		f.related = append(f.related, analysis.RelatedInformation{
@@ -198,7 +215,13 @@ func (c *collection) checkEscape(pass *analysis.Pass, opts Options, t *target) (
 // requiring the label only once a package has a second namespace to
 // distinguish. See PromoteMode.
 func (c *collection) checkPromote(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.Promote.required(c.namespaces) || !t.renameable || t.ownerNS == "" {
+	if !opts.Promote.required(c.namespaces) || !t.renameable {
+		return finding{}, false
+	}
+	// A namespace is always an identity, but not always a label: 2fa.go
+	// bounds its declarations like any other file, yet no identifier can
+	// start with a digit, so there is no prefix to ask for.
+	if !namespace.IsLabel(t.ownerNS) {
 		return finding{}, false
 	}
 	name := t.obj.Name()
@@ -231,7 +254,7 @@ func (c *collection) checkPromote(pass *analysis.Pass, opts Options, t *target) 
 // the label and never part of the concept, since nothing in the name can tell
 // userID-the-label from userID-the-word.
 func (c *collection) checkDemote(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.CheckDemote || !t.renameable || t.ownerNS == "" {
+	if !opts.CheckDemote || !t.renameable || !namespace.IsLabel(t.ownerNS) {
 		return finding{}, false
 	}
 	if opts.Promote.required(c.namespaces) {
@@ -245,8 +268,10 @@ func (c *collection) checkDemote(pass *analysis.Pass, opts Options, t *target) (
 	// causality usually runs the other way there: user.go is named after the
 	// user it declares, not the other way about. promote still accepts such a
 	// name, since the owning unit is legible from it, but there is nothing
-	// here for demote to strip.
-	if name == t.ownerNS {
+	// here for demote to strip. The label is matched ignoring case, so the
+	// exemption is too: userId in user_id.go is the namespace, spelled by
+	// someone who did not know how the linter would spell it.
+	if strings.EqualFold(name, t.ownerNS) {
 		return finding{}, false
 	}
 
@@ -271,18 +296,23 @@ func (c *collection) checkDemote(pass *analysis.Pass, opts Options, t *target) (
 
 // renameFix rewrites every ident naming the target. All of them are inside the
 // package, so the edits stay within the pass.
+//
+// The fix is offered only when renameSafe can prove it changes nothing but
+// the spelling; the diagnostic is reported either way. Whatever it renames to
+// is reserved for the rest of the pass, since a later fix checking the same
+// pre-fix state would otherwise find the name still free.
 func (c *collection) renameFix(pass *analysis.Pass, t *target, newName, message string) (analysis.SuggestedFix, bool) {
 	if newName == t.obj.Name() {
-		return analysis.SuggestedFix{}, false
-	}
-	// Renaming into a name the package already uses would not compile.
-	if pass.Pkg.Scope().Lookup(newName) != nil {
 		return analysis.SuggestedFix{}, false
 	}
 	idents := c.idents[t.obj]
 	if len(idents) == 0 {
 		return analysis.SuggestedFix{}, false
 	}
+	if !c.renameSafe(pass, t, newName) {
+		return analysis.SuggestedFix{}, false
+	}
+	c.reserve(newName)
 	edits := make([]analysis.TextEdit, 0, len(idents))
 	for _, id := range idents {
 		edits = append(edits, analysis.TextEdit{Pos: id.Pos(), End: id.End(), NewText: []byte(newName)})
