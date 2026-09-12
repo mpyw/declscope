@@ -33,6 +33,49 @@ The usual reaction is to start splitting packages so the compiler will hold the 
 
 declscope takes the other route: it makes the boundary **machine-checkable inside a flat package**, so the agent gets told, with a fix it can apply, and the intent ends up written down in the source where the next agent will read it.
 
+### What it reports
+
+Two files of one package. `order.go` reaches into what `user.go` declares:
+
+```go
+// user.go
+type User struct{ name string }
+
+func helper(u *User) string { return u.name }
+```
+```go
+// order.go
+func Total(u *User) string { return helper(u) + u.name }
+```
+
+```console
+$ declscope ./...
+user.go:3:19: field User.name is private to namespace "user", but is used from namespace "order"
+user.go:5:6: func helper is file-private to namespace "user", but is used from namespace "order"
+user.go:5:6: func helper does not carry the prefix of namespace "user"; rename it to userHelper
+```
+
+Each crossing has two answers: keep the boundary and move the call, or share the declaration on purpose. `declscope -fix` takes the second, and leaves the decision written down:
+
+```go
+// user.go
+type User struct {
+	//declscope:package
+	name string
+}
+
+//declscope:package
+func userHelper(u *User) string { return u.name }
+```
+```go
+// order.go
+func Total(u *User) string { return userHelper(u) + u.name }
+```
+
+The directive says the declaration is shared; the name says which unit it came from. Both are visible at the call site, and the next crossing of an unshared declaration is reported the same way.
+
+> [!TIP]
+> `-fix` always widens, because that is the repair it can apply mechanically. Where the boundary is worth keeping, move the call instead and leave the declaration alone.
 
 ## Installation and usage
 
