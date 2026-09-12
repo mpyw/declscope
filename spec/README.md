@@ -27,7 +27,7 @@ These are not regressions to repair in the spec. Each models a guard weaker than
 the one the implementation applies, and fails on purpose: the counterexamples are
 the specification of what a rename guard must check, and every condition they force
 is one of those listed under
-[When a rename is withheld](../README.md#when-a-rename-is-withheld).
+[Withheld renames](../README.md#withheld-renames).
 
 `rename_sound.fsl` models Go's resolution order — local, then file (imports),
 then package, then the universe of predeclared names — and asks whether a rename
