@@ -116,7 +116,7 @@ Or pin it per project in `mise.toml`:
 ```
 
 > [!NOTE]
-> The `go`-based methods below build declscope from source. `go.mod` pins `toolchain go1.27.0`, so with the default `GOTOOLCHAIN=auto` the `go` command downloads a matching toolchain automatically unless `GOTOOLCHAIN=local` is set. `go tool` also needs Go 1.24 or later on `PATH`.
+> The `go`-based methods below build declscope from source, with the Go toolchain that the invoking command resolves. `go install pkg@version` and `go run pkg@version` ignore the `toolchain` directive of the module they install and treat its `go` directive as a lower bound only, so they build declscope with the `go` release already on `PATH`. `go get -tool` builds it inside your own module, so your module's toolchain applies. `go tool` additionally requires Go 1.24 or later on `PATH`.
 
 ### Using [`go tool`](https://pkg.go.dev/cmd/go#hdr-Run_specified_go_tool)
 
@@ -145,6 +145,9 @@ go vet -vettool=$(which declscope) ./...
 > [!NOTE]
 > `go vet` accepts declscope's `-config` flag and runs the tool from each package's own directory, so a path given to it must be absolute. A config file found by the [lookup](#configuration) needs no flag.
 
+> [!IMPORTANT]
+> `go vet` runs the vet tool over the standard library packages in the dependency graph as well, type-checking them from source. The tool must therefore be built with a Go release at least as new as the toolchain that builds the analyzed module; otherwise every standard library package is reported as `package requires newer Go version`. The prebuilt binaries on GitHub Releases are built with the toolchain pinned in `go.mod`, while a binary produced by `go install` inherits the `go` release on your `PATH`.
+
 ### Using [`go run`](https://pkg.go.dev/cmd/go#hdr-Compile_and_run_Go_program)
 
 ```bash
@@ -152,7 +155,7 @@ go run github.com/mpyw/declscope/cmd/declscope@latest ./...
 ```
 
 > [!CAUTION]
-> To prevent supply chain attacks, pin to a specific version tag instead of `@latest` in CI/CD pipelines (e.g., `@v0.1.0`).
+> To prevent supply chain attacks, pin to a specific version tag instead of `@latest` in CI/CD pipelines (e.g., `@v0.0.1`).
 
 <details>
 <summary><a href="https://curl.se/"><img src="https://cdn.simpleicons.org/curl" height="20" alt=""></a> Downloading the tarball directly (macOS/Linux/Windows)</summary>

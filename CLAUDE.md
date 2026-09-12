@@ -220,4 +220,5 @@ go test ./...          # analysistest + unit tests
 
 - Module: `github.com/mpyw/declscope`, matching the layout of `mpyw/gormreuse` and `mpyw/zerologlintctx`.
 - `go.mod` pins `toolchain go1.27.0` while keeping the `go` directive at 1.25.0, because golangci-lint refuses to load a module whose `go` directive is newer than the Go it was built with.
+  The pin governs builds made inside this module, including the release build. It does not reach `go install pkg@version` or `go run pkg@version`, which ignore a dependency module's `toolchain` directive and treat its `go` directive as a lower bound only, so those commands build declscope with the user's own `go` release.
 - Distribution is via GitHub Releases (goreleaser) with **mise as the recommended install path**; `go install` / `go tool` / `go vet -vettool` also work.
