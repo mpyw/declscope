@@ -35,44 +35,64 @@ declscope takes the other route: it makes the boundary **machine-checkable insid
 
 ### What it reports
 
-Two files of one package. `order.go` reaches into what `user.go` declares:
+One `store` package. `csv.go` builds a `User` and reaches into what `user.go` declares:
 
 ```go
 // user.go
-type User struct{ name string }
+package store
 
-func helper(u *User) string { return u.name }
+type User struct {
+	ID    int64
+	email string
+}
+
+func normalise(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
 ```
 ```go
-// order.go
-func Total(u *User) string { return helper(u) + u.name }
+// csv.go
+package store
+
+func csvParse(rec []string) (*User, error) {
+	id, err := strconv.ParseInt(rec[0], 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	return &User{ID: id, email: normalise(rec[1])}, nil
+}
 ```
+
+Nothing here is unusual, and nothing the compiler can object to. `email` is unexported so that it is only ever written through the normaliser, and `csv.go` writes it directly.
 
 ```console
 $ declscope ./...
-user.go:3:19: field User.name is private to namespace "user", but is used from namespace "order"
-user.go:5:6: func helper is file-private to namespace "user", but is used from namespace "order"
-user.go:5:6: func helper does not carry the prefix of namespace "user"; rename it to userHelper
+user.go:7:2:  field User.email is private to namespace "user", but is used from namespace "csv"
+user.go:10:6: func normalise is file-private to namespace "user", but is used from namespace "csv"
+user.go:10:6: func normalise does not carry the prefix of namespace "user"; rename it to userNormalise
 ```
 
-Each crossing has two answers: keep the boundary and move the call, or share the declaration on purpose. `declscope -fix` takes the second, and leaves the decision written down:
+Each crossing has two answers: keep the boundary and put the parsing behind a constructor, or share the declarations on purpose. `declscope -fix` takes the second, and leaves the decision written down:
 
 ```go
 // user.go
 type User struct {
+	ID int64
 	//declscope:package
-	name string
+	email string
 }
 
 //declscope:package
-func userHelper(u *User) string { return u.name }
+func userNormalise(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
 ```
 ```go
-// order.go
-func Total(u *User) string { return userHelper(u) + u.name }
+// csv.go
+	return &User{ID: id, email: userNormalise(rec[1])}, nil
 ```
 
-The directive says the declaration is shared; the name says which unit it came from. Both are visible at the call site, and the next crossing of an unshared declaration is reported the same way.
+The directive says the declaration is shared; the name says which unit it came from. Both are visible at the call site, and the next file to reach for an unshared declaration is reported the same way.
 
 > [!TIP]
 > `-fix` always widens, because that is the repair it can apply mechanically. Where the boundary is worth keeping, move the call instead and leave the declaration alone.
