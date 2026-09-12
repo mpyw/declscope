@@ -58,7 +58,7 @@ Files can opt into a **shared** namespace, which is how one logical unit spans s
 package repo
 ```
 
-Deriving the default from the file name rather than using the file name itself is deliberate: renaming a file should not cascade into renaming every identifier it declares. It is also why a `_test.go` file can reach its subject's file-private declarations without any special case — it is simply in the same namespace.
+The default is derived from the file name rather than being the file name, so that renaming a file does not cascade into renaming every identifier it declares, and so that a `_test.go` file reaches its subject's file-private declarations by being in the same namespace.
 
 ### Coexisting with a package comment
 
@@ -136,9 +136,9 @@ There are three. Each has one name, and that name is what appears as the diagnos
 
 | Rule | Reports | Fix | Configurable |
 | --- | --- | --- | --- |
-| [`boundary`](#boundary) | a declaration used from outside the namespace it is private to | insert `//declscope:package` | no |
-| [`qualify`](#qualify) | an unexported package-level declaration missing its namespace label | rename to add the label | `rules.qualify` |
-| [`unqualify`](#unqualify) | a namespace label present where it is not required | rename to drop the label | `rules.unqualify` |
+| [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:package` | No |
+| [`qualify`](#qualify) | An unexported package-level declaration missing its namespace label | Rename to add the label | `rules.qualify` |
+| [`unqualify`](#unqualify) | A namespace label present where it is not required | Rename to drop the label | `rules.unqualify` |
 
 The split is deliberate. **Reach enforcement is the point of the linter and cannot be switched off**; **naming discipline is a matter of taste and can be.** To quiet `boundary`, silence the individual declaration with `//declscope:ignore`, or record what the codebase already has with a [baseline](#adopting-on-an-existing-codebase).
 
@@ -195,7 +195,7 @@ Exported identifiers are exempt: they are already qualified by the package name 
 
 The label is matched **ignoring case**, and then has to end at a word boundary: in `user_id.go` (namespace `userID`) `userIDCache`, `userIdCache` and `userIdcache` all carry it, while `useridentity` does not. You never have to guess which spelling of an initialism the linter chose. The rename it offers spells both halves the way Go does — `id` in `user.go` becomes `userID`, `urlPath` becomes `userURLPath` — never `userId`.
 
-Where the rename cannot be shown safe — the target is already taken, or renaming would change what the code resolves to — the violation is reported without a fix. See [When a rename is withheld](#when-a-rename-is-withheld). Where the namespace cannot be a label at all (`2fa.go`), `qualify` and `unqualify` stay silent instead: there is no prefix they could ask for.
+A rename is offered only when it is provably safe; otherwise the violation is reported without a fix. See [When a rename is withheld](#when-a-rename-is-withheld). Where the namespace cannot be a label at all (`2fa.go`), `qualify` and `unqualify` stay silent instead: there is no prefix they could ask for.
 
 ### `unqualify`
 
@@ -236,16 +236,16 @@ The violation is still reported, but the fix is withheld and the rename left to 
 
 | Condition | Why |
 | --- | --- |
-| the new name is already declared in the package | would not compile |
-| the new name is predeclared (`len`, `error`, `string`, …) | the declaration compiles and shadows the builtin for the whole package |
-| any file of the package imports the new name | Go rejects a package-level name that any file imports |
-| at some use of the declaration, the new name is bound by a local, parameter, result or type parameter | the use would silently resolve to that instead |
-| the declaration is used from a generated or `exclude`d file | those files are never rewritten, so the use would dangle |
-| a `//go:linkname` or `//export` directive names the declaration | the directive names it as text, which a rename cannot follow |
-| another fix in the same run already renames something to that name | two declarations would end up with one name (`a.go:bX` and `a_b.go:x` both label to `aBX`; `fooBar` and `fooBAR` both drop to `bar`) |
-| the package has in-package `_test.go` files that this variant does not see | the test files may declare or use the name; the test variant, which sees every file, decides and its fix covers the non-test files too |
+| The new name is already declared in the package | Would not compile |
+| The new name is predeclared (`len`, `error`, `string`, …) | The declaration compiles and shadows the builtin for the whole package |
+| Any file of the package imports the new name | Go rejects a package-level name that any file imports |
+| At some use of the declaration, the new name is bound by a local, parameter, result or type parameter | The use would silently resolve to that instead |
+| The declaration is used from a generated or `exclude`d file | Those files are never rewritten, so the use would dangle |
+| A `//go:linkname` or `//export` directive names the declaration | The directive names it as text, which a rename cannot follow |
+| Another fix in the same run already renames something to that name | Two declarations would end up with one name (`a.go:bX` and `a_b.go:x` both label to `aBX`; `fooBar` and `fooBAR` both drop to `bar`) |
+| The package has in-package `_test.go` files that this variant does not see | The test files may declare or use the name; the test variant, which sees every file, decides and its fix covers the non-test files too |
 
-The last row means that with `-test=false`, no rename is offered in a package that has tests. Under the default `-test=true` nothing changes: `go vet` and `declscope` analyze the test variant as well, and its fix is the one applied.
+The last row means that with `-test=false`, no rename is offered in a package that has tests. Under the default `-test=true` nothing is lost: `go vet` and `declscope` analyze the test variant as well, and its fix is the one applied.
 
 Every check errs towards withholding. A rename that is withheld costs one manual edit; a rename that is wrong is a bug the linter itself cannot see.
 
@@ -271,10 +271,10 @@ A diagnostic is silenced by the nearest directive that covers its rule, and the 
 
 | Level | Covers |
 | --- | --- |
-| the declaration | itself |
-| the **type**, for a method or field | every member the type owns, wherever the member is declared |
-| the file, before the package clause | every declaration in that file |
-| a [baseline](#adopting-on-an-existing-codebase) | violations recorded when the linter was adopted |
+| The declaration | Itself |
+| The **type**, for a method or field | Every member the type owns, wherever the member is declared |
+| The file, before the package clause | Every declaration in that file |
+| A [baseline](#adopting-on-an-existing-codebase) | Every violation recorded in it |
 
 A directive on a type is what an open struct wants, rather than one on every field:
 
@@ -316,11 +316,12 @@ func first[T any](s []T) T { ... }
 
 The directive belongs to the **file**, not to the namespace, and the package clause has nothing to do with either: the namespace comes from the file name, or from `//declscope:namespace`. Files that share a namespace therefore each need their own — one file cannot silence a rule on behalf of another.
 
-Keeping `boundary` and writing `//declscope:package` per declaration is the stricter option, and the one to prefer when the file is not wholly shared — silencing `boundary` removes the boundary for everything in the file, including declarations added later. For violations that already exist, a [baseline](#adopting-on-an-existing-codebase) suppresses them without standing future ones down.
+> [!WARNING]
+> A file-level ignore of `boundary` removes the boundary for everything in the file, including declarations added later. When the file is not wholly shared, keep `boundary` and write `//declscope:package` per declaration. For violations that already exist, a [baseline](#adopting-on-an-existing-codebase) suppresses them without standing future ones down.
 
 A file-level ignore that silences nothing is reported, like any other.
 
-Placement: the doc comment of a declaration, or a trailing comment on its first or last line — for a multi-line declaration, the line of its opening or closing brace or parenthesis. A trailing `// reason` is allowed.
+A declaration-level directive is written in the doc comment of a declaration, or as a trailing comment on its first or last line — for a multi-line declaration, the line of its opening or closing brace or parenthesis. A trailing `// reason` is allowed.
 
 ```go
 //declscope:package // shared with the reporting code
@@ -374,6 +375,15 @@ exclude:
 baseline: .declscope-baseline.yaml   # relative to this file; found automatically if named by default
 ```
 
+| Key | Values | Effect |
+| --- | --- | --- |
+| `defaults.exported` | `public` *(default)*, `package`, `file` | Scope of an exported declaration or member that carries no scope directive |
+| `defaults.unexported` | `file` *(default)*, `package`, `public` | Scope of an unexported declaration or member that carries no scope directive |
+| `rules.qualify` | `ondemand` *(default)*, `always`, `never`; `true`/`false` as aliases of `always`/`never` | When the namespace label is required; see [`qualify`](#qualify) |
+| `rules.unqualify` | `false` *(default)*, `true` | Whether a label is forbidden where it is not required; see [`unqualify`](#unqualify) |
+| `exclude` | Glob patterns; `**` matches across directories | Files that are neither checked nor treated as reference sites |
+| `baseline` | A path relative to the config file | The baseline to consult; a default-named file is found without this key |
+
 Only the naming rules appear here; see [Rules](#rules) for why. Unknown keys are an error rather than a silent no-op: a typo in a rule name would otherwise leave the rule at its default with no sign of it.
 
 ## Adopting on an existing codebase
@@ -384,7 +394,7 @@ Turning declscope on for a codebase that predates it would report every boundary
 declscope baseline ./...       # writes .declscope-baseline.yaml
 ```
 
-Recorded violations are suppressed; new ones are still reported. The file is discovered by the same upward lookup as the config, so its presence is all it takes.
+Recorded violations are suppressed; new ones are reported. The file is discovered by the same upward lookup as the config, so its presence is all it takes.
 
 ```yaml
 packages:
@@ -403,7 +413,7 @@ declscope baseline ./...
 git diff .declscope-baseline.yaml   # the record of what was cleaned up
 ```
 
-Entries for violations that have since been fixed simply disappear, which is why the analyzer never reports an entry as stale: a package's test variant sees references the ordinary variant does not, so "matched nothing" is not a reliable signal from inside one pass.
+Entries for violations that have been fixed disappear on regeneration, which is why the analyzer never reports an entry as stale: a package's test variant sees references the ordinary variant does not, so "matched nothing" is not a reliable signal from inside one pass.
 
 A baseline suppresses, it does not endorse. Nothing is written into the source, so the convention still applies to every new declaration, and an entry can only be removed by actually fixing the violation — which is what makes it different from silencing the same violations with directives.
 
@@ -411,11 +421,21 @@ A baseline suppresses, it does not endorse. Nothing is written into the source, 
 declscope baseline [-o path] [-config path] [packages]
 ```
 
-Each package's entries go to the file the analyzer will consult for that package: the baseline its nearest config file names, else the nearest existing `.declscope-baseline.yaml` between the package and the working directory, else a new `.declscope-baseline.yaml` in the working directory. A subtree with its own baseline keeps it, and a run from a subdirectory writes under that subdirectory rather than rewriting a baseline above it with only part of its entries. Every file written is regenerated wholesale, and the existing one is never read, so a baseline that fails to parse is replaced like any other.
+Each package's entries go to the file the analyzer will consult for that package, resolved in this order:
 
-A package whose lookup cannot reach the working directory — one in another module, or outside the directory the command runs from — is refused rather than recorded where nothing would find it. `-o` gathers every entry into the one file named instead, and leaves placing it to you.
+| Target | When |
+| --- | --- |
+| The baseline named by the package's nearest config file | The config file has a `baseline` key |
+| The nearest existing `.declscope-baseline.yaml` between the package and the working directory | No config names one |
+| A new `.declscope-baseline.yaml` in the working directory | Neither of the above exists |
 
-## Installation & Usage
+`-o` bypasses that lookup and gathers every entry into the one file named, leaving placing it to you.
+
+A subtree with its own baseline keeps it, and a run from a subdirectory writes under that subdirectory rather than rewriting a baseline above it with only part of its entries. Every file written is regenerated wholesale, and the existing one is never read, so a baseline that fails to parse is replaced like any other.
+
+A package whose lookup cannot reach the working directory — one in another module, or outside the directory the command runs from — is refused rather than recorded where nothing would find it.
+
+## Installation and usage
 
 ### <a href="https://mise.jdx.dev/"><img src="https://mise.jdx.dev/logo.svg" height="28" alt=""></a> Using [mise](https://mise.jdx.dev/) (macOS/Linux/Windows)
 
@@ -433,8 +453,8 @@ Or pin it per project in `mise.toml`:
 "github:mpyw/declscope" = "latest"
 ```
 
-> [!IMPORTANT]
-> The `go`-based methods below build declscope from source. `go.mod` pins `toolchain go1.27.0`, so with the default `GOTOOLCHAIN=auto` the `go` command downloads a matching toolchain automatically unless `GOTOOLCHAIN=local` is set. `go tool` also needs Go 1.24+ on `PATH`, which is where tool directives were introduced.
+> [!NOTE]
+> The `go`-based methods below build declscope from source. `go.mod` pins `toolchain go1.27.0`, so with the default `GOTOOLCHAIN=auto` the `go` command downloads a matching toolchain automatically unless `GOTOOLCHAIN=local` is set. `go tool` also needs Go 1.24 or later on `PATH`.
 
 ### Using [`go tool`](https://pkg.go.dev/cmd/go#hdr-Run_specified_go_tool)
 
@@ -460,7 +480,8 @@ go install github.com/mpyw/declscope/cmd/declscope@latest
 go vet -vettool=$(which declscope) ./...
 ```
 
-Note that `go vet` cannot pass declscope's own `-config` flag; the config file is still discovered from the filesystem.
+> [!NOTE]
+> `go vet` cannot pass declscope's own `-config` flag; the config file is discovered from the filesystem as usual.
 
 ### Using [`go run`](https://pkg.go.dev/cmd/go#hdr-Compile_and_run_Go_program)
 
@@ -500,12 +521,15 @@ On Windows, download `declscope_${VERSION}_windows_${ARCH}.zip` and extract `dec
 ## Flags
 
 | Flag | Default | Description |
-|------|---------|-------------|
+| --- | --- | --- |
 | `-config` | *(discovered)* | Path to a YAML config file, overriding the `.declscope.yaml` lookup |
 | `-test` | `true` | Analyze test files (`*_test.go`) — built-in driver flag |
 | `-fix` | `false` | Apply suggested fixes automatically — built-in driver flag |
 
-Every diagnostic carries **at most one** fix, so `-fix` is unambiguous: a boundary crossing is fixed by inserting `//declscope:package`, a label by renaming. The two can never conflict, because a rename does not change a declaration's reach. A rename is offered only when it is [provably safe](#when-a-rename-is-withheld); in a package with in-package tests it comes from the test variant, so `-test=false` withholds it.
+Every diagnostic carries **at most one** fix, so `-fix` is unambiguous: a boundary crossing is fixed by inserting `//declscope:package`, a label by renaming. The two can never conflict, because a rename does not change a declaration's reach. A rename is offered only when it is [provably safe](#when-a-rename-is-withheld).
+
+> [!IMPORTANT]
+> Only the test variant of a package sees its in-package `_test.go` files, so in a package that has them, renames and unused-directive reports come from the test variant alone. With `-test=false`, such a package gets no rename fix and no unused-directive report.
 
 ## Using it with an AI agent
 
