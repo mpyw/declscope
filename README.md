@@ -352,7 +352,9 @@ Enabling it asserts that a namespace prefix in this codebase *always* means the 
 var userID int
 ```
 
-The rename spells a leftover initialism the way Go does (`userID` → `id`, `userURLPath` → `urlPath`). Where no rename can be derived — dropping the label would leave a keyword, or leave nothing — the violation is still reported, with the reason and without a fix:
+A name identical to its namespace (`type user` in `user.go`) carries no label to drop: the file is named after what it declares, not the other way about. `promote` still accepts such a name, since the owning unit is legible from it.
+
+The rename spells a leftover initialism the way Go does (`userID` → `id`, `userURLPath` → `urlPath`). Where no rename can be derived — dropping the label would leave a keyword, say — the violation is still reported, with the reason and without a fix:
 
 ```
 func userType carries the label of namespace "user", which is not required here,

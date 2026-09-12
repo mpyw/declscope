@@ -71,6 +71,8 @@ The rules are pairwise exclusive **by construction**, which is what keeps one de
 
 `namespace.Unqualify` (demote's rename) lowers a leftover initialism the way Go spells one (`userID` → `id`, `userURLPath` → `urlPath`), which the naive version got wrong (`iD`). It returns a second value explaining any refusal.
 
+`checkDemote` exempts a name identical to its namespace. The causality usually runs the other way there — `user.go` is named after the `user` it declares — so there is no label to strip, and the only advice available would have been "rename it by hand". `promote` still accepts such a name.
+
 **Not being able to derive a rename is never a reason to stay silent.** `checkDemote` gates on `namespace.HasPrefix` — whether there is a label at all — and then reports either way, embedding `Unqualify`'s reason when it has no suggestion. An earlier version skipped the declaration entirely, which left a codebase half-converted under `demote: true` with nothing saying why. `checkPromote` has always behaved this way when its rename target is taken; keep new rules consistent with it.
 
 ## Directives

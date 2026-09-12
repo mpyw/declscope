@@ -225,6 +225,14 @@ func (c *collection) checkDemote(pass *analysis.Pass, opts Options, t *target) (
 	if isExported(name) || !namespace.HasPrefix(name, t.ownerNS) {
 		return finding{}, false
 	}
+	// A name identical to the namespace carries no label to drop. The
+	// causality usually runs the other way there: user.go is named after the
+	// user it declares, not the other way about. promote still accepts such a
+	// name, since the owning unit is legible from it, but there is nothing
+	// here for demote to strip.
+	if name == t.ownerNS {
+		return finding{}, false
+	}
 
 	// Not being able to spell the new name is a limit of the fix, not a reason
 	// to let the label stand: the violation is reported either way, and only

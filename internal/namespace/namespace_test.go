@@ -114,14 +114,14 @@ func TestUnqualifyDeclines(t *testing.T) {
 	tests := []struct{ name, ns string }{
 		// Reachable: there is a label, it is not wanted here, and no rename
 		// can be derived. These become "rename it by hand" diagnostics.
-		{"user", "user"},     // nothing would remain
 		{"userType", "user"}, // would leave the keyword "type"
 		{"userFunc", "user"}, // would leave the keyword "func"
 		{"user2", "user"},    // would leave "2", which cannot start an identifier
 
-		// Unreachable: checkDemote gates on HasPrefix, so these never arrive.
-		// They pin that the function is total, rather than returning a
+		// Unreachable: checkDemote gates these out before calling, so they
+		// only pin that the function stays total rather than returning a
 		// nonsense rename for input it was not designed for.
+		{"user", "user"},   // identical to the namespace, so carries no label
 		{"users", "user"},  // not a word boundary, so never a label
 		{"helper", "user"}, // does not begin with the namespace
 		{"anything", ""},   // a file whose name yields no namespace

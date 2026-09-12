@@ -17,8 +17,9 @@ func onlys() int { return 4 }
 // the violation is reported without one rather than passed over.
 func onlyType() int { return 5 } // want `func onlyType carries the label of namespace "only", which is not required here, but "type" is a keyword; rename it by hand`
 
-// The name is the namespace and nothing else.
-func only() int { return 6 } // want `func only carries the label of namespace "only", which is not required here, but nothing would remain; rename it by hand`
+// The name is the namespace and nothing else, so it carries no label to drop:
+// the file is named after what it declares, not the other way about.
+func only() int { return 6 }
 
 // Exported identifiers are never labelled.
 func OnlyExported() int { return onlyHelper() + onlyID + helper2() + onlys() + onlyType() + only() }
