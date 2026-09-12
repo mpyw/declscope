@@ -1,6 +1,6 @@
 package nsidentity
 
-// The second namespace, which is what puts promote in force for the package.
+// The second namespace, which is what puts qualify in force for the package.
 // It is a label, so its own declarations are held to it.
 func otherRun() int { return 1 }
 

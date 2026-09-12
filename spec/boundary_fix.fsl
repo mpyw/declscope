@@ -1,7 +1,7 @@
 // Inserting //declscope:package always removes the boundary crossing.
 //
 // Only the variables these properties read are modelled: 216 action instances.
-spec EscapeFix {
+spec BoundaryFix {
   enum Scope { Public, Package, FilePriv }
   enum Dir   { NoDir, DirPublic, DirPackage, DirFile }
   enum Refs  { NoRefs, SameNs, CrossNs }
@@ -25,12 +25,12 @@ spec EscapeFix {
     else if dir == DirFile then FilePriv
     else if exported then cfgExported
     else cfgUnexported
-  def escapeFires() = effScope() == FilePriv and refs == CrossNs
+  def boundaryFires() = effScope() == FilePriv and refs == CrossNs
 
-  fair action fixEscape() {
-    requires configured  requires escapeFires()  requires dir == NoDir
+  fair action fixBoundary() {
+    requires configured  requires boundaryFires()  requires dir == NoDir
     dir = DirPackage  fixed = true
   }
-  invariant EscapeFixSettles { fixed => not escapeFires() }
-  reachable EscapeCanFire { configured and escapeFires() }
+  invariant BoundaryFixSettles { fixed => not boundaryFires() }
+  reachable BoundaryCanFire { configured and boundaryFires() }
 }

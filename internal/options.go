@@ -11,57 +11,57 @@ import (
 	"github.com/mpyw/declscope/internal/scope"
 )
 
-// PromoteMode says when the namespace label is required on unexported
+// QualifyMode says when the namespace label is required on unexported
 // package-level declarations.
-type PromoteMode int
+type QualifyMode int
 
 const (
-	// PromoteOnDemand requires the label only in a package with more than one
+	// QualifyOnDemand requires the label only in a package with more than one
 	// namespace. In a package with one, there is no boundary for a label to
 	// mark: every other rule is structurally inert there, since every
 	// reference is already inside the single namespace, and a prefix repeated
 	// on every declaration would distinguish nothing.
-	PromoteOnDemand PromoteMode = iota
-	// PromoteAlways requires the label unconditionally, so that a package
+	QualifyOnDemand QualifyMode = iota
+	// QualifyAlways requires the label unconditionally, so that a package
 	// gaining its second namespace does not turn into a mass rename.
-	PromoteAlways
-	// PromoteNever disables the rule.
-	PromoteNever
+	QualifyAlways
+	// QualifyNever disables the rule.
+	QualifyNever
 )
 
-func (m PromoteMode) String() string {
+func (m QualifyMode) String() string {
 	switch m {
-	case PromoteOnDemand:
+	case QualifyOnDemand:
 		return "ondemand"
-	case PromoteAlways:
+	case QualifyAlways:
 		return "always"
-	case PromoteNever:
+	case QualifyNever:
 		return "never"
 	default:
 		return "unknown"
 	}
 }
 
-// ParsePromoteMode reads the tri-state value of the rules.promote setting.
+// ParseQualifyMode reads the tri-state value of the rules.qualify setting.
 // The documented spellings are the strings always, never and ondemand, so the
 // setting is one enum rather than two booleans and a string. true and false
 // are kept as aliases for always and never; YAML hands those over as bools
 // unless quoted, so both a bool and a string are read.
-func ParsePromoteMode(value any) (PromoteMode, bool) {
+func ParseQualifyMode(value any) (QualifyMode, bool) {
 	switch v := value.(type) {
 	case bool:
 		if v {
-			return PromoteAlways, true
+			return QualifyAlways, true
 		}
-		return PromoteNever, true
+		return QualifyNever, true
 	case string:
 		switch v {
 		case "ondemand":
-			return PromoteOnDemand, true
+			return QualifyOnDemand, true
 		case "always", "true":
-			return PromoteAlways, true
+			return QualifyAlways, true
 		case "never", "false":
-			return PromoteNever, true
+			return QualifyNever, true
 		}
 	}
 	return 0, false
@@ -69,11 +69,11 @@ func ParsePromoteMode(value any) (PromoteMode, bool) {
 
 // required reports whether the label rule applies to a package with the given
 // number of namespaces.
-func (m PromoteMode) required(namespaces int) bool {
+func (m QualifyMode) required(namespaces int) bool {
 	switch m {
-	case PromoteAlways:
+	case QualifyAlways:
 		return true
-	case PromoteOnDemand:
+	case QualifyOnDemand:
 		return namespaces > 1
 	default:
 		return false
@@ -93,15 +93,15 @@ type Options struct {
 	// namespace of the type they belong to, which is the encapsulation Go
 	// itself cannot express.
 	CheckMembers bool
-	// Promote says when an unexported package-level declaration must carry its
+	// Qualify says when an unexported package-level declaration must carry its
 	// namespace as a label.
-	Promote PromoteMode
+	Qualify QualifyMode
 
-	// CheckDemote is the mirror of Promote: where the label is not required, it
+	// CheckUnqualify is the mirror of Qualify: where the label is not required, it
 	// must not be present either. Together the two settle the spelling of
 	// every unexported package-level name, in both directions. It is inert
-	// under PromoteAlways, where the label is always required.
-	CheckDemote bool
+	// under QualifyAlways, where the label is always required.
+	CheckUnqualify bool
 
 	// Exclude holds glob patterns matched against file paths.
 	Exclude []string
@@ -127,10 +127,10 @@ type Options struct {
 // nothing by itself.
 func DefaultOptions() Options {
 	return Options{
-		Exported:    scope.Public,
-		Unexported:  scope.FilePrivate,
-		Promote:     PromoteOnDemand,
-		CheckDemote: false,
+		Exported:       scope.Public,
+		Unexported:     scope.FilePrivate,
+		Qualify:        QualifyOnDemand,
+		CheckUnqualify: false,
 	}
 }
 

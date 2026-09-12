@@ -8,7 +8,7 @@ func userIdCache() int { return 2 }
 func userIdcache() int { return 3 }
 
 // The name is the namespace, in another spelling. It carries no label to
-// drop and promote accepts it.
+// drop and qualify accepts it.
 var userId = 4
 
 // The suggestion spells the namespace and the first word of the name the way

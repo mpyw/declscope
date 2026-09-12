@@ -1,4 +1,4 @@
-package demoteinert
+package unqualifyinert
 
 func userHelper() int { return 1 }
 

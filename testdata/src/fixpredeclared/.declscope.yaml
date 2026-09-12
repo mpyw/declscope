@@ -1,2 +1,2 @@
 rules:
-  demote: true
+  unqualify: true

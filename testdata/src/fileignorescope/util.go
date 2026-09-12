@@ -1,4 +1,4 @@
-//declscope:ignore promote
+//declscope:ignore qualify
 
 package fileignorescope
 

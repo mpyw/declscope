@@ -104,22 +104,22 @@ func (c *collection) keys(pass *analysis.Pass, opts Options) []baseline.Key {
 func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []finding {
 	var out []finding
 	if t.scope == scope.FilePrivate {
-		if f, ok := c.checkEscape(pass, opts, t); ok {
+		if f, ok := c.checkBoundary(pass, opts, t); ok {
 			out = append(out, f)
 		}
 	}
-	if f, ok := c.checkPromote(pass, opts, t); ok {
+	if f, ok := c.checkQualify(pass, opts, t); ok {
 		out = append(out, f)
 	}
-	if f, ok := c.checkDemote(pass, opts, t); ok {
+	if f, ok := c.checkUnqualify(pass, opts, t); ok {
 		out = append(out, f)
 	}
 	return out
 }
 
-// checkEscape reports a declaration that is private to its namespace but is
+// checkBoundary reports a declaration that is private to its namespace but is
 // referenced from outside it.
-func (c *collection) checkEscape(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
+func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
 	var offenders []ref
 	for _, r := range c.refs[t.obj] {
 		if r.file.key() != t.ownerKey {
@@ -130,7 +130,7 @@ func (c *collection) checkEscape(pass *analysis.Pass, opts Options, t *target) (
 		return finding{}, false
 	}
 
-	f := finding{rule: rule.Escape, decl: t.name(), pos: t.ident.Pos()}
+	f := finding{rule: rule.Boundary, decl: t.name(), pos: t.ident.Pos()}
 	switch {
 	case t.dir.HasScope:
 		f.msg = fmt.Sprintf("%s %s is declared %s by %s, but is used from %s",
@@ -162,18 +162,18 @@ func (c *collection) checkEscape(pass *analysis.Pass, opts Options, t *target) (
 	return f, true
 }
 
-// checkPromote requires an unexported package-level declaration to carry its
+// checkQualify requires an unexported package-level declaration to carry its
 // namespace as a prefix.
 //
 // The prefix grants nothing — reach is stated with a directive — so this is
 // purely an ownership label, making the owning unit legible at every use site
 // and in every stack trace and grep result.
 //
-// Whether it applies at all depends on rules.promote, which defaults to
+// Whether it applies at all depends on rules.qualify, which defaults to
 // requiring the label only once a package has a second namespace to
-// distinguish. See PromoteMode.
-func (c *collection) checkPromote(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.Promote.required(c.namespaces) || !t.renameable {
+// distinguish. See QualifyMode.
+func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
+	if !opts.Qualify.required(c.namespaces) || !t.renameable {
 		return finding{}, false
 	}
 	// A namespace is always an identity, but not always a label: 2fa.go
@@ -192,7 +192,7 @@ func (c *collection) checkPromote(pass *analysis.Pass, opts Options, t *target) 
 	}
 
 	f := finding{
-		rule: rule.Promote,
+		rule: rule.Qualify,
 		decl: name,
 		pos:  t.ident.Pos(),
 		msg: fmt.Sprintf("%s %s does not carry the prefix of %s; rename it to %s",
@@ -205,17 +205,17 @@ func (c *collection) checkPromote(pass *analysis.Pass, opts Options, t *target) 
 	return f, true
 }
 
-// checkDemote is the mirror of checkPromote: where the label is not required,
+// checkUnqualify is the mirror of checkQualify: where the label is not required,
 // it must not be there either.
 //
 // Enabling it asserts that in this codebase a namespace prefix always means
 // the label and never part of the concept, since nothing in the name can tell
 // userID-the-label from userID-the-word.
-func (c *collection) checkDemote(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.CheckDemote || !t.renameable || !namespace.IsLabel(t.ownerNS) {
+func (c *collection) checkUnqualify(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
+	if !opts.CheckUnqualify || !t.renameable || !namespace.IsLabel(t.ownerNS) {
 		return finding{}, false
 	}
-	if opts.Promote.required(c.namespaces) {
+	if opts.Qualify.required(c.namespaces) {
 		return finding{}, false
 	}
 	name := t.obj.Name()
@@ -224,9 +224,9 @@ func (c *collection) checkDemote(pass *analysis.Pass, opts Options, t *target) (
 	}
 	// A name identical to the namespace carries no label to drop. The
 	// causality usually runs the other way there: user.go is named after the
-	// user it declares, not the other way about. promote still accepts such a
+	// user it declares, not the other way about. qualify still accepts such a
 	// name, since the owning unit is legible from it, but there is nothing
-	// here for demote to strip. The label is matched ignoring case, so the
+	// here for unqualify to strip. The label is matched ignoring case, so the
 	// exemption is too: userId in user_id.go is the namespace, spelled by
 	// someone who did not know how the linter would spell it.
 	if strings.EqualFold(name, t.ownerNS) {
@@ -237,7 +237,7 @@ func (c *collection) checkDemote(pass *analysis.Pass, opts Options, t *target) (
 	// to let the label stand: the violation is reported either way, and only
 	// the suggestion is withheld.
 	short, why := namespace.Unqualify(name, t.ownerNS)
-	f := finding{rule: rule.Demote, decl: name, pos: t.ident.Pos()}
+	f := finding{rule: rule.Unqualify, decl: name, pos: t.ident.Pos()}
 	if short == "" {
 		f.msg = fmt.Sprintf("%s %s carries the label of %s, which is not required here, but %s; rename it by hand",
 			t.kind, name, describe(t.ownerNS, t.file.path), why)

@@ -7,5 +7,5 @@ rules:
   # The default is kept: under `always` every unexported helper in a
   # single-namespace package (internal/config, internal/baseline, ...) would
   # need a label that distinguishes nothing there.
-  promote: ondemand
-  demote: true
+  qualify: ondemand
+  unqualify: true

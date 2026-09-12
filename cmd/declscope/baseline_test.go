@@ -19,7 +19,7 @@ import (
 // handshake between them. Each case ends by running the analyzer, since a
 // baseline is only correct if its presence suppresses what it records.
 
-// twoFiles is a package with an escape and a promote violation on helper,
+// twoFiles is a package with a boundary and a qualify violation on helper,
 // referenced from the ordinary and the test variant alike so that the two
 // hand over the same key twice.
 var twoFiles = map[string]string{
@@ -54,7 +54,7 @@ func TestBaselinePerPackageTargets(t *testing.T) {
 	for file, pkgs := range want {
 		set := load(t, filepath.Join(root, file))
 		for _, pkg := range pkgs {
-			if !set.Has(baseline.Key{Package: pkg, Rule: "escape", Decl: "helper"}) {
+			if !set.Has(baseline.Key{Package: pkg, Rule: "boundary", Decl: "helper"}) {
 				t.Errorf("%s lacks the entry for %s:\n%s", file, pkg, out)
 			}
 		}
@@ -102,7 +102,7 @@ func TestBaselineFromSubdirectory(t *testing.T) {
 		t.Errorf("a run from store/ rewrote the root baseline:\n--- before ---\n%s\n--- after ---\n%s", before, after)
 	}
 	set := load(t, filepath.Join(store, ".declscope-baseline.yaml"))
-	if !set.Has(baseline.Key{Package: "example.com/m/store/inner", Rule: "escape", Decl: "helper"}) {
+	if !set.Has(baseline.Key{Package: "example.com/m/store/inner", Rule: "boundary", Decl: "helper"}) {
 		t.Errorf("store/.declscope-baseline.yaml should hold store's entries:\n%s", out)
 	}
 	if !strings.Contains(out, "in "+filepath.Join(store, ".declscope-baseline.yaml")) {
@@ -148,7 +148,7 @@ func TestBaselineRefusesUnreachableDefault(t *testing.T) {
 	}
 	set := load(t, filepath.Join(root, "all.yaml"))
 	for _, pkg := range []string{"example.com/m", "example.com/nested"} {
-		if !set.Has(baseline.Key{Package: pkg, Rule: "escape", Decl: "helper"}) {
+		if !set.Has(baseline.Key{Package: pkg, Rule: "boundary", Decl: "helper"}) {
 			t.Errorf("all.yaml lacks the entry for %s:\n%s", pkg, out)
 		}
 	}
@@ -160,7 +160,7 @@ func TestBaselineRegeneratesCorruptFile(t *testing.T) {
 	for name, body := range twoFiles {
 		writeTree(t, root, name, body)
 	}
-	corrupt := "packages:\n  x:\n    escape: [helper]\nbogus: 1\n"
+	corrupt := "packages:\n  x:\n    boundary: [helper]\nbogus: 1\n"
 	writeTree(t, root, ".declscope-baseline.yaml", corrupt)
 
 	// The analyzer must refuse the file, otherwise a typo would silently
@@ -175,7 +175,7 @@ func TestBaselineRegeneratesCorruptFile(t *testing.T) {
 		t.Fatalf("a corrupt baseline blocked its own regeneration: exit %d\n%s", code, out)
 	}
 	set := load(t, filepath.Join(root, ".declscope-baseline.yaml"))
-	if !set.Has(baseline.Key{Package: "example.com/m", Rule: "escape", Decl: "helper"}) {
+	if !set.Has(baseline.Key{Package: "example.com/m", Rule: "boundary", Decl: "helper"}) {
 		t.Error("the regenerated file should hold the current violations")
 	}
 	assertSuppressed(t, bin, root)
@@ -213,7 +213,7 @@ func TestBaselineReportsWrittenCount(t *testing.T) {
 	}
 	inFile := strings.Count(string(data), "\n      - ")
 	if reported != inFile || inFile != 2 {
-		t.Errorf("reported %d, file holds %d, want 2 (escape and promote on helper):\n%s", reported, inFile, data)
+		t.Errorf("reported %d, file holds %d, want 2 (boundary and qualify on helper):\n%s", reported, inFile, data)
 	}
 }
 

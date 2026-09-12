@@ -15,8 +15,8 @@
 // rest:
 //
 //	//declscope:ignore
-//	//declscope:ignore demote
-//	//declscope:ignore demote,prefix
+//	//declscope:ignore unqualify
+//	//declscope:ignore unqualify,prefix
 //
 // File level, placed before the package clause, overriding the namespace that
 // would otherwise be derived from the file name:
@@ -28,7 +28,7 @@
 // same argument as the declaration-level form, so a bare one silences
 // everything in the file:
 //
-//	//declscope:ignore promote,demote
+//	//declscope:ignore qualify,unqualify
 //
 //	package util
 //
@@ -43,7 +43,7 @@
 //
 //	func helper() {} //declscope:package
 //
-//	type user struct { //declscope:ignore escape
+//	type user struct { //declscope:ignore boundary
 //		name string
 //	}
 //
@@ -277,6 +277,9 @@ func parseIgnore(pos token.Pos, arg string) (Ignore, *Problem) {
 		}
 		r, ok := rule.Parse(name)
 		if !ok {
+			if now, renamed := rule.Renamed(name); renamed {
+				return Ignore{}, &Problem{pos, fmt.Sprintf("rule %q in declscope:ignore was renamed to %q", name, now)}
+			}
 			return Ignore{}, &Problem{pos, fmt.Sprintf("unknown rule %q in declscope:ignore (want one of %s)",
 				name, strings.Join(rule.Names(), ", "))}
 		}

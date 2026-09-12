@@ -19,11 +19,11 @@ func TestSuggestedFixInlineStruct(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixinline")
 }
 
-// TestSuggestedFixPromote checks the rename offered by the label rule. It
+// TestSuggestedFixQualify checks the rename offered by the label rule. It
 // never changes a declaration's reach, so it cannot conflict with the
 // directive fix the way the old name-driven rename could.
-func TestSuggestedFixPromote(t *testing.T) {
-	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixpromote")
+func TestSuggestedFixQualify(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixqualify")
 }
 
 // TestSuggestedFixEmbedded checks that renaming a type also rewrites the
@@ -47,7 +47,7 @@ func TestSuggestedFixCapture(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixcapture")
 }
 
-// TestSuggestedFixPredeclared checks that demote never renames into a
+// TestSuggestedFixPredeclared checks that unqualify never renames into a
 // predeclared name, which would shadow the builtin for the whole package.
 func TestSuggestedFixPredeclared(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixpredeclared")

@@ -27,33 +27,33 @@ spec Knobs {
     else if dir == DirFile then FilePriv
     else if exported then cfgExported
     else cfgUnexported
-  def escapeFires() = effScope() == FilePriv and refs == CrossNs
+  def boundaryFires() = effScope() == FilePriv and refs == CrossNs
 
   // Does defaults.exported reach members?
   reachable ExportedKnobBitesOnMembers {
     configured and kind == Member and exported and dir == NoDir
-    and cfgExported == FilePriv and refs == CrossNs and escapeFires()
+    and cfgExported == FilePriv and refs == CrossNs and boundaryFires()
   }
   // Does defaults.unexported reach members?
   reachable UnexportedKnobSilencesMembers {
     configured and kind == Member and not exported and dir == NoDir
-    and cfgUnexported == Package and refs == CrossNs and not escapeFires()
+    and cfgUnexported == Package and refs == CrossNs and not boundaryFires()
   }
   // Does defaults.exported reach package-level declarations?
   reachable ExportedKnobBitesOnPkg {
     configured and kind == Pkg and exported and dir == NoDir
-    and cfgExported == FilePriv and refs == CrossNs and escapeFires()
+    and cfgExported == FilePriv and refs == CrossNs and boundaryFires()
   }
   // Does a directive override defaults, in both directions?
   reachable DirectiveOverridesToFile {
     configured and dir == DirFile and cfgUnexported == Public
-    and not exported and refs == CrossNs and escapeFires()
+    and not exported and refs == CrossNs and boundaryFires()
   }
   reachable DirectiveOverridesToPackage {
     configured and dir == DirPackage and cfgUnexported == FilePriv
-    and not exported and refs == CrossNs and not escapeFires()
+    and not exported and refs == CrossNs and not boundaryFires()
   }
   // A reference from inside the namespace never crosses a boundary.
-  invariant SameNamespaceNeverEscapes { refs == SameNs => not escapeFires() }
-  invariant NoRefsNeverEscapes        { refs == NoRefs => not escapeFires() }
+  invariant SameNamespaceNeverCrosses { refs == SameNs => not boundaryFires() }
+  invariant NoRefsNeverCrosses        { refs == NoRefs => not boundaryFires() }
 }

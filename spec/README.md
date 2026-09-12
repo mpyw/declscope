@@ -13,9 +13,9 @@ against the binary.
 
 | Spec | Claim | Scope covered |
 | --- | --- | --- |
-| `label_rules.fsl` | `promote` and `demote` never both fire for one declaration | every combination of `rules.promote`, `rules.demote`, namespace count, kind, exportedness, namespace presence and label |
+| `label_rules.fsl` | `qualify` and `unqualify` never both fire for one declaration | every combination of `rules.qualify`, `rules.unqualify`, namespace count, kind, exportedness, namespace presence and label |
 | `label_rules.fsl` | applying either label fix removes the violation it addresses | as above |
-| `escape_fix.fsl` | inserting `//declscope:package` always removes the boundary crossing | every combination of `defaults.exported`, `defaults.unexported`, exportedness, scope directive and reference shape |
+| `boundary_fix.fsl` | inserting `//declscope:package` always removes the boundary crossing | every combination of `defaults.exported`, `defaults.unexported`, exportedness, scope directive and reference shape |
 | `knobs.fsl` | every configuration key demonstrably changes an outcome, for members as well as package-level declarations | as above, plus kind |
 | `knobs.fsl` | a reference from inside the namespace never crosses a boundary | as above |
 | `rename_sound.fsl` | **fails** — states exactly what a rename must check to be sound, and shows today's guard is not enough | every binding environment at the reference site |
@@ -59,7 +59,7 @@ same claims these prove in single-digit megabytes.
 ```console
 fslc check  label_rules.fsl
 fslc verify label_rules.fsl --depth 3
-fslc verify escape_fix.fsl  --depth 3
+fslc verify boundary_fix.fsl --depth 3
 fslc verify knobs.fsl           --depth 2
 fslc verify rename_sound.fsl    --depth 2   # expected: violated
 fslc verify rename_siblings.fsl --depth 3   # expected: violated

@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mpyw/declscope/internal"
@@ -29,8 +30,8 @@ defaults:
   exported: package
   unexported: package
 rules:
-  promote: false
-  demote: true
+  qualify: false
+  unqualify: true
 exclude:
   - "**/mock_*.go"
 `)
@@ -46,7 +47,7 @@ exclude:
 	if opts.Exported != scope.PackageInternal || opts.Unexported != scope.PackageInternal {
 		t.Errorf("defaults not applied: %+v", opts)
 	}
-	if opts.Promote != internal.PromoteNever || !opts.CheckDemote {
+	if opts.Qualify != internal.QualifyNever || !opts.CheckUnqualify {
 		t.Errorf("rules not applied: %+v", opts)
 	}
 	if len(opts.Exclude) != 1 || opts.Exclude[0] != "**/mock_*.go" {
@@ -57,7 +58,7 @@ exclude:
 // TestApplyKeepsDefaults checks that omitting a key keeps the built-in
 // default rather than resetting it to the zero value.
 func TestApplyKeepsDefaults(t *testing.T) {
-	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  demote: true\n")
+	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  unqualify: true\n")
 	f, err := config.Load(path)
 	if err != nil {
 		t.Fatal(err)
@@ -70,11 +71,11 @@ func TestApplyKeepsDefaults(t *testing.T) {
 	if opts.Exported != want.Exported || opts.Unexported != want.Unexported {
 		t.Errorf("defaults should be untouched, got %+v", opts)
 	}
-	if opts.Promote != want.Promote {
+	if opts.Qualify != want.Qualify {
 		t.Errorf("unnamed rules should be untouched, got %+v", opts)
 	}
-	if !opts.CheckDemote {
-		t.Error("demote should be enabled")
+	if !opts.CheckUnqualify {
+		t.Error("unqualify should be enabled")
 	}
 }
 
@@ -86,7 +87,7 @@ func TestLoadEmptyFile(t *testing.T) {
 }
 
 func TestLoadRejectsUnknownKey(t *testing.T) {
-	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  demotte: true\n")
+	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  unqualifyy: true\n")
 	if _, err := config.Load(path); err == nil {
 		t.Fatal("a misspelled rule must not silently keep its default")
 	}
@@ -143,21 +144,21 @@ func TestFindPrefersNearest(t *testing.T) {
 	}
 }
 
-// TestPromoteModes checks every spelling of the tri-state rules.promote
+// TestQualifyModes checks every spelling of the tri-state rules.qualify
 // setting: the documented always, never and ondemand, and the true and false
 // aliases, which YAML hands over as booleans unless quoted.
-func TestPromoteModes(t *testing.T) {
+func TestQualifyModes(t *testing.T) {
 	tests := []struct {
 		yaml string
-		want internal.PromoteMode
+		want internal.QualifyMode
 	}{
-		{"rules:\n  promote: always\n", internal.PromoteAlways},
-		{"rules:\n  promote: never\n", internal.PromoteNever},
-		{"rules:\n  promote: ondemand\n", internal.PromoteOnDemand},
-		{"rules:\n  promote: true\n", internal.PromoteAlways},
-		{"rules:\n  promote: false\n", internal.PromoteNever},
-		{"rules:\n  promote: \"true\"\n", internal.PromoteAlways},
-		{"rules:\n  promote: \"false\"\n", internal.PromoteNever},
+		{"rules:\n  qualify: always\n", internal.QualifyAlways},
+		{"rules:\n  qualify: never\n", internal.QualifyNever},
+		{"rules:\n  qualify: ondemand\n", internal.QualifyOnDemand},
+		{"rules:\n  qualify: true\n", internal.QualifyAlways},
+		{"rules:\n  qualify: false\n", internal.QualifyNever},
+		{"rules:\n  qualify: \"true\"\n", internal.QualifyAlways},
+		{"rules:\n  qualify: \"false\"\n", internal.QualifyNever},
 	}
 	for _, tt := range tests {
 		path := write(t, t.TempDir(), ".declscope.yaml", tt.yaml)
@@ -169,40 +170,40 @@ func TestPromoteModes(t *testing.T) {
 		if err := f.Apply(&opts); err != nil {
 			t.Fatalf("%q: %v", tt.yaml, err)
 		}
-		if opts.Promote != tt.want {
-			t.Errorf("%q: Prefix = %v, want %v", tt.yaml, opts.Promote, tt.want)
+		if opts.Qualify != tt.want {
+			t.Errorf("%q: Prefix = %v, want %v", tt.yaml, opts.Qualify, tt.want)
 		}
 	}
 }
 
-// TestPromoteModeString pins the spelling a diagnostic or an error would use
+// TestQualifyModeString pins the spelling a diagnostic or an error would use
 // to the documented one, and that it parses back: a mode printed as "true"
 // would tell the reader to write a value the docs no longer show.
-func TestPromoteModeString(t *testing.T) {
-	for mode, want := range map[internal.PromoteMode]string{
-		internal.PromoteAlways:   "always",
-		internal.PromoteNever:    "never",
-		internal.PromoteOnDemand: "ondemand",
+func TestQualifyModeString(t *testing.T) {
+	for mode, want := range map[internal.QualifyMode]string{
+		internal.QualifyAlways:   "always",
+		internal.QualifyNever:    "never",
+		internal.QualifyOnDemand: "ondemand",
 	} {
 		if got := mode.String(); got != want {
 			t.Errorf("String() = %q, want %q", got, want)
 		}
-		if back, ok := internal.ParsePromoteMode(mode.String()); !ok || back != mode {
-			t.Errorf("ParsePromoteMode(%q) = %v, %v; want %v", mode.String(), back, ok, mode)
+		if back, ok := internal.ParseQualifyMode(mode.String()); !ok || back != mode {
+			t.Errorf("ParseQualifyMode(%q) = %v, %v; want %v", mode.String(), back, ok, mode)
 		}
 	}
 }
 
-// TestDefaultPromoteMode pins the default: the label is required only once a
+// TestDefaultQualifyMode pins the default: the label is required only once a
 // package has a second namespace to distinguish.
-func TestDefaultPromoteMode(t *testing.T) {
-	if got := internal.DefaultOptions().Promote; got != internal.PromoteOnDemand {
+func TestDefaultQualifyMode(t *testing.T) {
+	if got := internal.DefaultOptions().Qualify; got != internal.QualifyOnDemand {
 		t.Errorf("default Prefix = %v, want ondemand", got)
 	}
 }
 
-func TestApplyRejectsUnknownPromoteMode(t *testing.T) {
-	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  promote: sometimes\n")
+func TestApplyRejectsUnknownQualifyMode(t *testing.T) {
+	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  qualify: sometimes\n")
 	f, err := config.Load(path)
 	if err != nil {
 		t.Fatal(err)
@@ -213,12 +214,65 @@ func TestApplyRejectsUnknownPromoteMode(t *testing.T) {
 	}
 }
 
+// TestApplyRejectsFormerRuleKeys pins the decision on the rules' former names:
+// rules.promote and rules.demote are refused, not read as aliases of
+// rules.qualify and rules.unqualify, and the error names the key to write.
+// Unknown keys are already an error, so the alternative to an alias was never
+// "ignore it"; it was this message or a bare "field not found".
+func TestApplyRejectsFormerRuleKeys(t *testing.T) {
+	for _, tt := range []struct {
+		yaml string
+		want string
+	}{
+		{"rules:\n  promote: always\n", "rules.qualify"},
+		{"rules:\n  promote: true\n", "rules.qualify"},
+		{"rules:\n  demote: true\n", "rules.unqualify"},
+		{"rules:\n  demote: false\n", "rules.unqualify"},
+	} {
+		f, err := config.Load(write(t, t.TempDir(), ".declscope.yaml", tt.yaml))
+		if err != nil {
+			t.Fatalf("%q: Load must get past the decoder so the error can name the new key: %v", tt.yaml, err)
+		}
+		opts := internal.DefaultOptions()
+		err = f.Apply(&opts)
+		if err == nil {
+			t.Errorf("%q: want an error naming %s, got none", tt.yaml, tt.want)
+			continue
+		}
+		if !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%q: error %q does not name %s", tt.yaml, err, tt.want)
+		}
+		if opts.Qualify != internal.QualifyOnDemand || opts.CheckUnqualify {
+			t.Errorf("%q: a refused key must not change the options", tt.yaml)
+		}
+	}
+}
+
+// TestResolveRejectsFormerRuleKey checks the same through the lookup the
+// analyzer uses, so that the path of the offending config is part of the
+// message.
+func TestResolveRejectsFormerRuleKey(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "go.mod", "module example.com/m\n")
+	path := write(t, root, ".declscope.yaml", "rules:\n  demote: true\n")
+
+	_, _, err := config.Resolve(root, "")
+	if err == nil {
+		t.Fatal("want an error for rules.demote")
+	}
+	for _, want := range []string{path, "rules.unqualify"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %s", err, want)
+		}
+	}
+}
+
 // TestResolveLoadsBaseline pins the analyzer's side of the lookup: a
 // default-named baseline above the package is found and loaded.
 func TestResolveLoadsBaseline(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "go.mod", "module example.com/m\n")
-	write(t, root, ".declscope-baseline.yaml", "packages:\n  example.com/m/pkg:\n    escape: [helper]\n")
+	write(t, root, ".declscope-baseline.yaml", "packages:\n  example.com/m/pkg:\n    boundary: [helper]\n")
 	pkg := filepath.Join(root, "pkg")
 	write(t, pkg, "keep.go", "package pkg\n")
 
@@ -229,7 +283,7 @@ func TestResolveLoadsBaseline(t *testing.T) {
 	if want := filepath.Join(root, ".declscope-baseline.yaml"); opts.BaselinePath != want {
 		t.Errorf("BaselinePath = %q, want %q", opts.BaselinePath, want)
 	}
-	if !opts.Baseline.Has(baseline.Key{Package: "example.com/m/pkg", Rule: "escape", Decl: "helper"}) {
+	if !opts.Baseline.Has(baseline.Key{Package: "example.com/m/pkg", Rule: "boundary", Decl: "helper"}) {
 		t.Error("the baseline should be loaded")
 	}
 }
@@ -240,7 +294,7 @@ func TestResolveLoadsBaseline(t *testing.T) {
 func TestResolveForBaselineIgnoresCorruptBaseline(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "go.mod", "module example.com/m\n")
-	write(t, root, ".declscope-baseline.yaml", "packages:\n  x:\n    escape: [helper]\nbogus: 1\n")
+	write(t, root, ".declscope-baseline.yaml", "packages:\n  x:\n    boundary: [helper]\nbogus: 1\n")
 	pkg := filepath.Join(root, "pkg")
 	write(t, pkg, "keep.go", "package pkg\n")
 
@@ -266,7 +320,7 @@ func TestResolveForBaselineReturnsNamed(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "go.mod", "module example.com/m\n")
 	sub := filepath.Join(root, "sub")
-	write(t, sub, ".declscope.yaml", "baseline: sub-baseline.yaml\nrules:\n  demote: true\n")
+	write(t, sub, ".declscope.yaml", "baseline: sub-baseline.yaml\nrules:\n  unqualify: true\n")
 	write(t, sub, "sub-baseline.yaml", "not: [valid\n")
 	inner := filepath.Join(sub, "inner")
 	write(t, inner, "keep.go", "package inner\n")
@@ -281,7 +335,7 @@ func TestResolveForBaselineReturnsNamed(t *testing.T) {
 	if want := filepath.Join(sub, "sub-baseline.yaml"); named != want {
 		t.Errorf("named = %q, want %q", named, want)
 	}
-	if !opts.CheckDemote {
+	if !opts.CheckUnqualify {
 		t.Error("the rest of the config should still apply")
 	}
 	if opts.Baseline != nil {

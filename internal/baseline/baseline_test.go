@@ -3,6 +3,7 @@ package baseline_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mpyw/declscope/internal/baseline"
@@ -11,12 +12,12 @@ import (
 func TestSaveLoadRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", ".declscope-baseline.yaml")
 	keys := []baseline.Key{
-		{Package: "example.com/b", Rule: "escape", Decl: "zeta"},
-		{Package: "example.com/a", Rule: "escape", Decl: "helper"},
-		{Package: "example.com/a", Rule: "escape", Decl: "User.name"},
+		{Package: "example.com/b", Rule: "boundary", Decl: "zeta"},
+		{Package: "example.com/a", Rule: "boundary", Decl: "helper"},
+		{Package: "example.com/a", Rule: "boundary", Decl: "User.name"},
 		{Package: "example.com/a", Rule: "foreign-method", Decl: "User.normalize"},
 		// A duplicate, as produced by a package and its test variant.
-		{Package: "example.com/a", Rule: "escape", Decl: "helper"},
+		{Package: "example.com/a", Rule: "boundary", Decl: "helper"},
 	}
 	n, err := baseline.Save(path, keys)
 	if err != nil {
@@ -41,9 +42,9 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		}
 	}
 	for _, k := range []baseline.Key{
-		{Package: "example.com/a", Rule: "escape", Decl: "missing"},
+		{Package: "example.com/a", Rule: "boundary", Decl: "missing"},
 		{Package: "example.com/a", Rule: "demotion", Decl: "helper"},
-		{Package: "example.com/other", Rule: "escape", Decl: "helper"},
+		{Package: "example.com/other", Rule: "boundary", Decl: "helper"},
 	} {
 		if set.Has(k) {
 			t.Errorf("Has(%+v) = true, want false", k)
@@ -56,9 +57,9 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 func TestSaveIsDeterministic(t *testing.T) {
 	dir := t.TempDir()
 	keys := []baseline.Key{
-		{Package: "example.com/b", Rule: "escape", Decl: "zeta"},
-		{Package: "example.com/a", Rule: "escape", Decl: "helper"},
-		{Package: "example.com/a", Rule: "escape", Decl: "alpha"},
+		{Package: "example.com/b", Rule: "boundary", Decl: "zeta"},
+		{Package: "example.com/a", Rule: "boundary", Decl: "helper"},
+		{Package: "example.com/a", Rule: "boundary", Decl: "alpha"},
 	}
 	shuffled := []baseline.Key{keys[1], keys[0], keys[2]}
 
@@ -107,7 +108,7 @@ func TestLoadEmptyFile(t *testing.T) {
 
 func TestLoadRejectsUnknownKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bad.yaml")
-	if err := os.WriteFile(path, []byte("packagez:\n  a:\n    escape: [x]\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("packagez:\n  a:\n    boundary: [x]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := baseline.Load(path); err == nil {
@@ -115,11 +116,42 @@ func TestLoadRejectsUnknownKey(t *testing.T) {
 	}
 }
 
+// TestLoadRejectsFormerRuleNames pins the decision on a baseline written before
+// the rules were renamed: a section under escape, promote or demote is refused
+// rather than read as boundary, qualify or unqualify. Left alone it would
+// match nothing and every violation it recorded would come back with nothing
+// saying why; the error instead names the rename and the remedy, which is the
+// same regeneration that fixes every other baseline problem and never reads
+// the file it replaces.
+func TestLoadRejectsFormerRuleNames(t *testing.T) {
+	for old, now := range map[string]string{
+		"escape":  "boundary",
+		"promote": "qualify",
+		"demote":  "unqualify",
+	} {
+		path := filepath.Join(t.TempDir(), ".declscope-baseline.yaml")
+		content := "packages:\n  example.com/a:\n    " + old + ": [helper]\n"
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		set, err := baseline.Load(path)
+		if err == nil {
+			t.Errorf("%s: want an error, got a set of %d", old, set.Len())
+			continue
+		}
+		for _, want := range []string{path, "example.com/a", old, now, "declscope baseline"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: error %q does not mention %q", old, err, want)
+			}
+		}
+	}
+}
+
 // TestNilSet checks that the zero value behaves as an absent baseline, which
 // is how the analyzer runs when none is configured.
 func TestNilSet(t *testing.T) {
 	var set *baseline.Set
-	if set.Has(baseline.Key{Package: "a", Rule: "escape", Decl: "x"}) {
+	if set.Has(baseline.Key{Package: "a", Rule: "boundary", Decl: "x"}) {
 		t.Error("a nil set should suppress nothing")
 	}
 	if set.Len() != 0 {
@@ -132,7 +164,7 @@ func TestNilSet(t *testing.T) {
 // replace the old entries rather than leave them.
 func TestSaveEmpty(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "empty.yaml")
-	if _, err := baseline.Save(path, []baseline.Key{{Package: "a", Rule: "escape", Decl: "x"}}); err != nil {
+	if _, err := baseline.Save(path, []baseline.Key{{Package: "a", Rule: "boundary", Decl: "x"}}); err != nil {
 		t.Fatal(err)
 	}
 	n, err := baseline.Save(path, nil)

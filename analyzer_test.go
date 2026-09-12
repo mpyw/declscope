@@ -32,11 +32,11 @@ func TestGeneratedFilesExcluded(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "generated")
 }
 
-// TestPromote checks that an unexported package-level declaration must carry
+// TestQualify checks that an unexported package-level declaration must carry
 // its namespace as a label, and that members and exported identifiers are
 // exempt.
-func TestPromote(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "promoterule")
+func TestQualify(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "qualifyrule")
 }
 
 // TestSingleNamespace checks that the label is not required in a package with
@@ -72,22 +72,22 @@ func TestExplicitScopeConflict(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "explicit")
 }
 
-// TestPromoteAlways checks rules.promote: always, which requires the label even
+// TestQualifyAlways checks rules.qualify: always, which requires the label even
 // in a package with a single namespace.
-func TestPromoteAlways(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "promotealways")
+func TestQualifyAlways(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "qualifyalways")
 }
 
-// TestDemote checks the mirror of the label rule: where the label is not
+// TestUnqualify checks the mirror of the label rule: where the label is not
 // required, it must not be present.
-func TestDemote(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "demote")
+func TestUnqualify(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unqualify")
 }
 
-// TestDemoteInert checks that demote says nothing wherever the label is
+// TestUnqualifyInert checks that unqualify says nothing wherever the label is
 // required, so the two rules can never contradict each other.
-func TestDemoteInert(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "demoteinert")
+func TestUnqualifyInert(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unqualifyinert")
 }
 
 // TestIgnoreScope checks that an ignore directive can name the rules it
@@ -133,7 +133,7 @@ func TestGenerics(t *testing.T) {
 
 // TestEmbedded checks that embedding a type is a use of it. The embedded
 // field's ident is both a definition (the field) and a use (the type), and
-// the second role is the one escape has to see.
+// the second role is the one boundary has to see.
 func TestEmbedded(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "embedded")
 }
@@ -154,7 +154,7 @@ func TestNamespaceIdentity(t *testing.T) {
 }
 
 // TestNamespaceNormalize checks that separators other than _ and a PascalCase
-// stem yield a lowerCamelCase namespace, so that the rename offered by promote
+// stem yield a lowerCamelCase namespace, so that the rename offered by qualify
 // is a valid unexported identifier.
 func TestNamespaceNormalize(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nsnormalize")
@@ -162,7 +162,7 @@ func TestNamespaceNormalize(t *testing.T) {
 
 // TestNamespaceInitialism checks that a namespace spells its initialisms the
 // way Go does, that the label is matched ignoring case, and that the rename
-// offered by promote spells the name's first word the same way.
+// offered by qualify spells the name's first word the same way.
 func TestNamespaceInitialism(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nsinitialism")
 }

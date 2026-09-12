@@ -1,4 +1,0 @@
-# demote is inert wherever the label is required: here the package has two
-# namespaces, so ondemand requires it.
-rules:
-  demote: true
