@@ -43,7 +43,9 @@
 //	func helper() {} //declscope:package
 //
 // A directive on a parenthesized var/const/type block applies to every spec in
-// the block, and a directive on an individual spec overrides it.
+// the block. A spec may carry directives of its own: a scope directive on the
+// spec replaces the block's, while ignores accumulate, so the spec is covered
+// by both its own and the block's.
 //
 // A trailing "// reason" is allowed after any directive:
 //
@@ -103,8 +105,11 @@ type Decl struct {
 	Problems []Problem
 }
 
-// Merge layers a more specific Decl over a broader one, so that a directive on
-// a spec wins over one on the enclosing block.
+// Merge layers a more specific Decl over a broader one, as for a spec inside a
+// parenthesized block. A scope directive on the inner Decl replaces the outer
+// one's, since a declaration has exactly one scope. Ignores are unioned: a
+// narrower ignore must not silently re-enable a rule the broader one turned
+// off, so the inner Decl's are added to the outer's rather than replacing them.
 func (d Decl) Merge(inner Decl) Decl {
 	out := d
 	if inner.HasScope {

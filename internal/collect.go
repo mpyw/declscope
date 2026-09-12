@@ -234,8 +234,8 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 	if d.Tok == token.IMPORT {
 		return
 	}
-	// A directive on the block applies to every spec; a directive on a spec
-	// overrides it.
+	// A directive on the block applies to every spec. A spec's own scope
+	// directive replaces the block's; its ignores are added to the block's.
 	outer := directive.ParseDecl(d.Doc)
 	grouped := d.Lparen.IsValid()
 
