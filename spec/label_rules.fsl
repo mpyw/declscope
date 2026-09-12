@@ -1,5 +1,8 @@
-// promote / demote の相互排他と、それぞれの fix が違反を解消することの検査。
-// スコープ設定は読まないので除外: 288 インスタンス。
+// promote and demote are mutually exclusive, and each fix removes the
+// violation it addresses.
+//
+// The scope settings are not read by these rules, so they are left out: 288
+// action instances.
 spec LabelRules {
   enum Promote { Always, OnDemand, Never }
   enum Kind    { Pkg, Member }

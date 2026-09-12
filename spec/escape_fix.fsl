@@ -1,5 +1,6 @@
-// escape の fix（directive 挿入）が必ず違反を解消することの検査。
-// 読む変数だけに絞ってある: 216 インスタンス。
+// Inserting //declscope:package always removes the boundary crossing.
+//
+// Only the variables these properties read are modelled: 216 action instances.
 spec EscapeFix {
   enum Scope { Public, Package, FilePriv }
   enum Dir   { NoDir, DirPublic, DirPackage, DirFile }

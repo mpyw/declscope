@@ -1,5 +1,7 @@
-// 各設定キーが実際に結果を変えるかの検査。
-// reachable が witness されなければ、そのキーはその方向に効いていない＝死んだノブ。
+// Every configuration key must demonstrably change an outcome.
+//
+// An unwitnessed reachable means the key does not bite in that direction — a
+// dead knob, and a lie in the documentation.
 spec Knobs {
   enum Scope { Public, Package, FilePriv }
   enum Kind  { Pkg, Member }
@@ -27,22 +29,22 @@ spec Knobs {
     else cfgUnexported
   def escapeFires() = effScope() == FilePriv and refs == CrossNs
 
-  // defaults.exported はメンバーにも効くか（今日直した箇所）
+  // Does defaults.exported reach members?
   reachable ExportedKnobBitesOnMembers {
     configured and kind == Member and exported and dir == NoDir
     and cfgExported == FilePriv and refs == CrossNs and escapeFires()
   }
-  // defaults.unexported はメンバーにも効くか
+  // Does defaults.unexported reach members?
   reachable UnexportedKnobSilencesMembers {
     configured and kind == Member and not exported and dir == NoDir
     and cfgUnexported == Package and refs == CrossNs and not escapeFires()
   }
-  // defaults.exported はパッケージレベルにも効くか
+  // Does defaults.exported reach package-level declarations?
   reachable ExportedKnobBitesOnPkg {
     configured and kind == Pkg and exported and dir == NoDir
     and cfgExported == FilePriv and refs == CrossNs and escapeFires()
   }
-  // directive は defaults を上書きするか（両方向）
+  // Does a directive override defaults, in both directions?
   reachable DirectiveOverridesToFile {
     configured and dir == DirFile and cfgUnexported == Public
     and not exported and refs == CrossNs and escapeFires()
@@ -51,7 +53,7 @@ spec Knobs {
     configured and dir == DirPackage and cfgUnexported == FilePriv
     and not exported and refs == CrossNs and not escapeFires()
   }
-  // 同一 namespace 内の参照は決して違反にならない
+  // A reference from inside the namespace never crosses a boundary.
   invariant SameNamespaceNeverEscapes { refs == SameNs => not escapeFires() }
   invariant NoRefsNeverEscapes        { refs == NoRefs => not escapeFires() }
 }
