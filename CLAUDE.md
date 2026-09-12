@@ -69,7 +69,9 @@ The rules are pairwise exclusive **by construction**, which is what keeps one de
 - `checkDemote` returns early wherever `opts.Promote.required(c.namespaces)` holds, so `promote` and `demote` can never contradict each other.
 - `checkForeignMethod` runs only when `checkEscape` produced nothing (`escaped` in `check`). A foreign method that is actually called reports at the *same position* under both rules; `foreign-method` exists to cover the method that is never called and so leaves no cross-namespace reference to find.
 
-`namespace.Unqualify` (demote's rename) declines names where the prefix was not a word boundary, and names that would be left as a keyword or as nothing. It lowers a leftover initialism the way Go spells one (`userID` → `id`, `userURLPath` → `urlPath`), which the naive version got wrong (`iD`).
+`namespace.Unqualify` (demote's rename) lowers a leftover initialism the way Go spells one (`userID` → `id`, `userURLPath` → `urlPath`), which the naive version got wrong (`iD`). It returns a second value explaining any refusal.
+
+**Not being able to derive a rename is never a reason to stay silent.** `checkDemote` gates on `namespace.HasPrefix` — whether there is a label at all — and then reports either way, embedding `Unqualify`'s reason when it has no suggestion. An earlier version skipped the declaration entirely, which left a codebase half-converted under `demote: true` with nothing saying why. `checkPromote` has always behaved this way when its rename target is taken; keep new rules consistent with it.
 
 ## Directives
 

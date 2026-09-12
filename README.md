@@ -352,7 +352,14 @@ Enabling it asserts that a namespace prefix in this codebase *always* means the 
 var userID int
 ```
 
-The rename spells a leftover initialism the way Go does (`userID` → `id`, `userURLPath` → `urlPath`), and declines names that would be left as a keyword or as nothing at all.
+The rename spells a leftover initialism the way Go does (`userID` → `id`, `userURLPath` → `urlPath`). Where no rename can be derived — dropping the label would leave a keyword, or leave nothing — the violation is still reported, with the reason and without a fix:
+
+```
+func userType carries the label of namespace "user", which is not required here,
+but "type" is a keyword; rename it by hand
+```
+
+Being unable to spell the new name is a limit of the fix, not a reason to let the label stand. `promote` behaves the same way when its rename target is already taken.
 
 ### `foreign-method`
 

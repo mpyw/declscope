@@ -14,6 +14,7 @@
 package namespace
 
 import (
+	"fmt"
 	"go/token"
 	"path/filepath"
 	"strings"
@@ -150,12 +151,16 @@ var knownArch = map[string]bool{
 // identifier that starts with an initialism, so userID yields id and
 // userURLPath yields urlPath rather than iD and uRLPath.
 //
-// It returns "" when nothing usable remains: the name was only the namespace,
-// or stripping it would leave a keyword.
-func Unqualify(name, ns string) string {
+// When no rename can be derived, short is empty and why says so, for reporting
+// the violation without a fix: being unable to spell the new name is a limit
+// of the fix, not a reason to let the label stand.
+func Unqualify(name, ns string) (short, why string) {
 	rest, ok := strings.CutPrefix(name, ns)
-	if !ok || rest == "" {
-		return ""
+	if !ok {
+		return "", "the name does not begin with the namespace"
+	}
+	if rest == "" {
+		return "", "nothing would remain"
 	}
 
 	// Measure the leading run of capitals.
@@ -166,8 +171,9 @@ func Unqualify(name, ns string) string {
 	}
 	switch {
 	case upper == 0:
-		// Not a word boundary, so the prefix was never a label.
-		return ""
+		// Not a word boundary, so the prefix was never a label. Callers gate
+		// on HasPrefix, so this is a safety net rather than a reported case.
+		return "", "the prefix is not a word boundary"
 	case upper == len(runes):
 		// The remainder is one initialism: ID -> id.
 		rest = strings.ToLower(rest)
@@ -180,8 +186,11 @@ func Unqualify(name, ns string) string {
 		rest = strings.ToLower(string(runes[:upper])) + string(runes[upper:])
 	}
 
-	if !token.IsIdentifier(rest) || token.IsKeyword(rest) {
-		return ""
+	switch {
+	case token.IsKeyword(rest):
+		return "", fmt.Sprintf("%q is a keyword", rest)
+	case !token.IsIdentifier(rest):
+		return "", fmt.Sprintf("%q is not a valid identifier", rest)
 	}
-	return rest
+	return rest, ""
 }

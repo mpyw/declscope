@@ -222,23 +222,23 @@ func (c *collection) checkDemote(pass *analysis.Pass, opts Options, t *target) (
 		return finding{}, false
 	}
 	name := t.obj.Name()
-	if isExported(name) {
-		return finding{}, false
-	}
-	// Unqualify declines names where the prefix was never a word boundary, and
-	// names that would be left as a keyword or as nothing at all.
-	short := namespace.Unqualify(name, t.ownerNS)
-	if short == "" {
+	if isExported(name) || !namespace.HasPrefix(name, t.ownerNS) {
 		return finding{}, false
 	}
 
-	f := finding{
-		rule: rule.Demote,
-		decl: name,
-		pos:  t.ident.Pos(),
-		msg: fmt.Sprintf("%s %s carries the label of %s, which is not required here; rename it to %s",
-			t.kind, name, describe(t.ownerNS, t.file.path), short),
+	// Not being able to spell the new name is a limit of the fix, not a reason
+	// to let the label stand: the violation is reported either way, and only
+	// the suggestion is withheld.
+	short, why := namespace.Unqualify(name, t.ownerNS)
+	f := finding{rule: rule.Demote, decl: name, pos: t.ident.Pos()}
+	if short == "" {
+		f.msg = fmt.Sprintf("%s %s carries the label of %s, which is not required here, but %s; rename it by hand",
+			t.kind, name, describe(t.ownerNS, t.file.path), why)
+		return f, true
 	}
+
+	f.msg = fmt.Sprintf("%s %s carries the label of %s, which is not required here; rename it to %s",
+		t.kind, name, describe(t.ownerNS, t.file.path), short)
 	if fix, ok := c.renameFix(pass, t, short, "drop the namespace label"); ok {
 		f.fixes = append(f.fixes, fix)
 	}

@@ -97,18 +97,34 @@ func TestUnqualify(t *testing.T) {
 		{"userID", "user", "id"},
 		{"userURLPath", "user", "urlPath"},
 		{"userIO", "user", "io"},
-
-		// Nothing usable remains.
-		{"user", "user", ""},
-		{"helper", "user", ""},
-		{"users", "user", ""},    // not a word boundary, so never a label
-		{"userType", "user", ""}, // stripping would leave a keyword
-		{"userFunc", "user", ""},
-		{"anything", "", ""},
 	}
 	for _, tt := range tests {
-		if got := namespace.Unqualify(tt.name, tt.ns); got != tt.want {
-			t.Errorf("Unqualify(%q, %q) = %q, want %q", tt.name, tt.ns, got, tt.want)
+		got, why := namespace.Unqualify(tt.name, tt.ns)
+		if got != tt.want || why != "" {
+			t.Errorf("Unqualify(%q, %q) = %q, %q, want %q and no reason", tt.name, tt.ns, got, why, tt.want)
+		}
+	}
+}
+
+// TestUnqualifyDeclines checks that every refusal explains itself, since the
+// caller reports the violation regardless and puts the reason in the message.
+func TestUnqualifyDeclines(t *testing.T) {
+	tests := []struct{ name, ns string }{
+		{"user", "user"},     // nothing would remain
+		{"userType", "user"}, // would leave a keyword
+		{"userFunc", "user"},
+		{"user2", "user"},  // would leave an invalid identifier
+		{"users", "user"},  // not a word boundary, so never a label
+		{"helper", "user"}, // does not begin with the namespace
+		{"anything", ""},
+	}
+	for _, tt := range tests {
+		got, why := namespace.Unqualify(tt.name, tt.ns)
+		if got != "" {
+			t.Errorf("Unqualify(%q, %q) = %q, want no rename", tt.name, tt.ns, got)
+		}
+		if why == "" {
+			t.Errorf("Unqualify(%q, %q) declined without explaining itself", tt.name, tt.ns)
 		}
 	}
 }
