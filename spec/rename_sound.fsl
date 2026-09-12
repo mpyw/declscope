@@ -3,7 +3,8 @@
 // A rename is correct when every reference still resolves to the same object
 // afterwards. Go resolves a name from the inside out: local scope, then file
 // scope (imports), then package scope, then the universe of predeclared names.
-// The implementation guards only against a collision in package scope.
+// The guard modelled here checks package scope only; the counterexamples
+// enumerate the further scopes a sound guard must check.
 //
 // ASSUME-1: names reduce to Old / New / Other, since only the presence of a
 //   collision matters, not the spelling (modelling assumption)
@@ -18,10 +19,10 @@ spec RenameSound {
 
   state {
     configured: Bool,
-    declName:   NameId,   // the declaration's current name
-    localAt:    Bind,     // what the innermost scope at the reference binds
-    fileAt:     Bind,     // what that file's imports bind
-    otherPkg:   Bind,     // another package-scope declaration
+    declName:   NameId,   // The declaration's current name
+    localAt:    Bind,     // What the innermost scope at the reference binds
+    fileAt:     Bind,     // What that file's imports bind
+    otherPkg:   Bind,     // Another package-scope declaration
     universeNew: Bool,    // NewName is predeclared (len, error, string, ...)
     renamed:    Bool,
     // What a second site elsewhere in the package resolved NewName to before
@@ -60,18 +61,18 @@ spec RenameSound {
     else if universeNew then ToUniverse
     else Unresolved
 
-  // The guard the implementation applies today: package scope only.
+  // The guard modelled here: package scope only.
   def guardToday() = otherPkg != BindsNew
 
   fair action rename() {
     requires configured
     requires not renamed
     requires declName == OldName
-    requires resolve(OldName) == ToDecl   // the reference resolves correctly before
+    requires resolve(OldName) == ToDecl   // The reference resolves correctly before
     requires guardToday()
     declName = NewName
     renamed = true
-    elsewhereBefore = resolveElsewhere()   // reads the pre-rename state
+    elsewhereBefore = resolveElsewhere()   // Reads the pre-rename state
   }
 
   // Soundness, part one: the reference to the declaration must still reach it.
