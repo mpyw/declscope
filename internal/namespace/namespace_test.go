@@ -91,11 +91,13 @@ func TestUnqualify(t *testing.T) {
 		name, ns, want string
 	}{
 		{"userHelper", "user", "helper"},
+		// A namespace of several words, as user_repository.go yields.
 		{"userRepositoryCache", "userRepository", "cache"},
 
-		// An initialism left behind is spelled the way Go spells one.
-		{"userID", "user", "id"},
-		{"userURLPath", "user", "urlPath"},
+		// An initialism left behind is spelled the way Go spells one, rather
+		// than by lowering only the first letter.
+		{"userID", "user", "id"},           // not iD
+		{"userURLPath", "user", "urlPath"}, // not uRLPath
 		{"userIO", "user", "io"},
 	}
 	for _, tt := range tests {
@@ -110,13 +112,19 @@ func TestUnqualify(t *testing.T) {
 // caller reports the violation regardless and puts the reason in the message.
 func TestUnqualifyDeclines(t *testing.T) {
 	tests := []struct{ name, ns string }{
+		// Reachable: there is a label, it is not wanted here, and no rename
+		// can be derived. These become "rename it by hand" diagnostics.
 		{"user", "user"},     // nothing would remain
-		{"userType", "user"}, // would leave a keyword
-		{"userFunc", "user"},
-		{"user2", "user"},  // would leave an invalid identifier
+		{"userType", "user"}, // would leave the keyword "type"
+		{"userFunc", "user"}, // would leave the keyword "func"
+		{"user2", "user"},    // would leave "2", which cannot start an identifier
+
+		// Unreachable: checkDemote gates on HasPrefix, so these never arrive.
+		// They pin that the function is total, rather than returning a
+		// nonsense rename for input it was not designed for.
 		{"users", "user"},  // not a word boundary, so never a label
 		{"helper", "user"}, // does not begin with the namespace
-		{"anything", ""},
+		{"anything", ""},   // a file whose name yields no namespace
 	}
 	for _, tt := range tests {
 		got, why := namespace.Unqualify(tt.name, tt.ns)
