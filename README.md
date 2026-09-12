@@ -702,6 +702,8 @@ The second sentence is the one the mechanism depends on. The cheapest repair for
 
 Three linters draw boundaries in Go, at three scales:
 
+![A Go program drawn as nested frames. Between the api and store packages, depguard asks whether one package may import another; a green arrow runs from api to store and a red one back from store to api is crossed out. Inside store, between user.go and csv.go, declscope asks whether one file may reach another's declaration; a red arrow from csvParse to User.email is crossed out. At the edge of the program, deadcode asks whether anything is reachable at all; the mail package sits greyed out with no arrow entering it, captioned unreachable.](https://github.com/user-attachments/assets/43309066-8287-4c1f-b675-d41eb761e952)
+
 | Linter | Scale | The question it answers |
 | --- | --- | --- |
 | [`depguard`](https://github.com/OpenPeeDeeP/depguard) | Between packages | May this package import that one? |
