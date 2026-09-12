@@ -33,6 +33,102 @@ The usual reaction is to start splitting packages so the compiler will hold the 
 
 declscope takes the other route: it makes the boundary **machine-checkable inside a flat package**, so the agent gets told, with a fix it can apply, and the intent ends up written down in the source where the next agent will read it.
 
+## Installation and usage
+
+### <a href="https://mise.jdx.dev/"><img src="https://mise.jdx.dev/logo.svg" height="28" alt=""></a> Using [mise](https://mise.jdx.dev/) (macOS/Linux/Windows)
+
+**Recommended.** declscope is installable directly from GitHub Releases via mise's `github` backend — no extra registry required, and no Go toolchain needed because the binaries are prebuilt:
+
+```bash
+mise use -g "github:mpyw/declscope"
+declscope ./...
+```
+
+Or pin it per project in `mise.toml`:
+
+```toml
+[tools]
+"github:mpyw/declscope" = "latest"
+```
+
+> [!NOTE]
+> The `go`-based methods below build declscope from source. `go.mod` pins `toolchain go1.27.0`, so with the default `GOTOOLCHAIN=auto` the `go` command downloads a matching toolchain automatically unless `GOTOOLCHAIN=local` is set. `go tool` also needs Go 1.24 or later on `PATH`.
+
+### Using [`go tool`](https://pkg.go.dev/cmd/go#hdr-Run_specified_go_tool)
+
+```bash
+# Add to go.mod as a tool dependency
+go get -tool github.com/mpyw/declscope/cmd/declscope@latest
+
+# Run via go tool
+go tool declscope ./...
+```
+
+### Using [`go install`](https://pkg.go.dev/cmd/go#hdr-Compile_and_install_packages_and_dependencies)
+
+```bash
+go install github.com/mpyw/declscope/cmd/declscope@latest
+declscope ./...
+```
+
+### Using [`go vet`](https://pkg.go.dev/cmd/go#hdr-Report_likely_mistakes_in_packages)
+
+```bash
+go install github.com/mpyw/declscope/cmd/declscope@latest
+go vet -vettool=$(which declscope) ./...
+```
+
+> [!NOTE]
+> `go vet` cannot pass declscope's own `-config` flag; the config file is discovered from the filesystem as usual.
+
+### Using [`go run`](https://pkg.go.dev/cmd/go#hdr-Compile_and_run_Go_program)
+
+```bash
+go run github.com/mpyw/declscope/cmd/declscope@latest ./...
+```
+
+> [!CAUTION]
+> To prevent supply chain attacks, pin to a specific version tag instead of `@latest` in CI/CD pipelines (e.g., `@v0.1.0`).
+
+<details>
+<summary><a href="https://curl.se/"><img src="https://cdn.simpleicons.org/curl" height="20" alt=""></a> Downloading the tarball directly (macOS/Linux/Windows)</summary>
+
+No package manager? Grab the archive for your platform from [GitHub Releases](https://github.com/mpyw/declscope/releases):
+
+```bash
+export VERSION=0.0.0
+export OS=linux    # or darwin
+export ARCH=amd64  # or arm64
+export BASE_URL="https://github.com/mpyw/declscope/releases/download/v${VERSION}"
+
+# Download the archive and the release's checksum list
+curl -LO "${BASE_URL}/declscope_${VERSION}_${OS}_${ARCH}.tar.gz"
+curl -LO "${BASE_URL}/checksums.txt"
+
+# Verify before installing (use `shasum -a 256 -c` on macOS)
+sha256sum --ignore-missing -c checksums.txt
+
+tar xzf "declscope_${VERSION}_${OS}_${ARCH}.tar.gz"
+sudo mv declscope /usr/local/bin/
+```
+
+On Windows, download `declscope_${VERSION}_windows_${ARCH}.zip` and extract `declscope.exe` somewhere on your `PATH`.
+
+</details>
+
+## Flags
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `-config` | *(discovered)* | Path to a YAML config file, overriding the `.declscope.yaml` lookup |
+| `-test` | `true` | Analyze test files (`*_test.go`) — built-in driver flag |
+| `-fix` | `false` | Apply suggested fixes automatically — built-in driver flag |
+
+Every diagnostic carries **at most one** fix, so `-fix` is unambiguous: a boundary crossing is fixed by inserting `//declscope:package`, a label by renaming. The two can never conflict, because a rename does not change a declaration's reach. A rename is offered only when it is [provably safe](#when-a-rename-is-withheld).
+
+> [!IMPORTANT]
+> Only the test variant of a package sees its in-package `_test.go` files, so in a package that has them, renames and unused-directive reports come from the test variant alone. With `-test=false`, such a package gets no rename fix and no unused-directive report.
+
 ## Namespaces
 
 A **namespace** is the unit declscope enforces privacy within. Everything below is defined in terms of it, so it comes first.
@@ -439,102 +535,6 @@ Each package's entries go to the file the analyzer will consult for that package
 A subtree with its own baseline keeps it, and a run from a subdirectory writes under that subdirectory rather than rewriting a baseline above it with only part of its entries. Every file written is regenerated wholesale, and the existing one is never read, so a baseline that fails to parse is replaced like any other.
 
 A package whose lookup cannot reach the working directory — one in another module, or outside the directory the command runs from — is refused rather than recorded where nothing would find it.
-
-## Installation and usage
-
-### <a href="https://mise.jdx.dev/"><img src="https://mise.jdx.dev/logo.svg" height="28" alt=""></a> Using [mise](https://mise.jdx.dev/) (macOS/Linux/Windows)
-
-**Recommended.** declscope is installable directly from GitHub Releases via mise's `github` backend — no extra registry required, and no Go toolchain needed because the binaries are prebuilt:
-
-```bash
-mise use -g "github:mpyw/declscope"
-declscope ./...
-```
-
-Or pin it per project in `mise.toml`:
-
-```toml
-[tools]
-"github:mpyw/declscope" = "latest"
-```
-
-> [!NOTE]
-> The `go`-based methods below build declscope from source. `go.mod` pins `toolchain go1.27.0`, so with the default `GOTOOLCHAIN=auto` the `go` command downloads a matching toolchain automatically unless `GOTOOLCHAIN=local` is set. `go tool` also needs Go 1.24 or later on `PATH`.
-
-### Using [`go tool`](https://pkg.go.dev/cmd/go#hdr-Run_specified_go_tool)
-
-```bash
-# Add to go.mod as a tool dependency
-go get -tool github.com/mpyw/declscope/cmd/declscope@latest
-
-# Run via go tool
-go tool declscope ./...
-```
-
-### Using [`go install`](https://pkg.go.dev/cmd/go#hdr-Compile_and_install_packages_and_dependencies)
-
-```bash
-go install github.com/mpyw/declscope/cmd/declscope@latest
-declscope ./...
-```
-
-### Using [`go vet`](https://pkg.go.dev/cmd/go#hdr-Report_likely_mistakes_in_packages)
-
-```bash
-go install github.com/mpyw/declscope/cmd/declscope@latest
-go vet -vettool=$(which declscope) ./...
-```
-
-> [!NOTE]
-> `go vet` cannot pass declscope's own `-config` flag; the config file is discovered from the filesystem as usual.
-
-### Using [`go run`](https://pkg.go.dev/cmd/go#hdr-Compile_and_run_Go_program)
-
-```bash
-go run github.com/mpyw/declscope/cmd/declscope@latest ./...
-```
-
-> [!CAUTION]
-> To prevent supply chain attacks, pin to a specific version tag instead of `@latest` in CI/CD pipelines (e.g., `@v0.1.0`).
-
-<details>
-<summary><a href="https://curl.se/"><img src="https://cdn.simpleicons.org/curl" height="20" alt=""></a> Downloading the tarball directly (macOS/Linux/Windows)</summary>
-
-No package manager? Grab the archive for your platform from [GitHub Releases](https://github.com/mpyw/declscope/releases):
-
-```bash
-export VERSION=0.0.0
-export OS=linux    # or darwin
-export ARCH=amd64  # or arm64
-export BASE_URL="https://github.com/mpyw/declscope/releases/download/v${VERSION}"
-
-# Download the archive and the release's checksum list
-curl -LO "${BASE_URL}/declscope_${VERSION}_${OS}_${ARCH}.tar.gz"
-curl -LO "${BASE_URL}/checksums.txt"
-
-# Verify before installing (use `shasum -a 256 -c` on macOS)
-sha256sum --ignore-missing -c checksums.txt
-
-tar xzf "declscope_${VERSION}_${OS}_${ARCH}.tar.gz"
-sudo mv declscope /usr/local/bin/
-```
-
-On Windows, download `declscope_${VERSION}_windows_${ARCH}.zip` and extract `declscope.exe` somewhere on your `PATH`.
-
-</details>
-
-## Flags
-
-| Flag | Default | Description |
-| --- | --- | --- |
-| `-config` | *(discovered)* | Path to a YAML config file, overriding the `.declscope.yaml` lookup |
-| `-test` | `true` | Analyze test files (`*_test.go`) — built-in driver flag |
-| `-fix` | `false` | Apply suggested fixes automatically — built-in driver flag |
-
-Every diagnostic carries **at most one** fix, so `-fix` is unambiguous: a boundary crossing is fixed by inserting `//declscope:package`, a label by renaming. The two can never conflict, because a rename does not change a declaration's reach. A rename is offered only when it is [provably safe](#when-a-rename-is-withheld).
-
-> [!IMPORTANT]
-> Only the test variant of a package sees its in-package `_test.go` files, so in a package that has them, renames and unused-directive reports come from the test variant alone. With `-test=false`, such a package gets no rename fix and no unused-directive report.
 
 ## Using it with an AI agent
 
