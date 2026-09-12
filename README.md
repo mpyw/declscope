@@ -33,86 +33,11 @@ The usual reaction is to start splitting packages so the compiler will hold the 
 
 declscope takes the other route: it makes the boundary **machine-checkable inside a flat package**, so the agent gets told, with a fix it can apply, and the intent ends up written down in the source where the next agent will read it.
 
-| Scope | Meaning |
-| --- | --- |
-| `public` | Usable outside the package. |
-| `package` | Usable anywhere in the package. |
-| `file` | Usable only inside its own **namespace**. |
-
-Roughly: `file` is Rust's module-private, `package` is `pub(crate)`, `public` is `pub`.
-
-## The rules
-
-Everything unexported is private to its **namespace** — by default, to its own file. Widening is always an explicit act:
-
-```go
-// user.go   (namespace: user)
-
-func UserLoad()    {} // public: usable outside the package
-func userCache()   {} // namespace-private: only user.go may touch it
-
-//declscope:package
-func userShared()  {} // package-internal: usable anywhere in the package
-```
-
-Reach is stated by the directive, never by the name. This matters: if a prefix meant "package-wide", you could not also use one simply to say *which unit a declaration belongs to* — adding one for legibility would silently widen it, and a codebase that prefixed everything for readability would end up with nothing protected at all.
-
-So the prefix does a different job.
-
-### The prefix is an ownership label
-
-An unexported package-level declaration must carry its namespace as a prefix. It grants nothing; it says who owns it, which is what makes a cross-file call legible at the call site, in a stack trace and in a grep result:
-
-```go
-// order.go
-func orderRun() int {
-    return userShared() // obviously the user unit's, and obviously shared
-}
-```
-
-By default (`rules.promote: ondemand`) this is required only once a package has a **second namespace** — in a package with one, there is no boundary for a label to mark, and a prefix repeated on every declaration would distinguish nothing. Set it to `true` to require the label unconditionally, or `false` to drop the rule.
-
-Exported identifiers are exempt: they are already qualified by the package name at every external use site.
-
-### Methods and struct fields are bounded by their type
-
-A method or field is already namespaced by the type that owns it. `u.save()` cannot collide with anything, so there is no pollution to prevent, and a label here would produce `u.userSave()` — exactly the stutter Go idiom avoids.
-
-What is missing for members is not a namespace but **encapsulation**, so the boundary is the namespace of the **type**, not of the file:
-
-```go
-// user.go   (namespace: user)
-type User struct { id int }
-func (u *User) normalize() {}
-```
-
-```go
-// order.go  (namespace: order)
-func f(u *User) {
-    u.id = 1      // reported: User's internals belong to namespace "user"
-    u.normalize() // reported
-}
-```
-
-### Rule reference
-
-Each check has one name, and that name is what appears as the diagnostic's category, what enables or disables it in the config, what keys its baseline entry, and what an ignore directive targets.
-
-| Rule | Reports | Fix | Default |
-| --- | --- | --- | --- |
-| `escape` | a declaration used from outside the namespace it is private to | insert `//declscope:package` | always on |
-| `foreign-method` | an unexported method grown on a type belonging to another namespace | insert `//declscope:package` | always on |
-| `promote` | an unexported package-level declaration missing its namespace label | rename to add the label | `rules.promote: ondemand` |
-| `demote` | a namespace label present where it is not required | rename to drop the label | `rules.demote: false` |
-
-The four are pairwise exclusive by construction, so no declaration ever collects two diagnostics saying the same thing:
-
-- `escape` and `foreign-method` are the use site and the declaration site of one boundary. `foreign-method` speaks only where `escape` did not — a method that is never called produces no cross-namespace reference to find.
-- `promote` and `demote` are mirrors. `demote` is inert wherever `promote` requires the label. Turning both on settles the spelling of every unexported package-level name in both directions.
-
 ## Namespaces
 
-A namespace is the unit of file privacy. By default it is derived from the file name, so **each file is its own namespace**:
+A **namespace** is the unit declscope enforces privacy within. Everything below is defined in terms of it, so it comes first.
+
+By default a namespace is derived from the file name, which makes **each file its own namespace**:
 
 | File | Namespace |
 | --- | --- |
@@ -122,12 +47,14 @@ A namespace is the unit of file privacy. By default it is derived from the file 
 | `v2_client.go` | `v2Client` |
 | `2fa_auth.go` | *(none — no identifier may start with a digit)* |
 
-Files can opt into a **shared** namespace, which is how you split one logical unit across several files:
+Files can opt into a **shared** namespace, which is how one logical unit spans several files:
 
 ```go
 //declscope:namespace user
 package repo
 ```
+
+Deriving the default from the file name rather than using the file name itself is deliberate: renaming a file should not cascade into renaming every identifier it declares. It is also why a `_test.go` file can reach its subject's file-private declarations without any special case — it is simply in the same namespace.
 
 ### Coexisting with a package comment
 
@@ -150,7 +77,147 @@ package repo
 
 Putting it flush against `package` there also works, but when another file in the package carries the real package comment it leaves a stray blank line in the rendered documentation.
 
-Deriving the default from the file name rather than using the file name itself is deliberate: renaming a file should not cascade into renaming every identifier it declares.
+## Scopes
+
+| Scope | Meaning |
+| --- | --- |
+| `public` | Usable outside the package. |
+| `package` | Usable anywhere in the package. |
+| `file` | Usable only inside its own namespace. |
+
+Roughly: `file` is Rust's module-private, `package` is `pub(crate)`, `public` is `pub`.
+
+Exported identifiers are `public`. **Everything else starts at `file`**, and widening is always an explicit act:
+
+```go
+// user.go   (namespace: user)
+
+func UserLoad()   {} // public: usable outside the package
+func userCache()  {} // file: only user.go may touch it
+
+//declscope:package
+func userShared() {} // package: usable anywhere in the package
+```
+
+### Reach is stated by the directive, never by the name
+
+This is the decision everything else follows from. If a naming convention meant "package-wide", you could not also use one simply to say *which unit a declaration belongs to*: a prefix added for legibility would silently widen it, and a codebase that prefixed everything for readability would end up with nothing protected at all.
+
+Freeing the name of that job is what lets the namespace prefix become an ownership **label** instead, which grants nothing. See [`promote`](#promote).
+
+### Members are bounded by their type, not their file
+
+A method or struct field is already namespaced by the type that owns it. `u.save()` cannot collide with anything, so there is no pollution to prevent, and a label here would produce `u.userSave()` — exactly the stutter Go idiom avoids.
+
+What is missing for members is not a namespace but **encapsulation**, which Go cannot express at all: every unexported field is visible to its whole package. So members get the same three scopes, bounded by the namespace of their **type** rather than of their file:
+
+```go
+// user.go   (namespace: user)
+type User struct{ id int }
+
+func (u *User) normalize() {}
+```
+
+```go
+// order.go  (namespace: order)
+func orderUse(u *User) {
+    u.id = 1      // reported: User's internals belong to namespace "user"
+    u.normalize() // reported
+}
+```
+
+## Rules
+
+There are four. Each has one name, and that name is what appears as the diagnostic's category, what configures it, what keys its baseline entry, and what an ignore directive targets.
+
+| Rule | Reports | Fix | Configurable |
+| --- | --- | --- | --- |
+| [`escape`](#escape) | a declaration used from outside the namespace it is private to | insert `//declscope:package` | no |
+| [`foreign-method`](#foreign-method) | an unexported method grown on a type belonging to another namespace | insert `//declscope:package` | no |
+| [`promote`](#promote) | an unexported package-level declaration missing its namespace label | rename to add the label | `rules.promote` |
+| [`demote`](#demote) | a namespace label present where it is not required | rename to drop the label | `rules.demote` |
+
+The split down the middle is deliberate. **Reach enforcement is the point of the linter and cannot be switched off**; **naming discipline is a matter of taste and can be.** To quiet a reach rule, silence the individual declaration with `//declscope:ignore`, or record what the codebase already has with a [baseline](#adopting-on-an-existing-codebase).
+
+The four are also pairwise exclusive by construction, so no declaration ever collects two diagnostics saying the same thing:
+
+- `escape` and `foreign-method` are the use site and the declaration site of one boundary. `foreign-method` speaks only where `escape` did not.
+- `promote` and `demote` are mirrors. `demote` is inert wherever `promote` requires the label.
+
+### `escape`
+
+The core rule: a declaration private to its namespace, used from another one.
+
+```go
+// user.go
+func userCache() int { return 1 }
+```
+```go
+// order.go
+func orderRun() int { return userCache() } // reported
+```
+
+```
+func userCache is file-private to namespace "user", but is used from namespace "order"
+```
+
+It covers package-level declarations and members alike — for a member the boundary is the namespace of its type. The fix inserts `//declscope:package`, the only thing that widens reach.
+
+A declaration whose scope was **already stated** with a directive is reported without a fix. Both the directive and the use site are deliberate statements, and `-fix` must not silently overwrite the one the author wrote.
+
+### `foreign-method`
+
+The declaration-site half of the same boundary, reported only where `escape` was silent. Between them they cover both cases: `escape` sees a method *called* across namespaces, `foreign-method` sees one merely *declared* there and never called, which leaves no cross-namespace reference to find.
+
+```go
+// order.go  (namespace: order) — but User belongs to namespace "user"
+func (u *User) normalize() {} // reported
+```
+
+This does **not** break the sealed-interface pattern: implementing `isSealed()` on your own type declares a method owned by *your* type, and satisfying an interface creates no reference to the interface's method.
+
+### `promote`
+
+An unexported package-level declaration must carry its namespace as a prefix. It grants nothing; it says who owns it, which is what makes a cross-file call legible at the call site, in a stack trace and in a grep result:
+
+```go
+// order.go
+func orderRun() int {
+    return userShared() // obviously the user unit's, and obviously shared
+}
+```
+
+Exported identifiers are exempt: they are already qualified by the package name at every external use site. Members are exempt for the stutter reason above.
+
+| `rules.promote` | Effect |
+| --- | --- |
+| `ondemand` *(default)* | Required only once a package has a **second namespace**. In a package with one there is no boundary for a label to mark, and a prefix repeated on every declaration would distinguish nothing. |
+| `true` | Required unconditionally. Costs a little stutter in single-file packages, but means a package gaining its second namespace is not a mass rename. |
+| `false` | Off, leaving reach enforcement without any naming discipline. |
+
+Where the rename target is already taken, the violation is reported without a fix.
+
+### `demote`
+
+The mirror of `promote`: where the label is not required, it must not be there. With both on, the spelling of every unexported package-level name is determined in both directions and fixable either way.
+
+Enabling it asserts that a namespace prefix in this codebase *always* means the label — nothing in a name can tell `userID`-the-label from `userID`-the-word, and `demote` will offer to rename it to `id`. Where the prefix is part of the concept, say so on the declaration:
+
+```go
+//declscope:ignore demote
+var userID int
+```
+
+A name identical to its namespace (`type user` in `user.go`) carries no label to drop: the file is named after what it declares, not the other way about. `promote` still accepts such a name, since the owning unit is legible from it.
+
+The rename spells a leftover initialism the way Go does (`userID` → `id`, `userURLPath` → `urlPath`). Where no rename can be derived — dropping the label would leave a keyword, say — the violation is still reported, with the reason and without a fix:
+
+```
+func userType carries the label of namespace "user", which is not required here,
+but "type" is a keyword; rename it by hand
+```
+
+Being unable to spell the new name is a limit of the fix, not a reason to let the label stand.
 
 ## Directives
 
@@ -166,25 +233,68 @@ Deriving the default from the file name rather than using the file name itself i
 //declscope:namespace <name>   // before the package clause; overrides the file's namespace
 ```
 
-An ignore names rules from the table above, so a declaration can opt out of one check while staying subject to the rest:
-
-```go
-// The prefix here is part of the concept, not a label.
-//
-//declscope:ignore demote
-var userID int
-```
+An ignore names rules from the table above, so a declaration can opt out of one check while staying subject to the rest.
 
 Placement: the doc comment of a declaration, or a trailing comment on the same line. A directive on a parenthesized `var`/`const`/`type` block applies to every spec in it, and a directive on a spec overrides it. A trailing `// reason` is allowed.
 
 ```go
 //declscope:package // shared with the reporting code
-func helper() {}
+func userHelper() {}
 
-func helper() {} //declscope:package
+func userHelper() {} //declscope:package
 ```
 
 Unused `//declscope:ignore` directives are reported, so suppressions do not outlive the problem. Each directive is judged on its own: `//declscope:ignore demote` is unused if nothing but `demote` would have fired.
+
+## Configuration
+
+Optional. `.declscope.yaml` (or `.yml`), looked up from the analyzed package's directory upwards, stopping at the module root — so a subtree can relax or tighten the rules on its own.
+
+```yaml
+defaults:
+  exported: public      # public | package | file
+  unexported: file
+
+rules:
+  promote: ondemand     # true | false | ondemand
+  demote: false
+
+exclude:
+  - "**/mock_*.go"
+
+baseline: .declscope-baseline.yaml   # relative to this file; found automatically if named by default
+```
+
+Only the naming rules appear here; see [Rules](#rules) for why. Unknown keys are an error rather than a silent no-op: a typo in a rule name would otherwise leave the rule at its default with no sign of it.
+
+## Adopting on an existing codebase
+
+Turning declscope on for a codebase that predates it would report every boundary that was never enforced. Record them instead:
+
+```console
+declscope baseline ./...       # writes .declscope-baseline.yaml
+```
+
+Recorded violations are suppressed; new ones are still reported. The file is discovered by the same upward lookup as the config, so its presence is all it takes.
+
+```yaml
+packages:
+  github.com/you/app/store:
+    escape:
+      - User.name
+      - helper
+```
+
+An entry is keyed by **package, rule and declaration** — never by position — so it survives the code being moved, the file being renamed and the package being reformatted. Regenerate rather than edit:
+
+```console
+declscope baseline ./...
+git diff .declscope-baseline.yaml   # the record of what was cleaned up
+```
+
+Entries for violations that have since been fixed simply disappear, which is why the analyzer never reports an entry as stale: a package's test variant sees references the ordinary variant does not, so "matched nothing" is not a reliable signal from inside one pass.
+
+A baseline suppresses, it does not endorse. Nothing is written into the source, the convention still applies to every new declaration, and an entry can only be removed by actually fixing the violation. That is the difference between this and a `-fix` mode that writes `//declscope:package` everywhere: the latter would permanently opt the codebase out of the convention it was adopted for.
 
 ## Installation & Usage
 
@@ -276,98 +386,7 @@ On Windows, download `declscope_${VERSION}_windows_${ARCH}.zip` and extract `dec
 | `-test` | `true` | Analyze test files (`*_test.go`) — built-in driver flag |
 | `-fix` | `false` | Apply suggested fixes automatically — built-in driver flag |
 
-```bash
-# Apply the first suggested fix of each diagnostic
-declscope -fix ./...
-```
-
-Every diagnostic carries at most one fix, so `-fix` is unambiguous: a boundary crossing is fixed by inserting `//declscope:package`, and a missing label by renaming. The two can never conflict, because a rename does not change a declaration's reach.
-
-A declaration whose scope was **already stated with a directive** is reported without a fix. Both the directive and the use site are deliberate statements, and `-fix` must not silently overwrite the one the author wrote.
-
-## Adopting on an existing codebase
-
-Turning declscope on for a codebase that predates it would report every boundary that was never enforced. Record them instead:
-
-```console
-declscope baseline ./...       # writes .declscope-baseline.yaml
-```
-
-Recorded violations are suppressed; new ones are still reported. The file is discovered by the same upward lookup as the config, so its presence is all it takes.
-
-```yaml
-packages:
-  github.com/you/app/store:
-    escape:
-      - User.name
-      - helper
-```
-
-An entry is keyed by **package, rule and declaration** — never by position — so it survives the code being moved, the file being renamed and the package being reformatted. Regenerate rather than edit:
-
-```console
-declscope baseline ./...
-git diff .declscope-baseline.yaml   # the record of what was cleaned up
-```
-
-Entries for violations that have since been fixed simply disappear, which is why the analyzer never reports an entry as stale: a package's test variant sees references the ordinary variant does not, so "matched nothing" is not a reliable signal from inside one pass.
-
-A baseline suppresses, it does not endorse. Nothing is written into the source, the convention still applies to every new declaration, and an entry can only be removed by actually fixing the violation. That is the difference between this and a `-fix` mode that writes `//declscope:package` everywhere: the latter would permanently opt the codebase out of the convention it was adopted for.
-
-## Configuration
-
-Optional. `.declscope.yaml` (or `.yml`), looked up from the analyzed package's directory upwards, stopping at the module root — so a subtree can relax or tighten the rules on its own.
-
-```yaml
-defaults:
-  exported: public      # public | package | file
-  unexported: file
-
-rules:
-  promote: ondemand     # true | false | ondemand (required once a package has two namespaces)
-  demote: false         # and where it is not required, forbid it
-
-exclude:
-  - "**/mock_*.go"
-
-baseline: .declscope-baseline.yaml   # relative to this file; found automatically if named by default
-```
-
-Only the **naming** rules are configurable. Reach enforcement — `escape` and `foreign-method`, on package-level declarations and on members alike — is the point of the linter and cannot be switched off from a config file: silence an individual declaration with `//declscope:ignore`, or record what a codebase already has with a [baseline](#adopting-on-an-existing-codebase).
-
-Unknown keys are an error rather than a silent no-op: a typo in a rule name would otherwise leave the rule at its default with no sign of it.
-
-### `promote`
-
-`ondemand` (the default) requires the label only in a package with more than one namespace. `true` requires it unconditionally, which costs a little stutter in single-file packages but means a package gaining its second namespace is not a mass rename. `false` drops the rule, leaving reach enforcement without any naming discipline.
-
-### `demote`
-
-The mirror of `promote`: where the label is not required, it must not be there. With both on, the spelling of every unexported package-level name is fully determined and fixable in either direction.
-
-Enabling it asserts that a namespace prefix in this codebase *always* means the label — nothing in a name can tell `userID`-the-label from `userID`-the-word, and `demote` will offer to rename it to `id`. Where the prefix is part of the concept, say so on the declaration:
-
-```go
-//declscope:ignore demote
-var userID int
-```
-
-A name identical to its namespace (`type user` in `user.go`) carries no label to drop: the file is named after what it declares, not the other way about. `promote` still accepts such a name, since the owning unit is legible from it.
-
-The rename spells a leftover initialism the way Go does (`userID` → `id`, `userURLPath` → `urlPath`). Where no rename can be derived — dropping the label would leave a keyword, say — the violation is still reported, with the reason and without a fix:
-
-```
-func userType carries the label of namespace "user", which is not required here,
-but "type" is a keyword; rename it by hand
-```
-
-Being unable to spell the new name is a limit of the fix, not a reason to let the label stand. `promote` behaves the same way when its rename target is already taken.
-
-### `foreign-method`
-
-Not configurable, and reported only where `escape` was silent. Between them they cover both halves of one boundary: `escape` sees a method that is called across namespaces, `foreign-method` sees one that is merely declared there and never called.
-
-This does **not** break the sealed-interface pattern: implementing `isSealed()` on your own type declares a method owned by *your* type, and satisfying an interface creates no reference to the interface's method.
+Every diagnostic carries **at most one** fix, so `-fix` is unambiguous: a boundary crossing is fixed by inserting `//declscope:package`, a label by renaming. The two can never conflict, because a rename does not change a declaration's reach.
 
 ## Using it with an AI agent
 
@@ -375,14 +394,14 @@ The point of declscope is that the boundary stops being tacit knowledge, so put 
 
 ```bash
 declscope ./...        # in CI, and in the agent's build/verify loop
-declscope -fix ./...   # deterministic: applies the rename, reports the alternative it skipped
+declscope -fix ./...   # deterministic: one fix per diagnostic, no alternatives to choose between
 ```
 
 On an existing codebase, run `declscope baseline ./...` once first, so the agent is only ever shown the boundaries *it* crossed.
 
 Two things make this work better than a written convention:
 
-- **The diagnostic names the namespace it crossed**, so the agent is told *why* the call is wrong, not merely that it is. Its repair is a rename or a directive, both mechanical.
+- **The diagnostic names the namespace it crossed**, so the agent is told *why* the call is wrong, not merely that it is, and the repair is mechanical.
 - **A directive is a durable record of intent.** When `//declscope:package` ends up in the source, the next agent to read the file inherits the decision instead of re-deriving it — and the next one that widens something silently gets caught.
 
 A line in `CLAUDE.md` (or the equivalent for your agent) is usually enough:
@@ -395,12 +414,13 @@ scope with `//declscope:package` and say why.
 
 That last clause matters. Left to itself an agent will take the cheapest path out of a diagnostic, and the cheapest path here is to widen everything. Making the widening explicit is the whole mechanism.
 
-## Scope of the analysis
+## Limits of the analysis
 
 - Generated files (`// Code generated ... DO NOT EDIT.`) are excluded entirely — neither checked nor treated as reference sites.
 - Everything is checked **within a single package**. Namespaces are therefore implicitly package-qualified and never collide across packages.
 - Whether an *exported* identifier is used outside its package is out of scope: `go/analysis` has no upward view of the program, and answering it would require a separate whole-program mode. Combine with an unused-code linter for that.
 - Embedded fields are skipped, since their name comes from the embedded type.
+- Fields of anonymous structs, and of types declared inside a function, are not checked.
 
 ## License
 
