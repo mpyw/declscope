@@ -103,7 +103,7 @@ var fixCases = []fixCase{
 	{
 		name: "scope stated by a directive, which must not be rewritten",
 		files: map[string]string{
-			"user.go":  "package x\n\n//declscope:file\nfunc userForced() int { return 1 }\n",
+			"user.go":  "package x\n\n//declscope:private\nfunc userForced() int { return 1 }\n",
 			"order.go": "package x\n\nfunc orderRun() int { return userForced() }\n\nvar _ = orderRun\n",
 		},
 	},

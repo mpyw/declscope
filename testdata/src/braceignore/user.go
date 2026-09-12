@@ -41,7 +41,7 @@ func userHelper() int {
 //
 //declscope:ignore boundary // want `misplaced declscope:ignore: no declaration here for it to bind to`
 
-func userLoose() int { return 5 } // want `func userLoose is file-private to namespace "user", but is used from namespace "order"`
+func userLoose() int { return 5 } // want `func userLoose is private to namespace "user", but is used from namespace "order"`
 
 // ...one inside a function body...
 func userBody() int {

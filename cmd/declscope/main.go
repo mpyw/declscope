@@ -1,4 +1,4 @@
-// Command declscope is a linter that enforces file-private and
+// Command declscope is a linter that enforces private and
 // package-internal pseudo scopes within a Go package.
 //
 // Usage:

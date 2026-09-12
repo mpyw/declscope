@@ -1,7 +1,7 @@
 // Package namespace resolves the pseudo-namespace that a Go source file
 // belongs to.
 //
-// A namespace is the unit of "file privacy" that declscope enforces. By
+// A namespace is the unit of privacy that declscope enforces. By
 // default it is derived from the file name, so each file is its own namespace,
 // but files may opt into a shared namespace with a directive:
 //

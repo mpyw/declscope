@@ -2,8 +2,8 @@
 //
 // Only the variables these properties read are modeled: 216 action instances.
 spec BoundaryFix {
-  enum Scope { Public, Package, FilePriv }
-  enum Dir   { NoDir, DirPublic, DirPackage, DirFile }
+  enum Scope { Public, Package, Private }
+  enum Dir   { NoDir, DirPublic, DirPackage, DirPrivate }
   enum Refs  { NoRefs, SameNs, CrossNs }
 
   state {
@@ -11,7 +11,7 @@ spec BoundaryFix {
     exported: Bool, dir: Dir, refs: Refs, fixed: Bool
   }
   init {
-    configured = false  cfgExported = Public  cfgUnexported = FilePriv
+    configured = false  cfgExported = Public  cfgUnexported = Private
     exported = false  dir = NoDir  refs = NoRefs  fixed = false
   }
   action configure(e: Scope, u: Scope, x: Bool, di: Dir, r: Refs) {
@@ -22,10 +22,10 @@ spec BoundaryFix {
   def effScope() =
     if dir == DirPublic then Public
     else if dir == DirPackage then Package
-    else if dir == DirFile then FilePriv
+    else if dir == DirPrivate then Private
     else if exported then cfgExported
     else cfgUnexported
-  def boundaryFires() = effScope() == FilePriv and refs == CrossNs
+  def boundaryFires() = effScope() == Private and refs == CrossNs
 
   fair action fixBoundary() {
     requires configured  requires boundaryFires()  requires dir == NoDir
