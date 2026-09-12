@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Project Overview
 
-**declscope** is a Go linter that adds two pseudo visibility levels between `Exported` and `unexported`, and enforces them with [`go/analysis`](https://pkg.go.dev/golang.org/x/tools/go/analysis).
+**declscope** is a Go linter that adds two pseudo visibility levels between `Exported` and `unexported`, and enforces them with [`go/analysis`](https://pkg.go.dev/golang.org/x/tools/go/analysis). It exists so that a package can stay **flat** without losing every internal boundary.
 
 | Scope | Meaning |
 | --- | --- |
@@ -12,23 +12,21 @@ This file provides guidance to Claude Code when working with code in this reposi
 | `package` | Usable anywhere in the package |
 | `file` | Usable only inside its own **namespace** |
 
-### Core concept: two problems, two rules
+### Core concept: reach is stated, ownership is named
 
-The single most important thing to understand before changing anything here is that **package-level declarations and members are governed by different rules on purpose**.
+The single most important thing to understand before changing anything here is that **the name never determines reach**.
 
-**Package-level identifiers** compete in one flat scope, so the problem is *namespace pollution*, and the rule is **name-driven**:
+Everything unexported is private to its namespace; `//declscope:package` is the only thing that widens it. An earlier design made a namespace prefix mean package-internal, which was rejected: it overloaded one signal with two meanings, so a prefix added purely for legibility silently widened a declaration, and a codebase that prefixed everything for readability would have ended up with nothing protected. Removing that also removed the `demotion` rule (which existed only to patch the overloading), the rename fix for boundary crossings, and the possibility of a diagnostic carrying two conflicting alternatives.
 
-- Exported → `public`
-- Unexported carrying the file's namespace as a prefix → `package`
-- Every other unexported → `file`
+The prefix instead does a separate job: it is an **ownership label** on unexported package-level declarations, making the owning unit legible at every use site. `rules.prefix` is tri-state (`internal.PrefixMode`) and defaults to `ondemand`, requiring it only once a package has a second namespace — in a package with one, every other rule is structurally inert anyway, since every reference is already inside the single namespace.
 
-**Methods and struct fields** are already namespaced by the type that owns them and cannot collide with anything, so there is no pollution to prevent. Applying the prefix rule would produce `u.userSave()`, which is exactly the stutter Go idiom avoids. The problem for members is *encapsulation*, so the rule is **boundary-driven**, and the boundary is the namespace of the **type**, not of the file.
-
-A consequence worth remembering: a member violation is never fixed by renaming. Its only suggested fix is a directive.
+**Methods and struct fields are governed differently.** They are already namespaced by the type that owns them and cannot collide, so a label would produce `u.userSave()`, exactly the stutter Go idiom avoids. Their problem is encapsulation, not naming, so the boundary is the namespace of the **type**, not of the file, and a member violation is never fixed by renaming.
 
 ### Namespaces
 
 A namespace is the unit of file privacy, defaulting to the camelCased file name so that each file is its own namespace, and overridable with `//declscope:namespace <name>` before the package clause.
+
+The namespace count that `rules.prefix: ondemand` keys off is taken from the package's **non-test** files (`collection.namespaces`). A test file joins its subject's namespace rather than creating a boundary, and counting one whose name matches no source file (`integration_test.go`) would make a package's test variant disagree with the package itself.
 
 The indirection is deliberate: using the file name *itself* would mean renaming a file cascades into renaming every identifier it declares. It also makes `_test.go` sharing its subject's namespace fall out naturally rather than needing a special case.
 
@@ -77,16 +75,18 @@ Unused `//declscope:ignore` directives are reported, matching the convention in 
 
 ## Suggested fixes
 
-A cross-namespace violation on a package-level declaration offers two **alternatives**:
+Every diagnostic carries **at most one** fix, which is what makes `-fix` unambiguous:
 
-1. rename to carry the namespace prefix (edits every ident in the package)
-2. add `//declscope:package`
+- a boundary crossing is fixed by inserting `//declscope:package`
+- a missing label is fixed by renaming
 
-Order matters. `-fix` applies only the first fix of each diagnostic and prints `ignoring alternative fix ...` for the rest, so fix 1 is the default repair and fix 2 is what editors surface as a second code action.
+They can never conflict, because a rename does not change reach. (`x/tools`' `ApplyFixes` applies only the first fix of a diagnostic and logs `ignoring alternative fix` for the rest, so carrying alternatives was always a liability.)
 
 Renames are skipped when `pass.Pkg.Scope().Lookup(newName)` is non-nil, since renaming into an existing package-level name would not compile. They are also never offered for members, or for a file whose name yields no valid namespace.
 
-**A declaration whose scope came from a directive gets no fix at all** (`t.dir.HasScope`). Both the directive and the use site are deliberate, so widening would have `-fix` overwrite the author's directive, and renaming alone would leave the declaration private while the new name claimed otherwise. An earlier version emitted `//declscope:package` next to the existing `//declscope:file`, producing code the linter itself rejected.
+**A declaration whose scope came from a directive gets no fix at all** (`t.dir.HasScope`). Both the directive and the use site are deliberate, so `-fix` must not overwrite the author's directive. An earlier version emitted `//declscope:package` next to an existing `//declscope:file`, producing code the linter itself rejected.
+
+`namespace.Qualify` prepends blindly, so its suggestion can stutter when the name already contains the namespace word (`defaultBaselineName` → `baselineDefaultBaselineName`). The fix is a suggestion; a human renaming it to `baselineDefaultName` is expected and fine.
 
 `directiveFix` checks whether the anchor starts its line (`startsLine`, via `pass.ReadFile`). A field of a single-line struct does not, and inserting the directive there attached it to the `struct {` line instead of the field.
 
@@ -105,8 +105,9 @@ go test ./...          # analysistest + unit tests
 ./test_all.sh          # tests, golangci-lint, and dogfooding
 ```
 
-- `testdata/src/*` are `analysistest` packages. `demotion/` and `foreign/` carry their own `.declscope.yaml`, which also exercises config discovery end to end.
-- `testdata/src/fixes/*.golden` are **txtar archives with one section per fix message**, which is how `analysistest` compares alternative fixes separately instead of merging them into one nonsensical result.
+- `testdata/src/*` are `analysistest` packages. `foreign/`, `prefixalways/` and `label`-style packages carry their own `.declscope.yaml`, which also exercises config discovery end to end.
+- Goldens are plain files, not txtar archives, because no diagnostic carries alternative fixes any more.
+- Keep each testdata package focused on one rule. `prefixrule/order.go` deliberately touches nothing in namespace `user`, so the label rule is tested without escape diagnostics landing on the same lines.
 - Diagnostics on directives are reported at the comment, so their `// want` comments belong on the directive line, not the declaration line.
 - Do not add a `.declscope.yaml` or `.declscope-baseline.yaml` at the repository root: both are found by an upward lookup from each analyzed package, so a default-named file at the root would reach every `testdata` package and change what the tests assert. The settings declscope holds itself to live in `.declscope-strict.yaml` and are applied with an explicit `-config` in CI and `test_all.sh`.
 - `testdata/src/baselined` carries its own `.declscope-baseline.yaml`, which also exercises the lookup end to end.

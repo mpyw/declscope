@@ -141,15 +141,3 @@ var knownArch = map[string]bool{
 	"ppc64le": true, "riscv": true, "riscv64": true, "s390": true,
 	"s390x": true, "sparc": true, "sparc64": true, "wasm": true,
 }
-
-// Unqualify returns name with ns stripped from its front, which is the rename
-// offered when a package-internal declaration turns out to be used only inside
-// its own namespace.
-func Unqualify(name, ns string) string {
-	rest, ok := strings.CutPrefix(name, ns)
-	if !ok || rest == "" {
-		return name
-	}
-	r, size := utf8.DecodeRuneInString(rest)
-	return string(unicode.ToLower(r)) + rest[size:]
-}

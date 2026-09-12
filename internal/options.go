@@ -8,21 +8,83 @@ import (
 
 	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/directive"
-	"github.com/mpyw/declscope/internal/namespace"
 	"github.com/mpyw/declscope/internal/scope"
 )
+
+// PrefixMode says when the namespace label is required on unexported
+// package-level declarations.
+type PrefixMode int
+
+const (
+	// PrefixOnDemand requires the label only in a package with more than one
+	// namespace. In a package with one, there is no boundary for a label to
+	// mark: every other rule is structurally inert there, since every
+	// reference is already inside the single namespace, and a prefix repeated
+	// on every declaration would distinguish nothing.
+	PrefixOnDemand PrefixMode = iota
+	// PrefixAlways requires the label unconditionally, so that a package
+	// gaining its second namespace does not turn into a mass rename.
+	PrefixAlways
+	// PrefixNever disables the rule.
+	PrefixNever
+)
+
+func (m PrefixMode) String() string {
+	switch m {
+	case PrefixOnDemand:
+		return "ondemand"
+	case PrefixAlways:
+		return "true"
+	case PrefixNever:
+		return "false"
+	default:
+		return "unknown"
+	}
+}
+
+// ParsePrefixMode reads the tri-state value of the rules.prefix setting, which
+// YAML hands over as a bool for true and false and as a string for ondemand.
+func ParsePrefixMode(value any) (PrefixMode, bool) {
+	switch v := value.(type) {
+	case bool:
+		if v {
+			return PrefixAlways, true
+		}
+		return PrefixNever, true
+	case string:
+		switch v {
+		case "ondemand":
+			return PrefixOnDemand, true
+		case "true":
+			return PrefixAlways, true
+		case "false":
+			return PrefixNever, true
+		}
+	}
+	return 0, false
+}
+
+// required reports whether the label rule applies to a package with the given
+// number of namespaces.
+func (m PrefixMode) required(namespaces int) bool {
+	switch m {
+	case PrefixAlways:
+		return true
+	case PrefixOnDemand:
+		return namespaces > 1
+	default:
+		return false
+	}
+}
 
 // Options is the resolved configuration for a run.
 type Options struct {
 	// Exported is the scope of an exported identifier that carries no
 	// directive.
 	Exported scope.Scope
-	// Unexported is the scope of an unexported identifier that carries neither
-	// a directive nor its file's namespace prefix.
+	// Unexported is the scope of an unexported identifier carrying no
+	// directive.
 	Unexported scope.Scope
-	// Prefixed is the scope of an unexported identifier that carries its
-	// file's namespace prefix.
-	Prefixed scope.Scope
 
 	// CheckMembers bounds unexported methods and struct fields by the
 	// namespace of the type they belong to, which is the encapsulation Go
@@ -31,10 +93,9 @@ type Options struct {
 	// CheckForeignMethods reports an unexported method declared on a type that
 	// belongs to another namespace.
 	CheckForeignMethods bool
-	// CheckDemotion reports a namespace-prefixed identifier that is only ever
-	// used inside its own namespace, so that names stay honest in both
-	// directions.
-	CheckDemotion bool
+	// Prefix says when an unexported package-level declaration must carry its
+	// namespace as a label.
+	Prefix PrefixMode
 
 	// Exclude holds glob patterns matched against file paths.
 	Exclude []string
@@ -51,16 +112,16 @@ type Options struct {
 }
 
 // DefaultOptions mirrors the rules stated in the README: exported is public,
-// unexported is private to its file, and a namespace prefix opts an
-// identifier into package-wide visibility.
+// every other declaration is private to its namespace until a directive widens
+// it, and the namespace prefix is a mandatory ownership label that grants
+// nothing by itself.
 func DefaultOptions() Options {
 	return Options{
 		Exported:            scope.Public,
 		Unexported:          scope.FilePrivate,
-		Prefixed:            scope.PackageInternal,
 		CheckMembers:        true,
-		CheckForeignMethods: true,
-		CheckDemotion:       false,
+		Prefix:              PrefixOnDemand,
+		CheckForeignMethods: false,
 	}
 }
 
@@ -97,15 +158,17 @@ func (o Options) Excluded(path string) bool {
 }
 
 // resolve determines the scope of a package-level identifier.
-func (o Options) resolve(name, ns string, dir directive.Decl) scope.Scope {
+//
+// The namespace prefix plays no part in this. Encoding reach in the name would
+// mean a prefix could not also be used simply to say which unit a declaration
+// belongs to, and a prefix added for legibility would silently widen it.
+// Reach is stated with a directive; the prefix only labels ownership.
+func (o Options) resolve(name string, dir directive.Decl) scope.Scope {
 	if dir.HasScope {
 		return dir.Scope
 	}
 	if isExported(name) {
 		return o.Exported
-	}
-	if namespace.HasPrefix(name, ns) {
-		return o.Prefixed
 	}
 	return o.Unexported
 }

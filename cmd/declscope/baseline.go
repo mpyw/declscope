@@ -16,10 +16,10 @@ import (
 	"github.com/mpyw/declscope/internal/config"
 )
 
-// defaultBaselineName is used when no config file names one.
-const defaultBaselineName = ".declscope-baseline.yaml"
+// baselineDefaultName is used when no config file names one.
+const baselineDefaultName = ".declscope-baseline.yaml"
 
-const usage = `Usage: declscope baseline [flags] [packages]
+const baselineUsage = `Usage: declscope baseline [flags] [packages]
 
 Records every current violation so that adopting declscope does not require
 fixing them all at once. New violations are still reported.
@@ -34,12 +34,14 @@ fixing them all at once. New violations are still reported.
 // driver only hands back rendered diagnostics. The analyzer declares no
 // Requires and exports no facts, so driving it over go/packages directly is a
 // few lines and avoids parsing our own messages back out of strings.
+//
+//declscope:package
 func baselineMain(args []string) {
 	fs := flag.NewFlagSet("declscope baseline", flag.ExitOnError)
-	out := fs.String("o", "", "output path (default: the baseline named by the config file, else "+defaultBaselineName+")")
+	out := fs.String("o", "", "output path (default: the baseline named by the config file, else "+baselineDefaultName+")")
 	configPath := fs.String("config", "", "path to a declscope YAML config file")
 	fs.Usage = func() {
-		_, _ = io.WriteString(fs.Output(), usage)
+		_, _ = io.WriteString(fs.Output(), baselineUsage)
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -51,24 +53,24 @@ func baselineMain(args []string) {
 		patterns = []string{"./..."}
 	}
 
-	path, err := outputPath(*out, *configPath)
+	path, err := baselineOutputPath(*out, *configPath)
 	if err != nil {
-		fail(err)
+		baselineFail(err)
 	}
 
-	keys, err := collect(patterns, *configPath)
+	keys, err := baselineCollect(patterns, *configPath)
 	if err != nil {
-		fail(err)
+		baselineFail(err)
 	}
 	if err := baseline.Save(path, keys); err != nil {
-		fail(err)
+		baselineFail(err)
 	}
 	fmt.Fprintf(os.Stderr, "declscope: recorded %d violation(s) in %s\n", len(keys), path)
 }
 
-// outputPath prefers an explicit -o, then the baseline named by the config
+// baselineOutputPath prefers an explicit -o, then the baseline named by the config
 // nearest the working directory, then a default in the working directory.
-func outputPath(out, configPath string) (string, error) {
+func baselineOutputPath(out, configPath string) (string, error) {
 	if out != "" {
 		return out, nil
 	}
@@ -83,10 +85,10 @@ func outputPath(out, configPath string) (string, error) {
 	if opts.BaselinePath != "" {
 		return opts.BaselinePath, nil
 	}
-	return filepath.Join(dir, defaultBaselineName), nil
+	return filepath.Join(dir, baselineDefaultName), nil
 }
 
-func collect(patterns []string, configPath string) ([]baseline.Key, error) {
+func baselineCollect(patterns []string, configPath string) ([]baseline.Key, error) {
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles |
 			packages.NeedImports | packages.NeedDeps | packages.NeedTypes |
@@ -111,7 +113,7 @@ func collect(patterns []string, configPath string) ([]baseline.Key, error) {
 		// Options are resolved per package, since a subtree may configure its
 		// own rules. The baseline itself is deliberately not consulted here:
 		// regeneration records the current state from scratch.
-		opts, _, err := config.Resolve(packageDir(pkg), configPath)
+		opts, _, err := config.Resolve(baselinePackageDir(pkg), configPath)
 		if err != nil {
 			return nil, err
 		}
@@ -130,7 +132,7 @@ func collect(patterns []string, configPath string) ([]baseline.Key, error) {
 	return keys, nil
 }
 
-func packageDir(pkg *packages.Package) string {
+func baselinePackageDir(pkg *packages.Package) string {
 	for _, f := range pkg.GoFiles {
 		return filepath.Dir(f)
 	}
@@ -140,7 +142,7 @@ func packageDir(pkg *packages.Package) string {
 	return ""
 }
 
-func fail(err error) {
+func baselineFail(err error) {
 	fmt.Fprintf(os.Stderr, "declscope baseline: %v\n", err)
 	os.Exit(1)
 }

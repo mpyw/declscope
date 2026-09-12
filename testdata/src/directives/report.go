@@ -1,12 +1,15 @@
 //declscope:namespace user
+
 package directives
 
-// This file joins namespace "user", so it may use its file-private
-// declarations without promoting them.
-func reportAll() int {
-	return explicitlyShared() + userNotReallyShared() + ignoredLeak() + trailing() + sharedA + privateB
+// This file joins namespace "user", so it may use its namespace-private
+// declarations without widening them, and its own declarations carry the
+// "user" label rather than a "report" one.
+func userReportAll() int {
+	return userExplicitlyShared() + userNotReallyShared() + userIgnoredLeak() +
+		userTrailing() + userSharedA + userPrivateB
 }
 
-var _ = reportAll
-var _ = neverLeaks
+var _ = userReportAll
+var _ = userNeverLeaks
 var _ = userTypo

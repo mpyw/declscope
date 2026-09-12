@@ -32,10 +32,17 @@ func TestGeneratedFilesExcluded(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "generated")
 }
 
-// TestDemotion checks the opt-in rule that reports a namespace prefix claiming
-// more reach than it uses. It is enabled by testdata/src/demotion/.declscope.yaml.
-func TestDemotion(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "demotion")
+// TestPrefixRequired checks that an unexported package-level declaration must
+// carry its namespace as a label, and that members and exported identifiers
+// are exempt.
+func TestPrefixRequired(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "prefixrule")
+}
+
+// TestSingleNamespace checks that the label is not required in a package with
+// only one namespace, where there is no boundary for it to mark.
+func TestSingleNamespace(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "singlens")
 }
 
 // TestForeignMethods checks the opt-in rule for unexported methods grown on a
@@ -69,4 +76,10 @@ func TestBaseline(t *testing.T) {
 // decision the author made deliberately.
 func TestExplicitScopeConflict(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "explicit")
+}
+
+// TestPrefixAlways checks rules.prefix: true, which requires the label even in
+// a package with a single namespace.
+func TestPrefixAlways(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "prefixalways")
 }

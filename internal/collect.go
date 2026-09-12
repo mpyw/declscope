@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 
@@ -110,6 +111,10 @@ type collection struct {
 	// rename can rewrite all of them.
 	idents   map[types.Object][]*ast.Ident
 	problems []directive.Problem
+
+	// namespaces is how many distinct namespaces the package's non-test files
+	// declare, which is how many boundaries there are to enforce.
+	namespaces int
 }
 
 // collectFiles resolves each file's namespace. Generated files are excluded
@@ -144,6 +149,14 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		c.files = append(c.files, fi)
 		c.byFile[f] = fi
 	}
+	seen := make(map[string]bool)
+	for _, fi := range c.files {
+		if strings.HasSuffix(fi.path, "_test.go") {
+			continue
+		}
+		seen[fi.key()] = true
+	}
+	c.namespaces = len(seen)
 	return c
 }
 
@@ -176,7 +189,7 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 		c.add(&target{
 			obj: obj, ident: d.Name, kind: kindFunc, file: fi,
 			ownerNS: fi.ns, ownerKey: fi.key(), dir: dir, anchor: d.Pos(),
-			scope:      opts.resolve(d.Name.Name, fi.ns, dir),
+			scope:      opts.resolve(d.Name.Name, dir),
 			renameable: true,
 		})
 		return
@@ -214,7 +227,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 				c.add(&target{
 					obj: obj, ident: spec.Name, kind: kindType, file: fi,
 					ownerNS: fi.ns, ownerKey: fi.key(), dir: dir, anchor: anchor,
-					scope:      opts.resolve(spec.Name.Name, fi.ns, dir),
+					scope:      opts.resolve(spec.Name.Name, dir),
 					renameable: true,
 				})
 			}
@@ -240,7 +253,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 				c.add(&target{
 					obj: obj, ident: name, kind: k, file: fi,
 					ownerNS: fi.ns, ownerKey: fi.key(), dir: dir, anchor: anchor,
-					scope:      opts.resolve(name.Name, fi.ns, dir),
+					scope:      opts.resolve(name.Name, dir),
 					renameable: true,
 				})
 			}

@@ -1,24 +1,28 @@
 package pkglevel
 
-// helper is not prefixed with the file's namespace, so it is file-private.
-func helper() int { return 1 } // want `func helper is file-private to namespace "user", but is used from namespace "order"`
+// The prefix is an ownership label and grants nothing, so this is still
+// private to its namespace.
+func userHelper() int { return 1 } // want `func userHelper is file-private to namespace "user", but is used from namespace "order"`
 
-// userShared carries the namespace prefix, so it is package-internal.
+// Widening is always an explicit act.
+//
+//declscope:package
 func userShared() int { return 2 }
 
-// user matches the namespace exactly, which also counts as prefixed.
-func user() int { return 3 }
+// Exported identifiers are public, and carry no prefix.
+func Exported() int { return userHelper() }
 
-// users is not prefixed: the character after the prefix must start a new word.
-func users() int { return 4 } // want `func users is file-private to namespace "user", but is used from namespace "order"`
+var userCount int // want `var userCount is file-private to namespace "user", but is used from namespace "order"`
 
-var count int // want `var count is file-private to namespace "user", but is used from namespace "order"`
-
+//declscope:package
 var userTotal int
 
-const limit = 10 // want `const limit is file-private to namespace "user", but is used from namespace "order"`
+const userLimit = 10 // want `const userLimit is file-private to namespace "user", but is used from namespace "order"`
 
-// Exported is public and may be used from anywhere.
-func Exported() int { return helper() }
+type userPayload struct{} // want `type userPayload is file-private to namespace "user", but is used from namespace "order"`
 
-type payload struct{} // want `type payload is file-private to namespace "user", but is used from namespace "order"`
+// Used only inside its own namespace, and none the worse for carrying the
+// prefix: the label says which unit owns it, not how far it reaches.
+func userLocal() int { return userCount }
+
+var _ = userLocal

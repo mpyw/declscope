@@ -41,33 +41,44 @@ declscope takes the other route: it makes the boundary **machine-checkable insid
 
 Roughly: `file` is Rust's module-private, `package` is `pub(crate)`, `public` is `pub`.
 
-## Two rules, because there are two problems
+## The rules
 
-`declscope` deliberately applies **different rules** to package-level declarations and to members.
-
-### Package-level declarations — the name carries the modifier
-
-Package-level identifiers compete in one flat scope, so the problem is **namespace pollution**. The rule is name-driven:
-
-- **Exported** → `public`.
-- **Unexported, prefixed with the file's namespace** → `package`.
-- **Every other unexported** → `file`.
+Everything unexported is private to its **namespace** — by default, to its own file. Widening is always an explicit act:
 
 ```go
-// user_repository.go   (namespace: userRepository)
+// user.go   (namespace: user)
 
-func UserRepositoryLoad()    {} // public
-func userRepositoryCache()   {} // package  — the prefix declares the intent
-func cache()                 {} // file     — nobody else may touch this
+func UserLoad()    {} // public: usable outside the package
+func userCache()   {} // namespace-private: only user.go may touch it
+
+//declscope:package
+func userShared()  {} // package-internal: usable anywhere in the package
 ```
 
-A `file`-scoped declaration used from another namespace is reported, with two alternative fixes: rename it to carry the prefix, or state the scope with a directive.
+Reach is stated by the directive, never by the name. This matters: if a prefix meant "package-wide", you could not also use one simply to say *which unit a declaration belongs to* — adding one for legibility would silently widen it, and a codebase that prefixed everything for readability would end up with nothing protected at all.
 
-### Methods and struct fields — the type carries the boundary
+So the prefix does a different job.
 
-A method or field is already namespaced by the type that owns it. `u.save()` cannot collide with anything, so there is no pollution to prevent, and applying the prefix rule would produce `u.userSave()` — exactly the stutter Go idiom avoids.
+### The prefix is an ownership label
 
-What is missing for members is not a namespace but **encapsulation**. So the rule is boundary-driven, and the boundary is the namespace of the **type**, not of the file:
+An unexported package-level declaration must carry its namespace as a prefix. It grants nothing; it says who owns it, which is what makes a cross-file call legible at the call site, in a stack trace and in a grep result:
+
+```go
+// order.go
+func orderRun() int {
+    return userShared() // obviously the user unit's, and obviously shared
+}
+```
+
+By default this is required only once a package has a **second namespace** — in a package with one, there is no boundary for a label to mark, and a prefix repeated on every declaration would distinguish nothing. Set `rules.prefix` to `true` to require it unconditionally, or `false` to drop the rule.
+
+Exported identifiers are exempt: they are already qualified by the package name at every external use site.
+
+### Methods and struct fields are bounded by their type
+
+A method or field is already namespaced by the type that owns it. `u.save()` cannot collide with anything, so there is no pollution to prevent, and a label here would produce `u.userSave()` — exactly the stutter Go idiom avoids.
+
+What is missing for members is not a namespace but **encapsulation**, so the boundary is the namespace of the **type**, not of the file:
 
 ```go
 // user.go   (namespace: user)
@@ -82,8 +93,6 @@ func f(u *User) {
     u.normalize() // reported
 }
 ```
-
-No renaming is involved here, so the only fix is a directive (or moving the code where it belongs).
 
 ## Namespaces
 
@@ -245,9 +254,9 @@ On Windows, download `declscope_${VERSION}_windows_${ARCH}.zip` and extract `dec
 declscope -fix ./...
 ```
 
-When a diagnostic offers both a rename and a directive, `-fix` applies the rename and reports the alternative it skipped. Editors that surface `go/analysis` code actions (such as gopls) offer both.
+Every diagnostic carries at most one fix, so `-fix` is unambiguous: a boundary crossing is fixed by inserting `//declscope:package`, and a missing label by renaming. The two can never conflict, because a rename does not change a declaration's reach.
 
-A declaration whose scope was stated with a directive is reported **without any fix**. Both the directive and the use site are deliberate statements, so `-fix` must not overwrite one of them: widening would silently discard the directive the author wrote, and renaming alone would leave the declaration private while the new name claimed otherwise.
+A declaration whose scope was **already stated with a directive** is reported without a fix. Both the directive and the use site are deliberate statements, and `-fix` must not silently overwrite the one the author wrote.
 
 ## Adopting on an existing codebase
 
@@ -286,12 +295,11 @@ Optional. `.declscope.yaml` (or `.yml`), looked up from the analyzed package's d
 defaults:
   exported: public      # public | package | file
   unexported: file
-  prefixed: package
 
 rules:
+  prefix: ondemand        # true | false | ondemand (required once a package has two namespaces)
   members: true           # bound unexported methods/fields by their type's namespace
   foreign-methods: false  # report unexported methods grown on another namespace's type
-  demotion: false         # report namespace prefixes that claim more reach than they use
 
 exclude:
   - "**/mock_*.go"
@@ -301,9 +309,9 @@ baseline: .declscope-baseline.yaml   # relative to this file; found automaticall
 
 Unknown keys are an error rather than a silent no-op: a typo in a rule name would otherwise leave the rule at its default with no sign of it.
 
-### `demotion`
+### `prefix`
 
-The name-driven rule cuts both ways. With `demotion` enabled, an identifier that carries a namespace prefix but is never used outside its own namespace is reported too, so names keep telling the truth in both directions.
+`ondemand` (the default) requires the label only in a package with more than one namespace. `true` requires it unconditionally, which costs a little stutter in single-file packages but means a package gaining its second namespace is not a mass rename. `false` drops the rule, leaving reach enforcement without any naming discipline.
 
 ### `foreign-methods`
 

@@ -8,12 +8,11 @@
 //	defaults:
 //	  exported: public     # public | package | file
 //	  unexported: file
-//	  prefixed: package
 //
 //	rules:
+//	  prefix: ondemand       # true | false | ondemand (only once a package has two namespaces)
 //	  members: true          # bound unexported methods/fields by their type's namespace
 //	  foreign-methods: false # report unexported methods grown on another namespace's type
-//	  demotion: false        # report namespace prefixes that claim more reach than they use
 //
 //	exclude:
 //	  - "**/mock_*.go"
@@ -48,13 +47,13 @@ type File struct {
 	Defaults struct {
 		Exported   string `yaml:"exported"`
 		Unexported string `yaml:"unexported"`
-		Prefixed   string `yaml:"prefixed"`
 	} `yaml:"defaults"`
 
 	Rules struct {
+		// Prefix is tri-state, so it arrives as a bool or as a string.
+		Prefix         any   `yaml:"prefix"`
 		Members        *bool `yaml:"members"`
 		ForeignMethods *bool `yaml:"foreign-methods"`
-		Demotion       *bool `yaml:"demotion"`
 	} `yaml:"rules"`
 
 	Exclude []string `yaml:"exclude"`
@@ -151,7 +150,6 @@ func (f *File) Apply(opts *internal.Options) error {
 	}{
 		{"defaults.exported", f.Defaults.Exported, &opts.Exported},
 		{"defaults.unexported", f.Defaults.Unexported, &opts.Unexported},
-		{"defaults.prefixed", f.Defaults.Prefixed, &opts.Prefixed},
 	} {
 		if field.value == "" {
 			continue
@@ -163,14 +161,18 @@ func (f *File) Apply(opts *internal.Options) error {
 		*field.dst = s
 	}
 
+	if f.Rules.Prefix != nil {
+		mode, ok := internal.ParsePrefixMode(f.Rules.Prefix)
+		if !ok {
+			return fmt.Errorf("rules.prefix: want true, false or ondemand, got %v", f.Rules.Prefix)
+		}
+		opts.Prefix = mode
+	}
 	if f.Rules.Members != nil {
 		opts.CheckMembers = *f.Rules.Members
 	}
 	if f.Rules.ForeignMethods != nil {
 		opts.CheckForeignMethods = *f.Rules.ForeignMethods
-	}
-	if f.Rules.Demotion != nil {
-		opts.CheckDemotion = *f.Rules.Demotion
 	}
 	if f.Exclude != nil {
 		opts.Exclude = f.Exclude

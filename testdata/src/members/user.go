@@ -16,6 +16,7 @@ func (u *User) normalize() { // want `method User.normalize is private to namesp
 // Name is exported and therefore public.
 func (u *User) Name() string { return u.name }
 
+//declscope:package
 func userMake(name string) *User {
 	u := &User{name: name}
 	u.normalize()

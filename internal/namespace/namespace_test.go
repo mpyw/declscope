@@ -69,7 +69,7 @@ func TestHasPrefix(t *testing.T) {
 	}
 }
 
-func TestQualifyUnqualify(t *testing.T) {
+func TestQualify(t *testing.T) {
 	tests := []struct {
 		name, ns, qualified string
 	}{
@@ -84,13 +84,4 @@ func TestQualifyUnqualify(t *testing.T) {
 		}
 	}
 
-	if got := namespace.Unqualify("userHelper", "user"); got != "helper" {
-		t.Errorf("Unqualify = %q, want %q", got, "helper")
-	}
-	if got := namespace.Unqualify("helper", "user"); got != "helper" {
-		t.Errorf("Unqualify of an unprefixed name should be unchanged, got %q", got)
-	}
-	if got := namespace.Unqualify("user", "user"); got != "user" {
-		t.Errorf("Unqualify of a bare namespace should be unchanged, got %q", got)
-	}
 }

@@ -20,7 +20,7 @@ import (
 // Rule names, used as the diagnostic category and as the baseline key.
 const (
 	ruleEscape        = "escape"
-	ruleDemotion      = "demotion"
+	rulePrefix        = "prefix"
 	ruleForeignMethod = "foreign-method"
 )
 
@@ -93,16 +93,13 @@ func (c *collection) keys(pass *analysis.Pass, opts Options) []baseline.Key {
 
 func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []finding {
 	var out []finding
-	switch t.scope {
-	case scope.FilePrivate:
+	if t.scope == scope.FilePrivate {
 		if f, ok := c.checkEscape(pass, opts, t); ok {
 			out = append(out, f)
 		}
-	case scope.PackageInternal:
-		if f, ok := c.checkDemotion(pass, opts, t); ok {
-			out = append(out, f)
-		}
-	case scope.Public:
+	}
+	if f, ok := c.checkPrefix(pass, opts, t); ok {
+		out = append(out, f)
 	}
 	if f, ok := c.checkForeignMethod(pass, opts, t); ok {
 		out = append(out, f)
@@ -144,61 +141,49 @@ func (c *collection) checkEscape(pass *analysis.Pass, opts Options, t *target) (
 	}
 
 	// When the author stated the scope, the conflict is between two explicit
-	// decisions and only they can resolve it. Offering to widen would have
-	// -fix silently overwrite the directive they wrote; offering the rename
-	// alone would be worse still, since the directive would keep the
-	// declaration private and leave the new name lying about its reach.
+	// decisions and only they can resolve it: widening would have -fix
+	// silently overwrite the directive they wrote.
 	if t.dir.HasScope {
 		return f, true
-	}
-
-	// A member is already namespaced by the type that owns it, so widening it
-	// is a matter of intent, never of naming.
-	if t.renameable && t.ownerNS != "" {
-		if fix, ok := c.renameFix(pass, t, namespace.Qualify(t.obj.Name(), t.ownerNS),
-			"promote to package-internal by prefixing with the namespace"); ok {
-			f.fixes = append(f.fixes, fix)
-		}
 	}
 	f.fixes = append(f.fixes, c.directiveFix(pass, t, scope.PackageInternal))
 	return f, true
 }
 
-// checkDemotion reports a namespace-prefixed declaration whose every use stays
-// inside its own namespace, so the prefix is claiming a reach it does not need.
-func (c *collection) checkDemotion(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.CheckDemotion || t.dir.HasScope || !t.renameable || t.ownerNS == "" {
+// checkPrefix requires an unexported package-level declaration to carry its
+// namespace as a prefix.
+//
+// The prefix grants nothing — reach is stated with a directive — so this is
+// purely an ownership label, making the owning unit legible at every use site
+// and in every stack trace and grep result.
+//
+// Whether it applies at all depends on rules.prefix, which defaults to
+// requiring the label only once a package has a second namespace to
+// distinguish. See PrefixMode.
+func (c *collection) checkPrefix(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
+	if !opts.Prefix.required(c.namespaces) || !t.renameable || t.ownerNS == "" {
 		return finding{}, false
 	}
-	if !namespace.HasPrefix(t.obj.Name(), t.ownerNS) {
+	name := t.obj.Name()
+	if isExported(name) || namespace.HasPrefix(name, t.ownerNS) {
 		return finding{}, false
 	}
-	refs := c.refs[t.obj]
-	// No uses at all is a job for an unused-code linter, not this one.
-	if len(refs) == 0 {
+	// main is spelled by the toolchain, not by us.
+	if t.kind == kindFunc && name == "main" && pass.Pkg.Name() == "main" {
 		return finding{}, false
-	}
-	for _, r := range refs {
-		if r.file.key() != t.ownerKey {
-			return finding{}, false
-		}
 	}
 
-	short := namespace.Unqualify(t.obj.Name(), t.ownerNS)
-	if short == t.obj.Name() {
-		return finding{}, false
-	}
 	f := finding{
-		rule: ruleDemotion,
-		decl: t.name(),
+		rule: rulePrefix,
+		decl: name,
 		pos:  t.ident.Pos(),
-		msg: fmt.Sprintf("%s %s is namespace-prefixed but is only used inside %s; drop the prefix or state the scope",
-			t.kind, t.name(), describe(t.ownerNS, t.file.path)),
+		msg: fmt.Sprintf("%s %s does not carry the prefix of %s; rename it to %s",
+			t.kind, name, describe(t.ownerNS, t.file.path), namespace.Qualify(name, t.ownerNS)),
 	}
-	if fix, ok := c.renameFix(pass, t, short, "demote to file-private by dropping the namespace prefix"); ok {
+	if fix, ok := c.renameFix(pass, t, namespace.Qualify(name, t.ownerNS),
+		"label it with its namespace"); ok {
 		f.fixes = append(f.fixes, fix)
 	}
-	f.fixes = append(f.fixes, c.directiveFix(pass, t, scope.PackageInternal))
 	return f, true
 }
 

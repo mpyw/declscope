@@ -1,8 +1,8 @@
 package baselined
 
 func orderRun(u *User) string {
-	_ = helper() + fresh()
-	return u.name + note
+	_ = userHelper() + userFresh()
+	return u.name + u.note
 }
 
 var _ = orderRun

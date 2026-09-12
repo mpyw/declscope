@@ -1,7 +1,7 @@
 package fixes
 
-func helper() int { return 1 } // want `func helper is file-private to namespace "user", but is used from namespace "order"`
+func userHelper() int { return 1 } // want `func userHelper is file-private to namespace "user", but is used from namespace "order"`
 
 var (
-	seed = 2 // want `var seed is file-private to namespace "user", but is used from namespace "order"`
+	userSeed = 2 // want `var userSeed is file-private to namespace "user", but is used from namespace "order"`
 )

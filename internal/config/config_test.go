@@ -27,11 +27,10 @@ func TestLoadAndApply(t *testing.T) {
 defaults:
   exported: package
   unexported: package
-  prefixed: public
 rules:
+  prefix: false
   members: false
   foreign-methods: true
-  demotion: true
 exclude:
   - "**/mock_*.go"
 `)
@@ -44,10 +43,10 @@ exclude:
 		t.Fatal(err)
 	}
 
-	if opts.Exported != scope.PackageInternal || opts.Unexported != scope.PackageInternal || opts.Prefixed != scope.Public {
+	if opts.Exported != scope.PackageInternal || opts.Unexported != scope.PackageInternal {
 		t.Errorf("defaults not applied: %+v", opts)
 	}
-	if opts.CheckMembers || !opts.CheckForeignMethods || !opts.CheckDemotion {
+	if opts.Prefix != internal.PrefixNever || opts.CheckMembers || !opts.CheckForeignMethods {
 		t.Errorf("rules not applied: %+v", opts)
 	}
 	if len(opts.Exclude) != 1 || opts.Exclude[0] != "**/mock_*.go" {
@@ -58,7 +57,7 @@ exclude:
 // TestApplyKeepsDefaults checks that omitting a key keeps the built-in
 // default rather than resetting it to the zero value.
 func TestApplyKeepsDefaults(t *testing.T) {
-	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  demotion: true\n")
+	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  foreign-methods: true\n")
 	f, err := config.Load(path)
 	if err != nil {
 		t.Fatal(err)
@@ -68,14 +67,14 @@ func TestApplyKeepsDefaults(t *testing.T) {
 	if err := f.Apply(&opts); err != nil {
 		t.Fatal(err)
 	}
-	if opts.Exported != want.Exported || opts.Unexported != want.Unexported || opts.Prefixed != want.Prefixed {
+	if opts.Exported != want.Exported || opts.Unexported != want.Unexported {
 		t.Errorf("defaults should be untouched, got %+v", opts)
 	}
-	if opts.CheckMembers != want.CheckMembers {
-		t.Errorf("members should be untouched, got %v", opts.CheckMembers)
+	if opts.CheckMembers != want.CheckMembers || opts.Prefix != want.Prefix {
+		t.Errorf("unnamed rules should be untouched, got %+v", opts)
 	}
-	if !opts.CheckDemotion {
-		t.Error("demotion should be enabled")
+	if !opts.CheckForeignMethods {
+		t.Error("foreign-methods should be enabled")
 	}
 }
 
@@ -141,5 +140,53 @@ func TestFindPrefersNearest(t *testing.T) {
 	got := config.Find(nested)
 	if want := filepath.Join(nested, ".declscope.yml"); got != want {
 		t.Errorf("Find = %q, want %q", got, want)
+	}
+}
+
+// TestPrefixModes checks the tri-state rules.prefix setting: YAML hands true
+// and false over as booleans and ondemand as a string.
+func TestPrefixModes(t *testing.T) {
+	tests := []struct {
+		yaml string
+		want internal.PrefixMode
+	}{
+		{"rules:\n  prefix: true\n", internal.PrefixAlways},
+		{"rules:\n  prefix: false\n", internal.PrefixNever},
+		{"rules:\n  prefix: ondemand\n", internal.PrefixOnDemand},
+		{"rules:\n  prefix: \"true\"\n", internal.PrefixAlways},
+	}
+	for _, tt := range tests {
+		path := write(t, t.TempDir(), ".declscope.yaml", tt.yaml)
+		f, err := config.Load(path)
+		if err != nil {
+			t.Fatalf("%q: %v", tt.yaml, err)
+		}
+		opts := internal.DefaultOptions()
+		if err := f.Apply(&opts); err != nil {
+			t.Fatalf("%q: %v", tt.yaml, err)
+		}
+		if opts.Prefix != tt.want {
+			t.Errorf("%q: Prefix = %v, want %v", tt.yaml, opts.Prefix, tt.want)
+		}
+	}
+}
+
+// TestDefaultPrefixMode pins the default: the label is required only once a
+// package has a second namespace to distinguish.
+func TestDefaultPrefixMode(t *testing.T) {
+	if got := internal.DefaultOptions().Prefix; got != internal.PrefixOnDemand {
+		t.Errorf("default Prefix = %v, want ondemand", got)
+	}
+}
+
+func TestApplyRejectsUnknownPrefixMode(t *testing.T) {
+	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  prefix: sometimes\n")
+	f, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := internal.DefaultOptions()
+	if err := f.Apply(&opts); err == nil {
+		t.Fatal("want an error for an unknown prefix mode")
 	}
 }

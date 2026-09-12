@@ -1,7 +1,8 @@
 package directives
 
 func orderRun() int {
-	return explicitlyShared() + userNotReallyShared() + ignoredLeak() + trailing() + sharedA + privateB
+	return userExplicitlyShared() + userNotReallyShared() + userIgnoredLeak() +
+		userTrailing() + userSharedA + userPrivateB
 }
 
 var _ = orderRun

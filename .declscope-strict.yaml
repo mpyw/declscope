@@ -3,5 +3,4 @@
 # lookup walks up from each analyzed package, and a default-named file at the
 # repository root would silently change what those tests assert.
 rules:
-  demotion: true
   foreign-methods: true
