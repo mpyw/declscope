@@ -22,3 +22,13 @@ var (
 	userSharedA  = 1
 	userPrivateB = 2 // want `var userPrivateB is file-private to namespace "user", but is used from namespace "order"`
 )
+
+// A scope directive on the block reaches every spec, and one on a spec
+// replaces it: a declaration has exactly one scope.
+//
+//declscope:package
+var (
+	userSharedC = 3
+	//declscope:file
+	userPrivateD = 4 // want `var userPrivateD is declared file-private by //declscope:file, but is used from namespace "order"`
+)

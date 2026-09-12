@@ -26,3 +26,14 @@ func userTypo() int { return 4 } // want `func userTypo is file-private to names
 
 //declscope:ignore escape,promote
 func helper3() int { return 5 }
+
+// Ignores accumulate across a block and its specs rather than the spec's
+// replacing the block's: the bare ignore on the block keeps silencing escape
+// for userBlockB, and only its own demote — inert here — is unused.
+//
+//declscope:ignore
+var (
+	userBlockA = 6
+	//declscope:ignore demote // want `unused //declscope:ignore demote on userBlockB`
+	userBlockB = 7
+)

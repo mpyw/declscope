@@ -164,6 +164,31 @@ func TestMerge(t *testing.T) {
 	}
 }
 
+// TestMergeAccumulatesIgnores pins the half of Merge that differs from scope:
+// ignores are unioned, not replaced, so a narrower directive on a spec cannot
+// silently re-enable a rule the enclosing block turned off. The README and
+// CLAUDE.md describe this behaviour and must not drift from it.
+func TestMergeAccumulatesIgnores(t *testing.T) {
+	outer := directive.Decl{Ignores: []directive.Ignore{{}}}
+	inner := directive.Decl{Ignores: []directive.Ignore{{Rules: []rule.Rule{rule.Demote}}}}
+
+	got := outer.Merge(inner)
+	if len(got.Ignores) != 2 {
+		t.Fatalf("got %d ignores, want both the block's and the spec's", len(got.Ignores))
+	}
+	for _, r := range rule.All {
+		if !got.Ignores[0].Covers(r) {
+			t.Errorf("the block's bare ignore no longer covers %q after merging", r)
+		}
+	}
+	if got.Ignores[1].Covers(rule.Escape) {
+		t.Error("the spec's ignore should still name only its own rules")
+	}
+	if len(outer.Ignores) != 1 || len(inner.Ignores) != 1 {
+		t.Error("Merge must not mutate its inputs")
+	}
+}
+
 func TestParseFileNamespace(t *testing.T) {
 	f := directive.ParseFile(parse(t, "//declscope:namespace user\npackage repo\n\nfunc f() {}\n"))
 	if !f.HasNamespace || f.Namespace != "user" {

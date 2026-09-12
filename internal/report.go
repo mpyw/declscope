@@ -162,12 +162,14 @@ func (c *collection) checkEscape(pass *analysis.Pass, opts Options, t *target) (
 	case t.dir.HasScope:
 		f.msg = fmt.Sprintf("%s %s is declared %s by %s, but is used from %s",
 			t.kind, t.name(), t.scope, t.scope.Directive(), describeFile(offenders[0].file))
+	// The boundary is the owner's: for a method that is the file declaring
+	// its type, which need not be the file the method is written in.
 	case t.owner != "":
 		f.msg = fmt.Sprintf("%s %s is private to %s, but is used from %s",
-			t.kind, t.name(), describe(t.ownerNS, t.file.path), describeFile(offenders[0].file))
+			t.kind, t.name(), describeFile(t.ownerFile), describeFile(offenders[0].file))
 	default:
 		f.msg = fmt.Sprintf("%s %s is file-private to %s, but is used from %s",
-			t.kind, t.name(), describe(t.ownerNS, t.file.path), describeFile(offenders[0].file))
+			t.kind, t.name(), describeFile(t.ownerFile), describeFile(offenders[0].file))
 	}
 	for _, r := range offenders {
 		f.related = append(f.related, analysis.RelatedInformation{

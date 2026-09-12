@@ -1,6 +1,6 @@
 # Formal specs
 
-Machine-checked statements about the rules, written in [FSL](https://github.com/mpyw/fsl)
+Machine-checked statements about the rules, written in [FSL](https://github.com/ymm-oss/fsl)
 and verified with `fslc`. They are documentation that cannot drift: the claims below
 are the ones `fslc verify` actually proves, over **every** configuration, not a
 sample of them.

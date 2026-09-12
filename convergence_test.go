@@ -87,6 +87,20 @@ var fixCases = []fixCase{
 		},
 	},
 	{
+		name: "type embedded, and selected through the embedding, in its own namespace",
+		files: map[string]string{
+			"user.go":  "package x\n\ntype count struct{ n int }\n\ntype User struct{ *count }\n\nfunc (u *User) Total() int { return u.count.n }\n",
+			"order.go": "package x\n\nfunc OrderRun() {}\n",
+		},
+	},
+	{
+		name: "type embedded from another namespace",
+		files: map[string]string{
+			"user.go":  "package x\n\ntype userCount struct{ n int }\n",
+			"order.go": "package x\n\ntype Order struct{ userCount }\n",
+		},
+	},
+	{
 		name: "scope stated by a directive, which must not be rewritten",
 		files: map[string]string{
 			"user.go":  "package x\n\n//declscope:file\nfunc userForced() int { return 1 }\n",
