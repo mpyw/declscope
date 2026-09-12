@@ -17,26 +17,6 @@
 // spellings, and true and false are accepted as aliases of always and never.
 //
 // Unknown keys are an error. So are the former names of the two rules,
-// rules.promote and rules.demote, which are refused with the key to write
-// instead rather than read as aliases.
-//
-// Only the naming rules are configurable. Reach enforcement is the point of
-// the linter and is not something a config file can switch off; silence an
-// individual declaration with //declscope:ignore, or record what a codebase
-// already has with a baseline.
-//
-//	exclude:
-//	  - "**/mock_*.go"
-//
-//	baseline: .declscope-baseline.yaml   # relative to this file
-//
-// When no config names a baseline, one is looked up the same way as the
-// config: the nearest .declscope-baseline.yaml (or .yml) from the package's
-// directory upwards, stopping at the module root. Resolve loads it for
-// analysis. ResolveForBaseline, which the baseline subcommand uses, does not
-// load it, so a baseline that no longer parses cannot block its own
-// regeneration; DefaultBaseline then says where the regenerated entries of a
-// package belong so that the analyzer's lookup finds them.
 package config
 
 import (
@@ -51,7 +31,6 @@ import (
 
 	"github.com/mpyw/declscope/internal"
 	"github.com/mpyw/declscope/internal/baseline"
-	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
@@ -76,13 +55,6 @@ type File struct {
 		// Qualify is tri-state, so it arrives as a bool or as a string.
 		Qualify   any   `yaml:"qualify"`
 		Unqualify *bool `yaml:"unqualify"`
-
-		// Promote and Demote are the former names of Qualify and Unqualify.
-		// They are declared only so that the decoder, which rejects unknown
-		// keys, does not get to them first: Apply refuses either with the
-		// key to write instead. Neither is applied.
-		Promote any `yaml:"promote"`
-		Demote  any `yaml:"demote"`
 	} `yaml:"rules"`
 
 	Exclude []string `yaml:"exclude"`
@@ -289,25 +261,6 @@ func (f *File) Apply(opts *internal.Options) error {
 			return fmt.Errorf("%s: unknown scope %q (want public, package or file)", field.name, field.value)
 		}
 		*field.dst = s
-	}
-
-	// A rule under its former name is refused, not aliased: the config is
-	// edited once, the message says exactly what to write, and the vocabulary
-	// stays one. Silently keeping the default is not an option either, since
-	// that is what the unknown-key error exists to prevent.
-	for _, legacy := range []struct {
-		key   string
-		value any
-	}{
-		{"promote", f.Rules.Promote},
-		{"demote", f.Rules.Demote},
-	} {
-		if legacy.value == nil {
-			continue
-		}
-		if r, ok := rule.Renamed(legacy.key); ok {
-			return fmt.Errorf("rules.%s: the rule was renamed to %s; write rules.%s", legacy.key, r, r)
-		}
 	}
 
 	if f.Rules.Qualify != nil {

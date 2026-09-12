@@ -3,7 +3,6 @@ package config_test
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/mpyw/declscope/internal"
@@ -215,57 +214,6 @@ func TestApplyRejectsUnknownQualifyMode(t *testing.T) {
 }
 
 // TestApplyRejectsFormerRuleKeys pins the decision on the rules' former names:
-// rules.promote and rules.demote are refused, not read as aliases of
-// rules.qualify and rules.unqualify, and the error names the key to write.
-// Unknown keys are already an error, so the alternative to an alias was never
-// "ignore it"; it was this message or a bare "field not found".
-func TestApplyRejectsFormerRuleKeys(t *testing.T) {
-	for _, tt := range []struct {
-		yaml string
-		want string
-	}{
-		{"rules:\n  promote: always\n", "rules.qualify"},
-		{"rules:\n  promote: true\n", "rules.qualify"},
-		{"rules:\n  demote: true\n", "rules.unqualify"},
-		{"rules:\n  demote: false\n", "rules.unqualify"},
-	} {
-		f, err := config.Load(write(t, t.TempDir(), ".declscope.yaml", tt.yaml))
-		if err != nil {
-			t.Fatalf("%q: Load must get past the decoder so the error can name the new key: %v", tt.yaml, err)
-		}
-		opts := internal.DefaultOptions()
-		err = f.Apply(&opts)
-		if err == nil {
-			t.Errorf("%q: want an error naming %s, got none", tt.yaml, tt.want)
-			continue
-		}
-		if !strings.Contains(err.Error(), tt.want) {
-			t.Errorf("%q: error %q does not name %s", tt.yaml, err, tt.want)
-		}
-		if opts.Qualify != internal.QualifyOnDemand || opts.CheckUnqualify {
-			t.Errorf("%q: a refused key must not change the options", tt.yaml)
-		}
-	}
-}
-
-// TestResolveRejectsFormerRuleKey checks the same through the lookup the
-// analyzer uses, so that the path of the offending config is part of the
-// message.
-func TestResolveRejectsFormerRuleKey(t *testing.T) {
-	root := t.TempDir()
-	write(t, root, "go.mod", "module example.com/m\n")
-	path := write(t, root, ".declscope.yaml", "rules:\n  demote: true\n")
-
-	_, _, err := config.Resolve(root, "")
-	if err == nil {
-		t.Fatal("want an error for rules.demote")
-	}
-	for _, want := range []string{path, "rules.unqualify"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q does not mention %s", err, want)
-		}
-	}
-}
 
 // TestResolveLoadsBaseline pins the analyzer's side of the lookup: a
 // default-named baseline above the package is found and loaded.

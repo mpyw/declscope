@@ -277,9 +277,6 @@ func parseIgnore(pos token.Pos, arg string) (Ignore, *Problem) {
 		}
 		r, ok := rule.Parse(name)
 		if !ok {
-			if now, renamed := rule.Renamed(name); renamed {
-				return Ignore{}, &Problem{pos, fmt.Sprintf("rule %q in declscope:ignore was renamed to %q", name, now)}
-			}
 			return Ignore{}, &Problem{pos, fmt.Sprintf("unknown rule %q in declscope:ignore (want one of %s)",
 				name, strings.Join(rule.Names(), ", "))}
 		}

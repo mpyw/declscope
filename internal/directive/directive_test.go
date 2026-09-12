@@ -4,7 +4,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"strings"
 	"testing"
 
 	"github.com/mpyw/declscope/internal/directive"
@@ -80,29 +79,6 @@ func TestParseDeclProblems(t *testing.T) {
 				t.Errorf("want a problem, got none")
 			}
 		})
-	}
-}
-
-// TestParseDeclIgnoreFormerRuleName checks that an ignore written against a
-// rule's former name is rejected like any unknown rule, but with the current
-// name in the message instead of the whole list.
-func TestParseDeclIgnoreFormerRuleName(t *testing.T) {
-	for old, now := range map[string]string{
-		"escape":  "boundary",
-		"promote": "qualify",
-		"demote":  "unqualify",
-	} {
-		fn := firstFunc(t, "package p\n\n//declscope:ignore "+old+"\nfunc f() {}\n")
-		d := directive.ParseDecl(fn.Doc)
-		if len(d.Ignores) != 0 {
-			t.Errorf("%s: a former name must not silence anything, got %v", old, d.Ignores)
-		}
-		if len(d.Problems) != 1 {
-			t.Fatalf("%s: got %d problems, want 1: %v", old, len(d.Problems), d.Problems)
-		}
-		if msg := d.Problems[0].Msg; !strings.Contains(msg, `"`+now+`"`) || !strings.Contains(msg, `"`+old+`"`) {
-			t.Errorf("%s: problem %q should name both the old and the new rule", old, msg)
-		}
 	}
 }
 

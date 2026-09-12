@@ -374,7 +374,7 @@ exclude:
 baseline: .declscope-baseline.yaml   # relative to this file; found automatically if named by default
 ```
 
-Only the naming rules appear here; see [Rules](#rules) for why. Unknown keys are an error rather than a silent no-op: a typo in a rule name would otherwise leave the rule at its default with no sign of it. The rules' former names (`rules.promote`, `rules.demote`) are refused the same way, with the key to write instead.
+Only the naming rules appear here; see [Rules](#rules) for why. Unknown keys are an error rather than a silent no-op: a typo in a rule name would otherwise leave the rule at its default with no sign of it.
 
 ## Adopting on an existing codebase
 
@@ -411,7 +411,7 @@ A baseline suppresses, it does not endorse. Nothing is written into the source, 
 declscope baseline [-o path] [-config path] [packages]
 ```
 
-Each package's entries go to the file the analyzer will consult for that package: the baseline its nearest config file names, else the nearest existing `.declscope-baseline.yaml` between the package and the working directory, else a new `.declscope-baseline.yaml` in the working directory. A subtree with its own baseline keeps it, and a run from a subdirectory writes under that subdirectory rather than rewriting a baseline above it with only part of its entries. Every file written is regenerated wholesale, and the existing one is never read, so a baseline that fails to parse is replaced like any other — including one written under the rules' former names (`escape`, `promote`, `demote`), which the analyzer refuses with a message naming the new ones rather than reading it as an alias.
+Each package's entries go to the file the analyzer will consult for that package: the baseline its nearest config file names, else the nearest existing `.declscope-baseline.yaml` between the package and the working directory, else a new `.declscope-baseline.yaml` in the working directory. A subtree with its own baseline keeps it, and a run from a subdirectory writes under that subdirectory rather than rewriting a baseline above it with only part of its entries. Every file written is regenerated wholesale, and the existing one is never read, so a baseline that fails to parse is replaced like any other.
 
 A package whose lookup cannot reach the working directory — one in another module, or outside the directory the command runs from — is refused rather than recorded where nothing would find it. `-o` gathers every entry into the one file named instead, and leaves placing it to you.
 

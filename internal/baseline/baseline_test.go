@@ -3,7 +3,6 @@ package baseline_test
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/mpyw/declscope/internal/baseline"
@@ -117,35 +116,6 @@ func TestLoadRejectsUnknownKey(t *testing.T) {
 }
 
 // TestLoadRejectsFormerRuleNames pins the decision on a baseline written before
-// the rules were renamed: a section under escape, promote or demote is refused
-// rather than read as boundary, qualify or unqualify. Left alone it would
-// match nothing and every violation it recorded would come back with nothing
-// saying why; the error instead names the rename and the remedy, which is the
-// same regeneration that fixes every other baseline problem and never reads
-// the file it replaces.
-func TestLoadRejectsFormerRuleNames(t *testing.T) {
-	for old, now := range map[string]string{
-		"escape":  "boundary",
-		"promote": "qualify",
-		"demote":  "unqualify",
-	} {
-		path := filepath.Join(t.TempDir(), ".declscope-baseline.yaml")
-		content := "packages:\n  example.com/a:\n    " + old + ": [helper]\n"
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		set, err := baseline.Load(path)
-		if err == nil {
-			t.Errorf("%s: want an error, got a set of %d", old, set.Len())
-			continue
-		}
-		for _, want := range []string{path, "example.com/a", old, now, "declscope baseline"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("%s: error %q does not mention %q", old, err, want)
-			}
-		}
-	}
-}
 
 // TestNilSet checks that the zero value behaves as an absent baseline, which
 // is how the analyzer runs when none is configured.
