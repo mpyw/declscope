@@ -198,7 +198,13 @@ func (c *collection) checkEscape(pass *analysis.Pass, opts Options, t *target) (
 // requiring the label only once a package has a second namespace to
 // distinguish. See PromoteMode.
 func (c *collection) checkPromote(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.Promote.required(c.namespaces) || !t.renameable || t.ownerNS == "" {
+	if !opts.Promote.required(c.namespaces) || !t.renameable {
+		return finding{}, false
+	}
+	// A namespace is always an identity, but not always a label: 2fa.go
+	// bounds its declarations like any other file, yet no identifier can
+	// start with a digit, so there is no prefix to ask for.
+	if !namespace.IsLabel(t.ownerNS) {
 		return finding{}, false
 	}
 	name := t.obj.Name()
@@ -231,7 +237,7 @@ func (c *collection) checkPromote(pass *analysis.Pass, opts Options, t *target) 
 // the label and never part of the concept, since nothing in the name can tell
 // userID-the-label from userID-the-word.
 func (c *collection) checkDemote(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.CheckDemote || !t.renameable || t.ownerNS == "" {
+	if !opts.CheckDemote || !t.renameable || !namespace.IsLabel(t.ownerNS) {
 		return finding{}, false
 	}
 	if opts.Promote.required(c.namespaces) {
@@ -245,8 +251,10 @@ func (c *collection) checkDemote(pass *analysis.Pass, opts Options, t *target) (
 	// causality usually runs the other way there: user.go is named after the
 	// user it declares, not the other way about. promote still accepts such a
 	// name, since the owning unit is legible from it, but there is nothing
-	// here for demote to strip.
-	if name == t.ownerNS {
+	// here for demote to strip. The label is matched ignoring case, so the
+	// exemption is too: userId in user_id.go is the namespace, spelled by
+	// someone who did not know how the linter would spell it.
+	if strings.EqualFold(name, t.ownerNS) {
 		return finding{}, false
 	}
 

@@ -34,7 +34,11 @@ The namespace count that `rules.promote: ondemand` keys off is taken from the pa
 
 The indirection is deliberate: using the file name *itself* would mean renaming a file cascades into renaming every identifier it declares. It also makes `_test.go` sharing its subject's namespace fall out naturally rather than needing a special case.
 
-Normalization rules live in `internal/namespace` and are covered by a table test. GOOS/GOARCH suffixes are stripped because they are build constraints, not namespaces.
+Normalization rules live in `internal/namespace` and are covered by a table test. GOOS/GOARCH suffixes are stripped because they are build constraints, not namespaces. Every run of non-identifier characters is a separator (`foo-bar.go` → `fooBar`), a PascalCase stem is lowered (`Foo.go` → `foo`), and an initialism in a later segment is spelled the way Go spells it (`user_id.go` → `userID`) using golint's `commonInitialisms` list, vendored rather than pulled in as a dependency.
+
+**A namespace is an identity first and a label second, and the two are kept apart.** `namespace.Of` always returns the normalised stem — `2fa.go` yields `2fa` — so that `fileInfo.key()` never falls back to the file path and `2fa_test.go` shares its subject's namespace like every other test. `namespace.IsLabel` separately says whether that stem can be prepended to an unexported identifier; `checkPromote` and `checkDemote` gate on it and stay silent when it is false, because the alternative was suggesting `2faTotp` or `FooBar`. An earlier version had `Of` return `""` for a digit-leading stem, which lost the identity in order to protect the label — the second job was allowed to kill the first.
+
+`namespace.HasPrefix` matches the label **ignoring case** and then requires a word boundary, so `userIDCache`, `userIdCache` and `userIdcache` all carry `userID` while `useridentity` does not: a word break the name reproduces inside a multi-word namespace already confirms the label, and only a single word running on in lowercase is a fragment. This is what stops the linter guessing which spelling of an initialism the author chose and demanding `userIdUserIDCache`. `Qualify` spells the first word of the name the same way (`id` → `userID`).
 
 ## Architecture
 
@@ -109,7 +113,7 @@ Every diagnostic carries **at most one** fix, which is what makes `-fix` unambig
 
 They can never conflict, because a rename does not change reach. (`x/tools`' `ApplyFixes` applies only the first fix of a diagnostic and logs `ignoring alternative fix` for the rest, so carrying alternatives was always a liability.)
 
-Renames are skipped when `pass.Pkg.Scope().Lookup(newName)` is non-nil, since renaming into an existing package-level name would not compile. They are also never offered for members, or for a file whose name yields no valid namespace.
+Renames are skipped when `pass.Pkg.Scope().Lookup(newName)` is non-nil, since renaming into an existing package-level name would not compile. They are also never offered for members. A namespace that cannot be a label (`namespace.IsLabel` is false) produces no naming diagnostic at all, rather than a diagnostic without a rename.
 
 **A declaration whose scope came from a directive gets no fix at all** (`t.dir.HasScope`). Both the directive and the use site are deliberate, so `-fix` must not overwrite the author's directive. An earlier version emitted `//declscope:package` next to an existing `//declscope:file`, producing code the linter itself rejected.
 

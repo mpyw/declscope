@@ -45,7 +45,11 @@ By default a namespace is derived from the file name, which makes **each file it
 | `user_repository_test.go` | `userRepository` — a test shares its subject's namespace |
 | `parser_linux.go`, `parser_linux_amd64.go` | `parser` — GOOS/GOARCH suffixes are build constraints, not namespaces |
 | `v2_client.go` | `v2Client` |
-| `2fa_auth.go` | *(none — no identifier may start with a digit)* |
+| `user_id.go`, `parse_json.go` | `userID`, `parseJSON` — an initialism is spelled the way Go spells it |
+| `foo-bar.go`, `Foo.go` | `fooBar`, `foo` — any separator, and a PascalCase stem, normalise to lowerCamelCase |
+| `2fa_auth.go` | `2faAuth` — a namespace, but never a label (see below) |
+
+A namespace does two jobs. As an **identity** it answers "is this use inside the same namespace?", and every file with a stem has one — `2fa_test.go` shares the namespace of `2fa.go` like any other test. As a **label** it is the prefix [`promote`](#promote) asks a declaration to carry, and only a namespace that can start an unexported identifier qualifies. No identifier begins with a digit, so `2faAuth` bounds its declarations but the naming rules ask nothing of them.
 
 Files can opt into a **shared** namespace, which is how one logical unit spans several files:
 
@@ -187,7 +191,9 @@ Exported identifiers are exempt: they are already qualified by the package name 
 | `true` | Required unconditionally. Costs a little stutter in single-file packages, but means a package gaining its second namespace is not a mass rename. |
 | `false` | Off, leaving reach enforcement without any naming discipline. |
 
-Where the rename target is already taken, the violation is reported without a fix.
+The label is matched **ignoring case**, and then has to end at a word boundary: in `user_id.go` (namespace `userID`) `userIDCache`, `userIdCache` and `userIdcache` all carry it, while `useridentity` does not. You never have to guess which spelling of an initialism the linter chose. The rename it offers spells both halves the way Go does — `id` in `user.go` becomes `userID`, `urlPath` becomes `userURLPath` — never `userId`.
+
+Where the rename target is already taken, the violation is reported without a fix. Where the namespace cannot be a label at all (`2fa.go`), `promote` and `demote` both stay silent: there is no prefix they could ask for, and no rename would compile.
 
 ### `demote`
 
