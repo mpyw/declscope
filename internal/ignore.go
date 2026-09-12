@@ -17,9 +17,9 @@ import (
 // ignoreSite is one physical ignore directive, however many declarations it
 // reaches. A directive on a block is copied into every spec by Decl.Merge and
 // one on `var a, b` is shared by both names, but it is still one comment, so it
-// is judged once: unused only if it silenced nothing for any of them. Judging
-// it per target reported it unused whenever any sibling did not need it, and
-// reported a wholly unused one once per sibling.
+// is judged once: unused only if it silenced nothing for any of them. Judged
+// per target, it would be reported unused whenever any sibling did not need
+// it, and a wholly unused one would be reported once per sibling.
 type ignoreSite struct {
 	ig directive.Ignore
 	// decls names the declarations the directive reaches, in source order,
@@ -189,7 +189,7 @@ func (c *collection) ignored(ignores []directive.Ignore, r rule.Rule) bool {
 // variant, on the same reasoning that keeps unmatched baseline entries
 // unreported. Under -test (the default) the test variant runs and nothing is
 // lost; with -test=false, a package with in-package tests gets no
-// unused-ignore report at all, which is the honest answer.
+// unused-ignore report at all, which is the only report that can be trusted.
 func (c *collection) reportUnusedIgnores(pass *analysis.Pass) {
 	if c.hasUnseenTests(pass) {
 		return

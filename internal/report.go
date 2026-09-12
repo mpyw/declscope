@@ -186,7 +186,7 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 	if isExported(name) || namespace.HasPrefix(name, t.ownerNS) {
 		return finding{}, false
 	}
-	// main is spelled by the toolchain, not by us.
+	// main is a name the toolchain requires, so no label can be asked of it.
 	if t.kind == kindFunc && name == "main" && pass.Pkg.Name() == "main" {
 		return finding{}, false
 	}

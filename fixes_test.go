@@ -21,7 +21,7 @@ func TestSuggestedFixInlineStruct(t *testing.T) {
 
 // TestSuggestedFixQualify checks the rename offered by the label rule. It
 // never changes a declaration's reach, so it cannot conflict with the
-// directive fix the way the old name-driven rename could.
+// directive fix.
 func TestSuggestedFixQualify(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixqualify")
 }
@@ -42,7 +42,7 @@ func TestSuggestedFixEmbedded(t *testing.T) {
 // TestSuggestedFixCapture checks that a new name bound at a reference by a
 // parameter or a local, or in file scope by an import anywhere in the
 // package, withholds the rename. A local declared after the reference does
-// not bind it, and does not.
+// not bind it, and withholds nothing.
 func TestSuggestedFixCapture(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixcapture")
 }

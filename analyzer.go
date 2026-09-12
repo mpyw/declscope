@@ -1,12 +1,12 @@
-// Package declscope provides a go/analysis based analyzer that gives Go a
-// third visibility level between exported and unexported.
+// Package declscope provides a go/analysis based analyzer that gives Go
+// pseudo visibility levels between exported and unexported.
 //
 // Go has two visibility levels, and the unexported one spans the whole
 // package. In a package of any size that makes every helper, every field and
 // every method a package-wide name, with no way to say "this belongs to this
 // file" short of splitting the package. declscope adds file-private and
-// package-internal as pseudo levels, carried by naming convention and by
-// explicit directives, and enforces them statically.
+// package-internal as pseudo levels, selected by explicit directives and
+// labelled by a naming convention, and enforces them statically.
 package declscope
 
 import (
@@ -45,7 +45,7 @@ func run(pass *analysis.Pass) (any, error) {
 // or tighten the rules without affecting the rest of the module.
 //
 // The error is returned as is: the driver prefixes it with the analyzer's
-// name when printing, so adding "declscope: " here showed it twice.
+// name when printing, so a "declscope: " prefix added here would appear twice.
 func options(pass *analysis.Pass) (internal.Options, error) {
 	explicit := pass.Analyzer.Flags.Lookup("config").Value.String()
 	opts, _, err := config.Resolve(packageDir(pass), explicit)

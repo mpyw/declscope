@@ -46,7 +46,7 @@ const defaultBaselineName = ".declscope-baseline.yaml"
 // identify a violation structurally — package, rule, declaration — and a
 // driver only hands back rendered diagnostics. The analyzer declares no
 // Requires and exports no facts, so driving it over go/packages directly is a
-// few lines and avoids parsing our own messages back out of strings.
+// few lines and avoids parsing the analyzer's own messages back out of strings.
 //
 //declscope:package
 func runBaseline(args []string) {
@@ -127,7 +127,7 @@ func collect(patterns []string, configPath, out, cwd string) (map[string][]basel
 		// Options are resolved per package, since a subtree may configure its
 		// own rules. The existing baseline is deliberately not loaded:
 		// regeneration records the current state from scratch, and a file
-		// that no longer parses must not block being replaced.
+		// that fails to parse must not block being replaced.
 		opts, _, named, err := config.ResolveForBaseline(dir, configPath)
 		if err != nil {
 			return nil, err

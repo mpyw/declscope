@@ -20,9 +20,6 @@ type fileInfo struct {
 	file *ast.File
 	path string
 	ns   string
-	// explicit records whether ns came from a directive rather than the file
-	// name, which changes the advice given when a namespace has no members.
-	explicit bool
 
 	// lineComments indexes every comment group by the line it starts on, so
 	// that trailing directives can be found on declarations that carry no
@@ -45,9 +42,9 @@ func (f *fileInfo) trailingAt(fset *token.FileSet, pos token.Pos) *ast.CommentGr
 	return g
 }
 
-// key identifies the namespace for comparison. A file whose name cannot yield
-// a valid identifier has no namespace, and must not be treated as sharing one
-// with every other such file, so it falls back to its own path.
+// key identifies the namespace for comparison. A file whose name has no stem
+// at all has no namespace, and must not be treated as sharing one with every
+// other such file, so it falls back to its own path.
 func (f *fileInfo) key() string {
 	if f.ns != "" {
 		return f.ns
@@ -185,7 +182,7 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 			}
 		}
 		if fileDir.HasNamespace {
-			fi.ns, fi.explicit = fileDir.Namespace, true
+			fi.ns = fileDir.Namespace
 		} else {
 			fi.ns = namespace.Of(path)
 		}
@@ -393,8 +390,8 @@ func (c *collection) add(t *target) {
 //
 // An ident can play both roles at once: an embedded field's ident defines the
 // field and uses the type, so Defs and Uses are consulted independently rather
-// than one shadowing the other. Checking Defs first and returning used to drop
-// the type use, which lost both a rename edit and a boundary diagnostic.
+// than one shadowing the other. Returning after a hit in Defs would drop the
+// type use, and with it both a rename edit and a boundary diagnostic.
 func (c *collection) collectRefs(pass *analysis.Pass) {
 	for _, fi := range c.files {
 		ast.Inspect(fi.file, func(n ast.Node) bool {
@@ -425,7 +422,7 @@ func (c *collection) collectRefs(pass *analysis.Pass) {
 // the source. go/types records the instantiated object in Uses for a selection
 // on a generic type — List[int].items, and List[T].items inside List's own
 // methods — while byObj is keyed by the declaration, so without this every
-// member of a generic type went unchecked. Anything else is returned as is.
+// member of a generic type would go unchecked. Anything else is returned as is.
 func origin(obj types.Object) types.Object {
 	switch o := obj.(type) {
 	case *types.Var:

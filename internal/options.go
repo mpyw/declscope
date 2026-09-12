@@ -89,10 +89,6 @@ type Options struct {
 	// directive.
 	Unexported scope.Scope
 
-	// CheckMembers bounds unexported methods and struct fields by the
-	// namespace of the type they belong to, which is the encapsulation Go
-	// itself cannot express.
-	CheckMembers bool
 	// Qualify says when an unexported package-level declaration must carry its
 	// namespace as a label.
 	Qualify QualifyMode
@@ -114,8 +110,8 @@ type Options struct {
 	// Baseline suppresses violations that were already present when declscope
 	// was adopted. It is nil when none is configured, and also while a
 	// baseline is being regenerated: config.Resolve loads it, config.
-	// ResolveForBaseline deliberately does not, so that a baseline which no
-	// longer parses cannot block its own regeneration.
+	// ResolveForBaseline deliberately does not, so that a baseline which fails
+	// to parse cannot block its own regeneration.
 	Baseline *baseline.Set
 
 	excludeRE []*regexp.Regexp
@@ -123,8 +119,8 @@ type Options struct {
 
 // DefaultOptions mirrors the rules stated in the README: exported is public,
 // every other declaration is private to its namespace until a directive widens
-// it, and the namespace prefix is a mandatory ownership label that grants
-// nothing by itself.
+// it, and the namespace prefix is an ownership label, required once a package
+// has a second namespace, that grants nothing by itself.
 func DefaultOptions() Options {
 	return Options{
 		Exported:       scope.Public,
@@ -171,13 +167,12 @@ func (o Options) Excluded(path string) bool {
 // belongs to, and a prefix added for legibility would silently widen it.
 // Reach is stated with a directive; the prefix only labels ownership.
 //
-// Members resolve the same way as everything else. What sets them apart is the
-// boundary their scope is measured against — the namespace of their type, not
-// of their file — and their exemption from the label rule, since a type
-// already namespaces what it owns. Neither is a matter of scope, so neither
-// belongs here; an earlier version hardcoded public and file-private for
-// members, which quietly made defaults.exported and defaults.unexported apply
-// to only half the declarations in a package.
+// Members resolve the same way as everything else, so that defaults.exported
+// and defaults.unexported govern every declaration in a package rather than
+// half of them. What sets members apart is the boundary their scope is
+// measured against — the namespace of their type, not of their file — and
+// their exemption from the label rule, since a type already namespaces what
+// it owns. Neither is a matter of scope, so neither belongs here.
 func (o Options) resolve(name string, dir directive.Decl) scope.Scope {
 	if dir.HasScope {
 		return dir.Scope

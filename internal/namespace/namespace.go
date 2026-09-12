@@ -237,9 +237,9 @@ func isInitialism(s string) bool { return commonInitialisms[strings.ToUpper(s)] 
 func isKnownOS(s string) bool    { return knownOS[s] }
 func isKnownArch(s string) bool  { return knownArch[s] }
 
-// commonInitialisms is the list golint used to decide which words are spelled
-// in capitals. It is vendored rather than pulled in as a dependency: the list
-// is small and stable, and the module otherwise depends only on x/tools and
+// commonInitialisms is golint's list of the words that are spelled in
+// capitals. It is vendored rather than pulled in as a dependency: the list is
+// small and stable, and the module otherwise depends only on x/tools and
 // yaml.v3.
 var commonInitialisms = map[string]bool{
 	"ACL": true, "API": true, "ASCII": true, "CPU": true, "CSS": true,
