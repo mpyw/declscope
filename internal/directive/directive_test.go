@@ -98,18 +98,18 @@ func TestParseDeclIgnore(t *testing.T) {
 			name:    "one rule",
 			comment: "//declscope:ignore demote",
 			covers:  []rule.Rule{rule.Demote},
-			misses:  []rule.Rule{rule.Escape, rule.Prefix, rule.ForeignMethod},
+			misses:  []rule.Rule{rule.Escape, rule.Promote, rule.ForeignMethod},
 		},
 		{
 			name:    "several rules",
-			comment: "//declscope:ignore demote,prefix",
-			covers:  []rule.Rule{rule.Demote, rule.Prefix},
+			comment: "//declscope:ignore demote,promote",
+			covers:  []rule.Rule{rule.Demote, rule.Promote},
 			misses:  []rule.Rule{rule.Escape, rule.ForeignMethod},
 		},
 		{
 			name:    "spaces around the separator",
-			comment: "//declscope:ignore demote, prefix",
-			covers:  []rule.Rule{rule.Demote, rule.Prefix},
+			comment: "//declscope:ignore demote, promote",
+			covers:  []rule.Rule{rule.Demote, rule.Promote},
 			misses:  []rule.Rule{rule.Escape},
 		},
 		{
@@ -146,7 +146,7 @@ func TestParseDeclIgnore(t *testing.T) {
 // TestParseDeclIgnoreAccumulates checks that several ignore directives on one
 // declaration are all kept, so that each can be reported unused on its own.
 func TestParseDeclIgnoreAccumulates(t *testing.T) {
-	fn := firstFunc(t, "package p\n\n//declscope:ignore demote\n//declscope:ignore prefix\nfunc f() {}\n")
+	fn := firstFunc(t, "package p\n\n//declscope:ignore demote\n//declscope:ignore promote\nfunc f() {}\n")
 	if d := directive.ParseDecl(fn.Doc); len(d.Ignores) != 2 {
 		t.Errorf("got %d ignores, want 2", len(d.Ignores))
 	}

@@ -32,11 +32,11 @@ func TestGeneratedFilesExcluded(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "generated")
 }
 
-// TestPrefixRequired checks that an unexported package-level declaration must
-// carry its namespace as a label, and that members and exported identifiers
-// are exempt.
-func TestPrefixRequired(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "prefixrule")
+// TestPromote checks that an unexported package-level declaration must carry
+// its namespace as a label, and that members and exported identifiers are
+// exempt.
+func TestPromote(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "promoterule")
 }
 
 // TestSingleNamespace checks that the label is not required in a package with
@@ -45,8 +45,9 @@ func TestSingleNamespace(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "singlens")
 }
 
-// TestForeignMethods checks the opt-in rule for unexported methods grown on a
-// type belonging to another namespace.
+// TestForeignMethods checks the rule for unexported methods grown on a type
+// belonging to another namespace, and that it stays quiet where the boundary
+// crossing rule has already spoken at the same position.
 func TestForeignMethods(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "foreign")
 }
@@ -78,10 +79,10 @@ func TestExplicitScopeConflict(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "explicit")
 }
 
-// TestPrefixAlways checks rules.prefix: true, which requires the label even in
-// a package with a single namespace.
-func TestPrefixAlways(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "prefixalways")
+// TestPromoteAlways checks rules.promote: true, which requires the label even
+// in a package with a single namespace.
+func TestPromoteAlways(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "promotealways")
 }
 
 // TestDemote checks the mirror of the label rule: where the label is not

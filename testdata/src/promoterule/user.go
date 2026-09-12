@@ -1,4 +1,4 @@
-package prefixrule
+package promoterule
 
 // Unexported package-level declarations must say which unit owns them.
 func helper() int { return 1 } // want `func helper does not carry the prefix of namespace "user"; rename it to userHelper`

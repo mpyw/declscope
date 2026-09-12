@@ -19,9 +19,9 @@ func TestSuggestedFixInlineStruct(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixinline")
 }
 
-// TestSuggestedFixPrefix checks the rename offered by the label rule. It never
-// changes a declaration's reach, so it cannot conflict with the directive fix
-// the way the old name-driven rename could.
-func TestSuggestedFixPrefix(t *testing.T) {
-	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixprefix")
+// TestSuggestedFixPromote checks the rename offered by the label rule. It
+// never changes a declaration's reach, so it cannot conflict with the
+// directive fix the way the old name-driven rename could.
+func TestSuggestedFixPromote(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixpromote")
 }

@@ -28,9 +28,8 @@ defaults:
   exported: package
   unexported: package
 rules:
-  prefix: false
+  promote: false
   members: false
-  foreign-methods: true
 exclude:
   - "**/mock_*.go"
 `)
@@ -46,7 +45,7 @@ exclude:
 	if opts.Exported != scope.PackageInternal || opts.Unexported != scope.PackageInternal {
 		t.Errorf("defaults not applied: %+v", opts)
 	}
-	if opts.Prefix != internal.PrefixNever || opts.CheckMembers || !opts.CheckForeignMethods {
+	if opts.Promote != internal.PromoteNever || opts.CheckMembers {
 		t.Errorf("rules not applied: %+v", opts)
 	}
 	if len(opts.Exclude) != 1 || opts.Exclude[0] != "**/mock_*.go" {
@@ -57,7 +56,7 @@ exclude:
 // TestApplyKeepsDefaults checks that omitting a key keeps the built-in
 // default rather than resetting it to the zero value.
 func TestApplyKeepsDefaults(t *testing.T) {
-	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  foreign-methods: true\n")
+	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  demote: true\n")
 	f, err := config.Load(path)
 	if err != nil {
 		t.Fatal(err)
@@ -70,11 +69,11 @@ func TestApplyKeepsDefaults(t *testing.T) {
 	if opts.Exported != want.Exported || opts.Unexported != want.Unexported {
 		t.Errorf("defaults should be untouched, got %+v", opts)
 	}
-	if opts.CheckMembers != want.CheckMembers || opts.Prefix != want.Prefix {
+	if opts.CheckMembers != want.CheckMembers || opts.Promote != want.Promote {
 		t.Errorf("unnamed rules should be untouched, got %+v", opts)
 	}
-	if !opts.CheckForeignMethods {
-		t.Error("foreign-methods should be enabled")
+	if !opts.CheckDemote {
+		t.Error("demote should be enabled")
 	}
 }
 
@@ -143,17 +142,17 @@ func TestFindPrefersNearest(t *testing.T) {
 	}
 }
 
-// TestPrefixModes checks the tri-state rules.prefix setting: YAML hands true
+// TestPromoteModes checks the tri-state rules.promote setting: YAML hands true
 // and false over as booleans and ondemand as a string.
-func TestPrefixModes(t *testing.T) {
+func TestPromoteModes(t *testing.T) {
 	tests := []struct {
 		yaml string
-		want internal.PrefixMode
+		want internal.PromoteMode
 	}{
-		{"rules:\n  prefix: true\n", internal.PrefixAlways},
-		{"rules:\n  prefix: false\n", internal.PrefixNever},
-		{"rules:\n  prefix: ondemand\n", internal.PrefixOnDemand},
-		{"rules:\n  prefix: \"true\"\n", internal.PrefixAlways},
+		{"rules:\n  promote: true\n", internal.PromoteAlways},
+		{"rules:\n  promote: false\n", internal.PromoteNever},
+		{"rules:\n  promote: ondemand\n", internal.PromoteOnDemand},
+		{"rules:\n  promote: \"true\"\n", internal.PromoteAlways},
 	}
 	for _, tt := range tests {
 		path := write(t, t.TempDir(), ".declscope.yaml", tt.yaml)
@@ -165,22 +164,22 @@ func TestPrefixModes(t *testing.T) {
 		if err := f.Apply(&opts); err != nil {
 			t.Fatalf("%q: %v", tt.yaml, err)
 		}
-		if opts.Prefix != tt.want {
-			t.Errorf("%q: Prefix = %v, want %v", tt.yaml, opts.Prefix, tt.want)
+		if opts.Promote != tt.want {
+			t.Errorf("%q: Prefix = %v, want %v", tt.yaml, opts.Promote, tt.want)
 		}
 	}
 }
 
-// TestDefaultPrefixMode pins the default: the label is required only once a
+// TestDefaultPromoteMode pins the default: the label is required only once a
 // package has a second namespace to distinguish.
-func TestDefaultPrefixMode(t *testing.T) {
-	if got := internal.DefaultOptions().Prefix; got != internal.PrefixOnDemand {
+func TestDefaultPromoteMode(t *testing.T) {
+	if got := internal.DefaultOptions().Promote; got != internal.PromoteOnDemand {
 		t.Errorf("default Prefix = %v, want ondemand", got)
 	}
 }
 
-func TestApplyRejectsUnknownPrefixMode(t *testing.T) {
-	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  prefix: sometimes\n")
+func TestApplyRejectsUnknownPromoteMode(t *testing.T) {
+	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  promote: sometimes\n")
 	f, err := config.Load(path)
 	if err != nil {
 		t.Fatal(err)

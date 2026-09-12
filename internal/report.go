@@ -104,19 +104,26 @@ func ignored(ignores []directive.Ignore, r rule.Rule, used []bool) bool {
 
 func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []finding {
 	var out []finding
+	escaped := false
 	if t.scope == scope.FilePrivate {
 		if f, ok := c.checkEscape(pass, opts, t); ok {
 			out = append(out, f)
+			escaped = true
 		}
 	}
-	if f, ok := c.checkPrefix(pass, opts, t); ok {
+	if f, ok := c.checkPromote(pass, opts, t); ok {
 		out = append(out, f)
 	}
 	if f, ok := c.checkDemote(pass, opts, t); ok {
 		out = append(out, f)
 	}
-	if f, ok := c.checkForeignMethod(pass, opts, t); ok {
-		out = append(out, f)
+	// Only where escape said nothing: a foreign method that is actually called
+	// from its own file already produced a boundary crossing at this very
+	// position, and reporting both said the same thing twice.
+	if !escaped {
+		if f, ok := c.checkForeignMethod(pass, opts, t); ok {
+			out = append(out, f)
+		}
 	}
 	return out
 }
@@ -164,18 +171,18 @@ func (c *collection) checkEscape(pass *analysis.Pass, opts Options, t *target) (
 	return f, true
 }
 
-// checkPrefix requires an unexported package-level declaration to carry its
+// checkPromote requires an unexported package-level declaration to carry its
 // namespace as a prefix.
 //
 // The prefix grants nothing — reach is stated with a directive — so this is
 // purely an ownership label, making the owning unit legible at every use site
 // and in every stack trace and grep result.
 //
-// Whether it applies at all depends on rules.prefix, which defaults to
+// Whether it applies at all depends on rules.promote, which defaults to
 // requiring the label only once a package has a second namespace to
-// distinguish. See PrefixMode.
-func (c *collection) checkPrefix(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.Prefix.required(c.namespaces) || !t.renameable || t.ownerNS == "" {
+// distinguish. See PromoteMode.
+func (c *collection) checkPromote(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
+	if !opts.Promote.required(c.namespaces) || !t.renameable || t.ownerNS == "" {
 		return finding{}, false
 	}
 	name := t.obj.Name()
@@ -188,7 +195,7 @@ func (c *collection) checkPrefix(pass *analysis.Pass, opts Options, t *target) (
 	}
 
 	f := finding{
-		rule: rule.Prefix,
+		rule: rule.Promote,
 		decl: name,
 		pos:  t.ident.Pos(),
 		msg: fmt.Sprintf("%s %s does not carry the prefix of %s; rename it to %s",
@@ -201,7 +208,7 @@ func (c *collection) checkPrefix(pass *analysis.Pass, opts Options, t *target) (
 	return f, true
 }
 
-// checkDemote is the mirror of checkPrefix: where the label is not required,
+// checkDemote is the mirror of checkPromote: where the label is not required,
 // it must not be there either.
 //
 // Enabling it asserts that in this codebase a namespace prefix always means
@@ -211,7 +218,7 @@ func (c *collection) checkDemote(pass *analysis.Pass, opts Options, t *target) (
 	if !opts.CheckDemote || !t.renameable || t.ownerNS == "" {
 		return finding{}, false
 	}
-	if opts.Prefix.required(c.namespaces) {
+	if opts.Promote.required(c.namespaces) {
 		return finding{}, false
 	}
 	name := t.obj.Name()
@@ -241,8 +248,12 @@ func (c *collection) checkDemote(pass *analysis.Pass, opts Options, t *target) (
 // checkForeignMethod reports an unexported method grown on a type that belongs
 // to another namespace, which reaches into that namespace's internals from
 // outside.
+//
+// It is the declaration-site half of the escape rule, and covers the case
+// escape cannot see: a method that is never called, and so produces no
+// cross-namespace reference to find.
 func (c *collection) checkForeignMethod(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.CheckForeignMethods || t.kind != kindMethod || t.scope != scope.FilePrivate {
+	if t.kind != kindMethod || t.scope != scope.FilePrivate {
 		return finding{}, false
 	}
 	if t.owner == "" || t.file.key() == t.ownerKey {

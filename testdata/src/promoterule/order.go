@@ -1,4 +1,4 @@
-package prefixrule
+package promoterule
 
 // A second namespace, which is what gives the labels something to distinguish.
 // It deliberately touches nothing in namespace "user", so the only rule under

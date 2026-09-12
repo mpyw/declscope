@@ -10,10 +10,9 @@
 //	  unexported: file
 //
 //	rules:
-//	  prefix: ondemand       # true | false | ondemand (only once a package has two namespaces)
-//	  demote: false          # and where it is not required, forbid it
-//	  members: true          # bound unexported methods/fields by their type's namespace
-//	  foreign-methods: false # report unexported methods grown on another namespace's type
+//	  promote: ondemand    # true | false | ondemand (only once a package has two namespaces)
+//	  demote: false        # and where it is not required, forbid it
+//	  members: true        # bound unexported methods/fields by their type's namespace
 //
 //	exclude:
 //	  - "**/mock_*.go"
@@ -51,11 +50,10 @@ type File struct {
 	} `yaml:"defaults"`
 
 	Rules struct {
-		// Prefix is tri-state, so it arrives as a bool or as a string.
-		Prefix         any   `yaml:"prefix"`
-		Demote         *bool `yaml:"demote"`
-		Members        *bool `yaml:"members"`
-		ForeignMethods *bool `yaml:"foreign-methods"`
+		// Promote is tri-state, so it arrives as a bool or as a string.
+		Promote any   `yaml:"promote"`
+		Demote  *bool `yaml:"demote"`
+		Members *bool `yaml:"members"`
 	} `yaml:"rules"`
 
 	Exclude []string `yaml:"exclude"`
@@ -163,21 +161,18 @@ func (f *File) Apply(opts *internal.Options) error {
 		*field.dst = s
 	}
 
-	if f.Rules.Prefix != nil {
-		mode, ok := internal.ParsePrefixMode(f.Rules.Prefix)
+	if f.Rules.Promote != nil {
+		mode, ok := internal.ParsePromoteMode(f.Rules.Promote)
 		if !ok {
-			return fmt.Errorf("rules.prefix: want true, false or ondemand, got %v", f.Rules.Prefix)
+			return fmt.Errorf("rules.promote: want true, false or ondemand, got %v", f.Rules.Promote)
 		}
-		opts.Prefix = mode
+		opts.Promote = mode
 	}
 	if f.Rules.Demote != nil {
 		opts.CheckDemote = *f.Rules.Demote
 	}
 	if f.Rules.Members != nil {
 		opts.CheckMembers = *f.Rules.Members
-	}
-	if f.Rules.ForeignMethods != nil {
-		opts.CheckForeignMethods = *f.Rules.ForeignMethods
 	}
 	if f.Exclude != nil {
 		opts.Exclude = f.Exclude

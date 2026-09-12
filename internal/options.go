@@ -11,54 +11,55 @@ import (
 	"github.com/mpyw/declscope/internal/scope"
 )
 
-// PrefixMode says when the namespace label is required on unexported
+// PromoteMode says when the namespace label is required on unexported
 // package-level declarations.
-type PrefixMode int
+type PromoteMode int
 
 const (
-	// PrefixOnDemand requires the label only in a package with more than one
+	// PromoteOnDemand requires the label only in a package with more than one
 	// namespace. In a package with one, there is no boundary for a label to
 	// mark: every other rule is structurally inert there, since every
 	// reference is already inside the single namespace, and a prefix repeated
 	// on every declaration would distinguish nothing.
-	PrefixOnDemand PrefixMode = iota
-	// PrefixAlways requires the label unconditionally, so that a package
+	PromoteOnDemand PromoteMode = iota
+	// PromoteAlways requires the label unconditionally, so that a package
 	// gaining its second namespace does not turn into a mass rename.
-	PrefixAlways
-	// PrefixNever disables the rule.
-	PrefixNever
+	PromoteAlways
+	// PromoteNever disables the rule.
+	PromoteNever
 )
 
-func (m PrefixMode) String() string {
+func (m PromoteMode) String() string {
 	switch m {
-	case PrefixOnDemand:
+	case PromoteOnDemand:
 		return "ondemand"
-	case PrefixAlways:
+	case PromoteAlways:
 		return "true"
-	case PrefixNever:
+	case PromoteNever:
 		return "false"
 	default:
 		return "unknown"
 	}
 }
 
-// ParsePrefixMode reads the tri-state value of the rules.prefix setting, which
-// YAML hands over as a bool for true and false and as a string for ondemand.
-func ParsePrefixMode(value any) (PrefixMode, bool) {
+// ParsePromoteMode reads the tri-state value of the rules.promote setting,
+// which YAML hands over as a bool for true and false and as a string for
+// ondemand.
+func ParsePromoteMode(value any) (PromoteMode, bool) {
 	switch v := value.(type) {
 	case bool:
 		if v {
-			return PrefixAlways, true
+			return PromoteAlways, true
 		}
-		return PrefixNever, true
+		return PromoteNever, true
 	case string:
 		switch v {
 		case "ondemand":
-			return PrefixOnDemand, true
+			return PromoteOnDemand, true
 		case "true":
-			return PrefixAlways, true
+			return PromoteAlways, true
 		case "false":
-			return PrefixNever, true
+			return PromoteNever, true
 		}
 	}
 	return 0, false
@@ -66,11 +67,11 @@ func ParsePrefixMode(value any) (PrefixMode, bool) {
 
 // required reports whether the label rule applies to a package with the given
 // number of namespaces.
-func (m PrefixMode) required(namespaces int) bool {
+func (m PromoteMode) required(namespaces int) bool {
 	switch m {
-	case PrefixAlways:
+	case PromoteAlways:
 		return true
-	case PrefixOnDemand:
+	case PromoteOnDemand:
 		return namespaces > 1
 	default:
 		return false
@@ -90,17 +91,14 @@ type Options struct {
 	// namespace of the type they belong to, which is the encapsulation Go
 	// itself cannot express.
 	CheckMembers bool
-	// CheckForeignMethods reports an unexported method declared on a type that
-	// belongs to another namespace.
-	CheckForeignMethods bool
-	// Prefix says when an unexported package-level declaration must carry its
+	// Promote says when an unexported package-level declaration must carry its
 	// namespace as a label.
-	Prefix PrefixMode
+	Promote PromoteMode
 
-	// CheckDemote is the mirror of Prefix: where the label is not required, it
+	// CheckDemote is the mirror of Promote: where the label is not required, it
 	// must not be present either. Together the two settle the spelling of
 	// every unexported package-level name, in both directions. It is inert
-	// under PrefixAlways, where the label is always required.
+	// under PromoteAlways, where the label is always required.
 	CheckDemote bool
 
 	// Exclude holds glob patterns matched against file paths.
@@ -123,12 +121,11 @@ type Options struct {
 // nothing by itself.
 func DefaultOptions() Options {
 	return Options{
-		Exported:            scope.Public,
-		Unexported:          scope.FilePrivate,
-		CheckMembers:        true,
-		Prefix:              PrefixOnDemand,
-		CheckDemote:         false,
-		CheckForeignMethods: false,
+		Exported:     scope.Public,
+		Unexported:   scope.FilePrivate,
+		CheckMembers: true,
+		Promote:      PromoteOnDemand,
+		CheckDemote:  false,
 	}
 }
 

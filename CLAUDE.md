@@ -18,7 +18,7 @@ The single most important thing to understand before changing anything here is t
 
 Everything unexported is private to its namespace; `//declscope:package` is the only thing that widens it. An earlier design made a namespace prefix mean package-internal, which was rejected: it overloaded one signal with two meanings, so a prefix added purely for legibility silently widened a declaration, and a codebase that prefixed everything for readability would have ended up with nothing protected. Removing that also removed the `demotion` rule (which existed only to patch the overloading), the rename fix for boundary crossings, and the possibility of a diagnostic carrying two conflicting alternatives.
 
-The prefix instead does a separate job: it is an **ownership label** on unexported package-level declarations, making the owning unit legible at every use site. `rules.prefix` is tri-state (`internal.PrefixMode`) and defaults to `ondemand`, requiring it only once a package has a second namespace — in a package with one, every other rule is structurally inert anyway, since every reference is already inside the single namespace.
+The prefix instead does a separate job: it is an **ownership label** on unexported package-level declarations, making the owning unit legible at every use site. `rules.promote` is tri-state (`internal.PromoteMode`) and defaults to `ondemand`, requiring it only once a package has a second namespace — in a package with one, every other rule is structurally inert anyway, since every reference is already inside the single namespace.
 
 **Methods and struct fields are governed differently.** They are already namespaced by the type that owns them and cannot collide, so a label would produce `u.userSave()`, exactly the stutter Go idiom avoids. Their problem is encapsulation, not naming, so the boundary is the namespace of the **type**, not of the file, and a member violation is never fixed by renaming.
 
@@ -26,7 +26,7 @@ The prefix instead does a separate job: it is an **ownership label** on unexport
 
 A namespace is the unit of file privacy, defaulting to the camelCased file name so that each file is its own namespace, and overridable with `//declscope:namespace <name>` before the package clause.
 
-The namespace count that `rules.prefix: ondemand` keys off is taken from the package's **non-test** files (`collection.namespaces`). A test file joins its subject's namespace rather than creating a boundary, and counting one whose name matches no source file (`integration_test.go`) would make a package's test variant disagree with the package itself.
+The namespace count that `rules.promote: ondemand` keys off is taken from the package's **non-test** files (`collection.namespaces`). A test file joins its subject's namespace rather than creating a boundary, and counting one whose name matches no source file (`integration_test.go`) would make a package's test variant disagree with the package itself.
 
 The indirection is deliberate: using the file name *itself* would mean renaming a file cascades into renaming every identifier it declares. It also makes `_test.go` sharing its subject's namespace fall out naturally rather than needing a special case.
 
@@ -60,9 +60,12 @@ cmd/declscope/            singlechecker entry point, plus the `baseline` subcomm
 
 ## Rules
 
-`internal/rule` holds the one vocabulary: `escape`, `prefix`, `demote`, `foreign-method`. The same name is the diagnostic's `Category`, the `Rule` field of a baseline key, and what an ignore directive targets. **Adding a rule means adding it there**, not inventing a string at the report site.
+`internal/rule` holds the one vocabulary: `escape`, `promote`, `demote`, `foreign-method`. The same name is the diagnostic's `Category`, the `Rule` field of a baseline key, and what an ignore directive targets. **Adding a rule means adding it there**, not inventing a string at the report site.
 
-`prefix` and `demote` are mirrors and are structurally exclusive: `checkDemote` returns early wherever `opts.Prefix.required(c.namespaces)` holds, so the two can never contradict each other on one declaration.
+The rules are pairwise exclusive **by construction**, which is what keeps one declaration from collecting two diagnostics that say the same thing. Preserve this when adding checks:
+
+- `checkDemote` returns early wherever `opts.Promote.required(c.namespaces)` holds, so `promote` and `demote` can never contradict each other.
+- `checkForeignMethod` runs only when `checkEscape` produced nothing (`escaped` in `check`). A foreign method that is actually called reports at the *same position* under both rules; `foreign-method` exists to cover the method that is never called and so leaves no cross-namespace reference to find.
 
 `namespace.Unqualify` (demote's rename) declines names where the prefix was not a word boundary, and names that would be left as a keyword or as nothing. It lowers a leftover initialism the way Go spells one (`userID` → `id`, `userURLPath` → `urlPath`), which the naive version got wrong (`iD`).
 
@@ -73,7 +76,7 @@ cmd/declscope/            singlechecker entry point, plus the `baseline` subcomm
 //declscope:package
 //declscope:file
 //declscope:ignore            // silence every rule for the declaration
-//declscope:ignore demote     // silence named rules only
+//declscope:ignore demote     // silence named rules only (escape, promote, demote, foreign-method)
 //declscope:namespace <name>  // file level, before the package clause
 ```
 
@@ -117,9 +120,9 @@ go test ./...          # analysistest + unit tests
 ./test_all.sh          # tests, golangci-lint, and dogfooding
 ```
 
-- `testdata/src/*` are `analysistest` packages. `foreign/`, `prefixalways/` and `label`-style packages carry their own `.declscope.yaml`, which also exercises config discovery end to end.
+- `testdata/src/*` are `analysistest` packages. `promotealways/`, `demote/` and `demoteinert/` carry their own `.declscope.yaml`, which also exercises config discovery end to end.
 - Goldens are plain files, not txtar archives, because no diagnostic carries alternative fixes any more.
-- Keep each testdata package focused on one rule. `prefixrule/order.go` deliberately touches nothing in namespace `user`, so the label rule is tested without escape diagnostics landing on the same lines.
+- Keep each testdata package focused on one rule. `promoterule/order.go` deliberately touches nothing in namespace `user`, so the label rule is tested without escape diagnostics landing on the same lines.
 - Diagnostics on directives are reported at the comment, so their `// want` comments belong on the directive line, not the declaration line.
 - Do not add a `.declscope.yaml` or `.declscope-baseline.yaml` at the repository root: both are found by an upward lookup from each analyzed package, so a default-named file at the root would reach every `testdata` package and change what the tests assert. The settings declscope holds itself to live in `.declscope-strict.yaml` and are applied with an explicit `-config` in CI and `test_all.sh`.
 - `testdata/src/baselined` carries its own `.declscope-baseline.yaml`, which also exercises the lookup end to end.

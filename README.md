@@ -70,7 +70,7 @@ func orderRun() int {
 }
 ```
 
-By default this is required only once a package has a **second namespace** — in a package with one, there is no boundary for a label to mark, and a prefix repeated on every declaration would distinguish nothing. Set `rules.prefix` to `true` to require it unconditionally, or `false` to drop the rule.
+By default (`rules.promote: ondemand`) this is required only once a package has a **second namespace** — in a package with one, there is no boundary for a label to mark, and a prefix repeated on every declaration would distinguish nothing. Set it to `true` to require the label unconditionally, or `false` to drop the rule.
 
 Exported identifiers are exempt: they are already qualified by the package name at every external use site.
 
@@ -101,11 +101,14 @@ Each check has one name, and that name is what appears as the diagnostic's categ
 | Rule | Reports | Fix | Default |
 | --- | --- | --- | --- |
 | `escape` | a declaration used from outside the namespace it is private to | insert `//declscope:package` | always on |
-| `prefix` | an unexported package-level declaration missing its namespace label | rename to add the label | `rules.prefix: ondemand` |
+| `foreign-method` | an unexported method grown on a type belonging to another namespace | insert `//declscope:package` | always on |
+| `promote` | an unexported package-level declaration missing its namespace label | rename to add the label | `rules.promote: ondemand` |
 | `demote` | a namespace label present where it is not required | rename to drop the label | `rules.demote: false` |
-| `foreign-method` | an unexported method grown on a type belonging to another namespace | insert `//declscope:package` | `rules.foreign-methods: false` |
 
-`prefix` and `demote` are mirrors, and never both apply to the same declaration: `demote` is inert wherever `prefix` requires the label. Turning both on settles the spelling of every unexported package-level name in both directions.
+The four are pairwise exclusive by construction, so no declaration ever collects two diagnostics saying the same thing:
+
+- `escape` and `foreign-method` are the use site and the declaration site of one boundary. `foreign-method` speaks only where `escape` did not — a method that is never called produces no cross-namespace reference to find.
+- `promote` and `demote` are mirrors. `demote` is inert wherever `promote` requires the label. Turning both on settles the spelling of every unexported package-level name in both directions.
 
 ## Namespaces
 
@@ -156,9 +159,9 @@ Deriving the default from the file name rather than using the file name itself i
 //declscope:package
 //declscope:file
 
-//declscope:ignore              // silence every rule for this declaration
-//declscope:ignore demote       // silence one
-//declscope:ignore demote,prefix
+//declscope:ignore               // silence every rule for this declaration
+//declscope:ignore demote        // silence one
+//declscope:ignore demote,promote
 
 //declscope:namespace <name>   // before the package clause; overrides the file's namespace
 ```
@@ -321,10 +324,9 @@ defaults:
   unexported: file
 
 rules:
-  prefix: ondemand        # true | false | ondemand (required once a package has two namespaces)
-  demote: false           # and where it is not required, forbid it
-  members: true           # bound unexported methods/fields by their type's namespace
-  foreign-methods: false  # report unexported methods grown on another namespace's type
+  promote: ondemand     # true | false | ondemand (required once a package has two namespaces)
+  demote: false         # and where it is not required, forbid it
+  members: true         # bound unexported methods/fields by their type's namespace
 
 exclude:
   - "**/mock_*.go"
@@ -334,13 +336,13 @@ baseline: .declscope-baseline.yaml   # relative to this file; found automaticall
 
 Unknown keys are an error rather than a silent no-op: a typo in a rule name would otherwise leave the rule at its default with no sign of it.
 
-### `prefix`
+### `promote`
 
 `ondemand` (the default) requires the label only in a package with more than one namespace. `true` requires it unconditionally, which costs a little stutter in single-file packages but means a package gaining its second namespace is not a mass rename. `false` drops the rule, leaving reach enforcement without any naming discipline.
 
 ### `demote`
 
-The mirror of `prefix`: where the label is not required, it must not be there. With both on, the spelling of every unexported package-level name is fully determined and fixable in either direction.
+The mirror of `promote`: where the label is not required, it must not be there. With both on, the spelling of every unexported package-level name is fully determined and fixable in either direction.
 
 Enabling it asserts that a namespace prefix in this codebase *always* means the label — nothing in a name can tell `userID`-the-label from `userID`-the-word, and `demote` will offer to rename it to `id`. Where the prefix is part of the concept, say so on the declaration:
 
@@ -351,9 +353,9 @@ var userID int
 
 The rename spells a leftover initialism the way Go does (`userID` → `id`, `userURLPath` → `urlPath`), and declines names that would be left as a keyword or as nothing at all.
 
-### `foreign-methods`
+### `foreign-method`
 
-Reports an unexported method grown on a type belonging to another namespace, at the declaration rather than at the call. Off by default because the cross-namespace reference rule already catches it wherever the method is actually used.
+Not configurable, and reported only where `escape` was silent. Between them they cover both halves of one boundary: `escape` sees a method that is called across namespaces, `foreign-method` sees one that is merely declared there and never called.
 
 This does **not** break the sealed-interface pattern: implementing `isSealed()` on your own type declares a method owned by *your* type, and satisfying an interface creates no reference to the interface's method.
 
