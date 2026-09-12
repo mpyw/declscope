@@ -225,11 +225,11 @@ func TestUnqualifyDeclines(t *testing.T) {
 		// The label is confirmed by the word break inside the namespace, but
 		// what follows is a fragment, so there is no clean place to cut.
 		{"userIdcache", "userID"},
-		// Identical to the namespace in another spelling: checkDemote exempts
+		// Identical to the namespace in another spelling: checkUnqualify exempts
 		// it, and nothing would remain anyway.
 		{"userId", "userID"},
 
-		// Unreachable: checkDemote gates these out before calling, so they
+		// Unreachable: checkUnqualify gates these out before calling, so they
 		// only pin that the function stays total rather than returning a
 		// nonsense rename for input it was not designed for.
 		{"user", "user"},   // identical to the namespace, so carries no label

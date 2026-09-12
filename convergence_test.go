@@ -31,7 +31,7 @@ type fixCase struct {
 
 var fixCases = []fixCase{
 	{
-		name: "escape and promote on the same declaration",
+		name: "boundary and qualify on the same declaration",
 		files: map[string]string{
 			"user.go":  "package x\n\nfunc helper() int { return 1 }\n",
 			"order.go": "package x\n\nfunc orderRun() int { return helper() }\n\nvar _ = orderRun\n",
@@ -73,15 +73,15 @@ var fixCases = []fixCase{
 		},
 	},
 	{
-		name:   "demote, including a name that cannot be unqualified",
-		config: "rules:\n  demote: true\n",
+		name:   "unqualify, including a name that cannot be unqualified",
+		config: "rules:\n  unqualify: true\n",
 		files: map[string]string{
 			"only.go": "package x\n\nfunc onlyHelper() int { return 1 }\n\nfunc onlyType() int { return 2 }\n\nvar onlyID = 3\n\nfunc Exported() int { return onlyHelper() + onlyType() + onlyID }\n",
 		},
 	},
 	{
-		name:   "promote required in a single-namespace package",
-		config: "rules:\n  promote: true\n",
+		name:   "qualify required in a single-namespace package",
+		config: "rules:\n  qualify: true\n",
 		files: map[string]string{
 			"only.go": "package x\n\nfunc helper() int { return 1 }\n\ntype shape struct{ side int }\n\nfunc Exported() int { return helper() + shape{}.side }\n",
 		},
@@ -117,7 +117,7 @@ var fixCases = []fixCase{
 	// wrong type.
 	{
 		name:   "rename captured by a parameter or a local at a reference (#1)",
-		config: "rules:\n  promote: true\n",
+		config: "rules:\n  qualify: true\n",
 		files: map[string]string{
 			"foo.go": "package x\n\nvar count = 10\n\n" +
 				"func Add(fooCount string) int { return len(fooCount) + count }\n\n" +
@@ -126,7 +126,7 @@ var fixCases = []fixCase{
 	},
 	{
 		name:   "rename colliding with an import in another file (#1)",
-		config: "rules:\n  promote: true\n",
+		config: "rules:\n  qualify: true\n",
 		files: map[string]string{
 			"foo.go": "package x\n\nvar count = 10\n\nfunc Add(x int) int { return x + count }\n",
 			"bar.go": "package x\n\nimport fooCount \"strings\"\n\nfunc Bar(s string) string { return fooCount.ToUpper(s) }\n",
@@ -134,28 +134,28 @@ var fixCases = []fixCase{
 	},
 	{
 		name:   "rename to a predeclared name (#1)",
-		config: "rules:\n  demote: true\n",
+		config: "rules:\n  unqualify: true\n",
 		files: map[string]string{
 			"only.go": "package x\n\nvar onlyLen = 3\n\nfunc Exported(s string) int { return len(s) + onlyLen }\n",
 		},
 	},
 	{
-		name:   "two demotes converging on one name (#2)",
-		config: "rules:\n  promote: false\n  demote: true\n",
+		name:   "two unqualify renames converging on one name (#2)",
+		config: "rules:\n  qualify: false\n  unqualify: true\n",
 		files: map[string]string{
 			"a.go": "package x\n\nvar aFoo = 1\n\nvar _ = aFoo\n",
 			"b.go": "package x\n\nvar bFoo = 2\n\nvar _ = bFoo\n",
 		},
 	},
 	{
-		name:   "two demotes converging through initialism lowering (#2)",
-		config: "rules:\n  demote: true\n",
+		name:   "two unqualify renames converging through initialism lowering (#2)",
+		config: "rules:\n  unqualify: true\n",
 		files: map[string]string{
 			"only.go": "package x\n\nvar onlyBar = 1\n\nvar onlyBAR = 2\n\nvar _, _ = onlyBar, onlyBAR\n",
 		},
 	},
 	{
-		name: "two promotes converging through a non-injective label (#2)",
+		name: "two qualify renames converging through a non-injective label (#2)",
 		files: map[string]string{
 			"a.go":   "package x\n\nfunc bX() int { return 1 }\n\nvar _ = bX\n",
 			"a_b.go": "package x\n\nfunc x() int { return 2 }\n\nvar _ = x\n",
@@ -180,14 +180,14 @@ var fixCases = []fixCase{
 	},
 	{
 		name:   "declaration named by a go:linkname directive (#5)",
-		config: "rules:\n  promote: true\n",
+		config: "rules:\n  qualify: true\n",
 		files: map[string]string{
 			"foo.go": "package x\n\nimport _ \"unsafe\"\n\n//go:linkname helper\nfunc helper() int { return 1 }\n\nfunc Exported() int { return helper() }\n",
 		},
 	},
 	{
 		name:   "rename target declared only in the test variant (#6)",
-		config: "rules:\n  promote: true\n",
+		config: "rules:\n  qualify: true\n",
 		files: map[string]string{
 			"foo.go":      "package x\n\nvar count = 10\n\nfunc Add(x int) int { return x + count }\n",
 			"foo_test.go": "package x\n\nvar fooCount = 1\n\nvar _ = fooCount\n",
@@ -197,7 +197,7 @@ var fixCases = []fixCase{
 		// The positive counterpart: with tests present the rename must still
 		// happen, and reach the test file, through the variant that sees it.
 		name:   "rename referenced from a test file (#6)",
-		config: "rules:\n  promote: true\n",
+		config: "rules:\n  qualify: true\n",
 		files: map[string]string{
 			"foo.go": "package x\n\nvar count = 10\n\nfunc Add(x int) int { return x + count }\n",
 			"foo_test.go": "package x\n\nimport \"testing\"\n\n" +

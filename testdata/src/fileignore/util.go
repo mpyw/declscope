@@ -1,4 +1,4 @@
-//declscope:ignore promote
+//declscope:ignore qualify
 
 package fileignore
 
@@ -6,7 +6,7 @@ package fileignore
 // carry the "util" prefix.
 func helper() int { return 1 }
 
-// The boundary still holds: only promote was silenced.
+// The boundary still holds: only qualify was silenced.
 func helper2() int { return 2 } // want `func helper2 is file-private to namespace "util", but is used from namespace "order"`
 
 var _ = helper

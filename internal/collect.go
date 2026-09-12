@@ -394,7 +394,7 @@ func (c *collection) add(t *target) {
 // An ident can play both roles at once: an embedded field's ident defines the
 // field and uses the type, so Defs and Uses are consulted independently rather
 // than one shadowing the other. Checking Defs first and returning used to drop
-// the type use, which lost both a rename edit and an escape diagnostic.
+// the type use, which lost both a rename edit and a boundary diagnostic.
 func (c *collection) collectRefs(pass *analysis.Pass) {
 	for _, fi := range c.files {
 		ast.Inspect(fi.file, func(n ast.Node) bool {

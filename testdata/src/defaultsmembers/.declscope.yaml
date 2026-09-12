@@ -4,4 +4,4 @@
 defaults:
   exported: file
 rules:
-  promote: false
+  qualify: false

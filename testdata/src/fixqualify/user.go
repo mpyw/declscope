@@ -1,4 +1,4 @@
-package fixpromote
+package fixqualify
 
 func helper() int { return 1 } // want `func helper does not carry the prefix of namespace "user"; rename it to userHelper`
 

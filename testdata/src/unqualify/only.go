@@ -1,4 +1,4 @@
-package demote
+package unqualify
 
 // The package has a single namespace, so the label is not required and must
 // therefore not be there.

@@ -10,11 +10,15 @@
 //	  unexported: file
 //
 //	rules:
-//	  promote: ondemand    # always | never | ondemand (only once a package has two namespaces)
-//	  demote: false        # and where it is not required, forbid it
+//	  qualify: ondemand    # always | never | ondemand (only once a package has two namespaces)
+//	  unqualify: false     # and where it is not required, forbid it
 //
-// rules.promote is one enum: always, never and ondemand are the documented
+// rules.qualify is one enum: always, never and ondemand are the documented
 // spellings, and true and false are accepted as aliases of always and never.
+//
+// Unknown keys are an error. So are the former names of the two rules,
+// rules.promote and rules.demote, which are refused with the key to write
+// instead rather than read as aliases.
 //
 // Only the naming rules are configurable. Reach enforcement is the point of
 // the linter and is not something a config file can switch off; silence an
@@ -47,6 +51,7 @@ import (
 
 	"github.com/mpyw/declscope/internal"
 	"github.com/mpyw/declscope/internal/baseline"
+	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
@@ -68,9 +73,16 @@ type File struct {
 	} `yaml:"defaults"`
 
 	Rules struct {
-		// Promote is tri-state, so it arrives as a bool or as a string.
-		Promote any   `yaml:"promote"`
-		Demote  *bool `yaml:"demote"`
+		// Qualify is tri-state, so it arrives as a bool or as a string.
+		Qualify   any   `yaml:"qualify"`
+		Unqualify *bool `yaml:"unqualify"`
+
+		// Promote and Demote are the former names of Qualify and Unqualify.
+		// They are declared only so that the decoder, which rejects unknown
+		// keys, does not get to them first: Apply refuses either with the
+		// key to write instead. Neither is applied.
+		Promote any `yaml:"promote"`
+		Demote  any `yaml:"demote"`
 	} `yaml:"rules"`
 
 	Exclude []string `yaml:"exclude"`
@@ -279,15 +291,34 @@ func (f *File) Apply(opts *internal.Options) error {
 		*field.dst = s
 	}
 
-	if f.Rules.Promote != nil {
-		mode, ok := internal.ParsePromoteMode(f.Rules.Promote)
-		if !ok {
-			return fmt.Errorf("rules.promote: want always, never or ondemand (true and false are aliases of always and never), got %v", f.Rules.Promote)
+	// A rule under its former name is refused, not aliased: the config is
+	// edited once, the message says exactly what to write, and the vocabulary
+	// stays one. Silently keeping the default is not an option either, since
+	// that is what the unknown-key error exists to prevent.
+	for _, legacy := range []struct {
+		key   string
+		value any
+	}{
+		{"promote", f.Rules.Promote},
+		{"demote", f.Rules.Demote},
+	} {
+		if legacy.value == nil {
+			continue
 		}
-		opts.Promote = mode
+		if r, ok := rule.Renamed(legacy.key); ok {
+			return fmt.Errorf("rules.%s: the rule was renamed to %s; write rules.%s", legacy.key, r, r)
+		}
 	}
-	if f.Rules.Demote != nil {
-		opts.CheckDemote = *f.Rules.Demote
+
+	if f.Rules.Qualify != nil {
+		mode, ok := internal.ParseQualifyMode(f.Rules.Qualify)
+		if !ok {
+			return fmt.Errorf("rules.qualify: want always, never or ondemand (true and false are aliases of always and never), got %v", f.Rules.Qualify)
+		}
+		opts.Qualify = mode
+	}
+	if f.Rules.Unqualify != nil {
+		opts.CheckUnqualify = *f.Rules.Unqualify
 	}
 	if f.Exclude != nil {
 		opts.Exclude = f.Exclude

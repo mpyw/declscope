@@ -49,7 +49,7 @@ By default a namespace is derived from the file name, which makes **each file it
 | `foo-bar.go`, `Foo.go` | `fooBar`, `foo` — any separator, and a PascalCase stem, normalise to lowerCamelCase |
 | `2fa_auth.go` | `2faAuth` — a namespace, but never a label (see below) |
 
-A namespace does two jobs. As an **identity** it answers "is this use inside the same namespace?", and every file with a stem has one — `2fa_test.go` shares the namespace of `2fa.go` like any other test. As a **label** it is the prefix [`promote`](#promote) asks a declaration to carry, and only a namespace that can start an unexported identifier qualifies. No identifier begins with a digit, so `2faAuth` bounds its declarations but the naming rules ask nothing of them.
+A namespace does two jobs. As an **identity** it answers "is this use inside the same namespace?", and every file with a stem has one — `2fa_test.go` shares the namespace of `2fa.go` like any other test. As a **label** it is the prefix [`qualify`](#qualify) asks a declaration to carry, and only a namespace that can start an unexported identifier qualifies. No identifier begins with a digit, so `2faAuth` bounds its declarations but the naming rules ask nothing of them.
 
 Files can opt into a **shared** namespace, which is how one logical unit spans several files:
 
@@ -107,7 +107,7 @@ func userShared() {} // package: usable anywhere in the package
 
 This is the decision everything else follows from. If a naming convention meant "package-wide", you could not also use one simply to say *which unit a declaration belongs to*: a prefix added for legibility would silently widen it, and a codebase that prefixed everything for readability would end up with nothing protected at all.
 
-Freeing the name of that job is what lets the namespace prefix become an ownership **label** instead, which grants nothing. See [`promote`](#promote).
+Freeing the name of that job is what lets the namespace prefix become an ownership **label** instead, which grants nothing. See [`qualify`](#qualify).
 
 ### Members are bounded by their type, not their file
 
@@ -136,15 +136,15 @@ There are three. Each has one name, and that name is what appears as the diagnos
 
 | Rule | Reports | Fix | Configurable |
 | --- | --- | --- | --- |
-| [`escape`](#escape) | a declaration used from outside the namespace it is private to | insert `//declscope:package` | no |
-| [`promote`](#promote) | an unexported package-level declaration missing its namespace label | rename to add the label | `rules.promote` |
-| [`demote`](#demote) | a namespace label present where it is not required | rename to drop the label | `rules.demote` |
+| [`boundary`](#boundary) | a declaration used from outside the namespace it is private to | insert `//declscope:package` | no |
+| [`qualify`](#qualify) | an unexported package-level declaration missing its namespace label | rename to add the label | `rules.qualify` |
+| [`unqualify`](#unqualify) | a namespace label present where it is not required | rename to drop the label | `rules.unqualify` |
 
-The split is deliberate. **Reach enforcement is the point of the linter and cannot be switched off**; **naming discipline is a matter of taste and can be.** To quiet `escape`, silence the individual declaration with `//declscope:ignore`, or record what the codebase already has with a [baseline](#adopting-on-an-existing-codebase).
+The split is deliberate. **Reach enforcement is the point of the linter and cannot be switched off**; **naming discipline is a matter of taste and can be.** To quiet `boundary`, silence the individual declaration with `//declscope:ignore`, or record what the codebase already has with a [baseline](#adopting-on-an-existing-codebase).
 
-`promote` and `demote` are mirrors and never both apply to one declaration: `demote` is inert wherever `promote` requires the label.
+`qualify` and `unqualify` are mirrors and never both apply to one declaration: `unqualify` is inert wherever `qualify` requires the label.
 
-### `escape`
+### `boundary`
 
 The core rule: a declaration private to its namespace, used from another one.
 
@@ -172,7 +172,7 @@ func (u *User) normalize() { u.ID++ } // reported here, not at the call
 
 A declaration whose scope was **already stated** with a directive is reported without a fix. Both the directive and the use site are deliberate statements, and `-fix` must not silently overwrite the one the author wrote.
 
-### `promote`
+### `qualify`
 
 An unexported package-level declaration must carry its namespace as a prefix. It grants nothing; it says who owns it, which is what makes a cross-file call legible at the call site, in a stack trace and in a grep result:
 
@@ -185,7 +185,7 @@ func orderRun() int {
 
 Exported identifiers are exempt: they are already qualified by the package name at every external use site. Members are exempt for the stutter reason above.
 
-| `rules.promote` | Effect |
+| `rules.qualify` | Effect |
 | --- | --- |
 | `ondemand` *(default)* | Required only once a package has a **second namespace**. In a package with one there is no boundary for a label to mark, and a prefix repeated on every declaration would distinguish nothing. |
 | `always` | Required unconditionally. Costs a little stutter in single-file packages, but means a package gaining its second namespace is not a mass rename. |
@@ -195,20 +195,20 @@ Exported identifiers are exempt: they are already qualified by the package name 
 
 The label is matched **ignoring case**, and then has to end at a word boundary: in `user_id.go` (namespace `userID`) `userIDCache`, `userIdCache` and `userIdcache` all carry it, while `useridentity` does not. You never have to guess which spelling of an initialism the linter chose. The rename it offers spells both halves the way Go does — `id` in `user.go` becomes `userID`, `urlPath` becomes `userURLPath` — never `userId`.
 
-Where the rename cannot be shown safe — the target is already taken, or renaming would change what the code resolves to — the violation is reported without a fix. See [When a rename is withheld](#when-a-rename-is-withheld). Where the namespace cannot be a label at all (`2fa.go`), `promote` and `demote` stay silent instead: there is no prefix they could ask for.
+Where the rename cannot be shown safe — the target is already taken, or renaming would change what the code resolves to — the violation is reported without a fix. See [When a rename is withheld](#when-a-rename-is-withheld). Where the namespace cannot be a label at all (`2fa.go`), `qualify` and `unqualify` stay silent instead: there is no prefix they could ask for.
 
-### `demote`
+### `unqualify`
 
-The mirror of `promote`: where the label is not required, it must not be there. With both on, the spelling of every unexported package-level name is determined in both directions and fixable either way.
+The mirror of `qualify`: where the label is not required, it must not be there. With both on, the spelling of every unexported package-level name is determined in both directions and fixable either way.
 
-Enabling it asserts that a namespace prefix in this codebase *always* means the label — nothing in a name can tell `userID`-the-label from `userID`-the-word, and `demote` will offer to rename it to `id`. Where the prefix is part of the concept, say so on the declaration:
+Enabling it asserts that a namespace prefix in this codebase *always* means the label — nothing in a name can tell `userID`-the-label from `userID`-the-word, and `unqualify` will offer to rename it to `id`. Where the prefix is part of the concept, say so on the declaration:
 
 ```go
-//declscope:ignore demote
+//declscope:ignore unqualify
 var userID int
 ```
 
-A name identical to its namespace (`type user` in `user.go`) carries no label to drop: the file is named after what it declares, not the other way about. `promote` still accepts such a name, since the owning unit is legible from it.
+A name identical to its namespace (`type user` in `user.go`) carries no label to drop: the file is named after what it declares, not the other way about. `qualify` still accepts such a name, since the owning unit is legible from it.
 
 The rename spells a leftover initialism the way Go does (`userID` → `id`, `userURLPath` → `urlPath`). Where no rename can be derived — dropping the label would leave a keyword, say — the violation is still reported, with the reason and without a fix:
 
@@ -257,8 +257,8 @@ Every check errs towards withholding. A rename that is withheld costs one manual
 //declscope:file
 
 //declscope:ignore               // silence every rule for this declaration
-//declscope:ignore demote        // silence one
-//declscope:ignore demote,promote
+//declscope:ignore unqualify        // silence one
+//declscope:ignore unqualify,qualify
 
 //declscope:namespace <name>   // before the package clause; overrides the file's namespace
 ```
@@ -279,7 +279,7 @@ A diagnostic is silenced by the nearest directive that covers its rule, and the 
 A directive on a type is what an open struct wants, rather than one on every field:
 
 ```go
-//declscope:ignore escape
+//declscope:ignore boundary
 type User struct {
 	name string
 	id   int
@@ -297,7 +297,7 @@ Written before the package clause, an ignore applies to every declaration in the
 
 ```go
 // util.go   (namespace: util)
-//declscope:ignore promote,demote
+//declscope:ignore qualify,unqualify
 
 package store
 ```
@@ -306,7 +306,7 @@ This is what a file full of small helpers wants, rather than a directive on each
 
 ```go
 // util.go   (namespace: util)
-//declscope:ignore escape,promote
+//declscope:ignore boundary,qualify
 
 package store
 
@@ -316,7 +316,7 @@ func first[T any](s []T) T { ... }
 
 The directive belongs to the **file**, not to the namespace, and the package clause has nothing to do with either: the namespace comes from the file name, or from `//declscope:namespace`. Files that share a namespace therefore each need their own — one file cannot silence a rule on behalf of another.
 
-Keeping `escape` and writing `//declscope:package` per declaration is the stricter option, and the one to prefer when the file is not wholly shared — silencing `escape` removes the boundary for everything in the file, including declarations added later. For violations that already exist, a [baseline](#adopting-on-an-existing-codebase) suppresses them without standing future ones down.
+Keeping `boundary` and writing `//declscope:package` per declaration is the stricter option, and the one to prefer when the file is not wholly shared — silencing `boundary` removes the boundary for everything in the file, including declarations added later. For violations that already exist, a [baseline](#adopting-on-an-existing-codebase) suppresses them without standing future ones down.
 
 A file-level ignore that silences nothing is reported, like any other.
 
@@ -328,7 +328,7 @@ func userHelper() {}
 
 func userHelper() {} //declscope:package
 
-type user struct { //declscope:ignore escape
+type user struct { //declscope:ignore boundary
 	name string
 }
 
@@ -343,15 +343,15 @@ A comment on the brace line that belongs to a field (`struct { n int //declscope
 A directive on a parenthesized `var`/`const`/`type` block applies to every spec in it. A spec may carry its own, and the two kinds combine differently: a **scope** directive on the spec replaces the block's, since a declaration has exactly one scope, while **ignores accumulate** — the spec's are added to the block's, so a narrower ignore never re-enables a rule the block turned off.
 
 ```go
-//declscope:ignore escape
+//declscope:ignore boundary
 var (
 	userSeed = 1
-	//declscope:ignore promote
-	limit = 2 // escape is still silenced by the block; promote by the spec
+	//declscope:ignore qualify
+	limit = 2 // boundary is still silenced by the block; qualify by the spec
 )
 ```
 
-Unused `//declscope:ignore` directives are reported, so suppressions do not outlive the problem. `//declscope:ignore demote` is unused if nothing but `demote` would have fired. Where directives at different levels both cover a rule, all of them count as used, so overlapping never makes one look unused.
+Unused `//declscope:ignore` directives are reported, so suppressions do not outlive the problem. `//declscope:ignore unqualify` is unused if nothing but `unqualify` would have fired. Where directives at different levels both cover a rule, all of them count as used, so overlapping never makes one look unused.
 
 A directive is called unused only by a pass that sees **every** reference in the package. When a package has in-package `_test.go` files, the ordinary variant cannot see what they use, so a directive needed only by a test would be unused there and necessary in the test variant, with no way to satisfy both; the ordinary variant therefore leaves the judgement to the test variant, which sees every file. Under `-test` (the default) that variant runs and nothing is lost. With `-test=false`, a package with in-package tests gets no unused-directive report at all.
 
@@ -365,8 +365,8 @@ defaults:                # these resolve members too, not only package-level dec
   unexported: file
 
 rules:
-  promote: ondemand     # always | never | ondemand (true/false: aliases of always/never)
-  demote: false
+  qualify: ondemand     # always | never | ondemand (true/false: aliases of always/never)
+  unqualify: false
 
 exclude:
   - "**/mock_*.go"
@@ -374,7 +374,7 @@ exclude:
 baseline: .declscope-baseline.yaml   # relative to this file; found automatically if named by default
 ```
 
-Only the naming rules appear here; see [Rules](#rules) for why. Unknown keys are an error rather than a silent no-op: a typo in a rule name would otherwise leave the rule at its default with no sign of it.
+Only the naming rules appear here; see [Rules](#rules) for why. Unknown keys are an error rather than a silent no-op: a typo in a rule name would otherwise leave the rule at its default with no sign of it. The rules' former names (`rules.promote`, `rules.demote`) are refused the same way, with the key to write instead.
 
 ## Adopting on an existing codebase
 
@@ -389,10 +389,10 @@ Recorded violations are suppressed; new ones are still reported. The file is dis
 ```yaml
 packages:
   github.com/you/app/store:
-    escape:
+    boundary:
       - User.name
       - helper
-    promote:
+    qualify:
       - helper
 ```
 
@@ -411,7 +411,7 @@ A baseline suppresses, it does not endorse. Nothing is written into the source, 
 declscope baseline [-o path] [-config path] [packages]
 ```
 
-Each package's entries go to the file the analyzer will consult for that package: the baseline its nearest config file names, else the nearest existing `.declscope-baseline.yaml` between the package and the working directory, else a new `.declscope-baseline.yaml` in the working directory. A subtree with its own baseline keeps it, and a run from a subdirectory writes under that subdirectory rather than rewriting a baseline above it with only part of its entries. Every file written is regenerated wholesale, and the existing one is never read, so a baseline that fails to parse is replaced like any other.
+Each package's entries go to the file the analyzer will consult for that package: the baseline its nearest config file names, else the nearest existing `.declscope-baseline.yaml` between the package and the working directory, else a new `.declscope-baseline.yaml` in the working directory. A subtree with its own baseline keeps it, and a run from a subdirectory writes under that subdirectory rather than rewriting a baseline above it with only part of its entries. Every file written is regenerated wholesale, and the existing one is never read, so a baseline that fails to parse is replaced like any other — including one written under the rules' former names (`escape`, `promote`, `demote`), which the analyzer refuses with a message naming the new ones rather than reading it as an alias.
 
 A package whose lookup cannot reach the working directory — one in another module, or outside the directory the command runs from — is refused rather than recorded where nothing would find it. `-o` gathers every entry into the one file named instead, and leaves placing it to you.
 
@@ -538,10 +538,10 @@ That last clause matters. Left to itself an agent will take the cheapest path ou
 - Generated files (`// Code generated ... DO NOT EDIT.`) are excluded entirely — neither checked nor treated as reference sites.
 - Everything is checked **within a single package**. Namespaces are therefore implicitly package-qualified and never collide across packages.
 - Whether an *exported* identifier is used outside its package is out of scope: `go/analysis` has no upward view of the program, and answering it would require a separate whole-program mode. Combine with an unused-code linter for that.
-- An embedded field is not checked as a member: it has no name of its own, only the embedded type's. Embedding a type is still a **use** of that type, so `type B struct{ aCount }` written outside `aCount`'s namespace is an `escape`, and renaming the type rewrites the embedding and every `b.aCount` selection through it.
+- An embedded field is not checked as a member: it has no name of its own, only the embedded type's. Embedding a type is still a **use** of that type, so `type B struct{ aCount }` written outside `aCount`'s namespace is a `boundary`, and renaming the type rewrites the embedding and every `b.aCount` selection through it.
 - Members of generic types are checked like any other: `List[int].items` and `l.items` inside `List[T]`'s own methods are uses of `List.items`.
 - Fields of anonymous structs, and of types declared inside a function, are not checked.
-- An unexported method grown on another namespace's type but **never called** is not reported. `escape` needs a reference to find, and a method with none is dead code — the business of an unused-code linter, not this one.
+- An unexported method grown on another namespace's type but **never called** is not reported. `boundary` needs a reference to find, and a method with none is dead code — the business of an unused-code linter, not this one.
 
 ## License
 

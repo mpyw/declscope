@@ -105,6 +105,17 @@ func Load(path string) (*Set, error) {
 	s := &Set{keys: map[Key]bool{}}
 	for pkg, rules := range f.Packages {
 		for name, decls := range rules {
+			// A section under a rule's former name is refused rather than
+			// read as the rule it now is. Left alone it would match nothing
+			// and every violation it recorded would resurface with nothing
+			// saying why; read as an alias it would record a diagnostic under
+			// a name the diagnostic no longer calls itself. Regeneration is
+			// the one remedy for every other baseline problem and never reads
+			// the file it replaces, so it is the remedy here too.
+			if r, ok := rule.Renamed(name); ok {
+				return nil, fmt.Errorf("%s: package %s: rule %q was renamed to %q; run declscope baseline ./... to rewrite it under the new name",
+					path, pkg, name, r)
+			}
 			for _, decl := range decls {
 				s.keys[Key{Package: pkg, Rule: rule.Rule(name), Decl: decl}] = true
 			}

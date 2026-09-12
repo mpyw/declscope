@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"strings"
 	"testing"
 
 	"github.com/mpyw/declscope/internal/directive"
@@ -82,6 +83,29 @@ func TestParseDeclProblems(t *testing.T) {
 	}
 }
 
+// TestParseDeclIgnoreFormerRuleName checks that an ignore written against a
+// rule's former name is rejected like any unknown rule, but with the current
+// name in the message instead of the whole list.
+func TestParseDeclIgnoreFormerRuleName(t *testing.T) {
+	for old, now := range map[string]string{
+		"escape":  "boundary",
+		"promote": "qualify",
+		"demote":  "unqualify",
+	} {
+		fn := firstFunc(t, "package p\n\n//declscope:ignore "+old+"\nfunc f() {}\n")
+		d := directive.ParseDecl(fn.Doc)
+		if len(d.Ignores) != 0 {
+			t.Errorf("%s: a former name must not silence anything, got %v", old, d.Ignores)
+		}
+		if len(d.Problems) != 1 {
+			t.Fatalf("%s: got %d problems, want 1: %v", old, len(d.Problems), d.Problems)
+		}
+		if msg := d.Problems[0].Msg; !strings.Contains(msg, `"`+now+`"`) || !strings.Contains(msg, `"`+old+`"`) {
+			t.Errorf("%s: problem %q should name both the old and the new rule", old, msg)
+		}
+	}
+}
+
 func TestParseDeclIgnore(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -96,27 +120,27 @@ func TestParseDeclIgnore(t *testing.T) {
 		},
 		{
 			name:    "one rule",
-			comment: "//declscope:ignore demote",
-			covers:  []rule.Rule{rule.Demote},
-			misses:  []rule.Rule{rule.Escape, rule.Promote},
+			comment: "//declscope:ignore unqualify",
+			covers:  []rule.Rule{rule.Unqualify},
+			misses:  []rule.Rule{rule.Boundary, rule.Qualify},
 		},
 		{
 			name:    "several rules",
-			comment: "//declscope:ignore demote,promote",
-			covers:  []rule.Rule{rule.Demote, rule.Promote},
-			misses:  []rule.Rule{rule.Escape},
+			comment: "//declscope:ignore unqualify,qualify",
+			covers:  []rule.Rule{rule.Unqualify, rule.Qualify},
+			misses:  []rule.Rule{rule.Boundary},
 		},
 		{
 			name:    "spaces around the separator",
-			comment: "//declscope:ignore demote, promote",
-			covers:  []rule.Rule{rule.Demote, rule.Promote},
-			misses:  []rule.Rule{rule.Escape},
+			comment: "//declscope:ignore unqualify, qualify",
+			covers:  []rule.Rule{rule.Unqualify, rule.Qualify},
+			misses:  []rule.Rule{rule.Boundary},
 		},
 		{
 			name:    "with a reason",
-			comment: "//declscope:ignore demote // the prefix is part of the concept",
-			covers:  []rule.Rule{rule.Demote},
-			misses:  []rule.Rule{rule.Escape},
+			comment: "//declscope:ignore unqualify // the prefix is part of the concept",
+			covers:  []rule.Rule{rule.Unqualify},
+			misses:  []rule.Rule{rule.Boundary},
 		},
 	}
 	for _, tt := range tests {
@@ -146,7 +170,7 @@ func TestParseDeclIgnore(t *testing.T) {
 // TestParseDeclIgnoreAccumulates checks that several ignore directives on one
 // declaration are all kept, so that each can be reported unused on its own.
 func TestParseDeclIgnoreAccumulates(t *testing.T) {
-	fn := firstFunc(t, "package p\n\n//declscope:ignore demote\n//declscope:ignore promote\nfunc f() {}\n")
+	fn := firstFunc(t, "package p\n\n//declscope:ignore unqualify\n//declscope:ignore qualify\nfunc f() {}\n")
 	if d := directive.ParseDecl(fn.Doc); len(d.Ignores) != 2 {
 		t.Errorf("got %d ignores, want 2", len(d.Ignores))
 	}
@@ -170,7 +194,7 @@ func TestMerge(t *testing.T) {
 // CLAUDE.md describe this behaviour and must not drift from it.
 func TestMergeAccumulatesIgnores(t *testing.T) {
 	outer := directive.Decl{Ignores: []directive.Ignore{{}}}
-	inner := directive.Decl{Ignores: []directive.Ignore{{Rules: []rule.Rule{rule.Demote}}}}
+	inner := directive.Decl{Ignores: []directive.Ignore{{Rules: []rule.Rule{rule.Unqualify}}}}
 
 	got := outer.Merge(inner)
 	if len(got.Ignores) != 2 {
@@ -181,7 +205,7 @@ func TestMergeAccumulatesIgnores(t *testing.T) {
 			t.Errorf("the block's bare ignore no longer covers %q after merging", r)
 		}
 	}
-	if got.Ignores[1].Covers(rule.Escape) {
+	if got.Ignores[1].Covers(rule.Boundary) {
 		t.Error("the spec's ignore should still name only its own rules")
 	}
 	if len(outer.Ignores) != 1 || len(inner.Ignores) != 1 {
@@ -211,15 +235,15 @@ func TestParseFileIgnore(t *testing.T) {
 	}{
 		{
 			name:    "named rules",
-			comment: "//declscope:ignore promote,demote",
-			covers:  []rule.Rule{rule.Promote, rule.Demote},
-			misses:  []rule.Rule{rule.Escape},
+			comment: "//declscope:ignore qualify,unqualify",
+			covers:  []rule.Rule{rule.Qualify, rule.Unqualify},
+			misses:  []rule.Rule{rule.Boundary},
 		},
 		{
 			name:    "reach may be silenced too",
-			comment: "//declscope:ignore escape",
-			covers:  []rule.Rule{rule.Escape},
-			misses:  []rule.Rule{rule.Promote},
+			comment: "//declscope:ignore boundary",
+			covers:  []rule.Rule{rule.Boundary},
+			misses:  []rule.Rule{rule.Qualify},
 		},
 		{
 			name:    "bare covers everything",

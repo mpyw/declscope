@@ -7,5 +7,5 @@ package testonlyignore
 // reports it: the test variant because it was used, the ordinary one because
 // it defers to the test variant.
 //
-//declscope:ignore escape
+//declscope:ignore boundary
 func userHelper() int { return 1 }
