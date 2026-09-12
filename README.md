@@ -584,14 +584,14 @@ exclude:
 baseline: .declscope-baseline.yaml   # relative to this file; found automatically if named by default
 ```
 
-| Key | Values | Effect |
-| --- | --- | --- |
-| `defaults.exported` | `public` *(default)*, `package`, `file` | Scope of an exported declaration or member that carries no scope directive |
-| `defaults.unexported` | `file` *(default)*, `package`, `public` | Scope of an unexported declaration or member that carries no scope directive |
-| `rules.qualify` | `ondemand` *(default)*, `always`, `never` | When the namespace label is required; see [`qualify`](#qualify) |
-| `rules.unqualify` | `never` *(default)*, `always` | Whether a label is forbidden where it is not required; see [`unqualify`](#unqualify) |
-| `exclude` | Glob patterns matched against the file path: `*` and `?` within a path segment, `**` across segments, anchored at any segment boundary | Files that are neither checked nor treated as reference sites |
-| `baseline` | A path relative to the config file | The baseline to consult; a default-named file is found without this key |
+| Key | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `defaults.exported` | `public`, `package`, `file` | `public` | Scope of an exported declaration or member that carries no scope directive |
+| `defaults.unexported` | `public`, `package`, `file` | `file` | Scope of an unexported declaration or member that carries no scope directive |
+| `rules.qualify` | `always`, `never`, `ondemand` | `ondemand` | When the namespace label is required; see [`qualify`](#qualify) |
+| `rules.unqualify` | `always`, `never` | `never` | Whether a label is forbidden where it is not required; see [`unqualify`](#unqualify) |
+| `exclude` | Glob patterns matched against the file path: `*` and `?` within a path segment, `**` across segments, anchored at any segment boundary | None | Files that are neither checked nor treated as reference sites |
+| `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` at or above the package, stopping at the module root | The baseline to consult |
 
 `boundary` has no key; see [Rules](#rules). An unknown key is an error rather than a silent no-op, so that a typo in a rule name cannot leave the rule at its default with no sign of it. A value a key does not accept is an error naming the values it does.
 
