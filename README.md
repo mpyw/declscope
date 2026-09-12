@@ -128,21 +128,17 @@ func orderUse(u *User) {
 
 ## Rules
 
-There are four. Each has one name, and that name is what appears as the diagnostic's category, what configures it, what keys its baseline entry, and what an ignore directive targets.
+There are three. Each has one name, and that name is what appears as the diagnostic's category, what configures it, what keys its baseline entry, and what an ignore directive targets.
 
 | Rule | Reports | Fix | Configurable |
 | --- | --- | --- | --- |
 | [`escape`](#escape) | a declaration used from outside the namespace it is private to | insert `//declscope:package` | no |
-| [`foreign-method`](#foreign-method) | an unexported method grown on a type belonging to another namespace | insert `//declscope:package` | no |
 | [`promote`](#promote) | an unexported package-level declaration missing its namespace label | rename to add the label | `rules.promote` |
 | [`demote`](#demote) | a namespace label present where it is not required | rename to drop the label | `rules.demote` |
 
-The split down the middle is deliberate. **Reach enforcement is the point of the linter and cannot be switched off**; **naming discipline is a matter of taste and can be.** To quiet a reach rule, silence the individual declaration with `//declscope:ignore`, or record what the codebase already has with a [baseline](#adopting-on-an-existing-codebase).
+The split is deliberate. **Reach enforcement is the point of the linter and cannot be switched off**; **naming discipline is a matter of taste and can be.** To quiet `escape`, silence the individual declaration with `//declscope:ignore`, or record what the codebase already has with a [baseline](#adopting-on-an-existing-codebase).
 
-The four are also pairwise exclusive by construction, so no declaration ever collects two diagnostics saying the same thing:
-
-- `escape` and `foreign-method` are the use site and the declaration site of one boundary. `foreign-method` speaks only where `escape` did not.
-- `promote` and `demote` are mirrors. `demote` is inert wherever `promote` requires the label.
+`promote` and `demote` are mirrors and never both apply to one declaration: `demote` is inert wherever `promote` requires the label.
 
 ### `escape`
 
@@ -163,18 +159,14 @@ func userCache is file-private to namespace "user", but is used from namespace "
 
 It covers package-level declarations and members alike — for a member the boundary is the namespace of its type. The fix inserts `//declscope:package`, the only thing that widens reach.
 
-A declaration whose scope was **already stated** with a directive is reported without a fix. Both the directive and the use site are deliberate statements, and `-fix` must not silently overwrite the one the author wrote.
-
-### `foreign-method`
-
-The declaration-site half of the same boundary, reported only where `escape` was silent. Between them they cover both cases: `escape` sees a method *called* across namespaces, `foreign-method` sees one merely *declared* there and never called, which leaves no cross-namespace reference to find.
+For a method, the report lands on the **declaration**, so a method grown on a type belonging to another namespace is caught where it is written:
 
 ```go
 // order.go  (namespace: order) — but User belongs to namespace "user"
-func (u *User) normalize() {} // reported
+func (u *User) normalize() { u.ID++ } // reported here, not at the call
 ```
 
-This does **not** break the sealed-interface pattern: implementing `isSealed()` on your own type declares a method owned by *your* type, and satisfying an interface creates no reference to the interface's method.
+A declaration whose scope was **already stated** with a directive is reported without a fix. Both the directive and the use site are deliberate statements, and `-fix` must not silently overwrite the one the author wrote.
 
 ### `promote`
 
@@ -429,6 +421,7 @@ That last clause matters. Left to itself an agent will take the cheapest path ou
 - Whether an *exported* identifier is used outside its package is out of scope: `go/analysis` has no upward view of the program, and answering it would require a separate whole-program mode. Combine with an unused-code linter for that.
 - Embedded fields are skipped, since their name comes from the embedded type.
 - Fields of anonymous structs, and of types declared inside a function, are not checked.
+- An unexported method grown on another namespace's type but **never called** is not reported. `escape` needs a reference to find, and a method with none is dead code — the business of an unused-code linter, not this one.
 
 ## License
 

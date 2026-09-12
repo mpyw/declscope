@@ -18,7 +18,7 @@ The single most important thing to understand before changing anything here is t
 
 Everything unexported is private to its namespace; `//declscope:package` is the only thing that widens it. An earlier design made a namespace prefix mean package-internal, which was rejected: it overloaded one signal with two meanings, so a prefix added purely for legibility silently widened a declaration, and a codebase that prefixed everything for readability would have ended up with nothing protected. Removing that also removed the `demotion` rule (which existed only to patch the overloading), the rename fix for boundary crossings, and the possibility of a diagnostic carrying two conflicting alternatives.
 
-The prefix instead does a separate job: it is an **ownership label** on unexported package-level declarations, making the owning unit legible at every use site. Only the naming rules (`promote`, `demote`) are configurable. Reach enforcement is not, and neither is whether members are checked — an earlier `rules.members` key gated collection of methods and fields entirely, which meant it silently switched off `foreign-method` too, a rule documented as always on. A cross-cutting toggle in a map keyed by rule names is the shape to avoid.
+The prefix instead does a separate job: it is an **ownership label** on unexported package-level declarations, making the owning unit legible at every use site. Only the naming rules (`promote`, `demote`) are configurable. Reach enforcement is not, and neither is whether members are checked — an earlier `rules.members` key gated collection of methods and fields entirely, silently switching off more than its name suggested. A cross-cutting toggle in a map keyed by rule names is the shape to avoid.
 
 `rules.promote` is tri-state (`internal.PromoteMode`) and defaults to `ondemand`, requiring it only once a package has a second namespace — in a package with one, every other rule is structurally inert anyway, since every reference is already inside the single namespace.
 
@@ -62,12 +62,11 @@ cmd/declscope/            singlechecker entry point, plus the `baseline` subcomm
 
 ## Rules
 
-`internal/rule` holds the one vocabulary: `escape`, `promote`, `demote`, `foreign-method`. The same name is the diagnostic's `Category`, the `Rule` field of a baseline key, and what an ignore directive targets. **Adding a rule means adding it there**, not inventing a string at the report site.
+`internal/rule` holds the one vocabulary: `escape`, `promote`, `demote`. The same name is the diagnostic's `Category`, the `Rule` field of a baseline key, and what an ignore directive targets. **Adding a rule means adding it there**, not inventing a string at the report site.
 
-The rules are pairwise exclusive **by construction**, which is what keeps one declaration from collecting two diagnostics that say the same thing. Preserve this when adding checks:
+`promote` and `demote` are exclusive **by construction**: `checkDemote` returns early wherever `opts.Promote.required(c.namespaces)` holds, so they can never contradict each other on one declaration. Preserve that property when adding checks.
 
-- `checkDemote` returns early wherever `opts.Promote.required(c.namespaces)` holds, so `promote` and `demote` can never contradict each other.
-- `checkForeignMethod` runs only when `checkEscape` produced nothing (`escaped` in `check`). A foreign method that is actually called reports at the *same position* under both rules; `foreign-method` exists to cover the method that is never called and so leaves no cross-namespace reference to find.
+A `foreign-method` rule existed briefly and was removed. `checkEscape` reports a method at its *declaration*, not at the call, so a method grown on another namespace's type is already caught wherever it is used — the declaration-site rule only ever added a second diagnostic at the same position. The one case it covered alone was a foreign method that is never called, which is dead code and an unused-code linter's business, the same reasoning that kept "exported but unused outside the package" out of scope.
 
 `namespace.Unqualify` (demote's rename) lowers a leftover initialism the way Go spells one (`userID` → `id`, `userURLPath` → `urlPath`), which the naive version got wrong (`iD`). It returns a second value explaining any refusal.
 
@@ -82,7 +81,7 @@ The rules are pairwise exclusive **by construction**, which is what keeps one de
 //declscope:package
 //declscope:file
 //declscope:ignore            // silence every rule for the declaration
-//declscope:ignore demote     // silence named rules only (escape, promote, demote, foreign-method)
+//declscope:ignore demote     // silence named rules only (escape, promote, demote)
 //declscope:namespace <name>  // file level, before the package clause
 ```
 

@@ -98,13 +98,13 @@ func TestParseDeclIgnore(t *testing.T) {
 			name:    "one rule",
 			comment: "//declscope:ignore demote",
 			covers:  []rule.Rule{rule.Demote},
-			misses:  []rule.Rule{rule.Escape, rule.Promote, rule.ForeignMethod},
+			misses:  []rule.Rule{rule.Escape, rule.Promote},
 		},
 		{
 			name:    "several rules",
 			comment: "//declscope:ignore demote,promote",
 			covers:  []rule.Rule{rule.Demote, rule.Promote},
-			misses:  []rule.Rule{rule.Escape, rule.ForeignMethod},
+			misses:  []rule.Rule{rule.Escape},
 		},
 		{
 			name:    "spaces around the separator",

@@ -104,11 +104,9 @@ func ignored(ignores []directive.Ignore, r rule.Rule, used []bool) bool {
 
 func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []finding {
 	var out []finding
-	escaped := false
 	if t.scope == scope.FilePrivate {
 		if f, ok := c.checkEscape(pass, opts, t); ok {
 			out = append(out, f)
-			escaped = true
 		}
 	}
 	if f, ok := c.checkPromote(pass, opts, t); ok {
@@ -116,14 +114,6 @@ func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []findi
 	}
 	if f, ok := c.checkDemote(pass, opts, t); ok {
 		out = append(out, f)
-	}
-	// Only where escape said nothing: a foreign method that is actually called
-	// from its own file already produced a boundary crossing at this very
-	// position, and reporting both said the same thing twice.
-	if !escaped {
-		if f, ok := c.checkForeignMethod(pass, opts, t); ok {
-			out = append(out, f)
-		}
 	}
 	return out
 }
@@ -251,30 +241,6 @@ func (c *collection) checkDemote(pass *analysis.Pass, opts Options, t *target) (
 		f.fixes = append(f.fixes, fix)
 	}
 	return f, true
-}
-
-// checkForeignMethod reports an unexported method grown on a type that belongs
-// to another namespace, which reaches into that namespace's internals from
-// outside.
-//
-// It is the declaration-site half of the escape rule, and covers the case
-// escape cannot see: a method that is never called, and so produces no
-// cross-namespace reference to find.
-func (c *collection) checkForeignMethod(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if t.kind != kindMethod || t.scope != scope.FilePrivate {
-		return finding{}, false
-	}
-	if t.owner == "" || t.file.key() == t.ownerKey {
-		return finding{}, false
-	}
-	return finding{
-		rule: rule.ForeignMethod,
-		decl: t.name(),
-		pos:  t.ident.Pos(),
-		msg: fmt.Sprintf("unexported method %s is declared in %s but %s belongs to %s",
-			t.name(), describeFile(t.file), t.owner, describe(t.ownerNS, "")),
-		fixes: []analysis.SuggestedFix{c.directiveFix(pass, t, scope.PackageInternal)},
-	}, true
 }
 
 // renameFix rewrites every ident naming the target. All of them are inside the

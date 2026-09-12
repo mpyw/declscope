@@ -45,13 +45,6 @@ func TestSingleNamespace(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "singlens")
 }
 
-// TestForeignMethods checks the rule for unexported methods grown on a type
-// belonging to another namespace, and that it stays quiet where the boundary
-// crossing rule has already spoken at the same position.
-func TestForeignMethods(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "foreign")
-}
-
 // TestNamespaceDirectiveDetached checks that a namespace directive separated
 // from the package clause by a blank line still applies to the file.
 func TestNamespaceDirectiveDetached(t *testing.T) {

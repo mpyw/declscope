@@ -19,13 +19,10 @@ const (
 	Promote Rule = "promote"
 	// Demote: a namespace label present where it is not required.
 	Demote Rule = "demote"
-	// ForeignMethod: an unexported method grown on a type belonging to another
-	// namespace.
-	ForeignMethod Rule = "foreign-method"
 )
 
 // All lists every rule, in the order they are reported.
-var All = []Rule{Escape, Promote, Demote, ForeignMethod}
+var All = []Rule{Escape, Promote, Demote}
 
 // Parse resolves a rule name.
 func Parse(name string) (Rule, bool) {
