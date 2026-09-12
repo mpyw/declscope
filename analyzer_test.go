@@ -145,3 +145,24 @@ func TestEmbedded(t *testing.T) {
 func TestMemberOwnerFile(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "memberowner")
 }
+
+// TestNamespaceIdentity checks that a file whose stem cannot be a label, such
+// as 2fa.go, is still a namespace: its test file shares it, a use from another
+// namespace is reported, and the label rule asks nothing of it.
+func TestNamespaceIdentity(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nsidentity")
+}
+
+// TestNamespaceNormalize checks that separators other than _ and a PascalCase
+// stem yield a lowerCamelCase namespace, so that the rename offered by promote
+// is a valid unexported identifier.
+func TestNamespaceNormalize(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nsnormalize")
+}
+
+// TestNamespaceInitialism checks that a namespace spells its initialisms the
+// way Go does, that the label is matched ignoring case, and that the rename
+// offered by promote spells the name's first word the same way.
+func TestNamespaceInitialism(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nsinitialism")
+}
