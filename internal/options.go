@@ -34,17 +34,19 @@ func (m PromoteMode) String() string {
 	case PromoteOnDemand:
 		return "ondemand"
 	case PromoteAlways:
-		return "true"
+		return "always"
 	case PromoteNever:
-		return "false"
+		return "never"
 	default:
 		return "unknown"
 	}
 }
 
-// ParsePromoteMode reads the tri-state value of the rules.promote setting,
-// which YAML hands over as a bool for true and false and as a string for
-// ondemand.
+// ParsePromoteMode reads the tri-state value of the rules.promote setting.
+// The documented spellings are the strings always, never and ondemand, so the
+// setting is one enum rather than two booleans and a string. true and false
+// are kept as aliases for always and never; YAML hands those over as bools
+// unless quoted, so both a bool and a string are read.
 func ParsePromoteMode(value any) (PromoteMode, bool) {
 	switch v := value.(type) {
 	case bool:
@@ -56,9 +58,9 @@ func ParsePromoteMode(value any) (PromoteMode, bool) {
 		switch v {
 		case "ondemand":
 			return PromoteOnDemand, true
-		case "true":
+		case "always", "true":
 			return PromoteAlways, true
-		case "false":
+		case "never", "false":
 			return PromoteNever, true
 		}
 	}
@@ -104,12 +106,16 @@ type Options struct {
 	// Exclude holds glob patterns matched against file paths.
 	Exclude []string
 
-	// BaselinePath is the baseline file to load, resolved relative to the
-	// config file that named it. Empty means no baseline.
+	// BaselinePath is the baseline file that applies, resolved relative to
+	// the config file that named it or found by the default-named lookup.
+	// Empty means no baseline.
 	BaselinePath string
 
 	// Baseline suppresses violations that were already present when declscope
-	// was adopted. It is nil when none is configured.
+	// was adopted. It is nil when none is configured, and also while a
+	// baseline is being regenerated: config.Resolve loads it, config.
+	// ResolveForBaseline deliberately does not, so that a baseline which no
+	// longer parses cannot block its own regeneration.
 	Baseline *baseline.Set
 
 	excludeRE []*regexp.Regexp
@@ -128,8 +134,12 @@ func DefaultOptions() Options {
 	}
 }
 
-// Compile prepares the exclude patterns and loads the baseline. It must be
-// called before use.
+// Compile prepares the exclude patterns. It must be called before use.
+//
+// It does not load the baseline. Loading is the resolver's decision, since the
+// same options serve both analysis, where the baseline suppresses, and
+// regeneration, where the existing file must be ignored — otherwise one that
+// fails to parse could never be regenerated.
 func (o *Options) Compile() error {
 	o.excludeRE = o.excludeRE[:0]
 	for _, pattern := range o.Exclude {
@@ -138,13 +148,6 @@ func (o *Options) Compile() error {
 			return err
 		}
 		o.excludeRE = append(o.excludeRE, re)
-	}
-	if o.BaselinePath != "" {
-		set, err := baseline.Load(o.BaselinePath)
-		if err != nil {
-			return err
-		}
-		o.Baseline = set
 	}
 	return nil
 }

@@ -64,20 +64,7 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	// Unused directives are reported only once every finding has been seen,
 	// since a type's directive may be used up by one of its members, which is
 	// reached later in the loop above.
-	for _, t := range c.targets {
-		for i, ig := range t.dir.Ignores {
-			if !t.ignoresUsed[i] {
-				pass.Reportf(ig.Pos, "unused %s on %s", ig, t.name())
-			}
-		}
-	}
-	for _, fi := range c.files {
-		for i, ig := range fi.ignores {
-			if !fi.ignoresUsed[i] {
-				pass.Reportf(ig.Pos, "unused file-level %s", ig)
-			}
-		}
-	}
+	c.reportUnusedIgnores(pass)
 
 	slices.SortStableFunc(c.problems, func(a, b directive.Problem) int { return int(a.Pos - b.Pos) })
 	for _, p := range c.problems {
@@ -112,35 +99,6 @@ func (c *collection) keys(pass *analysis.Pass, opts Options) []baseline.Key {
 		}
 	}
 	return out
-}
-
-// silenced reports whether any ignore directive covering t silences r.
-//
-// A member inherits the directives written on the type that owns it, so the
-// chain runs declaration, then owning type, then file. Every level is
-// consulted rather than stopping at the first hit, and every directive that
-// covers the rule is marked used, so overlapping directives at different
-// levels do not make each other look unused.
-func (c *collection) silenced(t *target, r rule.Rule) bool {
-	hit := ignored(t.dir.Ignores, r, t.ignoresUsed)
-	if owner, ok := c.byObj[t.ownerObj]; ok && owner != t {
-		hit = ignored(owner.dir.Ignores, r, owner.ignoresUsed) || hit
-	}
-	return ignored(t.file.ignores, r, t.file.ignoresUsed) || hit
-}
-
-// ignored reports whether any directive silences r, marking every directive
-// that does as used. All of them are marked, not just the first, so that
-// overlapping directives are not reported as unused.
-func ignored(ignores []directive.Ignore, r rule.Rule, used []bool) bool {
-	hit := false
-	for i, ig := range ignores {
-		if ig.Covers(r) {
-			used[i] = true
-			hit = true
-		}
-	}
-	return hit
 }
 
 func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []finding {
@@ -215,7 +173,13 @@ func (c *collection) checkEscape(pass *analysis.Pass, opts Options, t *target) (
 // requiring the label only once a package has a second namespace to
 // distinguish. See PromoteMode.
 func (c *collection) checkPromote(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.Promote.required(c.namespaces) || !t.renameable || t.ownerNS == "" {
+	if !opts.Promote.required(c.namespaces) || !t.renameable {
+		return finding{}, false
+	}
+	// A namespace is always an identity, but not always a label: 2fa.go
+	// bounds its declarations like any other file, yet no identifier can
+	// start with a digit, so there is no prefix to ask for.
+	if !namespace.IsLabel(t.ownerNS) {
 		return finding{}, false
 	}
 	name := t.obj.Name()
@@ -248,7 +212,7 @@ func (c *collection) checkPromote(pass *analysis.Pass, opts Options, t *target) 
 // the label and never part of the concept, since nothing in the name can tell
 // userID-the-label from userID-the-word.
 func (c *collection) checkDemote(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.CheckDemote || !t.renameable || t.ownerNS == "" {
+	if !opts.CheckDemote || !t.renameable || !namespace.IsLabel(t.ownerNS) {
 		return finding{}, false
 	}
 	if opts.Promote.required(c.namespaces) {
@@ -262,8 +226,10 @@ func (c *collection) checkDemote(pass *analysis.Pass, opts Options, t *target) (
 	// causality usually runs the other way there: user.go is named after the
 	// user it declares, not the other way about. promote still accepts such a
 	// name, since the owning unit is legible from it, but there is nothing
-	// here for demote to strip.
-	if name == t.ownerNS {
+	// here for demote to strip. The label is matched ignoring case, so the
+	// exemption is too: userId in user_id.go is the namespace, spelled by
+	// someone who did not know how the linter would spell it.
+	if strings.EqualFold(name, t.ownerNS) {
 		return finding{}, false
 	}
 

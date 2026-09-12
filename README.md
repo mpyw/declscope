@@ -45,7 +45,11 @@ By default a namespace is derived from the file name, which makes **each file it
 | `user_repository_test.go` | `userRepository` — a test shares its subject's namespace |
 | `parser_linux.go`, `parser_linux_amd64.go` | `parser` — GOOS/GOARCH suffixes are build constraints, not namespaces |
 | `v2_client.go` | `v2Client` |
-| `2fa_auth.go` | *(none — no identifier may start with a digit)* |
+| `user_id.go`, `parse_json.go` | `userID`, `parseJSON` — an initialism is spelled the way Go spells it |
+| `foo-bar.go`, `Foo.go` | `fooBar`, `foo` — any separator, and a PascalCase stem, normalise to lowerCamelCase |
+| `2fa_auth.go` | `2faAuth` — a namespace, but never a label (see below) |
+
+A namespace does two jobs. As an **identity** it answers "is this use inside the same namespace?", and every file with a stem has one — `2fa_test.go` shares the namespace of `2fa.go` like any other test. As a **label** it is the prefix [`promote`](#promote) asks a declaration to carry, and only a namespace that can start an unexported identifier qualifies. No identifier begins with a digit, so `2faAuth` bounds its declarations but the naming rules ask nothing of them.
 
 Files can opt into a **shared** namespace, which is how one logical unit spans several files:
 
@@ -184,10 +188,14 @@ Exported identifiers are exempt: they are already qualified by the package name 
 | `rules.promote` | Effect |
 | --- | --- |
 | `ondemand` *(default)* | Required only once a package has a **second namespace**. In a package with one there is no boundary for a label to mark, and a prefix repeated on every declaration would distinguish nothing. |
-| `true` | Required unconditionally. Costs a little stutter in single-file packages, but means a package gaining its second namespace is not a mass rename. |
-| `false` | Off, leaving reach enforcement without any naming discipline. |
+| `always` | Required unconditionally. Costs a little stutter in single-file packages, but means a package gaining its second namespace is not a mass rename. |
+| `never` | Off, leaving reach enforcement without any naming discipline. |
 
-Where the rename cannot be shown safe — the target is already taken, say — the violation is reported without a fix. See [When a rename is withheld](#when-a-rename-is-withheld).
+`true` and `false` are accepted as aliases of `always` and `never`.
+
+The label is matched **ignoring case**, and then has to end at a word boundary: in `user_id.go` (namespace `userID`) `userIDCache`, `userIdCache` and `userIdcache` all carry it, while `useridentity` does not. You never have to guess which spelling of an initialism the linter chose. The rename it offers spells both halves the way Go does — `id` in `user.go` becomes `userID`, `urlPath` becomes `userURLPath` — never `userId`.
+
+Where the rename cannot be shown safe — the target is already taken, or renaming would change what the code resolves to — the violation is reported without a fix. See [When a rename is withheld](#when-a-rename-is-withheld). Where the namespace cannot be a label at all (`2fa.go`), `promote` and `demote` stay silent instead: there is no prefix they could ask for.
 
 ### `demote`
 
@@ -281,7 +289,7 @@ type User struct {
 func (u *User) normalize() { ... }
 ```
 
-Each directive is judged on its own, so one used up only by a member still counts as used, and one that silences nothing is reported wherever it was written.
+Each directive is judged on its own, so one used up only by a member still counts as used, and one that silences nothing is reported wherever it was written. A directive is one comment however many declarations it reaches: one on a `var (...)` block, or on `var a, b`, or on `x, y int` in a struct, is used as soon as **any** of them needed it, and is reported once — not once per name — when none did.
 
 ### File-level ignore
 
@@ -312,14 +320,25 @@ Keeping `escape` and writing `//declscope:package` per declaration is the strict
 
 A file-level ignore that silences nothing is reported, like any other.
 
-Placement: the doc comment of a declaration, or a trailing comment on the same line. A trailing `// reason` is allowed.
+Placement: the doc comment of a declaration, or a trailing comment on its first or last line — for a multi-line declaration, the line of its opening or closing brace or parenthesis. A trailing `// reason` is allowed.
 
 ```go
 //declscope:package // shared with the reporting code
 func userHelper() {}
 
 func userHelper() {} //declscope:package
+
+type user struct { //declscope:ignore escape
+	name string
+}
+
+var ( //declscope:package
+	userLimit = 10
+	userSeed  = 1
+)
 ```
+
+A comment on the brace line that belongs to a field (`struct { n int //declscope:ignore`) is the field's, as it would be on any other line. A directive written anywhere else after the package clause — separated from its declaration by a blank line, inside a function body, on a line in the middle of a struct — binds to nothing, and is reported as **misplaced** rather than silently dropped, since an author who wrote a suppression believes something is silenced.
 
 A directive on a parenthesized `var`/`const`/`type` block applies to every spec in it. A spec may carry its own, and the two kinds combine differently: a **scope** directive on the spec replaces the block's, since a declaration has exactly one scope, while **ignores accumulate** — the spec's are added to the block's, so a narrower ignore never re-enables a rule the block turned off.
 
@@ -334,6 +353,8 @@ var (
 
 Unused `//declscope:ignore` directives are reported, so suppressions do not outlive the problem. `//declscope:ignore demote` is unused if nothing but `demote` would have fired. Where directives at different levels both cover a rule, all of them count as used, so overlapping never makes one look unused.
 
+A directive is called unused only by a pass that sees **every** reference in the package. When a package has in-package `_test.go` files, the ordinary variant cannot see what they use, so a directive needed only by a test would be unused there and necessary in the test variant, with no way to satisfy both; the ordinary variant therefore leaves the judgement to the test variant, which sees every file. Under `-test` (the default) that variant runs and nothing is lost. With `-test=false`, a package with in-package tests gets no unused-directive report at all.
+
 ## Configuration
 
 Optional. `.declscope.yaml` (or `.yml`), looked up from the analyzed package's directory upwards, stopping at the module root — so a subtree can relax or tighten the rules on its own.
@@ -344,7 +365,7 @@ defaults:                # these resolve members too, not only package-level dec
   unexported: file
 
 rules:
-  promote: ondemand     # true | false | ondemand
+  promote: ondemand     # always | never | ondemand (true/false: aliases of always/never)
   demote: false
 
 exclude:
@@ -390,7 +411,9 @@ A baseline suppresses, it does not endorse. Nothing is written into the source, 
 declscope baseline [-o path] [-config path] [packages]
 ```
 
-Without `-o` it writes to the baseline named by the config file, or `.declscope-baseline.yaml` in the working directory.
+Each package's entries go to the file the analyzer will consult for that package: the baseline its nearest config file names, else the nearest existing `.declscope-baseline.yaml` between the package and the working directory, else a new `.declscope-baseline.yaml` in the working directory. A subtree with its own baseline keeps it, and a run from a subdirectory writes under that subdirectory rather than rewriting a baseline above it with only part of its entries. Every file written is regenerated wholesale, and the existing one is never read, so a baseline that fails to parse is replaced like any other.
+
+A package whose lookup cannot reach the working directory — one in another module, or outside the directory the command runs from — is refused rather than recorded where nothing would find it. `-o` gathers every entry into the one file named instead, and leaves placing it to you.
 
 ## Installation & Usage
 

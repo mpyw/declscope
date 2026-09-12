@@ -18,8 +18,14 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		// A duplicate, as produced by a package and its test variant.
 		{Package: "example.com/a", Rule: "escape", Decl: "helper"},
 	}
-	if err := baseline.Save(path, keys); err != nil {
+	n, err := baseline.Save(path, keys)
+	if err != nil {
 		t.Fatal(err)
+	}
+	// The count Save returns is what the subcommand reports, so it has to be
+	// the number of entries in the file, not the number of keys handed in.
+	if n != 4 {
+		t.Errorf("Save returned %d, want 4 (the deduplicated count)", n)
 	}
 
 	set, err := baseline.Load(path)
@@ -58,10 +64,10 @@ func TestSaveIsDeterministic(t *testing.T) {
 
 	first := filepath.Join(dir, "first.yaml")
 	second := filepath.Join(dir, "second.yaml")
-	if err := baseline.Save(first, keys); err != nil {
+	if _, err := baseline.Save(first, keys); err != nil {
 		t.Fatal(err)
 	}
-	if err := baseline.Save(second, shuffled); err != nil {
+	if _, err := baseline.Save(second, shuffled); err != nil {
 		t.Fatal(err)
 	}
 	a, err := os.ReadFile(first)
@@ -118,5 +124,29 @@ func TestNilSet(t *testing.T) {
 	}
 	if set.Len() != 0 {
 		t.Error("a nil set should be empty")
+	}
+}
+
+// TestSaveEmpty checks that a run with nothing to record still writes a
+// well-formed file: regeneration prunes by rewriting, so an empty result must
+// replace the old entries rather than leave them.
+func TestSaveEmpty(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "empty.yaml")
+	if _, err := baseline.Save(path, []baseline.Key{{Package: "a", Rule: "escape", Decl: "x"}}); err != nil {
+		t.Fatal(err)
+	}
+	n, err := baseline.Save(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("Save returned %d, want 0", n)
+	}
+	set, err := baseline.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.Len() != 0 {
+		t.Errorf("Len = %d, want 0: the previous entries should be gone", set.Len())
 	}
 }

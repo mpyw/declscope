@@ -3,4 +3,9 @@
 # lookup walks up from each analyzed package, and a default-named file at the
 # repository root would silently change what those tests assert.
 rules:
+  # always | never | ondemand; true and false are aliases of always and never.
+  # The default is kept: under `always` every unexported helper in a
+  # single-namespace package (internal/config, internal/baseline, ...) would
+  # need a label that distinguishes nothing there.
+  promote: ondemand
   demote: true

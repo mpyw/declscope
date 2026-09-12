@@ -72,7 +72,7 @@ func TestExplicitScopeConflict(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "explicit")
 }
 
-// TestPromoteAlways checks rules.promote: true, which requires the label even
+// TestPromoteAlways checks rules.promote: always, which requires the label even
 // in a package with a single namespace.
 func TestPromoteAlways(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "promotealways")
@@ -144,4 +144,49 @@ func TestEmbedded(t *testing.T) {
 // contradiction when the wrong one is named.
 func TestMemberOwnerFile(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "memberowner")
+}
+
+// TestNamespaceIdentity checks that a file whose stem cannot be a label, such
+// as 2fa.go, is still a namespace: its test file shares it, a use from another
+// namespace is reported, and the label rule asks nothing of it.
+func TestNamespaceIdentity(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nsidentity")
+}
+
+// TestNamespaceNormalize checks that separators other than _ and a PascalCase
+// stem yield a lowerCamelCase namespace, so that the rename offered by promote
+// is a valid unexported identifier.
+func TestNamespaceNormalize(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nsnormalize")
+}
+
+// TestNamespaceInitialism checks that a namespace spells its initialisms the
+// way Go does, that the label is matched ignoring case, and that the rename
+// offered by promote spells the name's first word the same way.
+func TestNamespaceInitialism(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nsinitialism")
+}
+
+// TestBlockIgnore checks that an ignore directive is judged once per comment,
+// not once per declaration it reaches: one on a block, or shared by the names
+// of one spec, is used as soon as any of them needed it, and is reported once
+// when none did.
+func TestBlockIgnore(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "blockignore")
+}
+
+// TestTestOnlyIgnore checks that a directive needed only by a reference in a
+// _test.go file is not reported unused by the ordinary variant of the package,
+// which cannot see that reference. Only the test variant, which sees every
+// file, judges, and a directive in a test file shows that it does.
+func TestTestOnlyIgnore(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "testonlyignore")
+}
+
+// TestBraceIgnore checks the two placements go/parser attaches to nothing: a
+// trailing comment on the first or last line of a multi-line declaration binds
+// to it, and a directive anywhere else after the package clause is reported as
+// misplaced rather than silently dropped.
+func TestBraceIgnore(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "braceignore")
 }
