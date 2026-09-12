@@ -135,6 +135,10 @@ type collection struct {
 	// namespaces is how many distinct namespaces the package's non-test files
 	// declare, which is how many boundaries there are to enforce.
 	namespaces int
+
+	// rename is what the rename fix knows beyond the references above. It is
+	// created on first use, since most passes offer no rename.
+	rename *renameState
 }
 
 // collectFiles resolves each file's namespace. Generated files are excluded

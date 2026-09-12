@@ -187,7 +187,7 @@ Exported identifiers are exempt: they are already qualified by the package name 
 | `true` | Required unconditionally. Costs a little stutter in single-file packages, but means a package gaining its second namespace is not a mass rename. |
 | `false` | Off, leaving reach enforcement without any naming discipline. |
 
-Where the rename target is already taken, the violation is reported without a fix.
+Where the rename cannot be shown safe — the target is already taken, say — the violation is reported without a fix. See [When a rename is withheld](#when-a-rename-is-withheld).
 
 ### `demote`
 
@@ -210,6 +210,36 @@ but "type" is a keyword; rename it by hand
 ```
 
 Being unable to spell the new name is a limit of the fix, not a reason to let the label stand.
+
+### When a rename is withheld
+
+A rename is offered only when it provably changes nothing but the spelling. Go resolves a name from the inside out — local scope, then the file's imports, then the package, then the predeclared names — so a new name that is free at package level can still be bound at a use site, and the wrong rename **compiles and computes something else**:
+
+```go
+var count = 10
+func Add(fooCount int) int { return fooCount + count } // Add(1) == 11
+```
+```go
+// after a careless rename of count to fooCount
+func Add(fooCount int) int { return fooCount + fooCount } // Add(1) == 2
+```
+
+The violation is still reported, but the fix is withheld and the rename left to a human, when any of the following holds:
+
+| Condition | Why |
+| --- | --- |
+| the new name is already declared in the package | would not compile |
+| the new name is predeclared (`len`, `error`, `string`, …) | the declaration compiles and shadows the builtin for the whole package |
+| any file of the package imports the new name | Go rejects a package-level name that any file imports |
+| at some use of the declaration, the new name is bound by a local, parameter, result or type parameter | the use would silently resolve to that instead |
+| the declaration is used from a generated or `exclude`d file | those files are never rewritten, so the use would dangle |
+| a `//go:linkname` or `//export` directive names the declaration | the directive names it as text, which a rename cannot follow |
+| another fix in the same run already renames something to that name | two declarations would end up with one name (`a.go:bX` and `a_b.go:x` both label to `aBX`; `fooBar` and `fooBAR` both drop to `bar`) |
+| the package has in-package `_test.go` files that this variant does not see | the test files may declare or use the name; the test variant, which sees every file, decides and its fix covers the non-test files too |
+
+The last row means that with `-test=false`, no rename is offered in a package that has tests. Under the default `-test=true` nothing changes: `go vet` and `declscope` analyze the test variant as well, and its fix is the one applied.
+
+Every check errs towards withholding. A rename that is withheld costs one manual edit; a rename that is wrong is a bug the linter itself cannot see.
 
 ## Directives
 
@@ -452,7 +482,7 @@ On Windows, download `declscope_${VERSION}_windows_${ARCH}.zip` and extract `dec
 | `-test` | `true` | Analyze test files (`*_test.go`) — built-in driver flag |
 | `-fix` | `false` | Apply suggested fixes automatically — built-in driver flag |
 
-Every diagnostic carries **at most one** fix, so `-fix` is unambiguous: a boundary crossing is fixed by inserting `//declscope:package`, a label by renaming. The two can never conflict, because a rename does not change a declaration's reach.
+Every diagnostic carries **at most one** fix, so `-fix` is unambiguous: a boundary crossing is fixed by inserting `//declscope:package`, a label by renaming. The two can never conflict, because a rename does not change a declaration's reach. A rename is offered only when it is [provably safe](#when-a-rename-is-withheld); in a package with in-package tests it comes from the test variant, so `-test=false` withholds it.
 
 ## Using it with an AI agent
 
