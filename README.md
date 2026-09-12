@@ -562,6 +562,25 @@ scope with `//declscope:package` and say why.
 
 That last clause matters. Left to itself an agent will take the cheapest path out of a diagnostic, and the cheapest path here is to widen everything. Making the widening explicit is the whole mechanism.
 
+## Where declscope sits
+
+Three linters draw boundaries in Go, at three different scales, and none of them overlaps.
+
+| Linter | Scale | The question it answers |
+| --- | --- | --- |
+| [`depguard`](https://github.com/OpenPeeDeeP/depguard) | Between packages | May this package import that one? |
+| **declscope** | Within one package | May this file reach that declaration? |
+| [`deadcode`](https://pkg.go.dev/golang.org/x/tools/cmd/deadcode) | Whole program | Is this reachable at all? |
+
+`depguard` reads the import graph and enforces the lines already drawn by the package layout: a domain package may not import a transport one. It has nothing to say about a package's inside, where every unexported name is visible to every file.
+
+declscope draws lines there instead, so a package can stay flat rather than splitting to get a boundary the compiler will hold.
+
+`deadcode` roots a reachability analysis at a `main` package and reports what no path reaches. It answers a question declscope structurally cannot: `boundary` needs a reference to find, so a declaration used by nobody produces no crossing and no diagnostic.
+
+> [!TIP]
+> The three compose. `depguard` keeps the package graph honest, declscope keeps each package honest inside, and `deadcode` removes what neither needs to reach. Where declscope's limits below say "an unused-code linter", `deadcode` — or staticcheck's `unused` for a library with no `main` to root from — is the tool meant.
+
 ## Limits of the analysis
 
 - Generated files (`// Code generated ... DO NOT EDIT.`) are excluded entirely — neither checked nor treated as reference sites.
