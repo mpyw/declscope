@@ -30,11 +30,9 @@ type fileInfo struct {
 	lineComments map[int]*ast.CommentGroup
 
 	// ignores stands the whole file outside a naming rule. They apply on top
-	// of whatever each declaration says for itself.
+	// of whatever each declaration says for itself. Whether each silenced
+	// anything is accounted for in collection.ignores.
 	ignores []directive.Ignore
-	// ignoresUsed tracks which of them silenced something, so that one that
-	// silenced nothing can be reported.
-	ignoresUsed []bool
 }
 
 // trailingAt returns the comment group trailing the declaration starting at
@@ -96,11 +94,11 @@ type target struct {
 	ownerObj types.Object
 
 	scope scope.Scope
-	dir   directive.Decl
-	// ignoresUsed tracks which of dir.Ignores silenced something. It lives on
-	// the target rather than in the reporting loop because a type's directive
-	// can be used up by one of its members.
-	ignoresUsed []bool
+	// dir holds the directives reaching the declaration. Its Ignores may be
+	// shared with sibling targets — a block's directive reaches every spec —
+	// so whether one silenced anything is tracked per physical directive in
+	// collection.ignores, never per target.
+	dir directive.Decl
 
 	// anchor is where a scope directive would be inserted.
 	anchor token.Pos
@@ -132,6 +130,20 @@ type collection struct {
 	idents   map[types.Object][]*ast.Ident
 	problems []directive.Problem
 
+	// ignores is every ignore directive in the package, keyed by where it is
+	// written, so that one shared by several declarations is judged once.
+	ignores map[token.Pos]*ignoreSite
+	// consumed is every comment group some declaration or file took its
+	// directives from; a directive outside them reached nothing.
+	consumed map[*ast.CommentGroup]bool
+
+	// unseenTests reports whether the package directory holds in-package
+	// _test.go files that are not in pass.Files, which is what the non-test
+	// variant of a package with tests sees. Both the rename fix and the
+	// unused-ignore report defer to the test variant when it does.
+	unseenTests     bool
+	unseenTestsDone bool
+
 	// namespaces is how many distinct namespaces the package's non-test files
 	// declare, which is how many boundaries there are to enforce.
 	namespaces int
@@ -150,6 +162,9 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		byObj:  make(map[types.Object]*target),
 		refs:   make(map[types.Object][]ref),
 		idents: make(map[types.Object][]*ast.Ident),
+
+		ignores:  make(map[token.Pos]*ignoreSite),
+		consumed: make(map[*ast.CommentGroup]bool),
 	}
 	for _, f := range pass.Files {
 		path := pass.Fset.Position(f.Pos()).Filename
@@ -159,7 +174,9 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		fi := &fileInfo{file: f, path: path, lineComments: make(map[int]*ast.CommentGroup)}
 		fileDir := directive.ParseFile(f)
 		fi.ignores = fileDir.Ignores
-		fi.ignoresUsed = make([]bool, len(fileDir.Ignores))
+		for _, ig := range fileDir.Ignores {
+			c.site(ig).fileLevel = true
+		}
 		c.problems = append(c.problems, fileDir.Problems...)
 		for _, g := range f.Comments {
 			line := pass.Fset.Position(g.Pos()).Line
@@ -198,6 +215,7 @@ func (c *collection) collectTargets(pass *analysis.Pass, opts Options) {
 			}
 		}
 	}
+	c.stray()
 }
 
 func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d *ast.FuncDecl) {
@@ -205,7 +223,7 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 	if !ok || d.Name.Name == "_" {
 		return
 	}
-	dir := directive.ParseDecl(d.Doc, fi.trailingAt(pass.Fset, d.Pos()))
+	dir := c.parseDecl(append([]*ast.CommentGroup{d.Doc}, fi.looseTrailing(pass.Fset, d)...)...)
 
 	if d.Recv == nil {
 		// init is not declared in package scope and can never be referenced.
@@ -240,13 +258,20 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 	}
 	// A directive on the block applies to every spec. A spec's own scope
 	// directive replaces the block's; its ignores are added to the block's.
-	outer := directive.ParseDecl(d.Doc)
+	// A parenthesized block can carry a trailing directive on its own lines,
+	// after "(" or ")"; an unparenthesized declaration's lines are its single
+	// spec's, and are read below.
 	grouped := d.Lparen.IsValid()
+	outer := c.parseDecl(d.Doc)
+	if grouped && len(d.Specs) > 0 {
+		attached := append(attached(d.Specs[0]), attached(d.Specs[len(d.Specs)-1])...)
+		outer = outer.Merge(c.parseDecl(fi.looseTrailing(pass.Fset, d, attached...)...))
+	}
 
 	for _, spec := range d.Specs {
 		switch spec := spec.(type) {
 		case *ast.TypeSpec:
-			dir := outer.Merge(directive.ParseDecl(spec.Doc, spec.Comment))
+			dir := outer.Merge(c.parseDecl(c.specGroups(pass, fi, spec)...))
 			anchor := d.Pos()
 			if grouped {
 				anchor = spec.Pos()
@@ -262,7 +287,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 			c.addFields(pass, opts, fi, spec, pass.TypesInfo.Defs[spec.Name])
 
 		case *ast.ValueSpec:
-			dir := outer.Merge(directive.ParseDecl(spec.Doc, spec.Comment))
+			dir := outer.Merge(c.parseDecl(c.specGroups(pass, fi, spec)...))
 			anchor := d.Pos()
 			if grouped {
 				anchor = spec.Pos()
@@ -296,12 +321,15 @@ func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, 
 		return
 	}
 	for _, field := range st.Fields.List {
+		// Parsed before the embedded-field check so that a directive on an
+		// embedded field is accounted for: it reaches no checked declaration
+		// and is reported unused, rather than dropped.
+		dir := c.parseDecl(field.Doc, field.Comment)
 		// Embedded fields take their name from the embedded type; renaming or
 		// hiding them is not meaningful here.
 		if len(field.Names) == 0 {
 			continue
 		}
-		dir := directive.ParseDecl(field.Doc, field.Comment)
 		for _, name := range field.Names {
 			obj, ok := pass.TypesInfo.Defs[name]
 			if !ok || name.Name == "_" {
@@ -347,11 +375,17 @@ func (c *collection) receiver(pass *analysis.Pass, fn *types.Func, fallback *fil
 	return owner, fallback.ns, fallback.key(), fallback
 }
 
+// add registers a target and names it on every ignore directive reaching it,
+// so that an unused one can be reported with the declarations it was written
+// for. Problems were recorded when the directives were parsed, once per
+// comment rather than once per target sharing it.
 func (c *collection) add(t *target) {
-	t.ignoresUsed = make([]bool, len(t.dir.Ignores))
 	c.targets = append(c.targets, t)
 	c.byObj[t.obj] = t
-	c.problems = append(c.problems, t.dir.Problems...)
+	for _, ig := range t.dir.Ignores {
+		s := c.site(ig)
+		s.decls = append(s.decls, t.name())
+	}
 }
 
 // collectRefs records every ident naming a tracked object, along with the file
