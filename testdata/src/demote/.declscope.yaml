@@ -1,0 +1,3 @@
+# The mirror of the label rule: where the label is not required, forbid it.
+rules:
+  demote: true

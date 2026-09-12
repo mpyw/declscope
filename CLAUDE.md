@@ -41,6 +41,7 @@ internal/
   collect.go              fileInfo, target, reference collection
   options.go              resolved configuration, scope resolution, exclude globs
   report.go               diagnostics and suggested fixes
+  rule/                   the rule vocabulary, shared by diagnostics, config, baseline and ignores
   namespace/              file name -> namespace, prefix matching, qualify/unqualify
   scope/                  the three-level Scope enum
   directive/              //declscope:... comment parsing
@@ -57,21 +58,32 @@ cmd/declscope/            singlechecker entry point, plus the `baseline` subcomm
 - Whether an *exported* identifier is used outside its package is deliberately **out of scope**: `go/analysis` has no upward view of the program. Answering it would require a separate whole-program mode driven by `packages.Load`, which would not fit a plain Analyzer. Combine with an unused-code linter instead.
 - Generated files are excluded as declaration sites **and** as reference sites, since a violation in generated code is not actionable.
 
+## Rules
+
+`internal/rule` holds the one vocabulary: `escape`, `prefix`, `demote`, `foreign-method`. The same name is the diagnostic's `Category`, the `Rule` field of a baseline key, and what an ignore directive targets. **Adding a rule means adding it there**, not inventing a string at the report site.
+
+`prefix` and `demote` are mirrors and are structurally exclusive: `checkDemote` returns early wherever `opts.Prefix.required(c.namespaces)` holds, so the two can never contradict each other on one declaration.
+
+`namespace.Unqualify` (demote's rename) declines names where the prefix was not a word boundary, and names that would be left as a keyword or as nothing. It lowers a leftover initialism the way Go spells one (`userID` → `id`, `userURLPath` → `urlPath`), which the naive version got wrong (`iD`).
+
 ## Directives
 
 ```go
 //declscope:public            // state the scope instead of deriving it from the name
 //declscope:package
 //declscope:file
-//declscope:ignore            // suppress every diagnostic for the declaration
+//declscope:ignore            // silence every rule for the declaration
+//declscope:ignore demote     // silence named rules only
 //declscope:namespace <name>  // file level, before the package clause
 ```
+
+Ignores accumulate (`Decl.Ignores`) and each is reported unused on its own. `ignored()` marks **every** directive covering a rule as used, not just the first, so overlapping directives are not misreported as unused.
 
 `//declscope:namespace` matches Go's directive syntax, so `go/doc` strips it from rendered documentation. In a file with a package comment it belongs at the bottom of that comment after a blank `//` line; in a file without one it is separated from the package clause by a blank line, because flush against `package` it becomes an empty package comment and adds a stray blank line to the rendered package doc. `FileNamespace` scans `file.Comments` rather than `file.Doc`, so every placement is recognised.
 
 Placement of declaration-level directives: a declaration's doc comment, or a trailing comment on the same line. `ast.FuncDecl` has no `Comment` field, so trailing directives on functions are found through `fileInfo.lineComments`. A directive on a parenthesized block applies to every spec in it; a spec's own directive overrides it (`directive.Decl.Merge`).
 
-Unused `//declscope:ignore` directives are reported, matching the convention in `mpyw/gormreuse` and `mpyw/zerologlintctx`.
+Unused ignore directives are reported, matching the convention in `mpyw/gormreuse` and `mpyw/zerologlintctx`. Ignores are consulted **before** the baseline, so a suppression the baseline would also have absorbed still counts as the directive doing its job.
 
 ## Suggested fixes
 

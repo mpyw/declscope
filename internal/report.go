@@ -14,20 +14,14 @@ import (
 	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/namespace"
+	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
-// Rule names, used as the diagnostic category and as the baseline key.
-const (
-	ruleEscape        = "escape"
-	rulePrefix        = "prefix"
-	ruleForeignMethod = "foreign-method"
-)
-
 // finding is a diagnostic that a target would produce, held back until its
-// ignore directive and the baseline have been consulted.
+// ignore directives and the baseline have been consulted.
 type finding struct {
-	rule    string
+	rule    rule.Rule
 	decl    string
 	pos     token.Pos
 	msg     string
@@ -41,27 +35,29 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	})
 
 	for _, t := range c.targets {
-		findings := c.check(pass, opts, t)
-		if t.dir.Ignore {
-			// An ignore is unused only when nothing would have fired at all.
-			// A baseline suppression still counts as the directive doing its
-			// job, so the baseline is consulted after this.
-			if len(findings) == 0 {
-				pass.Reportf(t.dir.IgnorePos, "unused //declscope:ignore on %s", t.name())
+		used := make([]bool, len(t.dir.Ignores))
+		for _, f := range c.check(pass, opts, t) {
+			// Ignores are consulted before the baseline: a suppression that
+			// the baseline would also have absorbed still counts as the
+			// directive doing its job.
+			if ignored(t.dir.Ignores, f.rule, used) {
+				continue
 			}
-			continue
-		}
-		for _, f := range findings {
 			if opts.Baseline.Has(f.key(pass)) {
 				continue
 			}
 			pass.Report(analysis.Diagnostic{
 				Pos:            f.pos,
-				Category:       f.rule,
+				Category:       string(f.rule),
 				Message:        f.msg,
 				Related:        f.related,
 				SuggestedFixes: f.fixes,
 			})
+		}
+		for i, ig := range t.dir.Ignores {
+			if !used[i] {
+				pass.Reportf(ig.Pos, "unused %s on %s", ig, t.name())
+			}
 		}
 	}
 
@@ -81,14 +77,29 @@ func (f finding) key(pass *analysis.Pass) baseline.Key {
 func (c *collection) keys(pass *analysis.Pass, opts Options) []baseline.Key {
 	var out []baseline.Key
 	for _, t := range c.targets {
-		if t.dir.Ignore {
-			continue
-		}
+		used := make([]bool, len(t.dir.Ignores))
 		for _, f := range c.check(pass, opts, t) {
+			if ignored(t.dir.Ignores, f.rule, used) {
+				continue
+			}
 			out = append(out, f.key(pass))
 		}
 	}
 	return out
+}
+
+// ignored reports whether any directive silences r, marking every directive
+// that does as used. All of them are marked, not just the first, so that
+// overlapping directives are not reported as unused.
+func ignored(ignores []directive.Ignore, r rule.Rule, used []bool) bool {
+	hit := false
+	for i, ig := range ignores {
+		if ig.Covers(r) {
+			used[i] = true
+			hit = true
+		}
+	}
+	return hit
 }
 
 func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []finding {
@@ -99,6 +110,9 @@ func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []findi
 		}
 	}
 	if f, ok := c.checkPrefix(pass, opts, t); ok {
+		out = append(out, f)
+	}
+	if f, ok := c.checkDemote(pass, opts, t); ok {
 		out = append(out, f)
 	}
 	if f, ok := c.checkForeignMethod(pass, opts, t); ok {
@@ -120,7 +134,7 @@ func (c *collection) checkEscape(pass *analysis.Pass, opts Options, t *target) (
 		return finding{}, false
 	}
 
-	f := finding{rule: ruleEscape, decl: t.name(), pos: t.ident.Pos()}
+	f := finding{rule: rule.Escape, decl: t.name(), pos: t.ident.Pos()}
 	switch {
 	case t.dir.HasScope:
 		f.msg = fmt.Sprintf("%s %s is declared %s by %s, but is used from %s",
@@ -174,7 +188,7 @@ func (c *collection) checkPrefix(pass *analysis.Pass, opts Options, t *target) (
 	}
 
 	f := finding{
-		rule: rulePrefix,
+		rule: rule.Prefix,
 		decl: name,
 		pos:  t.ident.Pos(),
 		msg: fmt.Sprintf("%s %s does not carry the prefix of %s; rename it to %s",
@@ -182,6 +196,43 @@ func (c *collection) checkPrefix(pass *analysis.Pass, opts Options, t *target) (
 	}
 	if fix, ok := c.renameFix(pass, t, namespace.Qualify(name, t.ownerNS),
 		"label it with its namespace"); ok {
+		f.fixes = append(f.fixes, fix)
+	}
+	return f, true
+}
+
+// checkDemote is the mirror of checkPrefix: where the label is not required,
+// it must not be there either.
+//
+// Enabling it asserts that in this codebase a namespace prefix always means
+// the label and never part of the concept, since nothing in the name can tell
+// userID-the-label from userID-the-word.
+func (c *collection) checkDemote(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
+	if !opts.CheckDemote || !t.renameable || t.ownerNS == "" {
+		return finding{}, false
+	}
+	if opts.Prefix.required(c.namespaces) {
+		return finding{}, false
+	}
+	name := t.obj.Name()
+	if isExported(name) {
+		return finding{}, false
+	}
+	// Unqualify declines names where the prefix was never a word boundary, and
+	// names that would be left as a keyword or as nothing at all.
+	short := namespace.Unqualify(name, t.ownerNS)
+	if short == "" {
+		return finding{}, false
+	}
+
+	f := finding{
+		rule: rule.Demote,
+		decl: name,
+		pos:  t.ident.Pos(),
+		msg: fmt.Sprintf("%s %s carries the label of %s, which is not required here; rename it to %s",
+			t.kind, name, describe(t.ownerNS, t.file.path), short),
+	}
+	if fix, ok := c.renameFix(pass, t, short, "drop the namespace label"); ok {
 		f.fixes = append(f.fixes, fix)
 	}
 	return f, true
@@ -198,7 +249,7 @@ func (c *collection) checkForeignMethod(pass *analysis.Pass, opts Options, t *ta
 		return finding{}, false
 	}
 	return finding{
-		rule: ruleForeignMethod,
+		rule: rule.ForeignMethod,
 		decl: t.name(),
 		pos:  t.ident.Pos(),
 		msg: fmt.Sprintf("unexported method %s is declared in %s but %s belongs to %s",

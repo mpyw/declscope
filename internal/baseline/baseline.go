@@ -26,6 +26,8 @@ import (
 	"slices"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/mpyw/declscope/internal/rule"
 )
 
 // Key identifies a violation independently of its position.
@@ -38,7 +40,7 @@ type Key struct {
 	// Package is the import path of the package declaring the violation.
 	Package string
 	// Rule is the check that fired.
-	Rule string
+	Rule rule.Rule
 	// Decl names the declaration: "helper" for a package-level one,
 	// "User.name" for a member.
 	Decl string
@@ -102,9 +104,9 @@ func Load(path string) (*Set, error) {
 	}
 	s := &Set{keys: map[Key]bool{}}
 	for pkg, rules := range f.Packages {
-		for rule, decls := range rules {
+		for name, decls := range rules {
 			for _, decl := range decls {
-				s.keys[Key{Package: pkg, Rule: rule, Decl: decl}] = true
+				s.keys[Key{Package: pkg, Rule: rule.Rule(name), Decl: decl}] = true
 			}
 		}
 	}
@@ -121,13 +123,14 @@ func Save(path string, keys []Key) error {
 			rules = map[string][]string{}
 			f.Packages[k.Package] = rules
 		}
-		if !slices.Contains(rules[k.Rule], k.Decl) {
-			rules[k.Rule] = append(rules[k.Rule], k.Decl)
+		name := string(k.Rule)
+		if !slices.Contains(rules[name], k.Decl) {
+			rules[name] = append(rules[name], k.Decl)
 		}
 	}
 	for _, rules := range f.Packages {
-		for rule := range rules {
-			slices.Sort(rules[rule])
+		for name := range rules {
+			slices.Sort(rules[name])
 		}
 	}
 

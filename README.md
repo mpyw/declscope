@@ -94,6 +94,19 @@ func f(u *User) {
 }
 ```
 
+### Rule reference
+
+Each check has one name, and that name is what appears as the diagnostic's category, what enables or disables it in the config, what keys its baseline entry, and what an ignore directive targets.
+
+| Rule | Reports | Fix | Default |
+| --- | --- | --- | --- |
+| `escape` | a declaration used from outside the namespace it is private to | insert `//declscope:package` | always on |
+| `prefix` | an unexported package-level declaration missing its namespace label | rename to add the label | `rules.prefix: ondemand` |
+| `demote` | a namespace label present where it is not required | rename to drop the label | `rules.demote: false` |
+| `foreign-method` | an unexported method grown on a type belonging to another namespace | insert `//declscope:package` | `rules.foreign-methods: false` |
+
+`prefix` and `demote` are mirrors, and never both apply to the same declaration: `demote` is inert wherever `prefix` requires the label. Turning both on settles the spelling of every unexported package-level name in both directions.
+
 ## Namespaces
 
 A namespace is the unit of file privacy. By default it is derived from the file name, so **each file is its own namespace**:
@@ -143,9 +156,20 @@ Deriving the default from the file name rather than using the file name itself i
 //declscope:package
 //declscope:file
 
-//declscope:ignore      // suppress every diagnostic for this declaration
+//declscope:ignore              // silence every rule for this declaration
+//declscope:ignore demote       // silence one
+//declscope:ignore demote,prefix
 
 //declscope:namespace <name>   // before the package clause; overrides the file's namespace
+```
+
+An ignore names rules from the table above, so a declaration can opt out of one check while staying subject to the rest:
+
+```go
+// The prefix here is part of the concept, not a label.
+//
+//declscope:ignore demote
+var userID int
 ```
 
 Placement: the doc comment of a declaration, or a trailing comment on the same line. A directive on a parenthesized `var`/`const`/`type` block applies to every spec in it, and a directive on a spec overrides it. A trailing `// reason` is allowed.
@@ -157,7 +181,7 @@ func helper() {}
 func helper() {} //declscope:package
 ```
 
-Unused `//declscope:ignore` directives are reported, so suppressions do not outlive the problem.
+Unused `//declscope:ignore` directives are reported, so suppressions do not outlive the problem. Each directive is judged on its own: `//declscope:ignore demote` is unused if nothing but `demote` would have fired.
 
 ## Installation & Usage
 
@@ -298,6 +322,7 @@ defaults:
 
 rules:
   prefix: ondemand        # true | false | ondemand (required once a package has two namespaces)
+  demote: false           # and where it is not required, forbid it
   members: true           # bound unexported methods/fields by their type's namespace
   foreign-methods: false  # report unexported methods grown on another namespace's type
 
@@ -312,6 +337,19 @@ Unknown keys are an error rather than a silent no-op: a typo in a rule name woul
 ### `prefix`
 
 `ondemand` (the default) requires the label only in a package with more than one namespace. `true` requires it unconditionally, which costs a little stutter in single-file packages but means a package gaining its second namespace is not a mass rename. `false` drops the rule, leaving reach enforcement without any naming discipline.
+
+### `demote`
+
+The mirror of `prefix`: where the label is not required, it must not be there. With both on, the spelling of every unexported package-level name is fully determined and fixable in either direction.
+
+Enabling it asserts that a namespace prefix in this codebase *always* means the label — nothing in a name can tell `userID`-the-label from `userID`-the-word, and `demote` will offer to rename it to `id`. Where the prefix is part of the concept, say so on the declaration:
+
+```go
+//declscope:ignore demote
+var userID int
+```
+
+The rename spells a leftover initialism the way Go does (`userID` → `id`, `userURLPath` → `urlPath`), and declines names that would be left as a keyword or as nothing at all.
 
 ### `foreign-methods`
 

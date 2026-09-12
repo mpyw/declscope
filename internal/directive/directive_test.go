@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mpyw/declscope/internal/directive"
+	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
@@ -67,7 +68,7 @@ func TestParseDeclProblems(t *testing.T) {
 	}{
 		{"unknown keyword", "//declscope:bogus"},
 		{"argument where none is taken", "//declscope:package user"},
-		{"ignore with argument", "//declscope:ignore why"},
+		{"ignore of an unknown rule", "//declscope:ignore why"},
 		{"namespace on a declaration", "//declscope:namespace user"},
 		{"conflicting scopes", "//declscope:package\n//declscope:file"},
 	}
@@ -82,9 +83,72 @@ func TestParseDeclProblems(t *testing.T) {
 }
 
 func TestParseDeclIgnore(t *testing.T) {
-	fn := firstFunc(t, "package p\n\n//declscope:ignore\nfunc f() {}\n")
-	if d := directive.ParseDecl(fn.Doc); !d.Ignore {
-		t.Error("Ignore = false, want true")
+	tests := []struct {
+		name    string
+		comment string
+		covers  []rule.Rule
+		misses  []rule.Rule
+	}{
+		{
+			name:    "bare ignore covers every rule",
+			comment: "//declscope:ignore",
+			covers:  rule.All,
+		},
+		{
+			name:    "one rule",
+			comment: "//declscope:ignore demote",
+			covers:  []rule.Rule{rule.Demote},
+			misses:  []rule.Rule{rule.Escape, rule.Prefix, rule.ForeignMethod},
+		},
+		{
+			name:    "several rules",
+			comment: "//declscope:ignore demote,prefix",
+			covers:  []rule.Rule{rule.Demote, rule.Prefix},
+			misses:  []rule.Rule{rule.Escape, rule.ForeignMethod},
+		},
+		{
+			name:    "spaces around the separator",
+			comment: "//declscope:ignore demote, prefix",
+			covers:  []rule.Rule{rule.Demote, rule.Prefix},
+			misses:  []rule.Rule{rule.Escape},
+		},
+		{
+			name:    "with a reason",
+			comment: "//declscope:ignore demote // the prefix is part of the concept",
+			covers:  []rule.Rule{rule.Demote},
+			misses:  []rule.Rule{rule.Escape},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fn := firstFunc(t, "package p\n\n"+tt.comment+"\nfunc f() {}\n")
+			d := directive.ParseDecl(fn.Doc)
+			if len(d.Problems) != 0 {
+				t.Fatalf("unexpected problems: %v", d.Problems)
+			}
+			if len(d.Ignores) != 1 {
+				t.Fatalf("got %d ignores, want 1", len(d.Ignores))
+			}
+			for _, r := range tt.covers {
+				if !d.Ignores[0].Covers(r) {
+					t.Errorf("Covers(%q) = false, want true", r)
+				}
+			}
+			for _, r := range tt.misses {
+				if d.Ignores[0].Covers(r) {
+					t.Errorf("Covers(%q) = true, want false", r)
+				}
+			}
+		})
+	}
+}
+
+// TestParseDeclIgnoreAccumulates checks that several ignore directives on one
+// declaration are all kept, so that each can be reported unused on its own.
+func TestParseDeclIgnoreAccumulates(t *testing.T) {
+	fn := firstFunc(t, "package p\n\n//declscope:ignore demote\n//declscope:ignore prefix\nfunc f() {}\n")
+	if d := directive.ParseDecl(fn.Doc); len(d.Ignores) != 2 {
+		t.Errorf("got %d ignores, want 2", len(d.Ignores))
 	}
 }
 

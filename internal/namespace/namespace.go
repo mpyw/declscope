@@ -14,6 +14,7 @@
 package namespace
 
 import (
+	"go/token"
 	"path/filepath"
 	"strings"
 	"unicode"
@@ -140,4 +141,47 @@ var knownArch = map[string]bool{
 	"mips64p32le": true, "mips8": true, "ppc": true, "ppc64": true,
 	"ppc64le": true, "riscv": true, "riscv64": true, "s390": true,
 	"s390x": true, "sparc": true, "sparc64": true, "wasm": true,
+}
+
+// Unqualify returns name with ns stripped from its front, which is the rename
+// offered when a namespace label is not wanted.
+//
+// The leading run of capitals left behind is lowered the way Go spells an
+// identifier that starts with an initialism, so userID yields id and
+// userURLPath yields urlPath rather than iD and uRLPath.
+//
+// It returns "" when nothing usable remains: the name was only the namespace,
+// or stripping it would leave a keyword.
+func Unqualify(name, ns string) string {
+	rest, ok := strings.CutPrefix(name, ns)
+	if !ok || rest == "" {
+		return ""
+	}
+
+	// Measure the leading run of capitals.
+	runes := []rune(rest)
+	upper := 0
+	for upper < len(runes) && unicode.IsUpper(runes[upper]) {
+		upper++
+	}
+	switch {
+	case upper == 0:
+		// Not a word boundary, so the prefix was never a label.
+		return ""
+	case upper == len(runes):
+		// The remainder is one initialism: ID -> id.
+		rest = strings.ToLower(rest)
+	default:
+		// An initialism followed by a word keeps the capital that starts that
+		// word: URLPath -> urlPath.
+		if upper > 1 {
+			upper--
+		}
+		rest = strings.ToLower(string(runes[:upper])) + string(runes[upper:])
+	}
+
+	if !token.IsIdentifier(rest) || token.IsKeyword(rest) {
+		return ""
+	}
+	return rest
 }

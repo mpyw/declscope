@@ -11,6 +11,7 @@
 //
 //	rules:
 //	  prefix: ondemand       # true | false | ondemand (only once a package has two namespaces)
+//	  demote: false          # and where it is not required, forbid it
 //	  members: true          # bound unexported methods/fields by their type's namespace
 //	  foreign-methods: false # report unexported methods grown on another namespace's type
 //
@@ -52,6 +53,7 @@ type File struct {
 	Rules struct {
 		// Prefix is tri-state, so it arrives as a bool or as a string.
 		Prefix         any   `yaml:"prefix"`
+		Demote         *bool `yaml:"demote"`
 		Members        *bool `yaml:"members"`
 		ForeignMethods *bool `yaml:"foreign-methods"`
 	} `yaml:"rules"`
@@ -167,6 +169,9 @@ func (f *File) Apply(opts *internal.Options) error {
 			return fmt.Errorf("rules.prefix: want true, false or ondemand, got %v", f.Rules.Prefix)
 		}
 		opts.Prefix = mode
+	}
+	if f.Rules.Demote != nil {
+		opts.CheckDemote = *f.Rules.Demote
 	}
 	if f.Rules.Members != nil {
 		opts.CheckMembers = *f.Rules.Members

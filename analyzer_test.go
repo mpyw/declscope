@@ -83,3 +83,21 @@ func TestExplicitScopeConflict(t *testing.T) {
 func TestPrefixAlways(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "prefixalways")
 }
+
+// TestDemote checks the mirror of the label rule: where the label is not
+// required, it must not be present.
+func TestDemote(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "demote")
+}
+
+// TestDemoteInert checks that demote says nothing wherever the label is
+// required, so the two rules can never contradict each other.
+func TestDemoteInert(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "demoteinert")
+}
+
+// TestIgnoreScope checks that an ignore directive can name the rules it
+// silences, and that each directive is reported unused on its own.
+func TestIgnoreScope(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ignorescope")
+}

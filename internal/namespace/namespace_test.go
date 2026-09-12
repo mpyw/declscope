@@ -85,3 +85,30 @@ func TestQualify(t *testing.T) {
 	}
 
 }
+
+func TestUnqualify(t *testing.T) {
+	tests := []struct {
+		name, ns, want string
+	}{
+		{"userHelper", "user", "helper"},
+		{"userRepositoryCache", "userRepository", "cache"},
+
+		// An initialism left behind is spelled the way Go spells one.
+		{"userID", "user", "id"},
+		{"userURLPath", "user", "urlPath"},
+		{"userIO", "user", "io"},
+
+		// Nothing usable remains.
+		{"user", "user", ""},
+		{"helper", "user", ""},
+		{"users", "user", ""},    // not a word boundary, so never a label
+		{"userType", "user", ""}, // stripping would leave a keyword
+		{"userFunc", "user", ""},
+		{"anything", "", ""},
+	}
+	for _, tt := range tests {
+		if got := namespace.Unqualify(tt.name, tt.ns); got != tt.want {
+			t.Errorf("Unqualify(%q, %q) = %q, want %q", tt.name, tt.ns, got, tt.want)
+		}
+	}
+}

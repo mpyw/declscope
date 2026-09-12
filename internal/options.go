@@ -97,6 +97,12 @@ type Options struct {
 	// namespace as a label.
 	Prefix PrefixMode
 
+	// CheckDemote is the mirror of Prefix: where the label is not required, it
+	// must not be present either. Together the two settle the spelling of
+	// every unexported package-level name, in both directions. It is inert
+	// under PrefixAlways, where the label is always required.
+	CheckDemote bool
+
 	// Exclude holds glob patterns matched against file paths.
 	Exclude []string
 
@@ -121,6 +127,7 @@ func DefaultOptions() Options {
 		Unexported:          scope.FilePrivate,
 		CheckMembers:        true,
 		Prefix:              PrefixOnDemand,
+		CheckDemote:         false,
 		CheckForeignMethods: false,
 	}
 }

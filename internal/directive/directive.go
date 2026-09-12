@@ -9,9 +9,14 @@
 //	//declscope:package
 //	//declscope:file
 //
-// Declaration level, suppressing every diagnostic for the declaration:
+// Declaration level, suppressing diagnostics for the declaration. With no
+// argument it silences every rule; with one it silences only the rules named,
+// so that a declaration can opt out of one check while staying subject to the
+// rest:
 //
 //	//declscope:ignore
+//	//declscope:ignore demote
+//	//declscope:ignore demote,prefix
 //
 // File level, placed before the package clause, overriding the namespace that
 // would otherwise be derived from the file name:
@@ -41,8 +46,10 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"slices"
 	"strings"
 
+	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
@@ -54,14 +61,36 @@ type Problem struct {
 	Msg string
 }
 
+// Ignore is one ignore directive. An empty Rules silences every rule.
+type Ignore struct {
+	Pos   token.Pos
+	Rules []rule.Rule
+}
+
+// Covers reports whether the directive silences r.
+func (i Ignore) Covers(r rule.Rule) bool {
+	return len(i.Rules) == 0 || slices.Contains(i.Rules, r)
+}
+
+// String renders the directive as written, for reporting it unused.
+func (i Ignore) String() string {
+	if len(i.Rules) == 0 {
+		return "//declscope:ignore"
+	}
+	names := make([]string, 0, len(i.Rules))
+	for _, r := range i.Rules {
+		names = append(names, string(r))
+	}
+	return "//declscope:ignore " + strings.Join(names, ",")
+}
+
 // Decl holds the directives that apply to a single declaration.
 type Decl struct {
 	Scope    scope.Scope
 	HasScope bool
 	ScopePos token.Pos
 
-	Ignore    bool
-	IgnorePos token.Pos
+	Ignores []Ignore
 
 	Problems []Problem
 }
@@ -73,9 +102,7 @@ func (d Decl) Merge(inner Decl) Decl {
 	if inner.HasScope {
 		out.Scope, out.HasScope, out.ScopePos = inner.Scope, true, inner.ScopePos
 	}
-	if inner.Ignore {
-		out.Ignore, out.IgnorePos = true, inner.IgnorePos
-	}
+	out.Ignores = append(append([]Ignore(nil), d.Ignores...), inner.Ignores...)
 	out.Problems = append(append([]Problem(nil), d.Problems...), inner.Problems...)
 	return out
 }
@@ -103,11 +130,21 @@ func ParseDecl(groups ...*ast.CommentGroup) Decl {
 func (d *Decl) consume(pos token.Pos, keyword, arg string) {
 	switch keyword {
 	case "ignore":
-		if arg != "" {
-			d.problem(pos, "declscope:ignore takes no argument")
-			return
+		ignore := Ignore{Pos: pos}
+		for _, name := range strings.Split(arg, ",") {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			r, ok := rule.Parse(name)
+			if !ok {
+				d.problem(pos, fmt.Sprintf("unknown rule %q in declscope:ignore (want one of %s)",
+					name, strings.Join(rule.Names(), ", ")))
+				return
+			}
+			ignore.Rules = append(ignore.Rules, r)
 		}
-		d.Ignore, d.IgnorePos = true, pos
+		d.Ignores = append(d.Ignores, ignore)
 
 	case "namespace":
 		d.problem(pos, "declscope:namespace must appear before the package clause")
