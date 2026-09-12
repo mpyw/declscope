@@ -19,6 +19,6 @@ func (l *List[T]) push(v T) { // want `method List.push is private to namespace 
 func (l *List[T]) Len() int { return l.size }
 
 // listNode is a generic type private to this namespace.
-type listNode[T any] struct { // want `type listNode is file-private to namespace "list", but is used from namespace "use"`
+type listNode[T any] struct { // want `type listNode is private to namespace "list", but is used from namespace "use"`
 	val T // want `field listNode.val is private to namespace "list", but is used from namespace "use"`
 }

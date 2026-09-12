@@ -10,7 +10,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 | --- | --- |
 | `public` | Usable outside the package |
 | `package` | Usable anywhere in the package |
-| `file` | Usable only inside its own **namespace** |
+| `private` | Usable only inside its own **namespace** |
 
 ### Core concept: reach is stated, ownership is named
 
@@ -28,7 +28,7 @@ What sets members apart is *only* that boundary and their exemption from the lab
 
 ### Namespaces
 
-A namespace is the unit of file privacy, defaulting to the camelCased file name so that each file is its own namespace, and overridable with `//declscope:namespace <name>` before the package clause.
+A namespace is the unit of privacy, defaulting to the camelCased file name so that each file is its own namespace, and overridable with `//declscope:namespace <name>` before the package clause.
 
 The namespace count that `rules.qualify: ondemand` keys off is taken from the package's **non-test** files (`collection.namespaces`). A test file joins its subject's namespace rather than creating a boundary, and counting one whose name matches no source file (`integration_test.go`) would make a package's test variant disagree with the package itself.
 
@@ -106,7 +106,7 @@ There is no declaration-site rule for a method grown on another namespace's type
 | --- | --- | --- |
 | `//declscope:public` | Declaration | State the scope instead of deriving it from the defaults |
 | `//declscope:package` | Declaration | Same |
-| `//declscope:file` | Declaration | Same |
+| `//declscope:private` | Declaration | Same |
 | `//declscope:ignore` | Declaration or file | Silence every rule for the declaration, or for the whole file |
 | `//declscope:ignore <rules>` | Declaration or file | Silence only the named rules (`boundary`, `qualify`, `unqualify`) |
 | `//declscope:namespace <name>` | File, before the package clause | Override the namespace derived from the file name |
@@ -160,7 +160,7 @@ The conditions, each conservative:
 
 Renames are also never offered for members. A namespace that cannot be a label at all (`namespace.IsLabel` is false) produces no naming diagnostic in the first place, rather than a diagnostic without a rename.
 
-**A declaration whose scope came from a directive gets no fix at all** (`t.dir.HasScope`). Both the directive and the use site are deliberate, so `-fix` must not overwrite the author's directive. Emitting `//declscope:package` next to an existing `//declscope:file` produces code the linter itself rejects.
+**A declaration whose scope came from a directive gets no fix at all** (`t.dir.HasScope`). Both the directive and the use site are deliberate, so `-fix` must not overwrite the author's directive. Emitting `//declscope:package` next to an existing `//declscope:private` produces code the linter itself rejects.
 
 `namespace.Qualify` prepends blindly, so its suggestion can stutter when the name already contains the namespace word (`defaultBaselineName` → `baselineDefaultBaselineName`). The fix is a suggestion; a human renaming it to `baselineDefaultName` is expected and fine.
 

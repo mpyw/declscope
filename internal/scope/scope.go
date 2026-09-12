@@ -19,9 +19,9 @@ const (
 	// //declscope:package, or by configuring it as a default.
 	PackageInternal
 
-	// FilePrivate is visible only within its own namespace. Unexported
+	// Private is visible only within its own namespace. Unexported
 	// identifiers default here.
-	FilePrivate
+	Private
 )
 
 func (s Scope) String() string {
@@ -30,8 +30,8 @@ func (s Scope) String() string {
 		return "public"
 	case PackageInternal:
 		return "package-internal"
-	case FilePrivate:
-		return "file-private"
+	case Private:
+		return "private"
 	default:
 		return "unknown"
 	}
@@ -44,8 +44,8 @@ func (s Scope) Directive() string {
 		return "//declscope:public"
 	case PackageInternal:
 		return "//declscope:package"
-	case FilePrivate:
-		return "//declscope:file"
+	case Private:
+		return "//declscope:private"
 	default:
 		return ""
 	}
@@ -58,8 +58,8 @@ func Parse(keyword string) (Scope, bool) {
 		return Public, true
 	case "package":
 		return PackageInternal, true
-	case "file":
-		return FilePrivate, true
+	case "private":
+		return Private, true
 	default:
 		return 0, false
 	}

@@ -68,7 +68,7 @@ Nothing here is unusual, and nothing the compiler can object to. `email` is unex
 ```console
 $ declscope ./...
 user.go:7:2:  field User.email is private to namespace "user", but is used from namespace "csv"
-user.go:10:6: func normalize is file-private to namespace "user", but is used from namespace "csv"
+user.go:10:6: func normalize is private to namespace "user", but is used from namespace "csv"
 user.go:10:6: func normalize does not carry the prefix of namespace "user"; rename it to userNormalize
 ```
 
@@ -203,7 +203,7 @@ Every diagnostic carries **at most one** fix, so `-fix` never has to choose: a [
 
 ## Namespaces
 
-A **namespace** is the unit within which a `file`-scoped declaration may be used. By default a namespace is derived from the file name, so that each file is its own namespace:
+A **namespace** is the unit within which a `private` declaration may be used. By default a namespace is derived from the file name, so that each file is its own namespace:
 
 | File | Namespace |
 | --- | --- |
@@ -215,7 +215,7 @@ A **namespace** is the unit within which a `file`-scoped declaration may be used
 | `foo-bar.go`, `Foo.go` | `fooBar`, `foo` — any separator, and a PascalCase stem, normalize to lowerCamelCase |
 | `2fa_auth.go` | `2faAuth` — an identity, but never a label |
 
-The namespace is derived from the file name rather than being the file name, so that renaming a file does not rename every identifier it declares, and so that a `_test.go` file reaches its subject's `file`-scoped declarations by sharing its namespace.
+The namespace is derived from the file name rather than being the file name, so that renaming a file does not rename every identifier it declares, and so that a `_test.go` file reaches its subject's `private` declarations by sharing its namespace.
 
 A namespace has two roles:
 
@@ -242,8 +242,10 @@ A **scope** is how far a declaration may be used. There are three:
 | Scope | Meaning | Rust equivalent |
 | --- | --- | --- |
 | `public` | Usable outside the package | `pub` |
-| `package` | Usable anywhere in the package | `pub(crate)` |
-| `file` | Usable only inside its own [namespace](#namespaces) | Module-private |
+| `package` | Usable anywhere in the package | `pub(super)` |
+| `private` | Usable only inside its own [namespace](#namespaces) | No modifier |
+
+Rust has all three levels natively, because a file is a module: an item with no modifier is visible in its own module and the modules beneath it, which is the namespace, and `pub(super)` lifts it to the parent module and so to the sibling files. Go collapses the lower two because a package spans its files; `private` is the default a Rust module already has.
 
 ### Scope resolution
 
@@ -251,9 +253,9 @@ A declaration's scope is decided by the first row that applies:
 
 | The declaration | Scope |
 | --- | --- |
-| Carries a scope directive (`//declscope:public`, `//declscope:package`, `//declscope:file`) | The directive's |
+| Carries a scope directive (`//declscope:public`, `//declscope:package`, `//declscope:private`) | The directive's |
 | Is exported | [`defaults.exported`](#configuration), `public` unless configured |
-| Is unexported | [`defaults.unexported`](#configuration), `file` unless configured |
+| Is unexported | [`defaults.unexported`](#configuration), `private` unless configured |
 
 Widening is always stated, by a directive on the declaration or by a `defaults` key for the package. The name of a declaration plays no part: a namespace prefix is an ownership label ([`qualify`](#qualify)) and grants nothing, so a prefix can be added for legibility without changing what the declaration reaches, and a codebase that prefixes everything loses no protection.
 
@@ -261,7 +263,7 @@ Widening is always stated, by a directive on the declaration or by a `defaults` 
 // user.go   (namespace: user)
 
 func UserLoad()   {} // public: usable outside the package
-func userCache()  {} // file: only namespace "user" may use it
+func userCache()  {} // private: only namespace "user" may use it
 
 //declscope:package
 func userShared() {} // package: usable anywhere in the package
@@ -276,7 +278,7 @@ A **member** is a method or a struct field. Members have the same three scopes a
 | Bounding namespace | The namespace of the file declaring it | The namespace of the file declaring its **type**, wherever the member is written |
 | [Naming rules](#naming-rules) | Apply | Do not apply |
 
-A member is already qualified by its type at every use (`u.save()`), so it collides with nothing and a label would only stutter (`u.userSave()`). What a member lacks in Go is encapsulation — every unexported field is visible to its whole package — and the `file` scope supplies it:
+A member is already qualified by its type at every use (`u.save()`), so it collides with nothing and a label would only stutter (`u.userSave()`). What a member lacks in Go is encapsulation — every unexported field is visible to its whole package — and the `private` scope supplies it:
 
 ```go
 // user.go   (namespace: user)
@@ -307,7 +309,7 @@ Reach enforcement has no switch; naming discipline has. `boundary` is silenced p
 
 ### `boundary`
 
-`boundary` reports a `file`-scoped declaration used from outside its namespace. It covers package-level declarations and [members](#members) alike; for a member the boundary is the namespace of its type.
+`boundary` reports a `private` declaration used from outside its namespace. It covers package-level declarations and [members](#members) alike; for a member the boundary is the namespace of its type.
 
 ```go
 // user.go
@@ -320,9 +322,9 @@ func orderRun() int { return userCache() } // reported
 
 | Declaration | Message |
 | --- | --- |
-| Package-level, scope from `defaults` | `func userCache is file-private to namespace "user", but is used from namespace "order"` |
+| Package-level, scope from `defaults` | `func userCache is private to namespace "user", but is used from namespace "order"` |
 | Member | `field User.id is private to namespace "user", but is used from namespace "order"` |
-| Scope stated by a directive | `func userCache is declared file-private by //declscope:file, but is used from namespace "order"` |
+| Scope stated by a directive | `func userCache is declared private by //declscope:private, but is used from namespace "order"` |
 
 Every use site is attached to the diagnostic as related information.
 
@@ -440,7 +442,7 @@ A **directive** is a comment beginning `//declscope:` (`/*declscope:` … `*/` i
 
 | Directive | Level | Effect |
 | --- | --- | --- |
-| `//declscope:public`, `//declscope:package`, `//declscope:file` | Declaration | States the [scope](#scope-resolution) instead of deriving it from `defaults` |
+| `//declscope:public`, `//declscope:package`, `//declscope:private` | Declaration | States the [scope](#scope-resolution) instead of deriving it from `defaults` |
 | `//declscope:ignore` | Declaration or file | Silences every rule |
 | `//declscope:ignore <rules>` | Declaration or file | Silences the named [rules](#rules), comma-separated (`unqualify`, `unqualify,qualify`) |
 | `//declscope:namespace <name>` | File | Sets the file's [namespace](#namespaces); the name must be an unexported identifier |
@@ -579,7 +581,7 @@ A malformed directive is reported at the comment:
 | --- | --- |
 | `//declscope:foo` | `unknown directive declscope:foo` |
 | `//declscope:package x` | `//declscope:package takes no argument` |
-| `//declscope:file` and `//declscope:package` on one declaration | `conflicting scope directives: …` |
+| `//declscope:private` and `//declscope:package` on one declaration | `conflicting scope directives: …` |
 | `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, unqualify)` |
 | `//declscope:namespace` after the package clause | `declscope:namespace must appear before the package clause` |
 | `//declscope:namespace` with no name, a second one, or a name that is not an unexported identifier | Reported as such |
@@ -591,8 +593,8 @@ Configuration is optional. It is read from `.declscope.yaml` (or `.declscope.yml
 
 ```yaml
 defaults:                # these resolve members too, not only package-level declarations
-  exported: public       # public | package | file
-  unexported: file
+  exported: public       # public | package | private
+  unexported: private
 
 rules:
   qualify: ondemand     # always | never | ondemand
@@ -606,8 +608,8 @@ baseline: .declscope-baseline.yaml   # relative to this file; found automaticall
 
 | Key | Values | Default | Effect |
 | --- | --- | --- | --- |
-| `defaults.exported` | `public`, `package`, `file` | `public` | Scope of an exported declaration or member that carries no scope directive |
-| `defaults.unexported` | `public`, `package`, `file` | `file` | Scope of an unexported declaration or member that carries no scope directive |
+| `defaults.exported` | `public`, `package`, `private` | `public` | Scope of an exported declaration or member that carries no scope directive |
+| `defaults.unexported` | `public`, `package`, `private` | `private` | Scope of an unexported declaration or member that carries no scope directive |
 | `rules.qualify` | `always`, `never`, `ondemand` | `ondemand` | When the namespace label is required; see [`qualify`](#qualify) |
 | `rules.unqualify` | `always`, `never` | `never` | Whether a label is forbidden where it is not required; see [`unqualify`](#unqualify) |
 | `exclude` | Glob patterns matched against the file path: `*` and `?` within a path segment, `**` across segments, anchored at any segment boundary | None | Files that are neither checked nor treated as reference sites |

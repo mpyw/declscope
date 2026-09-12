@@ -21,7 +21,7 @@ func TestDirectives(t *testing.T) {
 }
 
 // TestTestFilesShareNamespace checks that a _test.go file may use the
-// file-private declarations of its subject.
+// private declarations of its subject.
 func TestTestFilesShareNamespace(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "testns")
 }

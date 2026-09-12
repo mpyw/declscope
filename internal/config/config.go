@@ -6,8 +6,8 @@
 // module following suit.
 //
 //	defaults:
-//	  exported: public     # public | package | file
-//	  unexported: file
+//	  exported: public     # public | package | private
+//	  unexported: private
 //
 //	rules:
 //	  qualify: ondemand    # always | never | ondemand (only once a package has two namespaces)
@@ -263,7 +263,7 @@ func (f *File) Apply(opts *internal.Options) error {
 		}
 		s, ok := scope.Parse(field.value)
 		if !ok {
-			return fmt.Errorf("%s: unknown scope %q (want public, package or file)", field.name, field.value)
+			return fmt.Errorf("%s: unknown scope %q (want public, package or private)", field.name, field.value)
 		}
 		*field.dst = s
 	}

@@ -7,7 +7,7 @@
 //
 //	//declscope:public
 //	//declscope:package
-//	//declscope:file
+//	//declscope:private
 //
 // Declaration level, suppressing diagnostics for the declaration. With no
 // argument it silences every rule; with one it silences only the rules named,

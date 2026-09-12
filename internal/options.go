@@ -133,7 +133,7 @@ type Options struct {
 func DefaultOptions() Options {
 	return Options{
 		Exported:   scope.Public,
-		Unexported: scope.FilePrivate,
+		Unexported: scope.Private,
 		Qualify:    OnDemand,
 		Unqualify:  Never,
 	}

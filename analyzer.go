@@ -4,7 +4,7 @@
 // Go has two visibility levels, and the unexported one spans the whole
 // package. In a package of any size that makes every helper, every field and
 // every method a package-wide name, with no way to say "this belongs to this
-// file" short of splitting the package. declscope adds file-private and
+// file" short of splitting the package. declscope adds private and
 // package-internal as pseudo levels, selected by explicit directives and
 // labeled by a naming convention, and enforces them statically.
 package declscope
@@ -24,7 +24,7 @@ var Analyzer = newAnalyzer()
 func newAnalyzer() *analysis.Analyzer {
 	a := &analysis.Analyzer{
 		Name: "declscope",
-		Doc:  "enforces file-private and package-internal pseudo scopes for package-level declarations, methods and struct fields",
+		Doc:  "enforces private and package-internal pseudo scopes for package-level declarations, methods and struct fields",
 		URL:  "https://github.com/mpyw/declscope",
 		Run:  run,
 	}

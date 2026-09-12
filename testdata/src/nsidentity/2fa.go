@@ -5,6 +5,6 @@ package nsidentity
 // digit, so qualify asks nothing of totp even though the package has a second
 // namespace; the privacy rules still bound it, so the use from other.go is
 // reported here.
-func totp() int { return 1 } // want `func totp is file-private to namespace "2fa", but is used from namespace "other"`
+func totp() int { return 1 } // want `func totp is private to namespace "2fa", but is used from namespace "other"`
 
 func Verify() int { return totp() }

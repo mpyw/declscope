@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mpyw/declscope/internal"
@@ -92,15 +93,21 @@ func TestLoadRejectsUnknownKey(t *testing.T) {
 	}
 }
 
+// TestApplyRejectsUnknownScope checks that an unknown scope value is refused
+// with an error naming what is accepted.
 func TestApplyRejectsUnknownScope(t *testing.T) {
-	path := write(t, t.TempDir(), ".declscope.yaml", "defaults:\n  unexported: private\n")
+	path := write(t, t.TempDir(), ".declscope.yaml", "defaults:\n  exported: file\n")
 	f, err := config.Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	opts := internal.DefaultOptions()
-	if err := f.Apply(&opts); err == nil {
+	err = f.Apply(&opts)
+	if err == nil {
 		t.Fatal("want an error for an unknown scope name")
+	}
+	if want := "public, package or private"; !strings.Contains(err.Error(), want) {
+		t.Fatalf("error %q does not name the accepted values %q", err, want)
 	}
 }
 

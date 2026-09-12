@@ -3,9 +3,9 @@
 // An unwitnessed reachable means the key does not bite in that direction — a
 // dead knob, and a lie in the documentation.
 spec Knobs {
-  enum Scope { Public, Package, FilePriv }
+  enum Scope { Public, Package, Private }
   enum Kind  { Pkg, Member }
-  enum Dir   { NoDir, DirPublic, DirPackage, DirFile }
+  enum Dir   { NoDir, DirPublic, DirPackage, DirPrivate }
   enum Refs  { NoRefs, SameNs, CrossNs }
 
   state {
@@ -13,7 +13,7 @@ spec Knobs {
     kind: Kind, exported: Bool, dir: Dir, refs: Refs
   }
   init {
-    configured = false  cfgExported = Public  cfgUnexported = FilePriv
+    configured = false  cfgExported = Public  cfgUnexported = Private
     kind = Pkg  exported = false  dir = NoDir  refs = NoRefs
   }
   action configure(e: Scope, u: Scope, k: Kind, x: Bool, di: Dir, r: Refs) {
@@ -24,15 +24,15 @@ spec Knobs {
   def effScope() =
     if dir == DirPublic then Public
     else if dir == DirPackage then Package
-    else if dir == DirFile then FilePriv
+    else if dir == DirPrivate then Private
     else if exported then cfgExported
     else cfgUnexported
-  def boundaryFires() = effScope() == FilePriv and refs == CrossNs
+  def boundaryFires() = effScope() == Private and refs == CrossNs
 
   // Does defaults.exported reach members?
   reachable ExportedKnobBitesOnMembers {
     configured and kind == Member and exported and dir == NoDir
-    and cfgExported == FilePriv and refs == CrossNs and boundaryFires()
+    and cfgExported == Private and refs == CrossNs and boundaryFires()
   }
   // Does defaults.unexported reach members?
   reachable UnexportedKnobSilencesMembers {
@@ -42,15 +42,15 @@ spec Knobs {
   // Does defaults.exported reach package-level declarations?
   reachable ExportedKnobBitesOnPkg {
     configured and kind == Pkg and exported and dir == NoDir
-    and cfgExported == FilePriv and refs == CrossNs and boundaryFires()
+    and cfgExported == Private and refs == CrossNs and boundaryFires()
   }
   // Does a directive override defaults, in both directions?
-  reachable DirectiveOverridesToFile {
-    configured and dir == DirFile and cfgUnexported == Public
+  reachable DirectiveOverridesToPrivate {
+    configured and dir == DirPrivate and cfgUnexported == Public
     and not exported and refs == CrossNs and boundaryFires()
   }
   reachable DirectiveOverridesToPackage {
-    configured and dir == DirPackage and cfgUnexported == FilePriv
+    configured and dir == DirPackage and cfgUnexported == Private
     and not exported and refs == CrossNs and not boundaryFires()
   }
   // A reference from inside the namespace never crosses a boundary.

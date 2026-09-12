@@ -4,7 +4,7 @@ package ignorescope
 // the boundary crossing is not.
 //
 //declscope:ignore qualify
-func helper() int { return 1 } // want `func helper is file-private to namespace "user", but is used from namespace "order"`
+func helper() int { return 1 } // want `func helper is private to namespace "user", but is used from namespace "order"`
 
 // Silencing everything.
 //
@@ -17,12 +17,12 @@ func helper2() int { return 2 }
 //
 //declscope:ignore qualify
 //declscope:ignore unqualify // want `unused //declscope:ignore unqualify on kept`
-func kept() int { return 3 } // want `func kept is file-private to namespace "user", but is used from namespace "order"`
+func kept() int { return 3 } // want `func kept is private to namespace "user", but is used from namespace "order"`
 
 // An unparseable directive silences nothing.
 //
 //declscope:ignore bogus // want `unknown rule "bogus" in declscope:ignore`
-func userTypo() int { return 4 } // want `func userTypo is file-private to namespace "user", but is used from namespace "order"`
+func userTypo() int { return 4 } // want `func userTypo is private to namespace "user", but is used from namespace "order"`
 
 //declscope:ignore boundary,qualify
 func helper3() int { return 5 }

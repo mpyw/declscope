@@ -39,7 +39,7 @@ func TestParseDeclScope(t *testing.T) {
 		wantHas bool
 	}{
 		{"package", "//declscope:package", scope.PackageInternal, true},
-		{"file", "//declscope:file", scope.FilePrivate, true},
+		{"private", "//declscope:private", scope.Private, true},
 		{"public", "//declscope:public", scope.Public, true},
 		{"spaced", "// declscope:package", scope.PackageInternal, true},
 		{"block", "/*declscope:package*/", scope.PackageInternal, true},
@@ -70,7 +70,7 @@ func TestParseDeclProblems(t *testing.T) {
 		{"argument where none is taken", "//declscope:package user"},
 		{"ignore of an unknown rule", "//declscope:ignore why"},
 		{"namespace on a declaration", "//declscope:namespace user"},
-		{"conflicting scopes", "//declscope:package\n//declscope:file"},
+		{"conflicting scopes", "//declscope:package\n//declscope:private"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -154,9 +154,9 @@ func TestParseDeclIgnoreAccumulates(t *testing.T) {
 
 func TestMerge(t *testing.T) {
 	outer := directive.Decl{Scope: scope.PackageInternal, HasScope: true}
-	inner := directive.Decl{Scope: scope.FilePrivate, HasScope: true}
+	inner := directive.Decl{Scope: scope.Private, HasScope: true}
 
-	if got := outer.Merge(inner); got.Scope != scope.FilePrivate {
+	if got := outer.Merge(inner); got.Scope != scope.Private {
 		t.Errorf("a spec directive should override its block, got %v", got.Scope)
 	}
 	if got := outer.Merge(directive.Decl{}); got.Scope != scope.PackageInternal {
