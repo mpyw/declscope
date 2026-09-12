@@ -126,7 +126,7 @@ func TestDefaultsReachMembers(t *testing.T) {
 // TestGenerics checks that the members of a generic type are bounded like
 // those of any other type. go/types records the instantiated field or method
 // for a selection on List[int], and on List[T] inside the type's own methods,
-// so the lookup has to normalise to the origin object.
+// so the lookup has to normalize to the origin object.
 func TestGenerics(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "generics")
 }

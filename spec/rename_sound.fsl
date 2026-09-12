@@ -3,12 +3,12 @@
 // A rename is correct when every reference still resolves to the same object
 // afterwards. Go resolves a name from the inside out: local scope, then file
 // scope (imports), then package scope, then the universe of predeclared names.
-// The guard modelled here checks package scope only; the counterexamples
+// The guard modeled here checks package scope only; the counterexamples
 // enumerate the further scopes a sound guard must check.
 //
 // ASSUME-1: names reduce to Old / New / Other, since only the presence of a
 //   collision matters, not the spelling (modelling assumption)
-// ASSUME-2: two reference sites are modelled — one that referred to the
+// ASSUME-2: two reference sites are modeled — one that referred to the
 //   declaration, and one elsewhere in the package that already used the new
 //   name. Soundness over more sites is the conjunction over each (modelling
 //   assumption)
@@ -61,7 +61,7 @@ spec RenameSound {
     else if universeNew then ToUniverse
     else Unresolved
 
-  // The guard modelled here: package scope only.
+  // The guard modeled here: package scope only.
   def guardPackageScopeOnly() = otherPkg != BindsNew
 
   fair action rename() {

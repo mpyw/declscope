@@ -167,7 +167,7 @@ func TestMerge(t *testing.T) {
 // TestMergeAccumulatesIgnores pins the half of Merge that differs from scope:
 // ignores are unioned, not replaced, so a narrower directive on a spec cannot
 // silently re-enable a rule the enclosing block turned off. The README and
-// CLAUDE.md describe this behaviour and must not drift from it.
+// CLAUDE.md describe this behavior and must not drift from it.
 func TestMergeAccumulatesIgnores(t *testing.T) {
 	outer := directive.Decl{Ignores: []directive.Ignore{{}}}
 	inner := directive.Decl{Ignores: []directive.Ignore{{Rules: []rule.Rule{rule.Unqualify}}}}

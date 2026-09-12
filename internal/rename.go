@@ -127,7 +127,7 @@ func fileScopesBind(pkg *types.Scope, name string) bool {
 }
 
 // usedOutside returns every object named from a file the pass did not collect.
-// The same normalisation as collectRefs applies, so a selection through an
+// The same normalization as collectRefs applies, so a selection through an
 // embedded field or on a generic type counts as naming the declaration.
 func (rs *renameState) usedOutside(pass *analysis.Pass, c *collection) map[types.Object]bool {
 	if rs.outsideDone {

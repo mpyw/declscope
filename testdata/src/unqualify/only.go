@@ -7,7 +7,7 @@ func onlyHelper() int { return 1 } // want `func onlyHelper carries the label of
 // An initialism left behind is spelled the way Go spells one.
 var onlyID = 2 // want `var onlyID carries the label of namespace "only", which is not required here; rename it to id`
 
-// Unlabelled, as it should be.
+// Unlabeled, as it should be.
 func helper2() int { return 3 }
 
 // Not a word boundary, so the prefix was never a label.
@@ -21,5 +21,5 @@ func onlyType() int { return 5 } // want `func onlyType carries the label of nam
 // the file is named after what it declares, not the other way about.
 func only() int { return 6 }
 
-// Exported identifiers are never labelled.
+// Exported identifiers are never labeled.
 func OnlyExported() int { return onlyHelper() + onlyID + helper2() + onlys() + onlyType() + only() }

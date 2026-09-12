@@ -46,7 +46,7 @@ type User struct {
 	email string
 }
 
-func normalise(email string) string {
+func normalize(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 ```
@@ -59,17 +59,17 @@ func csvParse(rec []string) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &User{ID: id, email: normalise(rec[1])}, nil
+	return &User{ID: id, email: normalize(rec[1])}, nil
 }
 ```
 
-Nothing here is unusual, and nothing the compiler can object to. `email` is unexported so that it is only ever written through the normaliser, and `csv.go` writes it directly.
+Nothing here is unusual, and nothing the compiler can object to. `email` is unexported so that it is only ever written through the normalizer, and `csv.go` writes it directly.
 
 ```console
 $ declscope ./...
 user.go:7:2:  field User.email is private to namespace "user", but is used from namespace "csv"
-user.go:10:6: func normalise is file-private to namespace "user", but is used from namespace "csv"
-user.go:10:6: func normalise does not carry the prefix of namespace "user"; rename it to userNormalise
+user.go:10:6: func normalize is file-private to namespace "user", but is used from namespace "csv"
+user.go:10:6: func normalize does not carry the prefix of namespace "user"; rename it to userNormalize
 ```
 
 Each crossing has two answers: keep the boundary and put the parsing behind a constructor, or share the declarations on purpose. `declscope -fix` takes the second, and leaves the decision written down:
@@ -83,13 +83,13 @@ type User struct {
 }
 
 //declscope:package
-func userNormalise(email string) string {
+func userNormalize(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 ```
 ```go
 // csv.go
-	return &User{ID: id, email: userNormalise(rec[1])}, nil
+	return &User{ID: id, email: userNormalize(rec[1])}, nil
 ```
 
 The directive says the declaration is shared; the name says which unit it came from. Both are visible at the call site, and the next file to reach for an unshared declaration is reported the same way.
@@ -212,7 +212,7 @@ A **namespace** is the unit within which a `file`-scoped declaration may be used
 | `parser_linux.go`, `parser_linux_amd64.go` | `parser` — GOOS/GOARCH suffixes are build constraints, not namespaces |
 | `v2_client.go` | `v2Client` |
 | `user_id.go`, `parse_json.go` | `userID`, `parseJSON` — an initialism is spelled the way Go spells it |
-| `foo-bar.go`, `Foo.go` | `fooBar`, `foo` — any separator, and a PascalCase stem, normalise to lowerCamelCase |
+| `foo-bar.go`, `Foo.go` | `fooBar`, `foo` — any separator, and a PascalCase stem, normalize to lowerCamelCase |
 | `2fa_auth.go` | `2faAuth` — an identity, but never a label |
 
 The namespace is derived from the file name rather than being the file name, so that renaming a file does not rename every identifier it declares, and so that a `_test.go` file reaches its subject's `file`-scoped declarations by sharing its namespace.
@@ -436,7 +436,7 @@ Each condition is conservative: a doubt withholds the fix, never the diagnostic.
 
 ## Directives
 
-A **directive** is a comment beginning `//declscope:` (`/*declscope:` … `*/` is also recognised).
+A **directive** is a comment beginning `//declscope:` (`/*declscope:` … `*/` is also recognized).
 
 | Directive | Level | Effect |
 | --- | --- | --- |
@@ -571,7 +571,7 @@ Accounting is per physical directive, however many declarations it reaches: one 
 | `unused file-level //declscope:ignore qualify` | Nothing in the file needed it |
 | `unused //declscope:ignore: no checked declaration carries it` | Written on something declscope does not check: `init`, `_`, an embedded field |
 
-A directive is called unused only by a pass that sees **every** reference in the package. When a package has in-package `_test.go` files, the ordinary variant cannot see what they use, so a directive needed only by a test would be unused there and necessary in the test variant, with no way to satisfy both; the ordinary variant leaves the judgement to the test variant, which sees every file. Under `-test` (the default) that variant runs and nothing is lost. With `-test=false`, a package with in-package tests gets no unused-directive report at all.
+A directive is called unused only by a pass that sees **every** reference in the package. When a package has in-package `_test.go` files, the ordinary variant cannot see what they use, so a directive needed only by a test would be unused there and necessary in the test variant, with no way to satisfy both; the ordinary variant leaves the judgment to the test variant, which sees every file. Under `-test` (the default) that variant runs and nothing is lost. With `-test=false`, a package with in-package tests gets no unused-directive report at all.
 
 A malformed directive is reported at the comment:
 

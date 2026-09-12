@@ -22,11 +22,11 @@ func (p *payload) method() int { return p.field }
 // Exported identifiers need no label.
 func Exported() int {
 	p := &payload{}
-	return helper() + users() + count + limit + p.method() + userOK() + deliberatelyUnlabelled()
+	return helper() + users() + count + limit + p.method() + userOK() + deliberatelyUnlabeled()
 }
 
-// Already labelled.
+// Already labeled.
 func userOK() int { return 4 }
 
 //declscope:ignore
-func deliberatelyUnlabelled() int { return 5 }
+func deliberatelyUnlabeled() int { return 5 }

@@ -1,6 +1,6 @@
 // Inserting //declscope:package always removes the boundary crossing.
 //
-// Only the variables these properties read are modelled: 216 action instances.
+// Only the variables these properties read are modeled: 216 action instances.
 spec BoundaryFix {
   enum Scope { Public, Package, FilePriv }
   enum Dir   { NoDir, DirPublic, DirPackage, DirFile }

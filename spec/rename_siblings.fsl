@@ -1,6 +1,6 @@
 // Two renames in one run must not converge on the same name.
 //
-// The guard modelled here checks a target against the pre-fix names only.
+// The guard modeled here checks a target against the pre-fix names only.
 // Every fix in a run is generated from the same pre-fix state, so under that
 // guard neither fix sees the name the other is about to take.
 //
@@ -29,7 +29,7 @@ spec RenameSiblings {
     configured = true  tgtA = ta  tgtB = tb
   }
 
-  // The guard modelled here: the target must not already be a package-scope
+  // The guard modeled here: the target must not already be a package-scope
   // name. "Already" means in the state the fixes were generated from, which
   // is why a sibling's target is invisible.
   def freeInOriginalState(n: Name) = n != origA and n != origB

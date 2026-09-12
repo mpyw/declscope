@@ -185,7 +185,7 @@ func (c *collection) ignored(ignores []directive.Ignore, r rule.Rule) bool {
 // variant of a package with in-package _test.go files does not see the
 // references those files make, so a directive needed only by a test would be
 // reported unused there and reported necessary by the test variant, and the
-// author could satisfy neither. That pass leaves the judgement to the test
+// author could satisfy neither. That pass leaves the judgment to the test
 // variant, on the same reasoning that keeps unmatched baseline entries
 // unreported. Under -test (the default) the test variant runs and nothing is
 // lost; with -test=false, a package with in-package tests gets no

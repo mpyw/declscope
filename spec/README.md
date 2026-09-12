@@ -36,7 +36,7 @@ condition at a time enumerates the minimum it must check:
 
 | Guard | Result | What the counterexample finds |
 | --- | --- | --- |
-| Package scope only *(as modelled)* | Violated | A local variable at the reference site binds the new name — **compiles, silently changes behaviour** |
+| Package scope only *(as modeled)* | Violated | A local variable at the reference site binds the new name — **compiles, silently changes behavior** |
 | + local scope | Violated | An import in some file binds the new name |
 | + file scope | Violated | The new name is predeclared (`len`, `error`, …) |
 | + universe | **Verified** | — |
