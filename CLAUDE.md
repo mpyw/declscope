@@ -86,7 +86,7 @@ A `foreign-method` rule existed briefly and was removed. `checkEscape` reports a
 //declscope:ignore <rules>    // also valid at file level, applying to the whole file
 ```
 
-`parseIgnore` is shared by both levels, so `//declscope:ignore` cannot come to mean different things depending on where it is written. File-level directives live on `fileInfo.ignores`; declaration-level ones on `Decl.Ignores`.
+`parseIgnore` is shared by both levels, so `//declscope:ignore` cannot come to mean different things depending on where it is written. File-level directives live on `fileInfo.ignores`; declaration-level ones on `Decl.Ignores`. A file-level ignore is scoped to its **file**, not to its namespace, so files sharing a namespace each need their own — one file silently changing another's diagnostics would be much harder to trace back.
 
 Each directive is reported unused on its own. `ignored()` marks **every** directive covering a rule as used, not just the first, so a file-level and a declaration-level one overlapping does not make either look unused.
 

@@ -232,21 +232,25 @@ An ignore names rules from the table above, so a declaration can opt out of one 
 Written before the package clause, an ignore applies to every declaration in the file. It takes the same argument, so the directive means one thing wherever it appears:
 
 ```go
+// util.go   (namespace: util)
 //declscope:ignore promote,demote
 
-package util
+package store
 ```
 
 This is what a file full of small helpers wants, rather than a directive on each of them. A utility file whose whole contents are meant to be package-wide can say so in one line:
 
 ```go
+// util.go   (namespace: util)
 //declscope:ignore escape,promote
 
-package util
+package store
 
 func must(err error) { ... }
 func first[T any](s []T) T { ... }
 ```
+
+The directive belongs to the **file**, not to the namespace, and the package clause has nothing to do with either: the namespace comes from the file name, or from `//declscope:namespace`. Files that share a namespace therefore each need their own — one file cannot silence a rule on behalf of another.
 
 Keeping `escape` and writing `//declscope:package` per declaration is the stricter option, and the one to prefer when the file is not wholly shared — silencing `escape` removes the boundary for everything in the file, including declarations added later. For violations that already exist, a [baseline](#adopting-on-an-existing-codebase) suppresses them without standing future ones down.
 

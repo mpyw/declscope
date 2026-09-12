@@ -102,3 +102,9 @@ func TestIgnoreScope(t *testing.T) {
 func TestFileIgnore(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "fileignore")
 }
+
+// TestFileIgnoreIsFileScoped checks that a file-level ignore covers only the
+// file carrying it, not every file sharing its namespace.
+func TestFileIgnoreIsFileScoped(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "fileignorescope")
+}
