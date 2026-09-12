@@ -49,6 +49,7 @@ internal/
   collect.go              fileInfo, target, reference collection
   options.go              resolved configuration, scope resolution, exclude globs
   report.go               diagnostics and suggested fixes
+  rename.go               the conditions under which a rename fix is offered at all
   rule/                   the rule vocabulary, shared by diagnostics, config, baseline and ignores
   namespace/              file name -> namespace, prefix matching, qualify/unqualify
   scope/                  the three-level Scope enum
@@ -58,7 +59,7 @@ internal/
 cmd/declscope/            singlechecker entry point, plus the `baseline` subcommand
 ```
 
-`internal/{analyzer,collect,options,report}.go` form one logical unit and declare `//declscope:namespace analyzer` so that declscope passes its own check. `cmd/declscope/{main,baseline}.go` are one command and declare `//declscope:namespace main` for the same reason. Keep those directives when adding files to either unit — without them the label rule asks every declaration to carry a `baseline`/`analyzer` prefix, which is the tool reporting a boundary that is not really there.
+`internal/{analyzer,collect,options,report,rename}.go` form one logical unit and declare `//declscope:namespace analyzer` so that declscope passes its own check. `cmd/declscope/{main,baseline}.go` are one command and declare `//declscope:namespace main` for the same reason. Keep those directives when adding files to either unit — without them the label rule asks every declaration to carry a `baseline`/`analyzer` prefix, which is the tool reporting a boundary that is not really there.
 
 ### Structural constraints
 
@@ -122,7 +123,18 @@ Every diagnostic carries **at most one** fix, which is what makes `-fix` unambig
 
 They can never conflict, because a rename does not change reach. (`x/tools`' `ApplyFixes` applies only the first fix of a diagnostic and logs `ignoring alternative fix` for the rest, so carrying alternatives was always a liability.)
 
-Renames are skipped when `pass.Pkg.Scope().Lookup(newName)` is non-nil, since renaming into an existing package-level name would not compile. They are also never offered for members. A namespace that cannot be a label (`namespace.IsLabel` is false) produces no naming diagnostic at all, rather than a diagnostic without a rename.
+**A rename is offered only when it is provably safe** (`renameSafe` in `internal/rename.go`); the diagnostic is reported either way. This is the agreed answer to a class of P0s (#1, #2, #3, #5, #6) where `-fix` produced code that did not compile or, worse, compiled into a program computing something else: the old guard checked only `pass.Pkg.Scope().Lookup(newName)`, but Go resolves a name from the inside out, so `var count` renamed to `fooCount` inside `func Add(fooCount int) int { return fooCount + count }` silently became `fooCount + fooCount`. Writing a full renamer was rejected in favour of withholding; a withheld fix costs one manual edit, a wrong one is a bug the linter cannot see. `spec/rename_sound.fsl` and `spec/rename_siblings.fsl` model the resolution order and the sibling collision.
+
+The conditions, each conservative:
+
+- the new name is not in package scope, not predeclared (`types.Universe`), and not bound in **any** file scope (`fileScopesBind`) — Go rejects a package-level name that any file imports, so this cannot be limited to files with references
+- at every ident naming the object, `pass.Pkg.Scope().Innermost(pos).LookupParent(newName, pos)` finds nothing. Verified experimentally: this catches parameters, named results, locals declared before the reference, closure parameters, range variables, type parameters, receivers, the same file's imports and the universe; it correctly ignores locals declared after the reference, field names and labels; and it does **not** see another file's imports, which is why the file-scope check above is separate
+- the object is not named from a file the pass did not collect (generated or `exclude`d), since those are never rewritten (`usedOutside`, normalised the same way as `collectRefs`)
+- no `//go:linkname` or `//export` in the package names the object as text
+- no earlier fix in the same pass has claimed the name (`reserved`). Fixes are generated from one pre-fix state and cannot see each other; `Qualify` is not injective across namespaces and `Unqualify` lowers initialisms, so two declarations can target one name. Reservation makes the **order** of targets load-bearing, which is why `report` sorts by (file name, offset) rather than `token.Pos`: go/packages parses files concurrently, so the order files enter the FileSet differs between runs, and sorting by `Pos` made a different sibling win in the `-json` run than in the `-fix` run
+- the package has no in-package `_test.go` files that this pass does not see (`hasUnseenTests`, a directory listing plus `parser.PackageClauseOnly`). The non-test variant cannot see what test files declare or use, so it withholds every rename and defers to the test variant, which sees every file and whose fix rewrites the non-test files too. The driver coalesces identical edits from both variants, so with `-test` on (the default) nothing is lost; with `-test=false`, packages with tests get no rename fix. An earlier draft parsed the sibling test files and summarised what they spell, import and would themselves be renamed to; that was more permissive but heuristic (an unaliased import's name is only known by loading it), and the blunt rule is the one that is provably consistent between the two variants.
+
+Renames are also never offered for members. A namespace that cannot be a label at all (`namespace.IsLabel` is false) produces no naming diagnostic in the first place, rather than a diagnostic without a rename.
 
 **A declaration whose scope came from a directive gets no fix at all** (`t.dir.HasScope`). Both the directive and the use site are deliberate, so `-fix` must not overwrite the author's directive. An earlier version emitted `//declscope:package` next to an existing `//declscope:file`, producing code the linter itself rejected.
 
@@ -147,6 +159,8 @@ go test ./...          # analysistest + unit tests
 
 - `testdata/src/*` are `analysistest` packages. `promotealways/`, `demote/` and `demoteinert/` carry their own `.declscope.yaml`, which also exercises config discovery end to end.
 - Goldens are plain files, not txtar archives, because no diagnostic carries alternative fixes any more.
+- `convergence_test.go` applies `-fix` through the real binary in **one** pass and checks that the result type-checks, that every diagnostic which offered a fix is gone, and that no diagnostic appeared that was not there before. It type-checks with `go vet`, not `go build`, because vet also compiles the test variant — a rename applied to the non-test files alone builds and then fails the first `go test`. Keep it to one pass: repeating it would hide a fix that only works the second time. Each way a rename can be unsafe has a case there, arranged so that the wrong rename fails to type-check (a captured parameter is given a type the expression rejects), since the test cannot run the result.
+- `testdata/src/fix*` pin where a fix is offered and where it is withheld. `RunWithSuggestedFixes` compares a golden only for files that received edits, so a package that tests withholding also carries one declaration that *is* renamed: a wrongly offered fix then fails for want of a golden, and the golden shows the guard is precise rather than merely off.
 - Keep each testdata package focused on one rule. `promoterule/order.go` deliberately touches nothing in namespace `user`, so the label rule is tested without escape diagnostics landing on the same lines.
 - Diagnostics on directives are reported at the comment, so their `// want` comments belong on the directive line, not the declaration line.
 - Do not add a `.declscope.yaml` or `.declscope-baseline.yaml` at the repository root: both are found by an upward lookup from each analyzed package, so a default-named file at the root would reach every `testdata` package and change what the tests assert. The settings declscope holds itself to live in `.declscope-strict.yaml` and are applied with an explicit `-config` in CI and `test_all.sh`.
