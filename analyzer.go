@@ -10,7 +10,6 @@
 package declscope
 
 import (
-	"fmt"
 	"path/filepath"
 
 	"golang.org/x/tools/go/analysis"
@@ -44,13 +43,13 @@ func run(pass *analysis.Pass) (any, error) {
 // options resolves configuration for the package being analyzed. Config is
 // looked up from the package's own directory upwards, so a subtree can relax
 // or tighten the rules without affecting the rest of the module.
+//
+// The error is returned as is: the driver prefixes it with the analyzer's
+// name when printing, so adding "declscope: " here showed it twice.
 func options(pass *analysis.Pass) (internal.Options, error) {
 	explicit := pass.Analyzer.Flags.Lookup("config").Value.String()
 	opts, _, err := config.Resolve(packageDir(pass), explicit)
-	if err != nil {
-		return opts, fmt.Errorf("declscope: %w", err)
-	}
-	return opts, nil
+	return opts, err
 }
 
 func packageDir(pass *analysis.Pass) string {

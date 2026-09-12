@@ -83,6 +83,12 @@ type target struct {
 	// is already namespaced by its receiver and must not be namespaced twice.
 	ownerNS  string
 	ownerKey string
+	// ownerFile is the file that namespace comes from: the declaring file for
+	// package-level declarations and fields, the file declaring the type for
+	// methods. Diagnostics describe the boundary through it, since a method
+	// may be written in a different file from its type and describing that
+	// file would name the wrong one.
+	ownerFile *fileInfo
 	// owner names the type a member belongs to, empty for package-level.
 	owner string
 	// ownerObj is that type's object, through which a member inherits the
@@ -129,6 +135,10 @@ type collection struct {
 	// namespaces is how many distinct namespaces the package's non-test files
 	// declare, which is how many boundaries there are to enforce.
 	namespaces int
+
+	// rename is what the rename fix knows beyond the references above. It is
+	// created on first use, since most passes offer no rename.
+	rename *renameState
 }
 
 // collectFiles resolves each file's namespace. Generated files are excluded
@@ -204,21 +214,21 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 		}
 		c.add(&target{
 			obj: obj, ident: d.Name, kind: kindFunc, file: fi,
-			ownerNS: fi.ns, ownerKey: fi.key(), dir: dir, anchor: d.Pos(),
+			ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: d.Pos(),
 			scope:      opts.resolve(d.Name.Name, dir),
 			renameable: true,
 		})
 		return
 	}
 
-	ownerObj, ownerNS, ownerKey := c.receiver(pass, obj, fi)
+	ownerObj, ownerNS, ownerKey, ownerFile := c.receiver(pass, obj, fi)
 	owner := ""
 	if ownerObj != nil {
 		owner = ownerObj.Name()
 	}
 	c.add(&target{
 		obj: obj, ident: d.Name, kind: kindMethod, file: fi,
-		owner: owner, ownerObj: ownerObj, ownerNS: ownerNS, ownerKey: ownerKey,
+		owner: owner, ownerObj: ownerObj, ownerNS: ownerNS, ownerKey: ownerKey, ownerFile: ownerFile,
 		dir: dir, anchor: d.Pos(),
 		scope: opts.resolve(d.Name.Name, dir),
 	})
@@ -228,8 +238,8 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 	if d.Tok == token.IMPORT {
 		return
 	}
-	// A directive on the block applies to every spec; a directive on a spec
-	// overrides it.
+	// A directive on the block applies to every spec. A spec's own scope
+	// directive replaces the block's; its ignores are added to the block's.
 	outer := directive.ParseDecl(d.Doc)
 	grouped := d.Lparen.IsValid()
 
@@ -244,7 +254,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 			if obj, ok := pass.TypesInfo.Defs[spec.Name]; ok && spec.Name.Name != "_" {
 				c.add(&target{
 					obj: obj, ident: spec.Name, kind: kindType, file: fi,
-					ownerNS: fi.ns, ownerKey: fi.key(), dir: dir, anchor: anchor,
+					ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: anchor,
 					scope:      opts.resolve(spec.Name.Name, dir),
 					renameable: true,
 				})
@@ -268,7 +278,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 				}
 				c.add(&target{
 					obj: obj, ident: name, kind: k, file: fi,
-					ownerNS: fi.ns, ownerKey: fi.key(), dir: dir, anchor: anchor,
+					ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: anchor,
 					scope:      opts.resolve(name.Name, dir),
 					renameable: true,
 				})
@@ -300,7 +310,7 @@ func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, 
 			c.add(&target{
 				obj: obj, ident: name, kind: kindField, file: fi,
 				owner: spec.Name.Name, ownerObj: ownerObj,
-				ownerNS: fi.ns, ownerKey: fi.key(), dir: dir,
+				ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir,
 				anchor: field.Pos(),
 				scope:  opts.resolve(name.Name, dir),
 			})
@@ -308,12 +318,13 @@ func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, 
 	}
 }
 
-// receiver resolves the type a method belongs to and the namespace of the file
-// declaring that type.
-func (c *collection) receiver(pass *analysis.Pass, fn *types.Func, fallback *fileInfo) (owner types.Object, ownerNS, ownerKey string) {
+// receiver resolves the type a method belongs to and the file declaring that
+// type, along with that file's namespace. It falls back to the method's own
+// file when the type cannot be traced to one in the package.
+func (c *collection) receiver(pass *analysis.Pass, fn *types.Func, fallback *fileInfo) (owner types.Object, ownerNS, ownerKey string, ownerFile *fileInfo) {
 	sig, ok := fn.Type().(*types.Signature)
 	if !ok || sig.Recv() == nil {
-		return nil, fallback.ns, fallback.key()
+		return nil, fallback.ns, fallback.key(), fallback
 	}
 	t := sig.Recv().Type()
 	if ptr, ok := types.Unalias(t).(*types.Pointer); ok {
@@ -321,16 +332,19 @@ func (c *collection) receiver(pass *analysis.Pass, fn *types.Func, fallback *fil
 	}
 	named, ok := types.Unalias(t).(*types.Named)
 	if !ok {
-		return nil, fallback.ns, fallback.key()
+		return nil, fallback.ns, fallback.key(), fallback
 	}
+	// A method on a generic type receives List[T], an instantiation of List
+	// with its own type parameters. Obj() already names the origin's type name,
+	// which is the object collectTargets registered.
 	owner = named.Obj()
 	pos := pass.Fset.Position(owner.Pos())
 	for _, fi := range c.files {
 		if fi.path == pos.Filename {
-			return owner, fi.ns, fi.key()
+			return owner, fi.ns, fi.key(), fi
 		}
 	}
-	return owner, fallback.ns, fallback.key()
+	return owner, fallback.ns, fallback.key(), fallback
 }
 
 func (c *collection) add(t *target) {
@@ -342,6 +356,11 @@ func (c *collection) add(t *target) {
 
 // collectRefs records every ident naming a tracked object, along with the file
 // it appears in.
+//
+// An ident can play both roles at once: an embedded field's ident defines the
+// field and uses the type, so Defs and Uses are consulted independently rather
+// than one shadowing the other. Checking Defs first and returning used to drop
+// the type use, which lost both a rename edit and an escape diagnostic.
 func (c *collection) collectRefs(pass *analysis.Pass) {
 	for _, fi := range c.files {
 		ast.Inspect(fi.file, func(n ast.Node) bool {
@@ -349,19 +368,59 @@ func (c *collection) collectRefs(pass *analysis.Pass) {
 			if !ok {
 				return true
 			}
-			if obj, ok := pass.TypesInfo.Defs[ident]; ok && obj != nil {
+			if obj := pass.TypesInfo.Defs[ident]; obj != nil {
 				c.idents[obj] = append(c.idents[obj], ident)
-				return true
 			}
-			obj, ok := pass.TypesInfo.Uses[ident]
-			if !ok || obj == nil {
+			obj := origin(pass.TypesInfo.Uses[ident])
+			if obj == nil {
 				return true
 			}
 			c.idents[obj] = append(c.idents[obj], ident)
+			if tn := embeddedTypeName(obj); tn != nil {
+				c.idents[tn] = append(c.idents[tn], ident)
+			}
 			if _, tracked := c.byObj[obj]; tracked {
 				c.refs[obj] = append(c.refs[obj], ref{ident: ident, file: fi})
 			}
 			return true
 		})
 	}
+}
+
+// origin maps an instantiated field or method back to the object declared in
+// the source. go/types records the instantiated object in Uses for a selection
+// on a generic type — List[int].items, and List[T].items inside List's own
+// methods — while byObj is keyed by the declaration, so without this every
+// member of a generic type went unchecked. Anything else is returned as is.
+func origin(obj types.Object) types.Object {
+	switch o := obj.(type) {
+	case *types.Var:
+		return o.Origin()
+	case *types.Func:
+		return o.Origin()
+	}
+	return obj
+}
+
+// embeddedTypeName returns the type name an embedded field is spelled with,
+// and nil for any other object. Such a field has no name of its own: u.count
+// is written with the type's name, so a rename of the type has to rewrite the
+// selection as well as the embedding. The alias is deliberately not resolved:
+// a field embedding an alias is spelled with the alias's name.
+func embeddedTypeName(obj types.Object) types.Object {
+	v, ok := obj.(*types.Var)
+	if !ok || !v.Embedded() {
+		return nil
+	}
+	t := v.Type()
+	if ptr, ok := t.(*types.Pointer); ok {
+		t = ptr.Elem()
+	}
+	switch t := t.(type) {
+	case *types.Named:
+		return t.Obj()
+	case *types.Alias:
+		return t.Obj()
+	}
+	return nil
 }

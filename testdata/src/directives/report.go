@@ -7,7 +7,7 @@ package directives
 // "user" label rather than a "report" one.
 func userReportAll() int {
 	return userExplicitlyShared() + userNotReallyShared() + userIgnoredLeak() +
-		userTrailing() + userSharedA + userPrivateB
+		userTrailing() + userSharedA + userPrivateB + userSharedC + userPrivateD
 }
 
 var _ = userReportAll
