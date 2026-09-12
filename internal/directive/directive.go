@@ -16,7 +16,7 @@
 //
 //	//declscope:ignore
 //	//declscope:ignore unqualify
-//	//declscope:ignore unqualify,prefix
+//	//declscope:ignore unqualify,qualify
 //
 // File level, placed before the package clause, overriding the namespace that
 // would otherwise be derived from the file name:

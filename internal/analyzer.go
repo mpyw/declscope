@@ -1,18 +1,18 @@
 // Package internal implements the declscope analysis.
 //
-// The analysis answers two different questions with two different rules.
+// The analysis answers two different questions about two kinds of declaration.
 //
 // Package-level identifiers compete in one flat namespace, so the problem
-// there is namespace pollution and the rule is name-driven: an unexported
-// identifier is private to its file's namespace unless its name carries that
-// namespace as a prefix, the way pub(crate) works in Rust.
+// there is namespace pollution. An unexported identifier is private to its
+// file's namespace unless a directive widens it, and the naming rules ask it
+// to carry that namespace as a prefix, so that the owning unit is legible at
+// every use site. The prefix labels ownership; it never grants reach.
 //
 // Methods and struct fields are already namespaced by the type that owns them
 // and cannot collide with anything, so the problem there is not pollution but
 // encapsulation: Go makes every unexported member visible to the whole
-// package, with no way to say otherwise. The rule is therefore boundary-driven
-// rather than name-driven, and the bound is the namespace of the type, not of
-// the file.
+// package, with no way to say otherwise. Members are exempt from the naming
+// rules, and their bound is the namespace of the type, not of the file.
 package internal
 
 import (

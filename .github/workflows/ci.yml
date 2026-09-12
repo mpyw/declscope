@@ -74,8 +74,7 @@ jobs:
           go-version-file: go.mod
 
       # declscope is subject to its own rules, at the strictest setting.
-      # internal/{analyzer,collect,options,report}.go form one unit and say so
-      # with a shared namespace.
+      # The files of internal/ form one unit and declare a shared namespace.
       - name: Run declscope on itself
         run: go run ./cmd/declscope -config .declscope-strict.yaml ./...
 

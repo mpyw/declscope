@@ -170,14 +170,14 @@ func TestQualifyModes(t *testing.T) {
 			t.Fatalf("%q: %v", tt.yaml, err)
 		}
 		if opts.Qualify != tt.want {
-			t.Errorf("%q: Prefix = %v, want %v", tt.yaml, opts.Qualify, tt.want)
+			t.Errorf("%q: Qualify = %v, want %v", tt.yaml, opts.Qualify, tt.want)
 		}
 	}
 }
 
 // TestQualifyModeString pins the spelling a diagnostic or an error would use
 // to the documented one, and that it parses back: a mode printed as "true"
-// would tell the reader to write a value the docs no longer show.
+// would tell the reader to write a value the docs do not show.
 func TestQualifyModeString(t *testing.T) {
 	for mode, want := range map[internal.QualifyMode]string{
 		internal.QualifyAlways:   "always",
@@ -197,7 +197,7 @@ func TestQualifyModeString(t *testing.T) {
 // package has a second namespace to distinguish.
 func TestDefaultQualifyMode(t *testing.T) {
 	if got := internal.DefaultOptions().Qualify; got != internal.QualifyOnDemand {
-		t.Errorf("default Prefix = %v, want ondemand", got)
+		t.Errorf("default Qualify = %v, want ondemand", got)
 	}
 }
 
@@ -212,8 +212,6 @@ func TestApplyRejectsUnknownQualifyMode(t *testing.T) {
 		t.Fatal("want an error for an unknown prefix mode")
 	}
 }
-
-// TestApplyRejectsFormerRuleKeys pins the decision on the rules' former names:
 
 // TestResolveLoadsBaseline pins the analyzer's side of the lookup: a
 // default-named baseline above the package is found and loaded.

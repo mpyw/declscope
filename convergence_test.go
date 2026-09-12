@@ -16,12 +16,12 @@ import (
 //	2. every diagnostic that carried a fix is gone
 //	3. no diagnostic exists that did not exist before
 //
-// Three separate defects violating (2) or (3) were shipped and found by hand
-// before this existed: a directive fix that collided with an existing
-// directive and produced code the linter itself rejected, a directive placed
-// on the wrong line for a field of a single-line struct, and a rename offered
-// where a prefix could not widen anything. A golden file pins what a fix
-// produces; only applying it and looking again pins that it helped.
+// A golden file pins what a fix produces; only applying it and looking again
+// pins that it helped. A fix can match its golden exactly and still violate
+// (2) or (3): a directive emitted next to a conflicting directive produces
+// code the linter itself rejects, and a directive inserted on the wrong line
+// for a field of a single-line struct binds to the struct instead of the
+// field.
 
 type fixCase struct {
 	name   string
@@ -109,14 +109,14 @@ var fixCases = []fixCase{
 	},
 
 	// A rename is offered only when it provably changes nothing but the
-	// spelling. Each case below is one way the old package-scope check let a
-	// rename through that either failed to compile or, worse, compiled into a
-	// program computing something else. The cases are arranged so that the
-	// wrong rename fails to compile, since this test cannot run the result:
-	// the parameter capture, for instance, makes the captured reference the
-	// wrong type.
+	// spelling. Each case below is one way a rename that checks only package
+	// scope would either fail to compile or, worse, compile into a program
+	// computing something else. The cases are arranged so that the wrong
+	// rename fails to compile, since this test cannot run the result: the
+	// parameter capture, for instance, makes the captured reference the wrong
+	// type.
 	{
-		name:   "rename captured by a parameter or a local at a reference (#1)",
+		name:   "rename captured by a parameter or a local at a reference",
 		config: "rules:\n  qualify: true\n",
 		files: map[string]string{
 			"foo.go": "package x\n\nvar count = 10\n\n" +
@@ -125,7 +125,7 @@ var fixCases = []fixCase{
 		},
 	},
 	{
-		name:   "rename colliding with an import in another file (#1)",
+		name:   "rename colliding with an import in another file",
 		config: "rules:\n  qualify: true\n",
 		files: map[string]string{
 			"foo.go": "package x\n\nvar count = 10\n\nfunc Add(x int) int { return x + count }\n",
@@ -133,14 +133,14 @@ var fixCases = []fixCase{
 		},
 	},
 	{
-		name:   "rename to a predeclared name (#1)",
+		name:   "rename to a predeclared name",
 		config: "rules:\n  unqualify: true\n",
 		files: map[string]string{
 			"only.go": "package x\n\nvar onlyLen = 3\n\nfunc Exported(s string) int { return len(s) + onlyLen }\n",
 		},
 	},
 	{
-		name:   "two unqualify renames converging on one name (#2)",
+		name:   "two unqualify renames converging on one name",
 		config: "rules:\n  qualify: false\n  unqualify: true\n",
 		files: map[string]string{
 			"a.go": "package x\n\nvar aFoo = 1\n\nvar _ = aFoo\n",
@@ -148,21 +148,21 @@ var fixCases = []fixCase{
 		},
 	},
 	{
-		name:   "two unqualify renames converging through initialism lowering (#2)",
+		name:   "two unqualify renames converging through initialism lowering",
 		config: "rules:\n  unqualify: true\n",
 		files: map[string]string{
 			"only.go": "package x\n\nvar onlyBar = 1\n\nvar onlyBAR = 2\n\nvar _, _ = onlyBar, onlyBAR\n",
 		},
 	},
 	{
-		name: "two qualify renames converging through a non-injective label (#2)",
+		name: "two qualify renames converging through a non-injective label",
 		files: map[string]string{
 			"a.go":   "package x\n\nfunc bX() int { return 1 }\n\nvar _ = bX\n",
 			"a_b.go": "package x\n\nfunc x() int { return 2 }\n\nvar _ = x\n",
 		},
 	},
 	{
-		name: "reference in a generated file (#3)",
+		name: "reference in a generated file",
 		files: map[string]string{
 			"user.go":   "package x\n\n//declscope:package\nfunc helper() int { return 1 }\n",
 			"order.go":  "package x\n\nfunc OrderRun() int { return helper() }\n",
@@ -170,7 +170,7 @@ var fixCases = []fixCase{
 		},
 	},
 	{
-		name:   "reference in an excluded file (#3)",
+		name:   "reference in an excluded file",
 		config: "exclude:\n  - \"**/ext.go\"\n",
 		files: map[string]string{
 			"user.go":  "package x\n\n//declscope:package\nfunc helper() int { return 1 }\n",
@@ -179,14 +179,14 @@ var fixCases = []fixCase{
 		},
 	},
 	{
-		name:   "declaration named by a go:linkname directive (#5)",
+		name:   "declaration named by a go:linkname directive",
 		config: "rules:\n  qualify: true\n",
 		files: map[string]string{
 			"foo.go": "package x\n\nimport _ \"unsafe\"\n\n//go:linkname helper\nfunc helper() int { return 1 }\n\nfunc Exported() int { return helper() }\n",
 		},
 	},
 	{
-		name:   "rename target declared only in the test variant (#6)",
+		name:   "rename target declared only in the test variant",
 		config: "rules:\n  qualify: true\n",
 		files: map[string]string{
 			"foo.go":      "package x\n\nvar count = 10\n\nfunc Add(x int) int { return x + count }\n",
@@ -196,7 +196,7 @@ var fixCases = []fixCase{
 	{
 		// The positive counterpart: with tests present the rename must still
 		// happen, and reach the test file, through the variant that sees it.
-		name:   "rename referenced from a test file (#6)",
+		name:   "rename referenced from a test file",
 		config: "rules:\n  qualify: true\n",
 		files: map[string]string{
 			"foo.go": "package x\n\nvar count = 10\n\nfunc Add(x int) int { return x + count }\n",

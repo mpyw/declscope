@@ -16,7 +16,7 @@
 // rules.qualify is one enum: always, never and ondemand are the documented
 // spellings, and true and false are accepted as aliases of always and never.
 //
-// Unknown keys are an error. So are the former names of the two rules,
+// Unknown keys are an error.
 package config
 
 import (
@@ -92,8 +92,8 @@ func Resolve(dir, explicit string) (internal.Options, string, error) {
 // ResolveForBaseline produces the options for regenerating the baseline of a
 // package directory: the same rules as Resolve, but no baseline is looked up
 // or loaded, so the options record the current state from scratch. Loading it
-// would let a baseline that no longer parses block its own regeneration,
-// which is the one remedy the documentation offers for it.
+// would let a baseline that fails to parse block its own regeneration, which
+// is the one remedy the documentation offers for it.
 //
 // The third result is the baseline the config file names, resolved against
 // the config file, or "" when it names none. Where a package's entries belong

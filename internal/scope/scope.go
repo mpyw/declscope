@@ -6,20 +6,21 @@ package scope
 //
 // Go only distinguishes exported from unexported, which means every unexported
 // package-level identifier is visible to the whole package. Scope narrows that
-// by convention: the name itself carries the modifier, the way an underscore
-// does in Python or pub(crate) does in Rust.
+// to a namespace, the way pub(crate) narrows pub in Rust. The name of a
+// declaration never decides its scope: a directive states it, and the
+// configured defaults apply otherwise.
 type Scope int
 
 const (
 	// Public is visible outside the package. Exported identifiers default here.
 	Public Scope = iota
 
-	// PackageInternal is visible anywhere in the package. Unexported
-	// identifiers prefixed with their file's namespace default here.
+	// PackageInternal is visible anywhere in the package. It is selected with
+	// //declscope:package, or by configuring it as a default.
 	PackageInternal
 
-	// FilePrivate is visible only within its own namespace. Every other
-	// unexported identifier defaults here.
+	// FilePrivate is visible only within its own namespace. Unexported
+	// identifiers default here.
 	FilePrivate
 )
 

@@ -13,7 +13,7 @@ import (
 
 // TestOptionsErrorCarriesNoAnalyzerPrefix checks that a config error is
 // returned bare. The driver prints every analyzer error as "<name>: <err>",
-// so a prefix added here came out as "declscope: declscope: ...".
+// so a prefix added here would come out as "declscope: declscope: ...".
 func TestOptionsErrorCarriesNoAnalyzerPrefix(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".declscope.yaml")
 	if err := os.WriteFile(path, []byte("rules: [\n"), 0o644); err != nil {

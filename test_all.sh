@@ -41,8 +41,7 @@ run_test "lint" \
     go run "$GOLANGCI_LINT" run ./...
 
 # declscope is subject to its own rules, at the strictest setting:
-# internal/{analyzer,collect,options,report}.go form one unit and say so with
-# //declscope:namespace analyzer.
+# The files of internal/ form one unit and declare a shared namespace.
 run_test "dogfood" \
     go run ./cmd/declscope -config .declscope-strict.yaml ./...
 

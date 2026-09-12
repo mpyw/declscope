@@ -115,8 +115,6 @@ func TestLoadRejectsUnknownKey(t *testing.T) {
 	}
 }
 
-// TestLoadRejectsFormerRuleNames pins the decision on a baseline written before
-
 // TestNilSet checks that the zero value behaves as an absent baseline, which
 // is how the analyzer runs when none is configured.
 func TestNilSet(t *testing.T) {
