@@ -122,3 +122,18 @@ func TestTypeIgnore(t *testing.T) {
 func TestDefaultsReachMembers(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "defaultsmembers")
 }
+
+// TestGenerics checks that the members of a generic type are bounded like
+// those of any other type. go/types records the instantiated field or method
+// for a selection on List[int], and on List[T] inside the type's own methods,
+// so the lookup has to normalise to the origin object.
+func TestGenerics(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "generics")
+}
+
+// TestEmbedded checks that embedding a type is a use of it. The embedded
+// field's ident is both a definition (the field) and a use (the type), and
+// the second role is the one escape has to see.
+func TestEmbedded(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "embedded")
+}

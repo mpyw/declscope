@@ -323,6 +323,9 @@ func (c *collection) receiver(pass *analysis.Pass, fn *types.Func, fallback *fil
 	if !ok {
 		return nil, fallback.ns, fallback.key()
 	}
+	// A method on a generic type receives List[T], an instantiation of List
+	// with its own type parameters. Obj() already names the origin's type name,
+	// which is the object collectTargets registered.
 	owner = named.Obj()
 	pos := pass.Fset.Position(owner.Pos())
 	for _, fi := range c.files {
@@ -342,6 +345,11 @@ func (c *collection) add(t *target) {
 
 // collectRefs records every ident naming a tracked object, along with the file
 // it appears in.
+//
+// An ident can play both roles at once: an embedded field's ident defines the
+// field and uses the type, so Defs and Uses are consulted independently rather
+// than one shadowing the other. Checking Defs first and returning used to drop
+// the type use, which lost both a rename edit and an escape diagnostic.
 func (c *collection) collectRefs(pass *analysis.Pass) {
 	for _, fi := range c.files {
 		ast.Inspect(fi.file, func(n ast.Node) bool {
@@ -349,19 +357,59 @@ func (c *collection) collectRefs(pass *analysis.Pass) {
 			if !ok {
 				return true
 			}
-			if obj, ok := pass.TypesInfo.Defs[ident]; ok && obj != nil {
+			if obj := pass.TypesInfo.Defs[ident]; obj != nil {
 				c.idents[obj] = append(c.idents[obj], ident)
-				return true
 			}
-			obj, ok := pass.TypesInfo.Uses[ident]
-			if !ok || obj == nil {
+			obj := origin(pass.TypesInfo.Uses[ident])
+			if obj == nil {
 				return true
 			}
 			c.idents[obj] = append(c.idents[obj], ident)
+			if tn := embeddedTypeName(obj); tn != nil {
+				c.idents[tn] = append(c.idents[tn], ident)
+			}
 			if _, tracked := c.byObj[obj]; tracked {
 				c.refs[obj] = append(c.refs[obj], ref{ident: ident, file: fi})
 			}
 			return true
 		})
 	}
+}
+
+// origin maps an instantiated field or method back to the object declared in
+// the source. go/types records the instantiated object in Uses for a selection
+// on a generic type — List[int].items, and List[T].items inside List's own
+// methods — while byObj is keyed by the declaration, so without this every
+// member of a generic type went unchecked. Anything else is returned as is.
+func origin(obj types.Object) types.Object {
+	switch o := obj.(type) {
+	case *types.Var:
+		return o.Origin()
+	case *types.Func:
+		return o.Origin()
+	}
+	return obj
+}
+
+// embeddedTypeName returns the type name an embedded field is spelled with,
+// and nil for any other object. Such a field has no name of its own: u.count
+// is written with the type's name, so a rename of the type has to rewrite the
+// selection as well as the embedding. The alias is deliberately not resolved:
+// a field embedding an alias is spelled with the alias's name.
+func embeddedTypeName(obj types.Object) types.Object {
+	v, ok := obj.(*types.Var)
+	if !ok || !v.Embedded() {
+		return nil
+	}
+	t := v.Type()
+	if ptr, ok := t.(*types.Pointer); ok {
+		t = ptr.Elem()
+	}
+	switch t := t.(type) {
+	case *types.Named:
+		return t.Obj()
+	case *types.Alias:
+		return t.Obj()
+	}
+	return nil
 }

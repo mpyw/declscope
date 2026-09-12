@@ -62,6 +62,15 @@ cmd/declscope/            singlechecker entry point, plus the `baseline` subcomm
 - Whether an *exported* identifier is used outside its package is deliberately **out of scope**: `go/analysis` has no upward view of the program. Answering it would require a separate whole-program mode driven by `packages.Load`, which would not fit a plain Analyzer. Combine with an unused-code linter instead.
 - Generated files are excluded as declaration sites **and** as reference sites, since a violation in generated code is not actionable.
 
+### Reference collection
+
+`collectRefs` is where every rule gets its evidence, and two facts about `go/types` shape it:
+
+- **An ident can be a definition and a use at once.** An embedded field's ident is in `Defs` as the field `Var` *and* in `Uses` as the `TypeName`. `Defs` and `Uses` are therefore consulted independently; an earlier version returned after `Defs`, which dropped the type use and with it both a rename edit and an `escape` diagnostic. The embedded field itself is deliberately **not** a target (`addFields` skips it) — it has no name of its own to hide or label — but a selection through it (`u.count`) is spelled with the type's name, so `embeddedTypeName` adds those idents to the type's rename set. Aliases are kept as aliases there: a field embedding `A` is spelled `A`, whatever `A` denotes.
+- **`Uses` records the instantiated member of a generic type**, for a selection on `List[int]` and even on `List[T]` inside `List`'s own methods, while `byObj` is keyed by the declared object. Every object taken from `Uses` goes through `origin()` (`(*types.Var).Origin()` / `(*types.Func).Origin()`) before the lookup and before it joins `idents`. Without that, every field and method of a generic type was silently unchecked. `receiver` needs no such step: `(*types.Named).Obj()` already names the origin's type name.
+
+`testdata/src/generics`, `embedded` and `fixembedded` pin both, including the receiver resolution of a method on `List[T]`.
+
 ## Rules
 
 `internal/rule` holds the one vocabulary: `escape`, `promote`, `demote`. The same name is the diagnostic's `Category`, the `Rule` field of a baseline key, and what an ignore directive targets. **Adding a rule means adding it there**, not inventing a string at the report site.
