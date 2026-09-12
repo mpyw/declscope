@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/namespace"
 	"github.com/mpyw/declscope/internal/scope"
@@ -38,6 +39,14 @@ type Options struct {
 	// Exclude holds glob patterns matched against file paths.
 	Exclude []string
 
+	// BaselinePath is the baseline file to load, resolved relative to the
+	// config file that named it. Empty means no baseline.
+	BaselinePath string
+
+	// Baseline suppresses violations that were already present when declscope
+	// was adopted. It is nil when none is configured.
+	Baseline *baseline.Set
+
 	excludeRE []*regexp.Regexp
 }
 
@@ -55,7 +64,8 @@ func DefaultOptions() Options {
 	}
 }
 
-// Compile prepares the exclude patterns and must be called before use.
+// Compile prepares the exclude patterns and loads the baseline. It must be
+// called before use.
 func (o *Options) Compile() error {
 	o.excludeRE = o.excludeRE[:0]
 	for _, pattern := range o.Exclude {
@@ -64,6 +74,13 @@ func (o *Options) Compile() error {
 			return err
 		}
 		o.excludeRE = append(o.excludeRE, re)
+	}
+	if o.BaselinePath != "" {
+		set, err := baseline.Load(o.BaselinePath)
+		if err != nil {
+			return err
+		}
+		o.Baseline = set
 	}
 	return nil
 }

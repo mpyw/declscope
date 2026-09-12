@@ -1,0 +1,5 @@
+package fixinline
+
+// A field of a single-line struct has no line of its own, so the directive
+// has to break it onto one.
+type User struct{ name string } // want `field User.name is private to namespace "user", but is used from namespace "order"`

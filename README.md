@@ -247,6 +247,37 @@ declscope -fix ./...
 
 When a diagnostic offers both a rename and a directive, `-fix` applies the rename and reports the alternative it skipped. Editors that surface `go/analysis` code actions (such as gopls) offer both.
 
+A declaration whose scope was stated with a directive is reported **without any fix**. Both the directive and the use site are deliberate statements, so `-fix` must not overwrite one of them: widening would silently discard the directive the author wrote, and renaming alone would leave the declaration private while the new name claimed otherwise.
+
+## Adopting on an existing codebase
+
+Turning declscope on for a codebase that predates it would report every boundary that was never enforced. Record them instead:
+
+```console
+declscope baseline ./...       # writes .declscope-baseline.yaml
+```
+
+Recorded violations are suppressed; new ones are still reported. The file is discovered by the same upward lookup as the config, so its presence is all it takes.
+
+```yaml
+packages:
+  github.com/you/app/store:
+    escape:
+      - User.name
+      - helper
+```
+
+An entry is keyed by **package, rule and declaration** — never by position — so it survives the code being moved, the file being renamed and the package being reformatted. Regenerate rather than edit:
+
+```console
+declscope baseline ./...
+git diff .declscope-baseline.yaml   # the record of what was cleaned up
+```
+
+Entries for violations that have since been fixed simply disappear, which is why the analyzer never reports an entry as stale: a package's test variant sees references the ordinary variant does not, so "matched nothing" is not a reliable signal from inside one pass.
+
+A baseline suppresses, it does not endorse. Nothing is written into the source, the convention still applies to every new declaration, and an entry can only be removed by actually fixing the violation. That is the difference between this and a `-fix` mode that writes `//declscope:package` everywhere: the latter would permanently opt the codebase out of the convention it was adopted for.
+
 ## Configuration
 
 Optional. `.declscope.yaml` (or `.yml`), looked up from the analyzed package's directory upwards, stopping at the module root — so a subtree can relax or tighten the rules on its own.
@@ -264,6 +295,8 @@ rules:
 
 exclude:
   - "**/mock_*.go"
+
+baseline: .declscope-baseline.yaml   # relative to this file; found automatically if named by default
 ```
 
 Unknown keys are an error rather than a silent no-op: a typo in a rule name would otherwise leave the rule at its default with no sign of it.
@@ -286,6 +319,8 @@ The point of declscope is that the boundary stops being tacit knowledge, so put 
 declscope ./...        # in CI, and in the agent's build/verify loop
 declscope -fix ./...   # deterministic: applies the rename, reports the alternative it skipped
 ```
+
+On an existing codebase, run `declscope baseline ./...` once first, so the agent is only ever shown the boundaries *it* crossed.
 
 Two things make this work better than a written convention:
 

@@ -73,7 +73,19 @@ jobs:
         with:
           go-version-file: go.mod
 
-      # declscope is subject to its own rules. internal/{analyzer,collect,
-      # options,report}.go form one unit and say so with a shared namespace.
+      # declscope is subject to its own rules, at the strictest setting.
+      # internal/{analyzer,collect,options,report}.go form one unit and say so
+      # with a shared namespace.
       - name: Run declscope on itself
-        run: go run ./cmd/declscope ./...
+        run: go run ./cmd/declscope -config .declscope-strict.yaml ./...
+
+      # Regenerating the baseline on a clean tree must produce no baseline at
+      # all: declscope has no recorded violations of its own.
+      - name: Check the baseline stays empty
+        run: |
+          go run ./cmd/declscope baseline -config .declscope-strict.yaml -o /tmp/baseline.yaml ./...
+          if grep -qE '^\s{4}' /tmp/baseline.yaml; then
+            echo "declscope now has recorded violations of its own:"
+            cat /tmp/baseline.yaml
+            exit 1
+          fi

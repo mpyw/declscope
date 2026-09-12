@@ -1,0 +1,5 @@
+packages:
+  baselined:
+    escape:
+      - User.name
+      - helper

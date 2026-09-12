@@ -4,7 +4,7 @@ package directives
 func explicitlyShared() int { return 1 }
 
 //declscope:file
-func userNotReallyShared() int { return 2 } // want `func userNotReallyShared is file-private to namespace "user", but is used from namespace "order"`
+func userNotReallyShared() int { return 2 } // want `func userNotReallyShared is declared file-private by //declscope:file, but is used from namespace "order"`
 
 //declscope:ignore
 func ignoredLeak() int { return 3 }

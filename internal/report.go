@@ -11,14 +11,24 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/namespace"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
+// Rule names, used as the diagnostic category and as the baseline key.
+const (
+	ruleEscape        = "escape"
+	ruleDemotion      = "demotion"
+	ruleForeignMethod = "foreign-method"
+)
+
 // finding is a diagnostic that a target would produce, held back until its
-// ignore directive has been consulted.
+// ignore directive and the baseline have been consulted.
 type finding struct {
+	rule    string
+	decl    string
 	pos     token.Pos
 	msg     string
 	related []analysis.RelatedInformation
@@ -33,14 +43,21 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	for _, t := range c.targets {
 		findings := c.check(pass, opts, t)
 		if t.dir.Ignore {
+			// An ignore is unused only when nothing would have fired at all.
+			// A baseline suppression still counts as the directive doing its
+			// job, so the baseline is consulted after this.
 			if len(findings) == 0 {
 				pass.Reportf(t.dir.IgnorePos, "unused //declscope:ignore on %s", t.name())
 			}
 			continue
 		}
 		for _, f := range findings {
+			if opts.Baseline.Has(f.key(pass)) {
+				continue
+			}
 			pass.Report(analysis.Diagnostic{
 				Pos:            f.pos,
+				Category:       f.rule,
 				Message:        f.msg,
 				Related:        f.related,
 				SuggestedFixes: f.fixes,
@@ -52,6 +69,26 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	for _, p := range c.problems {
 		pass.Reportf(p.Pos, "%s", p.Msg)
 	}
+}
+
+// key identifies the finding for the baseline, independently of position.
+func (f finding) key(pass *analysis.Pass) baseline.Key {
+	return baseline.Key{Package: pass.Pkg.Path(), Rule: f.rule, Decl: f.decl}
+}
+
+// keys returns every violation the pass would report, ignoring the baseline.
+// It is what regenerating a baseline records.
+func (c *collection) keys(pass *analysis.Pass, opts Options) []baseline.Key {
+	var out []baseline.Key
+	for _, t := range c.targets {
+		if t.dir.Ignore {
+			continue
+		}
+		for _, f := range c.check(pass, opts, t) {
+			out = append(out, f.key(pass))
+		}
+	}
+	return out
 }
 
 func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []finding {
@@ -86,11 +123,15 @@ func (c *collection) checkEscape(pass *analysis.Pass, opts Options, t *target) (
 		return finding{}, false
 	}
 
-	f := finding{pos: t.ident.Pos()}
-	if t.owner != "" {
+	f := finding{rule: ruleEscape, decl: t.name(), pos: t.ident.Pos()}
+	switch {
+	case t.dir.HasScope:
+		f.msg = fmt.Sprintf("%s %s is declared %s by %s, but is used from %s",
+			t.kind, t.name(), t.scope, t.scope.Directive(), describeFile(offenders[0].file))
+	case t.owner != "":
 		f.msg = fmt.Sprintf("%s %s is private to %s, but is used from %s",
 			t.kind, t.name(), describe(t.ownerNS, t.file.path), describeFile(offenders[0].file))
-	} else {
+	default:
 		f.msg = fmt.Sprintf("%s %s is file-private to %s, but is used from %s",
 			t.kind, t.name(), describe(t.ownerNS, t.file.path), describeFile(offenders[0].file))
 	}
@@ -100,6 +141,15 @@ func (c *collection) checkEscape(pass *analysis.Pass, opts Options, t *target) (
 			End:     r.ident.End(),
 			Message: fmt.Sprintf("used here, in %s", describeFile(r.file)),
 		})
+	}
+
+	// When the author stated the scope, the conflict is between two explicit
+	// decisions and only they can resolve it. Offering to widen would have
+	// -fix silently overwrite the directive they wrote; offering the rename
+	// alone would be worse still, since the directive would keep the
+	// declaration private and leave the new name lying about its reach.
+	if t.dir.HasScope {
+		return f, true
 	}
 
 	// A member is already namespaced by the type that owns it, so widening it
@@ -139,7 +189,9 @@ func (c *collection) checkDemotion(pass *analysis.Pass, opts Options, t *target)
 		return finding{}, false
 	}
 	f := finding{
-		pos: t.ident.Pos(),
+		rule: ruleDemotion,
+		decl: t.name(),
+		pos:  t.ident.Pos(),
 		msg: fmt.Sprintf("%s %s is namespace-prefixed but is only used inside %s; drop the prefix or state the scope",
 			t.kind, t.name(), describe(t.ownerNS, t.file.path)),
 	}
@@ -161,7 +213,9 @@ func (c *collection) checkForeignMethod(pass *analysis.Pass, opts Options, t *ta
 		return finding{}, false
 	}
 	return finding{
-		pos: t.ident.Pos(),
+		rule: ruleForeignMethod,
+		decl: t.name(),
+		pos:  t.ident.Pos(),
 		msg: fmt.Sprintf("unexported method %s is declared in %s but %s belongs to %s",
 			t.name(), describeFile(t.file), t.owner, describe(t.ownerNS, "")),
 		fixes: []analysis.SuggestedFix{c.directiveFix(pass, t, scope.PackageInternal)},
@@ -193,17 +247,46 @@ func (c *collection) renameFix(pass *analysis.Pass, t *target, newName, message 
 }
 
 // directiveFix inserts an explicit scope directive above the declaration.
+//
+// A directive only binds to a declaration when it sits on its own line above
+// it, so a declaration that shares a line with something else — a field of a
+// single-line struct, for instance — first has to be broken onto a line of its
+// own. The formatter applied to the fixed file restores the indentation.
 func (c *collection) directiveFix(pass *analysis.Pass, t *target, s scope.Scope) analysis.SuggestedFix {
-	col := pass.Fset.Position(t.anchor).Column
-	indent := strings.Repeat("\t", max(col-1, 0))
+	var text string
+	if c.startsLine(pass, t.anchor) {
+		col := pass.Fset.Position(t.anchor).Column
+		text = s.Directive() + "\n" + strings.Repeat("\t", max(col-1, 0))
+	} else {
+		text = "\n" + s.Directive() + "\n"
+	}
 	return analysis.SuggestedFix{
 		Message: fmt.Sprintf("add %s to %s", s.Directive(), t.name()),
 		TextEdits: []analysis.TextEdit{{
 			Pos:     t.anchor,
 			End:     t.anchor,
-			NewText: []byte(s.Directive() + "\n" + indent),
+			NewText: []byte(text),
 		}},
 	}
+}
+
+// startsLine reports whether pos is preceded on its line by nothing but
+// whitespace. It fails safe: an unreadable file is treated as not starting a
+// line, which yields an extra line break rather than a misplaced directive.
+func (c *collection) startsLine(pass *analysis.Pass, pos token.Pos) bool {
+	position := pass.Fset.Position(pos)
+	if position.Column <= 1 {
+		return true
+	}
+	if pass.ReadFile == nil {
+		return false
+	}
+	content, err := pass.ReadFile(position.Filename)
+	if err != nil || position.Offset > len(content) {
+		return false
+	}
+	prefix := content[position.Offset-position.Column+1 : position.Offset]
+	return strings.TrimLeft(string(prefix), " \t") == ""
 }
 
 func describe(ns, path string) string {

@@ -1,0 +1,7 @@
+# The settings declscope holds itself to, applied via an explicit -config so
+# that they do not reach the analysistest packages under testdata: the config
+# lookup walks up from each analyzed package, and a default-named file at the
+# repository root would silently change what those tests assert.
+rules:
+  demotion: true
+  foreign-methods: true

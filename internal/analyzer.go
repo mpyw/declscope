@@ -17,16 +17,34 @@ package internal
 
 import (
 	"golang.org/x/tools/go/analysis"
+
+	"github.com/mpyw/declscope/internal/baseline"
 )
 
 // Run performs the analysis for one package.
 func Run(pass *analysis.Pass, opts Options) (any, error) {
+	if c := build(pass, opts); c != nil {
+		c.report(pass, opts)
+	}
+	return nil, nil
+}
+
+// Collect returns every violation in the package, ignoring any configured
+// baseline. It is the entry point used to regenerate a baseline.
+func Collect(pass *analysis.Pass, opts Options) []baseline.Key {
+	c := build(pass, opts)
+	if c == nil {
+		return nil
+	}
+	return c.keys(pass, opts)
+}
+
+func build(pass *analysis.Pass, opts Options) *collection {
 	c := collectFiles(pass, opts)
 	if len(c.files) == 0 {
-		return nil, nil
+		return nil
 	}
 	c.collectTargets(pass, opts)
 	c.collectRefs(pass)
-	c.report(pass, opts)
-	return nil, nil
+	return c
 }

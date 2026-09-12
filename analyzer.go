@@ -45,23 +45,9 @@ func run(pass *analysis.Pass) (any, error) {
 // looked up from the package's own directory upwards, so a subtree can relax
 // or tighten the rules without affecting the rest of the module.
 func options(pass *analysis.Pass) (internal.Options, error) {
-	opts := internal.DefaultOptions()
-
 	explicit := pass.Analyzer.Flags.Lookup("config").Value.String()
-	path := explicit
-	if path == "" {
-		path = config.Find(packageDir(pass))
-	}
-	if path != "" {
-		file, err := config.Load(path)
-		if err != nil {
-			return opts, fmt.Errorf("declscope: %w", err)
-		}
-		if err := file.Apply(&opts); err != nil {
-			return opts, fmt.Errorf("declscope: %s: %w", path, err)
-		}
-	}
-	if err := opts.Compile(); err != nil {
+	opts, _, err := config.Resolve(packageDir(pass), explicit)
+	if err != nil {
 		return opts, fmt.Errorf("declscope: %w", err)
 	}
 	return opts, nil

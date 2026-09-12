@@ -56,3 +56,17 @@ func TestNamespaceDirectiveDetached(t *testing.T) {
 func TestNamespaceDirectiveInPackageDoc(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nsindoc")
 }
+
+// TestBaseline checks that recorded violations are suppressed while new ones
+// are still reported. The baseline lives in testdata/src/baselined and is
+// found by the same upward lookup as the config file.
+func TestBaseline(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "baselined")
+}
+
+// TestExplicitScopeConflict checks that a declaration whose scope was stated
+// by a directive is reported without a fix, since -fix must not overwrite a
+// decision the author made deliberately.
+func TestExplicitScopeConflict(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "explicit")
+}

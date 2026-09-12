@@ -47,7 +47,8 @@ internal/
   scope/                  the three-level Scope enum
   directive/              //declscope:... comment parsing
   config/                 YAML loading and lookup
-cmd/declscope/            singlechecker entry point
+  baseline/               baseline file format, lookup and regeneration
+cmd/declscope/            singlechecker entry point, plus the `baseline` subcommand
 ```
 
 `internal/{analyzer,collect,options,report}.go` form one logical unit and declare `//declscope:namespace analyzer` so that declscope passes its own check. Keep that directive when adding files to that unit.
@@ -83,7 +84,19 @@ A cross-namespace violation on a package-level declaration offers two **alternat
 
 Order matters. `-fix` applies only the first fix of each diagnostic and prints `ignoring alternative fix ...` for the rest, so fix 1 is the default repair and fix 2 is what editors surface as a second code action.
 
-Renames are skipped when `pass.Pkg.Scope().Lookup(newName)` is non-nil, since renaming into an existing package-level name would not compile.
+Renames are skipped when `pass.Pkg.Scope().Lookup(newName)` is non-nil, since renaming into an existing package-level name would not compile. They are also never offered for members, or for a file whose name yields no valid namespace.
+
+**A declaration whose scope came from a directive gets no fix at all** (`t.dir.HasScope`). Both the directive and the use site are deliberate, so widening would have `-fix` overwrite the author's directive, and renaming alone would leave the declaration private while the new name claimed otherwise. An earlier version emitted `//declscope:package` next to the existing `//declscope:file`, producing code the linter itself rejected.
+
+`directiveFix` checks whether the anchor starts its line (`startsLine`, via `pass.ReadFile`). A field of a single-line struct does not, and inserting the directive there attached it to the `struct {` line instead of the field.
+
+## Baseline
+
+`declscope baseline ./...` regenerates `.declscope-baseline.yaml` wholesale; it is never hand-edited. Entries are keyed by (package, rule, declaration) — deliberately not by position — so they survive code motion and file renames.
+
+Generation does not go through `singlechecker`: a baseline entry has to identify a violation structurally, and a driver only returns rendered diagnostics. The analyzer declares no `Requires` and exports no facts, so `cmd/declscope/baseline.go` drives it over `go/packages` with a hand-built `analysis.Pass`, calling `internal.Collect`. Keep that entry point working if the analyzer ever gains dependencies.
+
+The analyzer deliberately does **not** report unmatched baseline entries. A package's test variant sees references the ordinary variant does not, so an entry that matched nothing in one pass is not evidence it is stale. Regeneration is what prunes, and its diff is the record of what was fixed.
 
 ## Testing
 
@@ -95,7 +108,8 @@ go test ./...          # analysistest + unit tests
 - `testdata/src/*` are `analysistest` packages. `demotion/` and `foreign/` carry their own `.declscope.yaml`, which also exercises config discovery end to end.
 - `testdata/src/fixes/*.golden` are **txtar archives with one section per fix message**, which is how `analysistest` compares alternative fixes separately instead of merging them into one nonsensical result.
 - Diagnostics on directives are reported at the comment, so their `// want` comments belong on the directive line, not the declaration line.
-- Do not add a `.declscope.yaml` at the repository root: `config.Find` would pick it up for every `testdata` package and change what the tests assert.
+- Do not add a `.declscope.yaml` or `.declscope-baseline.yaml` at the repository root: both are found by an upward lookup from each analyzed package, so a default-named file at the root would reach every `testdata` package and change what the tests assert. The settings declscope holds itself to live in `.declscope-strict.yaml` and are applied with an explicit `-config` in CI and `test_all.sh`.
+- `testdata/src/baselined` carries its own `.declscope-baseline.yaml`, which also exercises the lookup end to end.
 
 ## Conventions
 

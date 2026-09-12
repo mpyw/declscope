@@ -7,6 +7,11 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m' # No Color
 
+# Pinned to the version CI uses. golangci-lint refuses to load a module whose
+# toolchain directive is newer than the Go it was built with, so a golangci-lint
+# on PATH is often too old; going through `go run` keeps local and CI identical.
+GOLANGCI_LINT="github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1"
+
 # Track results
 declare -a failed_tests=()
 
@@ -33,12 +38,13 @@ run_test "analyzer" \
     go test -v ./...
 
 run_test "lint" \
-    golangci-lint run ./...
+    go run "$GOLANGCI_LINT" run ./...
 
-# declscope is subject to its own rules: internal/{analyzer,collect,options,report}.go
-# form one unit and say so with //declscope:namespace analyzer.
+# declscope is subject to its own rules, at the strictest setting:
+# internal/{analyzer,collect,options,report}.go form one unit and say so with
+# //declscope:namespace analyzer.
 run_test "dogfood" \
-    go run ./cmd/declscope ./...
+    go run ./cmd/declscope -config .declscope-strict.yaml ./...
 
 # Summary
 echo ""
