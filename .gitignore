@@ -1,0 +1,28 @@
+# Test binary
+*.test
+
+# Output of go coverage
+*.out
+coverage.html
+coverage.txt
+
+# Go workspace
+go.work
+go.work.sum
+
+# Built binaries
+/bin/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Task tracking (session-specific, not committed)
+TASKS.md

@@ -1,0 +1,12 @@
+-- rename helper to userHelper (promote to package-internal by prefixing with the namespace) --
+package fixes
+
+func orderRun() int { return userHelper() + seed }
+
+var _ = orderRun
+-- rename seed to userSeed (promote to package-internal by prefixing with the namespace) --
+package fixes
+
+func orderRun() int { return helper() + userSeed }
+
+var _ = orderRun
