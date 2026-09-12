@@ -1,0 +1,57 @@
+// 各設定キーが実際に結果を変えるかの検査。
+// reachable が witness されなければ、そのキーはその方向に効いていない＝死んだノブ。
+spec Knobs {
+  enum Scope { Public, Package, FilePriv }
+  enum Kind  { Pkg, Member }
+  enum Dir   { NoDir, DirPublic, DirPackage, DirFile }
+  enum Refs  { NoRefs, SameNs, CrossNs }
+
+  state {
+    configured: Bool, cfgExported: Scope, cfgUnexported: Scope,
+    kind: Kind, exported: Bool, dir: Dir, refs: Refs
+  }
+  init {
+    configured = false  cfgExported = Public  cfgUnexported = FilePriv
+    kind = Pkg  exported = false  dir = NoDir  refs = NoRefs
+  }
+  action configure(e: Scope, u: Scope, k: Kind, x: Bool, di: Dir, r: Refs) {
+    requires not configured
+    configured = true  cfgExported = e  cfgUnexported = u
+    kind = k  exported = x  dir = di  refs = r
+  }
+  def effScope() =
+    if dir == DirPublic then Public
+    else if dir == DirPackage then Package
+    else if dir == DirFile then FilePriv
+    else if exported then cfgExported
+    else cfgUnexported
+  def escapeFires() = effScope() == FilePriv and refs == CrossNs
+
+  // defaults.exported はメンバーにも効くか（今日直した箇所）
+  reachable ExportedKnobBitesOnMembers {
+    configured and kind == Member and exported and dir == NoDir
+    and cfgExported == FilePriv and refs == CrossNs and escapeFires()
+  }
+  // defaults.unexported はメンバーにも効くか
+  reachable UnexportedKnobSilencesMembers {
+    configured and kind == Member and not exported and dir == NoDir
+    and cfgUnexported == Package and refs == CrossNs and not escapeFires()
+  }
+  // defaults.exported はパッケージレベルにも効くか
+  reachable ExportedKnobBitesOnPkg {
+    configured and kind == Pkg and exported and dir == NoDir
+    and cfgExported == FilePriv and refs == CrossNs and escapeFires()
+  }
+  // directive は defaults を上書きするか（両方向）
+  reachable DirectiveOverridesToFile {
+    configured and dir == DirFile and cfgUnexported == Public
+    and not exported and refs == CrossNs and escapeFires()
+  }
+  reachable DirectiveOverridesToPackage {
+    configured and dir == DirPackage and cfgUnexported == FilePriv
+    and not exported and refs == CrossNs and not escapeFires()
+  }
+  // 同一 namespace 内の参照は決して違反にならない
+  invariant SameNamespaceNeverEscapes { refs == SameNs => not escapeFires() }
+  invariant NoRefsNeverEscapes        { refs == NoRefs => not escapeFires() }
+}

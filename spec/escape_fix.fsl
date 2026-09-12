@@ -1,0 +1,35 @@
+// escape の fix（directive 挿入）が必ず違反を解消することの検査。
+// 読む変数だけに絞ってある: 216 インスタンス。
+spec EscapeFix {
+  enum Scope { Public, Package, FilePriv }
+  enum Dir   { NoDir, DirPublic, DirPackage, DirFile }
+  enum Refs  { NoRefs, SameNs, CrossNs }
+
+  state {
+    configured: Bool, cfgExported: Scope, cfgUnexported: Scope,
+    exported: Bool, dir: Dir, refs: Refs, fixed: Bool
+  }
+  init {
+    configured = false  cfgExported = Public  cfgUnexported = FilePriv
+    exported = false  dir = NoDir  refs = NoRefs  fixed = false
+  }
+  action configure(e: Scope, u: Scope, x: Bool, di: Dir, r: Refs) {
+    requires not configured
+    configured = true  cfgExported = e  cfgUnexported = u
+    exported = x  dir = di  refs = r
+  }
+  def effScope() =
+    if dir == DirPublic then Public
+    else if dir == DirPackage then Package
+    else if dir == DirFile then FilePriv
+    else if exported then cfgExported
+    else cfgUnexported
+  def escapeFires() = effScope() == FilePriv and refs == CrossNs
+
+  fair action fixEscape() {
+    requires configured  requires escapeFires()  requires dir == NoDir
+    dir = DirPackage  fixed = true
+  }
+  invariant EscapeFixSettles { fixed => not escapeFires() }
+  reachable EscapeCanFire { configured and escapeFires() }
+}

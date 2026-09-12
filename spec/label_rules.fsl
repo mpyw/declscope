@@ -1,0 +1,35 @@
+// promote / demote の相互排他と、それぞれの fix が違反を解消することの検査。
+// スコープ設定は読まないので除外: 288 インスタンス。
+spec LabelRules {
+  enum Promote { Always, OnDemand, Never }
+  enum Kind    { Pkg, Member }
+  enum Label   { NoLabel, Prefixed, Equal }
+  enum Fix     { NoFix, FixedPromote, FixedDemote }
+
+  state {
+    configured: Bool, cfgPromote: Promote, cfgDemote: Bool, manyNs: Bool,
+    kind: Kind, exported: Bool, hasNs: Bool, label: Label, lastFix: Fix
+  }
+  init {
+    configured = false  cfgPromote = OnDemand  cfgDemote = false  manyNs = false
+    kind = Pkg  exported = false  hasNs = true  label = NoLabel  lastFix = NoFix
+  }
+  action configure(p: Promote, d: Bool, m: Bool, k: Kind, x: Bool, h: Bool, l: Label) {
+    requires not configured
+    configured = true  cfgPromote = p  cfgDemote = d  manyNs = m
+    kind = k  exported = x  hasNs = h  label = l
+  }
+  def promoteRequired() = cfgPromote == Always or (cfgPromote == OnDemand and manyNs)
+  def promoteFires() = promoteRequired() and kind == Pkg and hasNs and not exported and label == NoLabel
+  def demoteFires()  = cfgDemote and kind == Pkg and hasNs and not promoteRequired()
+                       and not exported and label == Prefixed
+
+  fair action fixPromote() { requires configured  requires promoteFires()  label = Prefixed  lastFix = FixedPromote }
+  fair action fixDemote()  { requires configured  requires demoteFires()   label = NoLabel   lastFix = FixedDemote }
+
+  invariant Exclusive         { not (promoteFires() and demoteFires()) }
+  invariant PromoteFixSettles { lastFix == FixedPromote => not promoteFires() }
+  invariant DemoteFixSettles  { lastFix == FixedDemote  => not demoteFires() }
+  reachable PromoteCanFire { configured and promoteFires() }
+  reachable DemoteCanFire  { configured and demoteFires() }
+}
