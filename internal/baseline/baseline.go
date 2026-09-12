@@ -114,9 +114,12 @@ func Load(path string) (*Set, error) {
 }
 
 // Save writes keys to path, sorted so that regenerating an unchanged codebase
-// produces no diff.
-func Save(path string, keys []Key) error {
+// produces no diff. It returns the number of entries written, which is the
+// count to report: a package and its test variant hand over the same key
+// twice, and only one of them lands in the file.
+func Save(path string, keys []Key) (int, error) {
 	f := file{Packages: map[string]map[string][]string{}}
+	n := 0
 	for _, k := range keys {
 		rules, ok := f.Packages[k.Package]
 		if !ok {
@@ -126,6 +129,7 @@ func Save(path string, keys []Key) error {
 		name := string(k.Rule)
 		if !slices.Contains(rules[name], k.Decl) {
 			rules[name] = append(rules[name], k.Decl)
+			n++
 		}
 	}
 	for _, rules := range f.Packages {
@@ -139,15 +143,18 @@ func Save(path string, keys []Key) error {
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
 	if err := enc.Encode(f); err != nil {
-		return err
+		return 0, err
 	}
 	if err := enc.Close(); err != nil {
-		return err
+		return 0, err
 	}
 	if dir := filepath.Dir(path); dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
+			return 0, err
 		}
 	}
-	return os.WriteFile(path, buf.Bytes(), 0o644)
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		return 0, err
+	}
+	return n, nil
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mpyw/declscope/internal"
+	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/config"
 	"github.com/mpyw/declscope/internal/scope"
 )
@@ -142,17 +143,21 @@ func TestFindPrefersNearest(t *testing.T) {
 	}
 }
 
-// TestPromoteModes checks the tri-state rules.promote setting: YAML hands true
-// and false over as booleans and ondemand as a string.
+// TestPromoteModes checks every spelling of the tri-state rules.promote
+// setting: the documented always, never and ondemand, and the true and false
+// aliases, which YAML hands over as booleans unless quoted.
 func TestPromoteModes(t *testing.T) {
 	tests := []struct {
 		yaml string
 		want internal.PromoteMode
 	}{
+		{"rules:\n  promote: always\n", internal.PromoteAlways},
+		{"rules:\n  promote: never\n", internal.PromoteNever},
+		{"rules:\n  promote: ondemand\n", internal.PromoteOnDemand},
 		{"rules:\n  promote: true\n", internal.PromoteAlways},
 		{"rules:\n  promote: false\n", internal.PromoteNever},
-		{"rules:\n  promote: ondemand\n", internal.PromoteOnDemand},
 		{"rules:\n  promote: \"true\"\n", internal.PromoteAlways},
+		{"rules:\n  promote: \"false\"\n", internal.PromoteNever},
 	}
 	for _, tt := range tests {
 		path := write(t, t.TempDir(), ".declscope.yaml", tt.yaml)
@@ -166,6 +171,24 @@ func TestPromoteModes(t *testing.T) {
 		}
 		if opts.Promote != tt.want {
 			t.Errorf("%q: Prefix = %v, want %v", tt.yaml, opts.Promote, tt.want)
+		}
+	}
+}
+
+// TestPromoteModeString pins the spelling a diagnostic or an error would use
+// to the documented one, and that it parses back: a mode printed as "true"
+// would tell the reader to write a value the docs no longer show.
+func TestPromoteModeString(t *testing.T) {
+	for mode, want := range map[internal.PromoteMode]string{
+		internal.PromoteAlways:   "always",
+		internal.PromoteNever:    "never",
+		internal.PromoteOnDemand: "ondemand",
+	} {
+		if got := mode.String(); got != want {
+			t.Errorf("String() = %q, want %q", got, want)
+		}
+		if back, ok := internal.ParsePromoteMode(mode.String()); !ok || back != mode {
+			t.Errorf("ParsePromoteMode(%q) = %v, %v; want %v", mode.String(), back, ok, mode)
 		}
 	}
 }
@@ -188,4 +211,136 @@ func TestApplyRejectsUnknownPromoteMode(t *testing.T) {
 	if err := f.Apply(&opts); err == nil {
 		t.Fatal("want an error for an unknown prefix mode")
 	}
+}
+
+// TestResolveLoadsBaseline pins the analyzer's side of the lookup: a
+// default-named baseline above the package is found and loaded.
+func TestResolveLoadsBaseline(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "go.mod", "module example.com/m\n")
+	write(t, root, ".declscope-baseline.yaml", "packages:\n  example.com/m/pkg:\n    escape: [helper]\n")
+	pkg := filepath.Join(root, "pkg")
+	write(t, pkg, "keep.go", "package pkg\n")
+
+	opts, _, err := config.Resolve(pkg, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(root, ".declscope-baseline.yaml"); opts.BaselinePath != want {
+		t.Errorf("BaselinePath = %q, want %q", opts.BaselinePath, want)
+	}
+	if !opts.Baseline.Has(baseline.Key{Package: "example.com/m/pkg", Rule: "escape", Decl: "helper"}) {
+		t.Error("the baseline should be loaded")
+	}
+}
+
+// TestResolveForBaselineIgnoresCorruptBaseline is the regeneration side: a
+// baseline that fails to parse fails analysis, as it should, but must not
+// stop the subcommand from replacing it — regenerating is the documented fix.
+func TestResolveForBaselineIgnoresCorruptBaseline(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "go.mod", "module example.com/m\n")
+	write(t, root, ".declscope-baseline.yaml", "packages:\n  x:\n    escape: [helper]\nbogus: 1\n")
+	pkg := filepath.Join(root, "pkg")
+	write(t, pkg, "keep.go", "package pkg\n")
+
+	if _, _, err := config.Resolve(pkg, ""); err == nil {
+		t.Fatal("Resolve should refuse a baseline it cannot parse")
+	}
+	opts, _, named, err := config.ResolveForBaseline(pkg, "")
+	if err != nil {
+		t.Fatalf("ResolveForBaseline must not load the baseline: %v", err)
+	}
+	if named != "" {
+		t.Errorf("named = %q, want \"\": no config names one", named)
+	}
+	if opts.BaselinePath != "" || opts.Baseline != nil {
+		t.Errorf("no baseline should be attached to the options, got %q / %v", opts.BaselinePath, opts.Baseline)
+	}
+}
+
+// TestResolveForBaselineReturnsNamed checks that the configured baseline is
+// handed back as the place to write, resolved against the config file, and
+// that its content — corrupt here — is never read.
+func TestResolveForBaselineReturnsNamed(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "go.mod", "module example.com/m\n")
+	sub := filepath.Join(root, "sub")
+	write(t, sub, ".declscope.yaml", "baseline: sub-baseline.yaml\nrules:\n  demote: true\n")
+	write(t, sub, "sub-baseline.yaml", "not: [valid\n")
+	inner := filepath.Join(sub, "inner")
+	write(t, inner, "keep.go", "package inner\n")
+
+	opts, configPath, named, err := config.ResolveForBaseline(inner, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(sub, ".declscope.yaml"); configPath != want {
+		t.Errorf("config = %q, want %q", configPath, want)
+	}
+	if want := filepath.Join(sub, "sub-baseline.yaml"); named != want {
+		t.Errorf("named = %q, want %q", named, want)
+	}
+	if !opts.CheckDemote {
+		t.Error("the rest of the config should still apply")
+	}
+	if opts.Baseline != nil {
+		t.Error("the baseline must not be loaded during regeneration")
+	}
+}
+
+// TestDefaultBaseline pins where a package's entries go when no config names
+// a baseline. The invariant is that the analyzer, walking up from the
+// package, finds exactly the file the generator wrote.
+func TestDefaultBaseline(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "go.mod", "module example.com/m\n")
+	write(t, filepath.Join(root, "a"), "keep.go", "package a\n")
+	write(t, filepath.Join(root, "b", "inner"), "keep.go", "package inner\n")
+	write(t, filepath.Join(root, "b"), ".declscope-baseline.yml", "")
+	write(t, filepath.Join(root, "nested"), "go.mod", "module example.com/nested\n")
+	write(t, filepath.Join(root, "nested", "pkg"), "keep.go", "package pkg\n")
+	write(t, filepath.Join(root, "store", "inner"), "keep.go", "package inner\n")
+	write(t, root, ".declscope-baseline.yaml", "")
+
+	rootDefault := filepath.Join(root, ".declscope-baseline.yaml")
+	tests := []struct {
+		name, dir, from string
+		want            string
+		ok              bool
+	}{
+		{"new file in the working directory", filepath.Join(root, "a"), root, rootDefault, true},
+		{"the working directory itself", root, root, rootDefault, true},
+		{"nearest existing file, shadowing the root", filepath.Join(root, "b", "inner"), root, filepath.Join(root, "b", ".declscope-baseline.yml"), true},
+		// Run from store/: the root file exists, but a run that never saw the
+		// packages outside store/ must not rewrite it.
+		{"stops at the working directory", filepath.Join(root, "store", "inner"), filepath.Join(root, "store"), filepath.Join(root, "store", ".declscope-baseline.yaml"), true},
+		{"module boundary before the working directory", filepath.Join(root, "nested", "pkg"), root, "", false},
+		{"package outside the working directory", filepath.Join(root, "a"), filepath.Join(root, "b"), "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := config.DefaultBaseline(tt.dir, tt.from)
+			if ok != tt.ok || got != tt.want {
+				t.Errorf("DefaultBaseline(%q, %q) = %q, %v; want %q, %v", tt.dir, tt.from, got, ok, tt.want, tt.ok)
+			}
+			if !ok {
+				return
+			}
+			// Once written, the analyzer's lookup from the package must land
+			// on the same file.
+			if !fileExists(got) {
+				write(t, filepath.Dir(got), filepath.Base(got), "")
+				t.Cleanup(func() { _ = os.Remove(got) })
+			}
+			if found := config.FindBaseline(tt.dir); found != got {
+				t.Errorf("FindBaseline(%q) = %q after writing, want %q", tt.dir, found, got)
+			}
+		})
+	}
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

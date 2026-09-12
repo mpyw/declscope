@@ -72,7 +72,7 @@ func TestExplicitScopeConflict(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "explicit")
 }
 
-// TestPromoteAlways checks rules.promote: true, which requires the label even
+// TestPromoteAlways checks rules.promote: always, which requires the label even
 // in a package with a single namespace.
 func TestPromoteAlways(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "promotealways")

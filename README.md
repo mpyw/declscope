@@ -188,8 +188,10 @@ Exported identifiers are exempt: they are already qualified by the package name 
 | `rules.promote` | Effect |
 | --- | --- |
 | `ondemand` *(default)* | Required only once a package has a **second namespace**. In a package with one there is no boundary for a label to mark, and a prefix repeated on every declaration would distinguish nothing. |
-| `true` | Required unconditionally. Costs a little stutter in single-file packages, but means a package gaining its second namespace is not a mass rename. |
-| `false` | Off, leaving reach enforcement without any naming discipline. |
+| `always` | Required unconditionally. Costs a little stutter in single-file packages, but means a package gaining its second namespace is not a mass rename. |
+| `never` | Off, leaving reach enforcement without any naming discipline. |
+
+`true` and `false` are accepted as aliases of `always` and `never`.
 
 The label is matched **ignoring case**, and then has to end at a word boundary: in `user_id.go` (namespace `userID`) `userIDCache`, `userIdCache` and `userIdcache` all carry it, while `useridentity` does not. You never have to guess which spelling of an initialism the linter chose. The rename it offers spells both halves the way Go does — `id` in `user.go` becomes `userID`, `urlPath` becomes `userURLPath` — never `userId`.
 
@@ -350,7 +352,7 @@ defaults:                # these resolve members too, not only package-level dec
   unexported: file
 
 rules:
-  promote: ondemand     # true | false | ondemand
+  promote: ondemand     # always | never | ondemand (true/false: aliases of always/never)
   demote: false
 
 exclude:
@@ -396,7 +398,9 @@ A baseline suppresses, it does not endorse. Nothing is written into the source, 
 declscope baseline [-o path] [-config path] [packages]
 ```
 
-Without `-o` it writes to the baseline named by the config file, or `.declscope-baseline.yaml` in the working directory.
+Each package's entries go to the file the analyzer will consult for that package: the baseline its nearest config file names, else the nearest existing `.declscope-baseline.yaml` between the package and the working directory, else a new `.declscope-baseline.yaml` in the working directory. A subtree with its own baseline keeps it, and a run from a subdirectory writes under that subdirectory rather than rewriting a baseline above it with only part of its entries. Every file written is regenerated wholesale, and the existing one is never read, so a baseline that fails to parse is replaced like any other.
+
+A package whose lookup cannot reach the working directory — one in another module, or outside the directory the command runs from — is refused rather than recorded where nothing would find it. `-o` gathers every entry into the one file named instead, and leaves placing it to you.
 
 ## Installation & Usage
 
