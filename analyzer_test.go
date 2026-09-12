@@ -115,3 +115,10 @@ func TestFileIgnoreIsFileScoped(t *testing.T) {
 func TestTypeIgnore(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "typeignore")
 }
+
+// TestDefaultsReachMembers checks that defaults.exported and
+// defaults.unexported resolve members too, not only package-level
+// declarations.
+func TestDefaultsReachMembers(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "defaultsmembers")
+}

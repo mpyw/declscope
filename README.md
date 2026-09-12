@@ -109,7 +109,7 @@ Freeing the name of that job is what lets the namespace prefix become an ownersh
 
 A method or struct field is already namespaced by the type that owns it. `u.save()` cannot collide with anything, so there is no pollution to prevent, and a label here would produce `u.userSave()` — exactly the stutter Go idiom avoids.
 
-What is missing for members is not a namespace but **encapsulation**, which Go cannot express at all: every unexported field is visible to its whole package. So members get the same three scopes, bounded by the namespace of their **type** rather than of their file:
+What is missing for members is not a namespace but **encapsulation**, which Go cannot express at all: every unexported field is visible to its whole package. So members get the same three scopes, resolved the same way and from the same `defaults`, but bounded by the namespace of their **type** rather than of their file:
 
 ```go
 // user.go   (namespace: user)
@@ -298,8 +298,8 @@ Unused `//declscope:ignore` directives are reported, so suppressions do not outl
 Optional. `.declscope.yaml` (or `.yml`), looked up from the analyzed package's directory upwards, stopping at the module root — so a subtree can relax or tighten the rules on its own.
 
 ```yaml
-defaults:
-  exported: public      # public | package | file
+defaults:                # these resolve members too, not only package-level declarations
+  exported: public       # public | package | file
   unexported: file
 
 rules:

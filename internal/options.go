@@ -160,12 +160,21 @@ func (o Options) Excluded(path string) bool {
 	return false
 }
 
-// resolve determines the scope of a package-level identifier.
+// resolve determines the scope of a declaration, package-level or member
+// alike.
 //
 // The namespace prefix plays no part in this. Encoding reach in the name would
 // mean a prefix could not also be used simply to say which unit a declaration
 // belongs to, and a prefix added for legibility would silently widen it.
 // Reach is stated with a directive; the prefix only labels ownership.
+//
+// Members resolve the same way as everything else. What sets them apart is the
+// boundary their scope is measured against — the namespace of their type, not
+// of their file — and their exemption from the label rule, since a type
+// already namespaces what it owns. Neither is a matter of scope, so neither
+// belongs here; an earlier version hardcoded public and file-private for
+// members, which quietly made defaults.exported and defaults.unexported apply
+// to only half the declarations in a package.
 func (o Options) resolve(name string, dir directive.Decl) scope.Scope {
 	if dir.HasScope {
 		return dir.Scope
@@ -174,20 +183,6 @@ func (o Options) resolve(name string, dir directive.Decl) scope.Scope {
 		return o.Exported
 	}
 	return o.Unexported
-}
-
-// resolveMember determines the scope of a method or struct field. Members are
-// already namespaced by the type that owns them, so the namespace prefix rule
-// deliberately does not apply: requiring User.userID would be exactly the
-// stutter Go idiom avoids.
-func (o Options) resolveMember(name string, dir directive.Decl) scope.Scope {
-	if dir.HasScope {
-		return dir.Scope
-	}
-	if isExported(name) {
-		return scope.Public
-	}
-	return scope.FilePrivate
 }
 
 func isExported(name string) bool {

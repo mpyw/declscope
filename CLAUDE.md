@@ -24,6 +24,8 @@ The prefix instead does a separate job: it is an **ownership label** on unexport
 
 **Methods and struct fields are governed differently.** They are already namespaced by the type that owns them and cannot collide, so a label would produce `u.userSave()`, exactly the stutter Go idiom avoids. Their problem is encapsulation, not naming, so the boundary is the namespace of the **type**, not of the file, and a member violation is never fixed by renaming.
 
+What sets members apart is *only* that boundary and their exemption from the label rule. Scope resolution is shared: `Options.resolve` serves both. A separate `resolveMember` used to hardcode public and file-private, which made `defaults.exported` and `defaults.unexported` apply to just half the declarations in a package — a knob that works on some declarations and not others is the shape to avoid.
+
 ### Namespaces
 
 A namespace is the unit of file privacy, defaulting to the camelCased file name so that each file is its own namespace, and overridable with `//declscope:namespace <name>` before the package clause.

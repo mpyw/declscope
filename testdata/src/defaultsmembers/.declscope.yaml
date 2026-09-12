@@ -1,0 +1,7 @@
+# defaults must reach members as well as package-level declarations. An earlier
+# version resolved members with hardcoded scopes, so these keys silently
+# applied to only half the declarations in a package.
+defaults:
+  exported: file
+rules:
+  promote: false

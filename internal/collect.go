@@ -220,7 +220,7 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 		obj: obj, ident: d.Name, kind: kindMethod, file: fi,
 		owner: owner, ownerObj: ownerObj, ownerNS: ownerNS, ownerKey: ownerKey,
 		dir: dir, anchor: d.Pos(),
-		scope: opts.resolveMember(d.Name.Name, dir),
+		scope: opts.resolve(d.Name.Name, dir),
 	})
 }
 
@@ -302,7 +302,7 @@ func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, 
 				owner: spec.Name.Name, ownerObj: ownerObj,
 				ownerNS: fi.ns, ownerKey: fi.key(), dir: dir,
 				anchor: field.Pos(),
-				scope:  opts.resolveMember(name.Name, dir),
+				scope:  opts.resolve(name.Name, dir),
 			})
 		}
 	}
