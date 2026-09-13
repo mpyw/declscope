@@ -48,7 +48,7 @@ exclude:
 	if opts.Unexported != scope.PackageInternal {
 		t.Errorf("defaults not applied: %+v", opts)
 	}
-	if opts.Qualify != internal.Never || !opts.Unqualify || !opts.NameExported {
+	if opts.Qualify != internal.ModeNever || !opts.Unqualify || !opts.NameExported {
 		t.Errorf("rules not applied: %+v", opts)
 	}
 	if len(opts.Exclude) != 1 || opts.Exclude[0] != "**/mock_*.go" {
@@ -198,9 +198,9 @@ func TestQualifyModes(t *testing.T) {
 		yaml string
 		want internal.Mode
 	}{
-		{"rules:\n  naming:\n    qualify: always\n", internal.Always},
-		{"rules:\n  naming:\n    qualify: never\n", internal.Never},
-		{"rules:\n  naming:\n    qualify: ondemand\n", internal.OnDemand},
+		{"rules:\n  naming:\n    qualify: always\n", internal.ModeAlways},
+		{"rules:\n  naming:\n    qualify: never\n", internal.ModeNever},
+		{"rules:\n  naming:\n    qualify: ondemand\n", internal.ModeOnDemand},
 	}
 	for _, tt := range tests {
 		opts, err := apply(t, tt.yaml)
@@ -240,7 +240,7 @@ func TestBoolSettings(t *testing.T) {
 // package has a second namespace to distinguish, and is never forbidden.
 func TestDefaultModes(t *testing.T) {
 	opts := internal.DefaultOptions()
-	if opts.Qualify != internal.OnDemand {
+	if opts.Qualify != internal.ModeOnDemand {
 		t.Errorf("default Qualify = %v, want ondemand", opts.Qualify)
 	}
 	if opts.Unqualify {

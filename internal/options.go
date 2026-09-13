@@ -8,87 +8,6 @@ import (
 	"github.com/mpyw/declscope/internal/scope"
 )
 
-// Mode says when the prefix is required: always, never, or only once a package
-// has a second namespace. Only rules.qualify reads one. rules.unqualify is a
-// boolean, because qualify already answers *when* a prefix applies and all the
-// other direction decides is whether it is enforced too — where the prefix is
-// required, unqualify is inert by construction and has nothing to select.
-type Mode int
-
-const (
-	// Never disables the rule.
-	Never Mode = iota
-
-	// Always applies the rule to every package. For the naming rule this
-	// means a package gaining its second namespace is not a mass rename.
-	Always
-
-	// OnDemand applies the rule only to a package with more than one
-	// namespace. In a package with one there is no boundary for a prefix to
-	// mark: every other rule is structurally inert there, since every
-	// reference is already inside the single namespace, and a prefix repeated
-	// on every declaration would distinguish nothing.
-	OnDemand
-)
-
-// String returns the spelling the settings use.
-func (m Mode) String() string {
-	switch m {
-	case Never:
-		return "never"
-	case Always:
-		return "always"
-	case OnDemand:
-		return "ondemand"
-	default:
-		return "unknown"
-	}
-}
-
-// Applies reports whether the rule applies to a package with the given number
-// of namespaces.
-func (m Mode) Applies(namespaces int) bool {
-	switch m {
-	case Always:
-		return true
-	case OnDemand:
-		return namespaces > 1
-	default:
-		return false
-	}
-}
-
-// ModeSet is the values one setting accepts, in the order an error message
-// names them. Each setting declares its own, so that a rejected value is
-// answered with what that setting accepts rather than with everything Mode
-// can hold.
-type ModeSet []Mode
-
-// Parse reads a setting's value: always, never or ondemand, and of those only
-// the members of the set.
-func (s ModeSet) Parse(value string) (Mode, bool) {
-	for _, m := range s {
-		if value == m.String() {
-			return m, true
-		}
-	}
-	return 0, false
-}
-
-// String lists the accepted spellings the way an error message names them:
-// "always, never or ondemand".
-func (s ModeSet) String() string {
-	names := make([]string, len(s))
-	for i, m := range s {
-		names[i] = m.String()
-	}
-	if len(names) < 2 {
-		return strings.Join(names, "")
-	}
-	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
-}
-
-// Options is the resolved configuration for a run.
 type Options struct {
 	// Unexported is the scope of a declaration that states none of its own and
 	// inherits none. There is no Exported counterpart: what is reachable from
@@ -134,10 +53,12 @@ type Options struct {
 // the subject is private to its namespace until something widens it, and the
 // namespace prefix is an ownership prefix, required once a package has a second
 // namespace, that grants nothing by itself.
+//
+//declscope:ignore qualify // DefaultOptions is how Go spells a constructor
 func DefaultOptions() Options {
 	return Options{
 		Unexported: scope.Private,
-		Qualify:    OnDemand,
+		Qualify:    ModeOnDemand,
 	}
 }
 

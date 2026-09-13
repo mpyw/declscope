@@ -49,8 +49,8 @@ func TestExcludedEscapesRegexpMetacharacters(t *testing.T) {
 	}
 }
 
-// TestModeApplies pins the one predicate both naming rules gate on: Always
-// for every package, Never for none, OnDemand only once a package has a
+// TestModeApplies pins the one predicate both naming rules gate on: ModeAlways
+// for every package, ModeNever for none, ModeOnDemand only once a package has a
 // second namespace to distinguish.
 func TestModeApplies(t *testing.T) {
 	tests := []struct {
@@ -58,16 +58,16 @@ func TestModeApplies(t *testing.T) {
 		namespaces int
 		want       bool
 	}{
-		{Always, 0, true},
-		{Always, 1, true},
-		{Always, 2, true},
-		{Never, 0, false},
-		{Never, 1, false},
-		{Never, 2, false},
-		{OnDemand, 0, false},
-		{OnDemand, 1, false},
-		{OnDemand, 2, true},
-		{OnDemand, 3, true},
+		{ModeAlways, 0, true},
+		{ModeAlways, 1, true},
+		{ModeAlways, 2, true},
+		{ModeNever, 0, false},
+		{ModeNever, 1, false},
+		{ModeNever, 2, false},
+		{ModeOnDemand, 0, false},
+		{ModeOnDemand, 1, false},
+		{ModeOnDemand, 2, true},
+		{ModeOnDemand, 3, true},
 	}
 	for _, tt := range tests {
 		if got := tt.mode.Applies(tt.namespaces); got != tt.want {
@@ -79,11 +79,11 @@ func TestModeApplies(t *testing.T) {
 // TestModeString pins the spelling a diagnostic or an error would use to the
 // one the settings take, and that it parses back.
 func TestModeString(t *testing.T) {
-	all := ModeSet{Always, Never, OnDemand}
+	all := ModeSet{ModeAlways, ModeNever, ModeOnDemand}
 	for m, want := range map[Mode]string{
-		Always:   "always",
-		Never:    "never",
-		OnDemand: "ondemand",
+		ModeAlways:   "always",
+		ModeNever:    "never",
+		ModeOnDemand: "ondemand",
 	} {
 		if got := m.String(); got != want {
 			t.Errorf("String() = %q, want %q", got, want)
@@ -97,25 +97,25 @@ func TestModeString(t *testing.T) {
 // TestModeSetParse checks that a set accepts its members and nothing else: a
 // mode outside the set is refused the same way as a word that is no mode.
 func TestModeSetParse(t *testing.T) {
-	all := ModeSet{Always, Never, OnDemand}
-	binary := ModeSet{Always, Never}
+	all := ModeSet{ModeAlways, ModeNever, ModeOnDemand}
+	binary := ModeSet{ModeAlways, ModeNever}
 	tests := []struct {
 		set   ModeSet
 		value string
 		want  Mode
 		ok    bool
 	}{
-		{all, "always", Always, true},
-		{all, "never", Never, true},
-		{all, "ondemand", OnDemand, true},
+		{all, "always", ModeAlways, true},
+		{all, "never", ModeNever, true},
+		{all, "ondemand", ModeOnDemand, true},
 		{all, "true", 0, false},
 		{all, "false", 0, false},
 		{all, "sometimes", 0, false},
 		{all, "", 0, false},
-		{binary, "always", Always, true},
-		{binary, "never", Never, true},
+		{binary, "always", ModeAlways, true},
+		{binary, "never", ModeNever, true},
 		{binary, "ondemand", 0, false},
-		{ModeSet{Never}, "always", 0, false},
+		{ModeSet{ModeNever}, "always", 0, false},
 	}
 	for _, tt := range tests {
 		got, ok := tt.set.Parse(tt.value)
@@ -131,9 +131,9 @@ func TestModeSetString(t *testing.T) {
 		set  ModeSet
 		want string
 	}{
-		{ModeSet{Always, Never, OnDemand}, "always, never or ondemand"},
-		{ModeSet{Always, Never}, "always or never"},
-		{ModeSet{Never}, "never"},
+		{ModeSet{ModeAlways, ModeNever, ModeOnDemand}, "always, never or ondemand"},
+		{ModeSet{ModeAlways, ModeNever}, "always or never"},
+		{ModeSet{ModeNever}, "never"},
 		{ModeSet{}, ""},
 	}
 	for _, tt := range tests {
