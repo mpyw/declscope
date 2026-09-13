@@ -13,6 +13,8 @@
 // encapsulation: Go makes every unexported member visible to the whole
 // package, with no way to say otherwise. Members are exempt from the naming
 // rules, and their bound is the namespace of the type, not of the file.
+//
+//declscope:core
 package internal
 
 import (

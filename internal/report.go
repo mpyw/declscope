@@ -1,9 +1,6 @@
-//declscope:namespace analyzer
-
 package internal
 
 import (
-	"cmp"
 	"fmt"
 	"go/token"
 	"path/filepath"
@@ -19,9 +16,9 @@ import (
 	"github.com/mpyw/declscope/internal/scope"
 )
 
-// finding is a diagnostic that a target would produce, held back until its
-// ignore directives and the baseline have been consulted.
-type finding struct {
+// reportFinding is a diagnostic that a target would produce, held back until
+// its ignore directives and the baseline have been consulted.
+type reportFinding struct {
 	rule    rule.Rule
 	decl    string
 	pos     token.Pos
@@ -30,6 +27,9 @@ type finding struct {
 	fixes   []analysis.SuggestedFix
 }
 
+// report renders every diagnostic of the pass.
+//
+//declscope:package // the analyzer's reporting entry, driven from analyzer.go
 func (c *collection) report(pass *analysis.Pass, opts Options) {
 	// The order decides which of two fixes claiming the same new name gets
 	// it, so it must be the same in every run. token.Pos alone is not:
@@ -116,17 +116,21 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	}
 }
 
-// comparePos orders positions by file name, then by offset within the file.
-func comparePos(fset *token.FileSet, a, b token.Pos) int {
-	pa, pb := fset.Position(a), fset.Position(b)
-	if c := strings.Compare(pa.Filename, pb.Filename); c != 0 {
-		return c
+// fileAt finds the file a position falls in. A directive problem is not
+// attached to any declaration — a stray comment belongs to nothing — so the
+// file is the only level that can answer for it.
+func (c *collection) fileAt(pass *analysis.Pass, pos token.Pos) *fileInfo {
+	path := pass.Fset.Position(pos).Filename
+	for _, fi := range c.files {
+		if fi.path == path {
+			return fi
+		}
 	}
-	return cmp.Compare(pa.Offset, pb.Offset)
+	return nil
 }
 
 // key identifies the finding for the baseline, independently of position.
-func (f finding) key(pass *analysis.Pass, t *target) baseline.Key {
+func (f reportFinding) key(pass *analysis.Pass, t *target) baseline.Key {
 	return baseline.Key{
 		Package:   pass.Pkg.Path(),
 		Rule:      f.rule,
@@ -137,6 +141,8 @@ func (f finding) key(pass *analysis.Pass, t *target) baseline.Key {
 
 // keys returns every violation the pass would report, ignoring the baseline.
 // It is what regenerating a baseline records.
+//
+//declscope:package // the baseline regeneration entry, driven from analyzer.go
 func (c *collection) keys(pass *analysis.Pass, opts Options) []baseline.Key {
 	var out []baseline.Key
 	for _, t := range c.targets {
@@ -150,8 +156,8 @@ func (c *collection) keys(pass *analysis.Pass, opts Options) []baseline.Key {
 	return out
 }
 
-func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []finding {
-	var out []finding
+func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []reportFinding {
+	var out []reportFinding
 	// An exported declaration resolves to package scope unless a directive
 	// narrows it, so the one test below covers both: what is reachable from
 	// outside carries no boundary, and what an author narrowed does.
@@ -171,7 +177,7 @@ func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []findi
 
 // checkBoundary reports a declaration that is private to its namespace but is
 // referenced from outside it.
-func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
+func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target) (reportFinding, bool) {
 	var offenders []ref
 	for _, r := range c.refs[t.obj] {
 		if r.file.key() != t.ownerKey {
@@ -179,10 +185,10 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 		}
 	}
 	if len(offenders) == 0 {
-		return finding{}, false
+		return reportFinding{}, false
 	}
 
-	f := finding{rule: rule.Boundary, decl: t.name(), pos: t.ident.Pos()}
+	f := reportFinding{rule: rule.Boundary, decl: t.name(), pos: t.ident.Pos()}
 	// The message names the level that decided, not the level a reader might
 	// assume: a field takes its type's directive and any declaration takes its
 	// file's, and naming the declaration's own would point at a comment that is
@@ -190,22 +196,22 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 	switch t.boundAt {
 	case levelDecl:
 		f.msg = fmt.Sprintf("%s %s is declared %s by %s, but is used from %s",
-			t.kind, t.name(), t.scope, t.scope.Directive(), describeFile(offenders[0].file))
+			t.kind, t.name(), t.scope, t.scope.Directive(), reportDescribeFile(offenders[0].file))
 	case levelContainer:
 		f.msg = fmt.Sprintf("%s %s is declared %s by %s on %s, but is used from %s",
-			t.kind, t.name(), t.scope, t.scope.Directive(), t.owner, describeFile(offenders[0].file))
+			t.kind, t.name(), t.scope, t.scope.Directive(), t.owner, reportDescribeFile(offenders[0].file))
 	case levelFile:
 		f.msg = fmt.Sprintf("%s %s is declared %s by the file's %s, but is used from %s",
-			t.kind, t.name(), t.scope, t.scope.Directive(), describeFile(offenders[0].file))
+			t.kind, t.name(), t.scope, t.scope.Directive(), reportDescribeFile(offenders[0].file))
 	default:
 		f.msg = fmt.Sprintf("%s %s is private to %s, but is used from %s",
-			t.kind, t.name(), describeFile(t.ownerFile), describeFile(offenders[0].file))
+			t.kind, t.name(), reportDescribeFile(t.ownerFile), reportDescribeFile(offenders[0].file))
 	}
 	for _, r := range offenders {
 		f.related = append(f.related, analysis.RelatedInformation{
 			Pos:     r.ident.Pos(),
 			End:     r.ident.End(),
-			Message: fmt.Sprintf("used here, in %s", describeFile(r.file)),
+			Message: fmt.Sprintf("used here, in %s", reportDescribeFile(r.file)),
 		})
 	}
 
@@ -236,31 +242,31 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 // Whether it applies at all depends on rules.qualify, which defaults to
 // requiring the prefix only once a package has a second namespace to
 // distinguish. See Mode.
-func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.Qualify.Applies(c.namespaces) || !named(opts, t) {
-		return finding{}, false
+func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) (reportFinding, bool) {
+	if !opts.Qualify.Applies(c.namespaces) || !t.named(opts) {
+		return reportFinding{}, false
 	}
 	// A namespace is always an identity, but not always a prefix: 2fa.go
 	// bounds its declarations like any other file, yet no identifier can
 	// start with a digit, so there is no prefix to ask for.
 	if !namespace.CanPrefix(t.ownerNS) {
-		return finding{}, false
+		return reportFinding{}, false
 	}
 	name := t.obj.Name()
 	if namespace.HasPrefix(name, t.ownerNS) {
-		return finding{}, false
+		return reportFinding{}, false
 	}
 	// main is a name the toolchain requires, so no prefix can be asked of it.
 	if t.kind == kindFunc && name == "main" && pass.Pkg.Name() == "main" {
-		return finding{}, false
+		return reportFinding{}, false
 	}
 
-	f := finding{
+	f := reportFinding{
 		rule: rule.Qualify,
 		decl: name,
 		pos:  t.ident.Pos(),
 		msg: fmt.Sprintf("%s %s does not carry the prefix of %s; rename it to %s",
-			t.kind, name, describe(t.ownerNS, t.file.path), namespace.Qualify(name, t.ownerNS)),
+			t.kind, name, reportDescribe(t.ownerNS, t.file.path), namespace.Qualify(name, t.ownerNS)),
 	}
 	if fix, ok := c.renameFix(pass, t, namespace.Qualify(name, t.ownerNS),
 		"prefix it with its namespace"); ok {
@@ -275,16 +281,16 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 // Enabling it asserts that in this codebase a namespace prefix always means
 // the prefix and never part of the concept, since nothing in the name can tell
 // userID-the-prefix from userID-the-word.
-func (c *collection) checkUnqualify(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.Unqualify || !named(opts, t) || !namespace.CanPrefix(t.ownerNS) {
-		return finding{}, false
+func (c *collection) checkUnqualify(pass *analysis.Pass, opts Options, t *target) (reportFinding, bool) {
+	if !opts.Unqualify || !t.named(opts) || !namespace.CanPrefix(t.ownerNS) {
+		return reportFinding{}, false
 	}
 	if opts.Qualify.Applies(c.namespaces) {
-		return finding{}, false
+		return reportFinding{}, false
 	}
 	name := t.obj.Name()
 	if !namespace.HasPrefix(name, t.ownerNS) {
-		return finding{}, false
+		return reportFinding{}, false
 	}
 	// A name identical to the namespace carries no prefix to drop. The
 	// causality usually runs the other way there: user.go is named after the
@@ -294,55 +300,26 @@ func (c *collection) checkUnqualify(pass *analysis.Pass, opts Options, t *target
 	// exemption is too: userId in user_id.go is the namespace, spelled by
 	// someone who did not know how the linter would spell it.
 	if strings.EqualFold(name, t.ownerNS) {
-		return finding{}, false
+		return reportFinding{}, false
 	}
 
 	// Not being able to spell the new name is a limit of the fix, not a reason
 	// to let the prefix stand: the violation is reported either way, and only
 	// the suggestion is withheld.
 	short, why := namespace.Unqualify(name, t.ownerNS)
-	f := finding{rule: rule.Unqualify, decl: name, pos: t.ident.Pos()}
+	f := reportFinding{rule: rule.Unqualify, decl: name, pos: t.ident.Pos()}
 	if short == "" {
 		f.msg = fmt.Sprintf("%s %s carries the prefix of %s, which is not required here, but %s; rename it by hand",
-			t.kind, name, describe(t.ownerNS, t.file.path), why)
+			t.kind, name, reportDescribe(t.ownerNS, t.file.path), why)
 		return f, true
 	}
 
 	f.msg = fmt.Sprintf("%s %s carries the prefix of %s, which is not required here; rename it to %s",
-		t.kind, name, describe(t.ownerNS, t.file.path), short)
+		t.kind, name, reportDescribe(t.ownerNS, t.file.path), short)
 	if fix, ok := c.renameFix(pass, t, short, "drop the namespace prefix"); ok {
 		f.fixes = append(f.fixes, fix)
 	}
 	return f, true
-}
-
-// renameFix rewrites every ident naming the target. All of them are inside the
-// package, so the edits stay within the pass.
-//
-// The fix is offered only when renameSafe can prove it changes nothing but
-// the spelling; the diagnostic is reported either way. Whatever it renames to
-// is reserved for the rest of the pass, since a later fix checking the same
-// pre-fix state would otherwise find the name still free.
-func (c *collection) renameFix(pass *analysis.Pass, t *target, newName, message string) (analysis.SuggestedFix, bool) {
-	if newName == t.obj.Name() {
-		return analysis.SuggestedFix{}, false
-	}
-	idents := c.idents[t.obj]
-	if len(idents) == 0 {
-		return analysis.SuggestedFix{}, false
-	}
-	if !c.renameSafe(pass, t, newName) {
-		return analysis.SuggestedFix{}, false
-	}
-	c.reserve(newName)
-	edits := make([]analysis.TextEdit, 0, len(idents))
-	for _, id := range idents {
-		edits = append(edits, analysis.TextEdit{Pos: id.Pos(), End: id.End(), NewText: []byte(newName)})
-	}
-	return analysis.SuggestedFix{
-		Message:   fmt.Sprintf("rename %s to %s (%s)", t.obj.Name(), newName, message),
-		TextEdits: edits,
-	}, true
 }
 
 // directiveFix inserts an explicit scope directive above the declaration.
@@ -388,7 +365,7 @@ func (c *collection) startsLine(pass *analysis.Pass, pos token.Pos) bool {
 	return strings.TrimLeft(string(prefix), " \t") == ""
 }
 
-func describe(ns, path string) string {
+func reportDescribe(ns, path string) string {
 	if ns != "" {
 		return fmt.Sprintf("namespace %q", ns)
 	}
@@ -398,15 +375,16 @@ func describe(ns, path string) string {
 	return "its namespace"
 }
 
-func describeFile(f *fileInfo) string {
-	// The core namespace has no name, and the "file X.go" fallback in describe
-	// was written for a file with no stem at all. Letting the core fall into it
-	// would say "private to file client.go" about a declaration every other core
-	// file may use — telling the reader something the analyzer does not believe.
+func reportDescribeFile(f *fileInfo) string {
+	// The core namespace has no name, and the "file X.go" fallback in
+	// reportDescribe was written for a file with no stem at all. Letting the
+	// core fall into it would say "private to file client.go" about a
+	// declaration every other core file may use — telling the reader something
+	// the analyzer does not believe.
 	if f.core {
 		return "the core namespace"
 	}
-	return describe(f.ns, f.path)
+	return reportDescribe(f.ns, f.path)
 }
 
 // named reports whether the naming rules reach a declaration at all.
@@ -417,7 +395,7 @@ func describeFile(f *fileInfo) string {
 // exported name is read as bare as any other, which is the reading the prefix
 // exists for — and never reach the core namespace, whose prefix is empty and so
 // has no prefix to require or to drop.
-func named(opts Options, t *target) bool {
+func (t *target) named(opts Options) bool {
 	if !t.renameable || t.ownerFile.core {
 		return false
 	}

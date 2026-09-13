@@ -1,14 +1,9 @@
-//declscope:namespace analyzer
-
 package internal
 
 import (
+	"fmt"
 	"go/ast"
-	"go/parser"
-	"go/token"
 	"go/types"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -22,6 +17,8 @@ import (
 // already claimed, and whether the package has test files this pass cannot
 // see. Everything but the reservation set is derived lazily, since most passes
 // offer no rename at all.
+//
+//declscope:package // the collection carries it in its rename field
 type renameState struct {
 	// reserved holds every new name a fix emitted in this pass has claimed.
 	// Fixes are generated from one pre-fix state and cannot see each other,
@@ -46,6 +43,37 @@ func (c *collection) renames() *renameState {
 		c.rename = &renameState{reserved: make(map[string]bool)}
 	}
 	return c.rename
+}
+
+// renameFix rewrites every ident naming the target. All of them are inside the
+// package, so the edits stay within the pass.
+//
+// The fix is offered only when renameSafe can prove it changes nothing but
+// the spelling; the diagnostic is reported either way. Whatever it renames to
+// is reserved for the rest of the pass, since a later fix checking the same
+// pre-fix state would otherwise find the name still free.
+//
+//declscope:package // report.go attaches it to the naming findings
+func (c *collection) renameFix(pass *analysis.Pass, t *target, newName, message string) (analysis.SuggestedFix, bool) {
+	if newName == t.obj.Name() {
+		return analysis.SuggestedFix{}, false
+	}
+	idents := c.idents[t.obj]
+	if len(idents) == 0 {
+		return analysis.SuggestedFix{}, false
+	}
+	if !c.renameSafe(pass, t, newName) {
+		return analysis.SuggestedFix{}, false
+	}
+	c.reserve(newName)
+	edits := make([]analysis.TextEdit, 0, len(idents))
+	for _, id := range idents {
+		edits = append(edits, analysis.TextEdit{Pos: id.Pos(), End: id.End(), NewText: []byte(newName)})
+	}
+	return analysis.SuggestedFix{
+		Message:   fmt.Sprintf("rename %s to %s (%s)", t.obj.Name(), newName, message),
+		TextEdits: edits,
+	}, true
 }
 
 // renameSafe reports whether renaming t to newName can be proven not to change
@@ -78,7 +106,7 @@ func (c *collection) renameSafe(pass *analysis.Pass, t *target, newName string) 
 	// An import binds its name in file scope, and Go rejects a package-level
 	// declaration named like an import in any file of the package, not only
 	// in one that references the declaration.
-	if fileScopesBind(pass.Pkg.Scope(), newName) {
+	if renameBoundByImport(pass.Pkg.Scope(), newName) {
 		return false
 	}
 	// Go resolves a name from the innermost scope outwards, so a target that
@@ -130,9 +158,9 @@ func (c *collection) reserve(name string) {
 	c.renames().reserved[name] = true
 }
 
-// fileScopesBind reports whether any file scope of the package binds name,
+// renameBoundByImport reports whether any file scope of the package binds name,
 // which is where imports live.
-func fileScopesBind(pkg *types.Scope, name string) bool {
+func renameBoundByImport(pkg *types.Scope, name string) bool {
 	for i := range pkg.NumChildren() {
 		if pkg.Child(i).Lookup(name) != nil {
 			return true
@@ -198,107 +226,4 @@ func (rs *renameState) namedByDirective(pass *analysis.Pass) map[string]bool {
 		}
 	}
 	return rs.directives
-}
-
-// unseenFiles is what the package directory holds that this pass does not see.
-// Two things put a .go file of this package outside pass.Files: it is an
-// in-package _test.go and this is the non-test variant, or the build
-// configuration excluded it — a _GOOS suffix, a //go:build line. Either way it
-// may declare or name the same identifiers, and this pass can neither see that
-// nor rewrite it.
-//
-// The two are not equally hopeless. The test variant sees every test file and
-// decides on its own, and its fix rewrites the non-test files too, so under
-// -test (the default) deferring wholesale costs nothing. No variant ever sees
-// a build-excluded file, so deferring wholesale there would mean no rename is
-// ever offered in a package that carries a _GOOS suffix. Those files are read
-// instead for the identifiers they write, and only a rename that disturbs one
-// of them is withheld.
-type unseenFiles struct {
-	// all withholds every rename: an in-package test file this pass does not
-	// see, or something in the directory that could not be read or parsed.
-	all bool
-
-	// names is every identifier written in an unseen file that was read. A
-	// rename is withheld when it takes one of these names away or claims one:
-	// the excluded file would otherwise still spell the old name, or would
-	// find the new one declared twice.
-	names map[string]bool
-}
-
-// unseen scans the package directory, once per pass.
-//
-// A _test.go file is parsed for its package clause alone: an external test
-// package (package x_test) declares into its own scope and can only name the
-// package's exported identifiers, which are never renamed. Every other file
-// whose package clause matches is parsed in full, since its identifiers are
-// the point. Files are read from disk rather than through pass.ReadFile, whose
-// access policy admits only the files of the pass itself; the config lookup
-// already reads the filesystem, so this adds no new assumption about the
-// driver. Anything that cannot be read or parsed withholds everything, which
-// withholds rather than risks.
-func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
-	if c.unseenScan != nil {
-		return c.unseenScan
-	}
-	u := &unseenFiles{names: make(map[string]bool)}
-	c.unseenScan = u
-
-	dir, inPass := "", make(map[string]bool)
-	for _, f := range pass.Files {
-		name := pass.Fset.Position(f.Pos()).Filename
-		if name == "" {
-			continue
-		}
-		inPass[name] = true
-		if dir == "" {
-			dir = filepath.Dir(name)
-		}
-	}
-	if dir == "" {
-		return u
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		u.all = true
-		return u
-	}
-	fset := token.NewFileSet()
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
-			continue
-		}
-		p := filepath.Join(dir, e.Name())
-		if inPass[p] {
-			continue
-		}
-		// The package clause is read first and decides the rest. A file of
-		// another package — a //go:build ignore generator declaring package
-		// main is the common one — writes nothing this package can name. In
-		// the external test variant that clause check skips every file of the
-		// package under test, which is the whole directory.
-		f, err := parser.ParseFile(fset, p, nil, parser.PackageClauseOnly)
-		if err != nil {
-			u.all = true
-			continue
-		}
-		if f.Name.Name != pass.Pkg.Name() {
-			continue
-		}
-		if strings.HasSuffix(e.Name(), "_test.go") {
-			u.all = true
-			continue
-		}
-		if f, err = parser.ParseFile(fset, p, nil, 0); err != nil {
-			u.all = true
-			continue
-		}
-		ast.Inspect(f, func(n ast.Node) bool {
-			if id, ok := n.(*ast.Ident); ok {
-				u.names[id.Name] = true
-			}
-			return true
-		})
-	}
-	return u
 }

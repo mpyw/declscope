@@ -54,8 +54,10 @@ Normalization rules live in `internal/namespace` and are covered by a table test
 ```text
 analyzer.go               Analyzer definition, -config flag, config discovery
 internal/
-  analyzer.go             Run: collect files -> targets -> refs -> report
-  collect.go              fileInfo, target, reference collection
+  analyzer.go             core. Run: collect files -> targets -> refs -> report
+  subject.go              core. The model every stage shares: fileInfo, target,
+                          ref, kind, the index over them, and the problem sink
+  collect.go              builds the index: files, targets, references
   options.go              resolved configuration, qualify's Mode and the boolean flags, exclude globs
   scopesite.go            scope resolution (bind), and which directives bound nothing
   report.go               diagnostics and suggested fixes
@@ -70,7 +72,9 @@ internal/
 cmd/declscope/            singlechecker entry point, plus the `baseline` subcommand
 ```
 
-The files of `internal/` form one logical unit and declare `//declscope:namespace analyzer` so that declscope passes its own check. `cmd/declscope/{main,baseline}.go` are one command and declare `//declscope:namespace main` for the same reason.
+Each file of `internal/` is its own namespace, taken from its stem. `analyzer.go` and `subject.go` join the **core** instead: the model they hold is read by every stage, and in a named namespace each type would have to carry that namespace's prefix, so the builder's name would be spelled into the model every other file reads.
+
+`subject.go` carries a file-level `//declscope:package` because the shared model is shared on purpose. Everything else that crosses a namespace says so one declaration at a time, and those directives are the record of what each stage hands to another. `cmd/declscope/baseline.go` is its own namespace for the same reason; only `main.go` is `main`.
 
 > [!IMPORTANT]
 > Keep those directives when adding files to either unit. Without them the naming rule asks every declaration to carry a `baseline`/`analyzer` prefix, which is the tool reporting a boundary that is not really there.

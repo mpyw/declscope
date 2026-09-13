@@ -40,8 +40,9 @@ run_test "analyzer" \
 run_test "lint" \
     go run "$GOLANGCI_LINT" run ./...
 
-# declscope is subject to its own rules, at the strictest setting:
-# The files of internal/ form one unit and declare a shared namespace.
+# declscope is subject to its own rules, at the strictest setting. Silence is
+# the assertion: every namespace crossing inside the tool is stated in the
+# source, so anything printed here is a boundary nobody wrote down.
 run_test "dogfood" \
     go run ./cmd/declscope -config .declscope-strict.yaml ./...
 

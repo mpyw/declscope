@@ -1,12 +1,10 @@
-//declscope:namespace analyzer
-
 package internal
 
 import (
 	"go/ast"
 	"go/token"
 	"go/types"
-	"path/filepath"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -14,194 +12,13 @@ import (
 	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/namespace"
 	"github.com/mpyw/declscope/internal/rule"
-	"github.com/mpyw/declscope/internal/scope"
 )
-
-// fileInfo is a source file together with the namespace it belongs to.
-type fileInfo struct {
-	file *ast.File
-	path string
-	ns   string
-
-	// lineComments indexes every comment group by the line it starts on, so
-	// that trailing directives can be found on declarations that carry no
-	// comment field of their own, such as ast.FuncDecl.
-	lineComments map[int]*ast.CommentGroup
-
-	// ignores stands the whole file outside a naming rule. They apply on top
-	// of whatever each declaration says for itself. Whether each silenced
-	// anything is accounted for in collection.ignores.
-	ignores []directive.Ignore
-
-	// scope is the file-level scope directive, if any. It is a default for what
-	// the file declares, not a blanket: any declaration may still state its own,
-	// and a field takes its type's before the file is consulted.
-	scope directive.Decl
-
-	// core marks the file as part of the package's core namespace, whose prefix
-	// is empty. Several files may carry it and they share the one namespace.
-	core bool
-}
-
-// trailingAt returns the comment group trailing the declaration starting at
-// pos, if any.
-func (f *fileInfo) trailingAt(fset *token.FileSet, pos token.Pos) *ast.CommentGroup {
-	g, ok := f.lineComments[fset.Position(pos).Line]
-	if !ok || g.Pos() < pos {
-		return nil
-	}
-	return g
-}
-
-// key identifies the namespace for comparison.
-//
-// The core namespace has no name, and every core file shares it, so they share
-// one key. A file whose name has no stem at all also has no namespace, but must
-// not be treated as sharing one with every other such file, so it falls back to
-// its own path.
-func (f *fileInfo) key() string {
-	if f.core {
-		return "\x00core"
-	}
-	if f.ns != "" {
-		return f.ns
-	}
-	return "\x00" + f.path
-}
-
-// nsName spells the namespace for the baseline, which is the one place it has
-// to be written down rather than compared.
-//
-// A namespace derived from a file name is normalized to alphanumerics, and one
-// written with //declscope:namespace must be an unexported identifier, so a
-// parenthesis can appear in neither. That leaves "(core)" free for the core,
-// whose prefix is empty and whose files all share it, and free for the file
-// with no stem at all — which has no namespace either, and must not share a
-// key with every other such file.
-func (f *fileInfo) nsName() string {
-	if f.core {
-		return "(core)"
-	}
-	if f.ns != "" {
-		return f.ns
-	}
-	return "(file " + filepath.Base(f.path) + ")"
-}
-
-// kind describes what a target declares, for diagnostic wording.
-type kind string
-
-const (
-	kindFunc   kind = "func"
-	kindType   kind = "type"
-	kindVar    kind = "var"
-	kindConst  kind = "const"
-	kindMethod kind = "method"
-	kindField  kind = "field"
-)
-
-// target is a declaration whose scope declscope enforces.
-type target struct {
-	obj   types.Object
-	ident *ast.Ident
-	kind  kind
-
-	// file is where the declaration is written.
-	file *fileInfo
-	// ownerNS is the namespace that bounds the declaration: the namespace of
-	// the file it is written in. A field is written inside its type's
-	// declaration, so for a field that is the type's file; a method is an
-	// ordinary top-level declaration and takes its own file's, like a func.
-	ownerNS  string
-	ownerKey string
-	// ownerFile is the file that namespace comes from, which is the file the
-	// declaration is written in for every kind.
-	ownerFile *fileInfo
-	// contained marks a member written inside its type's declaration: a struct
-	// field, and an interface's method name. The type's directives reach it,
-	// the way a var (...) block reaches its specs. A method with a receiver is
-	// not contained, however much it looks like a member: it is an ordinary
-	// top-level declaration that happens to name one.
-	contained bool
-
-	// owner names the type a member belongs to, empty for package-level.
-	owner string
-	// ownerObj is that type's object, through which a member inherits the
-	// ignore directives written on its type.
-	ownerObj types.Object
-
-	scope scope.Scope
-	// boundBy is the directive that supplied the scope, zero when the configured
-	// default did. It is not always t.dir: a field takes its type's and any
-	// declaration takes its file's, and a diagnostic that named the declaration's
-	// own directive in those cases would point at a comment that is not there.
-	boundBy directive.Decl
-	// boundAt names which level that was.
-	boundAt scopeLevel
-	// dir holds the directives reaching the declaration. Its Ignores may be
-	// shared with sibling targets — a block's directive reaches every spec —
-	// so whether one silenced anything is tracked per physical directive in
-	// collection.ignores, never per target.
-	dir directive.Decl
-
-	// anchor is where a scope directive would be inserted.
-	anchor token.Pos
-	// renameable is false for members, whose fix is never a rename.
-	renameable bool
-}
-
-func (t *target) name() string {
-	if t.owner != "" {
-		return t.owner + "." + t.obj.Name()
-	}
-	return t.obj.Name()
-}
-
-// ref is a use of a target from somewhere in the package.
-type ref struct {
-	ident *ast.Ident
-	file  *fileInfo
-}
-
-type collection struct {
-	files   []*fileInfo
-	byFile  map[*ast.File]*fileInfo
-	targets []*target
-	byObj   map[types.Object]*target
-	refs    map[types.Object][]ref
-	// idents holds every ident naming an object, definition included, so a
-	// rename can rewrite all of them.
-	idents   map[types.Object][]*ast.Ident
-	problems []directive.Problem
-
-	// ignores is every ignore directive in the package, keyed by where it is
-	// written, so that one shared by several declarations is judged once.
-	ignores map[token.Pos]*ignoreSite
-	// scopes is the same accounting for scope directives: one entry per
-	// physical comment, marked when something in its reach takes its scope.
-	scopes map[token.Pos]*scopeSite
-	// consumed is every comment group some declaration or file took its
-	// directives from; a directive outside them reached nothing.
-	consumed map[*ast.CommentGroup]bool
-
-	// unseenScan is what the package directory holds that this pass does not
-	// see: in-package _test.go files under the non-test variant, and files the
-	// build configuration excluded. The rename fix and the unused-ignore
-	// report both consult it. It is filled on first use.
-	unseenScan *unseenFiles
-
-	// namespaces is how many distinct namespaces the package's non-test files
-	// declare, which is how many boundaries there are to enforce.
-	namespaces int
-
-	// rename is what the rename fix knows beyond the references above. It is
-	// created on first use, since most passes offer no rename.
-	rename *renameState
-}
 
 // collectFiles resolves each file's namespace. Generated files are excluded
 // entirely: they are neither checked nor treated as reference sites, since a
 // violation in generated code is not something the author can act on.
+//
+//declscope:package // the pipeline's first stage, driven from analyzer.go
 func collectFiles(pass *analysis.Pass, opts Options) *collection {
 	c := &collection{
 		byFile: make(map[*ast.File]*fileInfo),
@@ -274,6 +91,8 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 }
 
 // collectTargets walks every declaration and resolves its scope.
+//
+//declscope:package // the pipeline's second stage, driven from analyzer.go
 func (c *collection) collectTargets(pass *analysis.Pass, opts Options) {
 	for _, fi := range c.files {
 		for _, d := range fi.file.Decls {
@@ -345,7 +164,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 	grouped := d.Lparen.IsValid()
 	outer := c.parseDecl(d.Doc)
 	if grouped && len(d.Specs) > 0 {
-		attached := append(attached(d.Specs[0]), attached(d.Specs[len(d.Specs)-1])...)
+		attached := append(c.attached(d.Specs[0]), c.attached(d.Specs[len(d.Specs)-1])...)
 		outer = outer.Merge(c.parseDecl(fi.looseTrailing(pass.Fset, d, attached...)...))
 	}
 
@@ -502,6 +321,140 @@ func (c *collection) add(t *target) {
 	}
 }
 
+// parseDecl parses declaration-level directives from the given comment groups
+// and does the bookkeeping that must happen once per physical comment: it
+// registers every ignore, so that one attached to no checked declaration is
+// still reported unused; records every problem, so that a block's bogus
+// directive is reported once and not once per spec; and remembers the group as
+// consumed, so that stray can tell which directives reached nothing.
+//
+// A group already consumed is skipped rather than parsed twice, so a comment
+// that is reachable along two paths (a single-line spec's Comment is also the
+// comment trailing its first line) yields one directive, not two.
+func (c *collection) parseDecl(groups ...*ast.CommentGroup) directive.Decl {
+	fresh := make([]*ast.CommentGroup, 0, len(groups))
+	for _, g := range groups {
+		if g == nil || c.consumed[g] {
+			continue
+		}
+		c.consumed[g] = true
+		fresh = append(fresh, g)
+	}
+	d := directive.ParseDecl(fresh...)
+	for _, ig := range d.Ignores {
+		c.site(ig).siblings = d.Ignores
+	}
+	// A scope directive is registered here too, so that one written on something
+	// declscope does not check — init, _, an embedded field — is reported unused
+	// rather than dropped. Registering it only where a target is added would
+	// lose exactly the cases the report exists for.
+	if d.HasScope {
+		c.scopeSite(d)
+	}
+	// An ignore and a problem parsed from the same comment are the author
+	// answering their own directive: the ignore is consulted here, where the
+	// declaration that carries both is still in hand. A problem is attached to
+	// no declaration once it reaches the report, so the file level is the only
+	// one that could answer for it there.
+	if len(d.Problems) > 0 && c.ignored(d.Ignores, rule.Directive) {
+		return d
+	}
+	c.problems = append(c.problems, d.Problems...)
+	return d
+}
+
+// specGroups returns the comment groups a spec takes its directives from: its
+// doc comment, the trailing comment go/parser attached to it, and any comment
+// trailing its first or last line that the parser attached to nothing, such
+// as one after the opening brace of a struct type. A comment the parser hung
+// on something inside the spec — a field's doc or trailing comment — is that
+// field's and is left for addMembers, even when it shares the spec's first
+// line.
+func (c *collection) specGroups(pass *analysis.Pass, fi *fileInfo, spec ast.Spec) []*ast.CommentGroup {
+	var own []*ast.CommentGroup
+	switch spec := spec.(type) {
+	case *ast.TypeSpec:
+		own = []*ast.CommentGroup{spec.Doc, spec.Comment}
+	case *ast.ValueSpec:
+		own = []*ast.CommentGroup{spec.Doc, spec.Comment}
+	}
+	return append(own, fi.looseTrailing(pass.Fset, spec, c.attached(spec)...)...)
+}
+
+// trailingAt returns the comment group trailing the declaration starting at
+// pos, if any.
+func (f *fileInfo) trailingAt(fset *token.FileSet, pos token.Pos) *ast.CommentGroup {
+	g, ok := f.lineComments[fset.Position(pos).Line]
+	if !ok || g.Pos() < pos {
+		return nil
+	}
+	return g
+}
+
+// looseTrailing returns the comment groups on the first and last lines of
+// node that go/parser attached to nothing — one after the opening brace of a
+// struct type, after the parenthesis of a block, or after a function's
+// closing brace. They belong to the declaration spanning those lines, the way
+// a trailing comment on a one-line declaration does.
+//
+// attached lists the groups the parser did hang on something inside node,
+// which win: a comment trailing a field on the same line as the brace is the
+// field's, not the type's.
+func (f *fileInfo) looseTrailing(fset *token.FileSet, node ast.Node, attached ...*ast.CommentGroup) []*ast.CommentGroup {
+	var out []*ast.CommentGroup
+	for _, pos := range []token.Pos{node.Pos(), node.End()} {
+		g := f.trailingAt(fset, pos)
+		if g == nil || slices.Contains(attached, g) || slices.Contains(out, g) {
+			continue
+		}
+		out = append(out, g)
+	}
+	return out
+}
+
+// attached returns the comment groups go/parser hung on a spec or on anything
+// inside it, so that looseTrailing does not claim them for the enclosing
+// declaration.
+func (c *collection) attached(spec ast.Spec) []*ast.CommentGroup {
+	var out []*ast.CommentGroup
+	switch spec := spec.(type) {
+	case *ast.TypeSpec:
+		out = append(out, spec.Doc, spec.Comment)
+		var fields *ast.FieldList
+		switch t := spec.Type.(type) {
+		case *ast.StructType:
+			fields = t.Fields
+		case *ast.InterfaceType:
+			fields = t.Methods
+		}
+		if fields != nil {
+			for _, field := range fields.List {
+				out = append(out, field.Doc, field.Comment)
+			}
+		}
+	case *ast.ValueSpec:
+		out = append(out, spec.Doc, spec.Comment)
+	}
+	return out
+}
+
+// stray reports every directive written after the package clause that no
+// declaration consumed. Anything parseDecl saw is accounted for, whether or
+// not it produced a target; what is left is a directive the author believes
+// is in force and is not.
+func (c *collection) stray() {
+	for _, fi := range c.files {
+		for _, g := range fi.file.Comments {
+			// Comments before the package clause are the file's, and
+			// directive.ParseFile has already judged them.
+			if g.Pos() < fi.file.Package || c.consumed[g] {
+				continue
+			}
+			c.problems = append(c.problems, directive.Stray(g)...)
+		}
+	}
+}
+
 // collectRefs records every ident naming a tracked object, along with the file
 // it appears in.
 //
@@ -509,6 +462,8 @@ func (c *collection) add(t *target) {
 // field and uses the type, so Defs and Uses are consulted independently rather
 // than one shadowing the other. Returning after a hit in Defs would drop the
 // type use, and with it both a rename edit and a boundary diagnostic.
+//
+//declscope:package // the pipeline's third stage, driven from analyzer.go
 func (c *collection) collectRefs(pass *analysis.Pass) {
 	for _, fi := range c.files {
 		ast.Inspect(fi.file, func(n ast.Node) bool {
@@ -533,75 +488,4 @@ func (c *collection) collectRefs(pass *analysis.Pass) {
 			return true
 		})
 	}
-}
-
-// origin maps an instantiated field or method back to the object declared in
-// the source. go/types records the instantiated object in Uses for a selection
-// on a generic type — List[int].items, and List[T].items inside List's own
-// methods — while byObj is keyed by the declaration, so without this every
-// member of a generic type would go unchecked. Anything else is returned as is.
-func origin(obj types.Object) types.Object {
-	switch o := obj.(type) {
-	case *types.Var:
-		return o.Origin()
-	case *types.Func:
-		return o.Origin()
-	}
-	return obj
-}
-
-// embeddedTypeName returns the type name an embedded field is spelled with,
-// and nil for any other object. Such a field has no name of its own: u.count
-// is written with the type's name, so a rename of the type has to rewrite the
-// selection as well as the embedding. The alias is deliberately not resolved:
-// a field embedding an alias is spelled with the alias's name.
-func embeddedTypeName(obj types.Object) types.Object {
-	v, ok := obj.(*types.Var)
-	if !ok || !v.Embedded() {
-		return nil
-	}
-	t := v.Type()
-	if ptr, ok := t.(*types.Pointer); ok {
-		t = ptr.Elem()
-	}
-	switch t := t.(type) {
-	case *types.Named:
-		return t.Obj()
-	case *types.Alias:
-		return t.Obj()
-	}
-	return nil
-}
-
-// fileAt finds the file a position falls in. A directive problem is not
-// attached to any declaration — a stray comment belongs to nothing — so the
-// file is the only level that can answer for it.
-func (c *collection) fileAt(pass *analysis.Pass, pos token.Pos) *fileInfo {
-	path := pass.Fset.Position(pos).Filename
-	for _, fi := range c.files {
-		if fi.path == path {
-			return fi
-		}
-	}
-	return nil
-}
-
-// silencesFile reports whether the file stands r down for everything it holds,
-// and marks the ignore that did it used.
-//
-// The marking is what keeps an ignore written for a directive problem from
-// being reported as unused itself: it silences a report that is not attached to
-// any declaration, so the per-target accounting never sees it work.
-func (c *collection) silencesFile(fi *fileInfo, r rule.Rule) bool {
-	if fi == nil {
-		return false
-	}
-	hit := false
-	for _, ig := range fi.ignores {
-		if ig.Covers(r) {
-			c.site(ig).used = true
-			hit = true
-		}
-	}
-	return hit
 }

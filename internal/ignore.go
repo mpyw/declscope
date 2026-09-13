@@ -1,11 +1,7 @@
-//declscope:namespace analyzer
-
 package internal
 
 import (
 	"fmt"
-	"go/ast"
-	"go/token"
 	"slices"
 	"strings"
 
@@ -21,6 +17,8 @@ import (
 // is judged once: unused only if it silenced nothing for any of them. Judged
 // per target, it would be reported unused whenever any sibling did not need
 // it, and a wholly unused one would be reported once per sibling.
+//
+//declscope:package // the collector registers and names the sites as it parses
 type ignoreSite struct {
 	ig directive.Ignore
 	// decls names the declarations the directive reaches, in source order,
@@ -35,7 +33,24 @@ type ignoreSite struct {
 	siblings []directive.Ignore
 }
 
+// namesDirective reports whether some ignore written beside this one names the
+// directive rule explicitly.
+//
+// A bare //declscope:ignore covers every rule, this report among them, so
+// reading it as an answer here would let one exempt itself from ever being
+// called unused — which is the one thing this report exists to prevent.
+func (s *ignoreSite) namesDirective() bool {
+	for _, ig := range s.siblings {
+		if slices.Contains(ig.Rules, rule.Directive) {
+			return true
+		}
+	}
+	return false
+}
+
 // site returns the accounting entry for ig, keyed by where it is written.
+//
+//declscope:package // the collector registers every directive it parses
 func (c *collection) site(ig directive.Ignore) *ignoreSite {
 	s, ok := c.ignores[ig.Pos]
 	if !ok {
@@ -45,130 +60,6 @@ func (c *collection) site(ig directive.Ignore) *ignoreSite {
 	return s
 }
 
-// parseDecl parses declaration-level directives from the given comment groups
-// and does the bookkeeping that must happen once per physical comment: it
-// registers every ignore, so that one attached to no checked declaration is
-// still reported unused; records every problem, so that a block's bogus
-// directive is reported once and not once per spec; and remembers the group as
-// consumed, so that stray can tell which directives reached nothing.
-//
-// A group already consumed is skipped rather than parsed twice, so a comment
-// that is reachable along two paths (a single-line spec's Comment is also the
-// comment trailing its first line) yields one directive, not two.
-func (c *collection) parseDecl(groups ...*ast.CommentGroup) directive.Decl {
-	fresh := make([]*ast.CommentGroup, 0, len(groups))
-	for _, g := range groups {
-		if g == nil || c.consumed[g] {
-			continue
-		}
-		c.consumed[g] = true
-		fresh = append(fresh, g)
-	}
-	d := directive.ParseDecl(fresh...)
-	for _, ig := range d.Ignores {
-		c.site(ig).siblings = d.Ignores
-	}
-	// A scope directive is registered here too, so that one written on something
-	// declscope does not check — init, _, an embedded field — is reported unused
-	// rather than dropped. Registering it only where a target is added would
-	// lose exactly the cases the report exists for.
-	if d.HasScope {
-		c.scopeSite(d)
-	}
-	// An ignore and a problem parsed from the same comment are the author
-	// answering their own directive: the ignore is consulted here, where the
-	// declaration that carries both is still in hand. A problem is attached to
-	// no declaration once it reaches the report, so the file level is the only
-	// one that could answer for it there.
-	if len(d.Problems) > 0 && c.ignored(d.Ignores, rule.Directive) {
-		return d
-	}
-	c.problems = append(c.problems, d.Problems...)
-	return d
-}
-
-// specGroups returns the comment groups a spec takes its directives from: its
-// doc comment, the trailing comment go/parser attached to it, and any comment
-// trailing its first or last line that the parser attached to nothing, such
-// as one after the opening brace of a struct type. A comment the parser hung
-// on something inside the spec — a field's doc or trailing comment — is that
-// field's and is left for addMembers, even when it shares the spec's first
-// line.
-func (c *collection) specGroups(pass *analysis.Pass, fi *fileInfo, spec ast.Spec) []*ast.CommentGroup {
-	var own []*ast.CommentGroup
-	switch spec := spec.(type) {
-	case *ast.TypeSpec:
-		own = []*ast.CommentGroup{spec.Doc, spec.Comment}
-	case *ast.ValueSpec:
-		own = []*ast.CommentGroup{spec.Doc, spec.Comment}
-	}
-	return append(own, fi.looseTrailing(pass.Fset, spec, attached(spec)...)...)
-}
-
-// looseTrailing returns the comment groups on the first and last lines of
-// node that go/parser attached to nothing — one after the opening brace of a
-// struct type, after the parenthesis of a block, or after a function's
-// closing brace. They belong to the declaration spanning those lines, the way
-// a trailing comment on a one-line declaration does.
-//
-// attached lists the groups the parser did hang on something inside node,
-// which win: a comment trailing a field on the same line as the brace is the
-// field's, not the type's.
-func (f *fileInfo) looseTrailing(fset *token.FileSet, node ast.Node, attached ...*ast.CommentGroup) []*ast.CommentGroup {
-	var out []*ast.CommentGroup
-	for _, pos := range []token.Pos{node.Pos(), node.End()} {
-		g := f.trailingAt(fset, pos)
-		if g == nil || slices.Contains(attached, g) || slices.Contains(out, g) {
-			continue
-		}
-		out = append(out, g)
-	}
-	return out
-}
-
-// attached returns the comment groups go/parser hung on a spec or on anything
-// inside it, so that looseTrailing does not claim them for the enclosing
-// declaration.
-func attached(spec ast.Spec) []*ast.CommentGroup {
-	var out []*ast.CommentGroup
-	switch spec := spec.(type) {
-	case *ast.TypeSpec:
-		out = append(out, spec.Doc, spec.Comment)
-		var fields *ast.FieldList
-		switch t := spec.Type.(type) {
-		case *ast.StructType:
-			fields = t.Fields
-		case *ast.InterfaceType:
-			fields = t.Methods
-		}
-		if fields != nil {
-			for _, field := range fields.List {
-				out = append(out, field.Doc, field.Comment)
-			}
-		}
-	case *ast.ValueSpec:
-		out = append(out, spec.Doc, spec.Comment)
-	}
-	return out
-}
-
-// stray reports every directive written after the package clause that no
-// declaration consumed. Anything parseDecl saw is accounted for, whether or
-// not it produced a target; what is left is a directive the author believes
-// is in force and is not.
-func (c *collection) stray() {
-	for _, fi := range c.files {
-		for _, g := range fi.file.Comments {
-			// Comments before the package clause are the file's, and
-			// directive.ParseFile has already judged them.
-			if g.Pos() < fi.file.Package || c.consumed[g] {
-				continue
-			}
-			c.problems = append(c.problems, directive.Stray(g)...)
-		}
-	}
-}
-
 // silenced reports whether any ignore directive covering t silences r.
 //
 // A member inherits the directives written on the type that owns it, so the
@@ -176,6 +67,8 @@ func (c *collection) stray() {
 // consulted rather than stopping at the first hit, and every directive that
 // covers the rule is marked used, so overlapping directives at different
 // levels do not make each other look unused.
+//
+//declscope:package // report.go consults it before every finding
 func (c *collection) silenced(t *target, r rule.Rule) bool {
 	hit := c.ignored(t.dir.Ignores, r)
 	// A member is written inside its type's declaration, so the type's ignores
@@ -191,9 +84,33 @@ func (c *collection) silenced(t *target, r rule.Rule) bool {
 	return c.ignored(t.file.ignores, r) || hit
 }
 
+// silencesFile reports whether the file stands r down for everything it holds,
+// and marks the ignore that did it used.
+//
+// The marking is what keeps an ignore written for a directive problem from
+// being reported as unused itself: it silences a report that is not attached to
+// any declaration, so the per-target accounting never sees it work.
+//
+//declscope:package // report.go consults it for problems, which no target holds
+func (c *collection) silencesFile(fi *fileInfo, r rule.Rule) bool {
+	if fi == nil {
+		return false
+	}
+	hit := false
+	for _, ig := range fi.ignores {
+		if ig.Covers(r) {
+			c.site(ig).used = true
+			hit = true
+		}
+	}
+	return hit
+}
+
 // ignored reports whether any directive silences r, marking every directive
 // that does as used. All of them are marked, not just the first, so that
 // overlapping directives are not reported as unused.
+//
+//declscope:package // the collector and the scope accounting consult it too
 func (c *collection) ignored(ignores []directive.Ignore, r rule.Rule) bool {
 	hit := false
 	for _, ig := range ignores {
@@ -216,21 +133,8 @@ func (c *collection) ignored(ignores []directive.Ignore, r rule.Rule) bool {
 // unreported. Under -test (the default) the test variant runs and nothing is
 // lost; with -test=false, a package with in-package tests gets no
 // unused-ignore report at all, which is the only report that can be trusted.
-// namesDirective reports whether some ignore written beside this one names the
-// directive rule explicitly.
 //
-// A bare //declscope:ignore covers every rule, this report among them, so
-// reading it as an answer here would let one exempt itself from ever being
-// called unused — which is the one thing this report exists to prevent.
-func namesDirective(igs []directive.Ignore) bool {
-	for _, ig := range igs {
-		if slices.Contains(ig.Rules, rule.Directive) {
-			return true
-		}
-	}
-	return false
-}
-
+//declscope:package // report.go drains it after every finding has been seen
 func (c *collection) reportUnusedIgnores(pass *analysis.Pass) {
 	if c.unseen(pass).all {
 		return
@@ -241,7 +145,7 @@ func (c *collection) reportUnusedIgnores(pass *analysis.Pass) {
 		// for it — the same way reportUnusedScopes consults the directive that
 		// carries the scope. Judging it only at the file level would leave the
 		// declaration-level remedy producing a second report instead of none.
-		if !s.used && !namesDirective(s.siblings) {
+		if !s.used && !s.namesDirective() {
 			sites = append(sites, s)
 		}
 	}
