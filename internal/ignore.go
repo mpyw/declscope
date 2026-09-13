@@ -232,7 +232,7 @@ func namesDirective(igs []directive.Ignore) bool {
 }
 
 func (c *collection) reportUnusedIgnores(pass *analysis.Pass) {
-	if c.hasUnseenTests(pass) {
+	if c.unseen(pass).all {
 		return
 	}
 	sites := make([]*ignoreSite, 0, len(c.ignores))

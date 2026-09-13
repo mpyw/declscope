@@ -112,12 +112,17 @@ func (c *collection) renameSafe(pass *analysis.Pass, t *target, newName string) 
 	if rs.reserved[newName] {
 		return false
 	}
-	// The test variant of the package sees files this pass does not: a
-	// declaration or a reference there is invisible here, so nothing this
-	// pass can check proves the rename safe. The test variant sees every
-	// file and decides on its own, and its fix rewrites the non-test files
-	// too, so under -test (the default) nothing is lost by deferring to it.
-	return !c.hasUnseenTests(pass)
+	// A file of this package that this pass does not see may declare or name
+	// the target, and the fix does not rewrite it. An in-package test file
+	// withholds every rename, since the test variant sees every file and
+	// decides on its own. A build-excluded file withholds only a rename that
+	// disturbs an identifier it writes: no variant will ever see that file, so
+	// withholding wholesale would disable the fix for the whole package.
+	u := c.unseen(pass)
+	if u.all {
+		return false
+	}
+	return !u.names[t.obj.Name()] && !u.names[newName]
 }
 
 // reserve records that a fix emitted in this pass renames something to name.
@@ -195,22 +200,49 @@ func (rs *renameState) namedByDirective(pass *analysis.Pass) map[string]bool {
 	return rs.directives
 }
 
-// hasUnseenTests reports whether the package directory holds in-package
-// _test.go files that are not in pass.Files. For the test variant, and for a
-// package without tests, there are none.
+// unseenFiles is what the package directory holds that this pass does not see.
+// Two things put a .go file of this package outside pass.Files: it is an
+// in-package _test.go and this is the non-test variant, or the build
+// configuration excluded it — a _GOOS suffix, a //go:build line. Either way it
+// may declare or name the same identifiers, and this pass can neither see that
+// nor rewrite it.
 //
-// Only the package clause is parsed: an external test package (package x_test)
-// declares into its own scope and can only name the package's exported
-// identifiers, which are never renamed. The files are read from disk rather
-// than through pass.ReadFile, whose access policy admits only the files of the
-// pass itself; the config lookup already reads the filesystem, so this adds no
-// new assumption about the driver. A directory that cannot be read is treated
-// as holding tests, which withholds rather than risks.
-func (c *collection) hasUnseenTests(pass *analysis.Pass) bool {
-	if c.unseenTestsDone {
-		return c.unseenTests
+// The two are not equally hopeless. The test variant sees every test file and
+// decides on its own, and its fix rewrites the non-test files too, so under
+// -test (the default) deferring wholesale costs nothing. No variant ever sees
+// a build-excluded file, so deferring wholesale there would mean no rename is
+// ever offered in a package that carries a _GOOS suffix. Those files are read
+// instead for the identifiers they write, and only a rename that disturbs one
+// of them is withheld.
+type unseenFiles struct {
+	// all withholds every rename: an in-package test file this pass does not
+	// see, or something in the directory that could not be read or parsed.
+	all bool
+
+	// names is every identifier written in an unseen file that was read. A
+	// rename is withheld when it takes one of these names away or claims one:
+	// the excluded file would otherwise still spell the old name, or would
+	// find the new one declared twice.
+	names map[string]bool
+}
+
+// unseen scans the package directory, once per pass.
+//
+// A _test.go file is parsed for its package clause alone: an external test
+// package (package x_test) declares into its own scope and can only name the
+// package's exported identifiers, which are never renamed. Every other file
+// whose package clause matches is parsed in full, since its identifiers are
+// the point. Files are read from disk rather than through pass.ReadFile, whose
+// access policy admits only the files of the pass itself; the config lookup
+// already reads the filesystem, so this adds no new assumption about the
+// driver. Anything that cannot be read or parsed withholds everything, which
+// withholds rather than risks.
+func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
+	if c.unseenScan != nil {
+		return c.unseenScan
 	}
-	c.unseenTestsDone = true
+	u := &unseenFiles{names: make(map[string]bool)}
+	c.unseenScan = u
 
 	dir, inPass := "", make(map[string]bool)
 	for _, f := range pass.Files {
@@ -224,27 +256,49 @@ func (c *collection) hasUnseenTests(pass *analysis.Pass) bool {
 		}
 	}
 	if dir == "" {
-		return false
+		return u
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		c.unseenTests = true
-		return true
+		u.all = true
+		return u
 	}
 	fset := token.NewFileSet()
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), "_test.go") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
 			continue
 		}
 		p := filepath.Join(dir, e.Name())
 		if inPass[p] {
 			continue
 		}
+		// The package clause is read first and decides the rest. A file of
+		// another package — a //go:build ignore generator declaring package
+		// main is the common one — writes nothing this package can name. In
+		// the external test variant that clause check skips every file of the
+		// package under test, which is the whole directory.
 		f, err := parser.ParseFile(fset, p, nil, parser.PackageClauseOnly)
-		if err != nil || f.Name.Name == pass.Pkg.Name() {
-			c.unseenTests = true
-			return true
+		if err != nil {
+			u.all = true
+			continue
 		}
+		if f.Name.Name != pass.Pkg.Name() {
+			continue
+		}
+		if strings.HasSuffix(e.Name(), "_test.go") {
+			u.all = true
+			continue
+		}
+		if f, err = parser.ParseFile(fset, p, nil, 0); err != nil {
+			u.all = true
+			continue
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			if id, ok := n.(*ast.Ident); ok {
+				u.names[id.Name] = true
+			}
+			return true
+		})
 	}
-	return false
+	return u
 }

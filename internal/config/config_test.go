@@ -87,9 +87,21 @@ func TestLoadEmptyFile(t *testing.T) {
 }
 
 func TestLoadRejectsUnknownKey(t *testing.T) {
-	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  unqualifyy: always\n")
-	if _, err := config.Load(path); err == nil {
-		t.Fatal("a misspelled rule must not silently keep its default")
+	for _, tt := range []struct{ yaml, want string }{
+		{"nonsense: 1\n", `unknown key "nonsense" (this section takes defaults, rules, exclude, baseline)`},
+		{"rules:\n  unqualifyy: always\n", `unknown key "rules.unqualifyy" (this section takes qualify, unqualify, exportedLabels)`},
+		{"defaults:\n  unexpected: private\n", `unknown key "defaults.unexpected" (this section takes unexported)`},
+	} {
+		path := write(t, t.TempDir(), ".declscope.yaml", tt.yaml)
+		_, err := config.Load(path)
+		if err == nil {
+			t.Fatalf("%q: a misspelled key must not silently keep the default", tt.yaml)
+		}
+		// The Go type go-yaml names is an implementation detail, and for a
+		// nested section it is the whole struct literal.
+		if !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%q: got %v, want it to contain %s", tt.yaml, err, tt.want)
+		}
 	}
 }
 
@@ -141,7 +153,7 @@ func TestFindPrefersNearest(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "go.mod", "module example.com/m\n")
 	write(t, root, ".declscope.yaml", "")
-	nested := filepath.Join(root, "legacy")
+	nested := filepath.Join(root, "store")
 	write(t, nested, ".declscope.yml", "")
 
 	got := config.Find(nested)
@@ -218,26 +230,6 @@ func TestBoolSettings(t *testing.T) {
 		}
 		if got := tt.get(opts); got != tt.want {
 			t.Errorf("%q: got %v, want %v", tt.yaml, got, tt.want)
-		}
-	}
-}
-
-// TestRemovedSettingsAreNamed checks that a setting removed by the two-valued
-// scope is answered by name rather than by the parser's generic complaint, so
-// that an upgrade says what to write instead.
-func TestRemovedSettingsAreNamed(t *testing.T) {
-	tests := []struct{ yaml, want string }{
-		{"defaults:\n  exported: private\n", "defaults.exported was removed"},
-		{"rules:\n  unqualify: always\n", `"always" is no longer a value here`},
-		{"rules:\n  unqualify: never\n", `"never" is no longer a value here`},
-	}
-	for _, tt := range tests {
-		err := settingErr(t, tt.yaml)
-		if err == nil {
-			t.Fatalf("%q: want an error", tt.yaml)
-		}
-		if !strings.Contains(err.Error(), tt.want) {
-			t.Errorf("%q: error %q does not mention %q", tt.yaml, err, tt.want)
 		}
 	}
 }

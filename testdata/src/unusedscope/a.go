@@ -26,3 +26,32 @@ type Entry struct{ key string }
 func restates() int { return 2 }
 
 var _ = restates
+
+// A block directive that every spec overrides reaches no declaration, the same
+// as one written where nothing checked can carry it — and the report has to
+// separate the two, since one line is redundant and the other is misplaced.
+//
+//declscope:package // want `unused //declscope:package: every declaration it reaches states its own scope`
+var (
+	//declscope:private
+	seed = 1
+	//declscope:private
+	limit = 2
+)
+
+// One spec taking the block's scope is enough to keep it: nothing is reported
+// here.
+//
+//declscope:package
+var (
+	//declscope:private
+	other  = 3
+	shared = 4
+)
+
+// Written where no checked declaration can carry it.
+//
+//declscope:package // want `unused //declscope:package: no checked declaration carries it`
+func init() {}
+
+var _ = seed + limit + other + shared

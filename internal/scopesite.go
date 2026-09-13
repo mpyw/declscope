@@ -43,6 +43,13 @@ type scopeSite struct {
 	decls     []string
 	fileLevel bool
 	bound     bool
+
+	// shadowed records that something in its reach took a nearer directive's
+	// scope instead. A block's directive that every spec overrides reaches no
+	// declaration, exactly as one written on an init function does, and the
+	// report has to separate the two: one line is redundant, the other is
+	// written somewhere it can never bind.
+	shadowed bool
 }
 
 // scopeSite returns the accounting entry for a scope directive, keyed by where
@@ -54,6 +61,15 @@ func (c *collection) scopeSite(d directive.Decl) *scopeSite {
 		c.scopes[d.ScopePos] = s
 	}
 	return s
+}
+
+// shadow records that a nearer directive supplied the scope of something outer
+// reaches. Called where the two are merged, since after the merge only the
+// winner's position survives.
+func (c *collection) shadow(outer, merged directive.Decl) {
+	if outer.HasScope && merged.HasScope && merged.ScopePos != outer.ScopePos {
+		c.scopeSite(outer).shadowed = true
+	}
 }
 
 // bind resolves a declaration's scope and records which directive supplied it.
@@ -152,6 +168,9 @@ func (c *collection) reportUnusedScopes(pass *analysis.Pass) {
 		switch {
 		case s.fileLevel:
 			msg = "unused file-level " + s.dir.Scope.Directive()
+		case s.shadowed:
+			msg = "unused " + s.dir.Scope.Directive() +
+				": every declaration it reaches states its own scope"
 		case len(s.decls) == 0:
 			msg = "unused " + s.dir.Scope.Directive() + ": no checked declaration carries it"
 		default:

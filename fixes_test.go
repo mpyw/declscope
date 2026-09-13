@@ -78,3 +78,12 @@ func TestSuggestedFixLinkname(t *testing.T) {
 func TestSuggestedFixTestVariant(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixtestvariant")
 }
+
+// TestSuggestedFixExcluded checks that a declaration named from a file the
+// build configuration excludes is not renamed, in either direction: the
+// excluded file names load, and already declares the name spare would take.
+// Neither is rewritten by the fix, and no variant of this package ever sees
+// the file. A declaration it does not mention is still renamed.
+func TestSuggestedFixExcluded(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixexcluded")
+}

@@ -116,9 +116,8 @@ func TestTypeIgnore(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "typeignore")
 }
 
-// TestDefaultsReachMembers checks that defaults.exported and
-// defaults.unexported resolve members too, not only package-level
-// declarations.
+// TestDefaultsReachMembers checks that defaults.unexported resolves members
+// too, not only package-level declarations.
 func TestDefaultsReachMembers(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "defaultsmembers")
 }
@@ -177,16 +176,11 @@ func TestExportedScope(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "exportedscope")
 }
 
-// TestRemovedPublicDirective checks that //declscope:public is answered by name
-// rather than as an unknown directive, and offers to delete itself so that -fix
-// migrates a codebase that used it.
-func TestRemovedPublicDirective(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "removedpublic")
-}
-
 // TestUnusedScopeDirective checks the structural test: a scope directive that
 // binds nothing is reported, an exported type with an unexported field still
 // binds one, and restating the scope already in force is not reported at all.
+// The two ways a block's directive can reach nothing — every spec overriding
+// it, and nothing checked being able to carry it — are reported apart.
 func TestUnusedScopeDirective(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unusedscope")
 }
@@ -234,4 +228,13 @@ func TestTestOnlyIgnore(t *testing.T) {
 // misplaced rather than silently dropped.
 func TestBraceIgnore(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "braceignore")
+}
+
+// TestAliases checks what a directive on a type alias reaches. The alias name
+// is an ordinary declaration, so //declscope:package on it widens the name and
+// use.go may take an al — the silence on alias.go is the assertion. It does not
+// reach the aliased defined type's members, so Base.n keeps base.go's boundary.
+// An alias to a struct written inline does contain its fields.
+func TestAliases(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "aliases")
 }
