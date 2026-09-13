@@ -111,11 +111,20 @@ func HasPrefix(name, ns string) bool {
 // The first word of name is capitalized the way Go spells it, so id becomes
 // userID and urlPath becomes userURLPath rather than userId and userUrlPath.
 // A namespace that cannot be a label (see IsLabel) leaves the name alone.
+//
+// The result keeps name's exportedness. A namespace is always an unexported
+// identifier, so prepending one blindly would lower-case an exported name:
+// Load in user.go would be renamed to userLoad, deleting the package's API to
+// satisfy a linter. An exported name takes an exported label instead.
 func Qualify(name, ns string) string {
 	if !IsLabel(ns) || HasPrefix(name, ns) {
 		return name
 	}
-	return ns + capitalize(name)
+	out := ns + capitalize(name)
+	if ast.IsExported(name) {
+		return capitalize(out)
+	}
+	return out
 }
 
 // trimSegment drops the final underscore-separated segment when match accepts
@@ -300,6 +309,11 @@ func Unqualify(name, ns string) (short, why string) {
 		return "", "what follows the label does not start a new word"
 	}
 	rest = lowerLeading(rest)
+	// Dropping the label must not change what the name is visible to either:
+	// UserID drops to ID, never to id.
+	if ast.IsExported(name) {
+		rest = capitalize(rest)
+	}
 
 	switch {
 	case token.IsKeyword(rest):

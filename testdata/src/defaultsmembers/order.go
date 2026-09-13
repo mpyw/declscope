@@ -1,9 +1,10 @@
 package defaultsmembers
 
 func orderRun(u *User) string {
-	u.Bump()
-	_ = Helper()
-	return u.Name
+	u.bump()
+	u.seal()
+	_ = u.name
+	return u.secret
 }
 
 var _ = orderRun

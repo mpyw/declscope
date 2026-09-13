@@ -1,0 +1,154 @@
+// A scope directive that binds nothing is reported, on the same principle as an
+// unused ignore: a directive that decides nothing should not sit in the source
+// claiming to.
+//
+// A directive binds a declaration when the scope it names is one that
+// declaration could not have had anyway — under ANY configuration, and given
+// whatever the levels outside this directive already say. Both quantifiers
+// matter, and getting either wrong has a name:
+//
+//   - Read off the current configuration instead, and one line of YAML flips
+//     every directive in a tree, and recording a deliberate `private` becomes
+//     an error.
+//   - Ask only whether the name is exported, and //declscope:package under an
+//     enclosing `private` — the one thing that widens an exported declaration
+//     back — is called inert, so a codebase can narrow and never widen again.
+//
+// So: the scope outside this directive is FIXED when an outer level states one,
+// or when the declaration is exported and nothing does (exported carries no
+// boundary under every configuration). It is not fixed when defaults.unexported
+// decides, since that may be either scope.
+//
+// The reach is a disjunction: the declaration the directive sits on, when there
+// is one, plus what it encloses. One binding is enough. Two enclosed
+// declarations are modelled because one cannot distinguish "nothing to bind"
+// from "this one had nothing to bind".
+spec DirectiveEffect {
+  enum Scope { Package, Private }
+  enum Dir   { NoDir, DirPackage, DirPrivate }
+
+  state {
+    configured: Bool,
+    // what this directive names, and what the levels outside it say
+    stated: Scope, outerDir: Dir, cfgUnexported: Scope,
+    // the declaration the directive is written on, if any
+    hasTarget: Bool, targetExported: Bool,
+    // two declarations within its reach, each possibly shadowed by a nearer one
+    aPresent: Bool, aExported: Bool, aShadowed: Bool,
+    bPresent: Bool, bExported: Bool, bShadowed: Bool,
+    bound: Bool
+  }
+  init {
+    configured = false
+    stated = Package  outerDir = NoDir  cfgUnexported = Private
+    hasTarget = false  targetExported = false
+    aPresent = false  aExported = false  aShadowed = false
+    bPresent = false  bExported = false  bShadowed = false
+    bound = false
+  }
+  action configure(st: Scope, od: Dir, cu: Scope,
+                   ht: Bool, tx: Bool,
+                   ap: Bool, ax: Bool, ash: Bool,
+                   bp: Bool, bx: Bool, bsh: Bool) {
+    requires not configured
+    configured = true
+    stated = st  outerDir = od  cfgUnexported = cu
+    hasTarget = ht  targetExported = tx
+    aPresent = ap  aExported = ax  aShadowed = ash
+    bPresent = bp  bExported = bx  bShadowed = bsh
+  }
+
+  def outerFixed(x: Bool) = outerDir != NoDir or x
+  def outerScope(x: Bool) =
+    if outerDir == DirPackage then Package
+    else if outerDir == DirPrivate then Private
+    else if x then Package
+    else cfgUnexported
+  def inert(x: Bool) = outerFixed(x) and stated == outerScope(x)
+
+  action bindTarget() {
+    requires configured  requires hasTarget  requires not inert(targetExported)
+    bound = true
+  }
+  action bindA() {
+    requires configured  requires aPresent  requires not aShadowed
+    requires not inert(aExported)
+    bound = true
+  }
+  action bindB() {
+    requires configured  requires bPresent  requires not bShadowed
+    requires not inert(bExported)
+    bound = true
+  }
+  def reported() = configured and not bound
+
+  invariant BoundImpliesConfigured { bound => configured }
+  // Expanded rather than routed through a helper, so that mutating inert moves
+  // only one side of the implication and the invariant can actually fail.
+  invariant NothingBindableNeverUsed {
+    bound => (hasTarget and not (outerFixed(targetExported) and stated == outerScope(targetExported)))
+             or (aPresent and not (outerFixed(aExported) and stated == outerScope(aExported)))
+             or (bPresent and not (outerFixed(bExported) and stated == outerScope(bExported)))
+  }
+  invariant AllShadowedNeverUsed {
+    bound => (hasTarget and not (outerFixed(targetExported) and stated == outerScope(targetExported)))
+             or (aPresent and not aShadowed
+                 and not (outerFixed(aExported) and stated == outerScope(aExported)))
+             or (bPresent and not bShadowed
+                 and not (outerFixed(bExported) and stated == outerScope(bExported)))
+  }
+
+  // --- the two quantifiers -------------------------------------------------
+  // Over configurations: an unexported declaration takes defaults.unexported,
+  // which may be either scope, so neither spelling is ever inert on one.
+  reachable UnexportedBindsPackageUnderPackageDefault {
+    configured and hasTarget and not targetExported and outerDir == NoDir
+    and cfgUnexported == Package and stated == Package
+    and not aPresent and not bPresent and bound
+  }
+  reachable UnexportedBindsPrivateUnderPrivateDefault {
+    configured and hasTarget and not targetExported and outerDir == NoDir
+    and cfgUnexported == Private and stated == Private
+    and not aPresent and not bPresent and bound
+  }
+  // Over enclosing directives: package on an exported declaration is inert with
+  // nothing outside it, and binds under an enclosing private — the widening
+  // that an exportedness-only test would have called dead.
+  reachable ExportedPackageIsInert {
+    configured and hasTarget and targetExported and outerDir == NoDir
+    and stated == Package and not aPresent and not bPresent and reported()
+  }
+  reachable ExportedPackageBindsUnderPrivateOuter {
+    configured and hasTarget and targetExported and outerDir == DirPrivate
+    and stated == Package and not aPresent and not bPresent and bound
+  }
+  reachable ExportedNarrowedByPrivateBinds {
+    configured and hasTarget and targetExported and outerDir == NoDir
+    and stated == Private and not aPresent and not bPresent and bound
+  }
+  // Restating what the enclosing level already said decides nothing either.
+  reachable RestatingOuterIsInert {
+    configured and hasTarget and not targetExported and outerDir == DirPrivate
+    and stated == Private and not aPresent and not bPresent and reported()
+  }
+
+  // --- the reach ------------------------------------------------------------
+  reachable UsedViaFirstEnclosedOnly {
+    configured and hasTarget and targetExported and stated == Package
+    and outerDir == NoDir
+    and aPresent and not aExported and not aShadowed and not bPresent and bound
+  }
+  reachable UsedViaSecondOnly {
+    configured and not hasTarget and outerDir == NoDir
+    and aPresent and aShadowed and bPresent and not bExported and not bShadowed
+    and bound
+  }
+  reachable UnusedOnExportedLeaf {
+    configured and hasTarget and targetExported and stated == Package
+    and outerDir == NoDir and not aPresent and not bPresent and reported()
+  }
+  reachable UnusedBecauseAllShadowed {
+    configured and not hasTarget and aPresent and aShadowed
+    and bPresent and bShadowed and reported()
+  }
+}

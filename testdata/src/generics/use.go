@@ -1,9 +1,11 @@
 package generics
 
-// drain is grown on List from another namespace. Its receiver is the generic
-// List[T], which must still resolve to List, so that the method is bounded by
-// List's namespace rather than by the file declaring it.
-func (l *List[T]) drain() []T { // want `method List.drain is private to namespace "list", but is used from namespace "use"`
+// drain is grown on List from another namespace. It belongs to the file that
+// wrote it, so this file may call it; what it reaches for does not. The
+// receiver is the generic List[T], which must still resolve to List, so that
+// the field selection below is recognized as a use of List.items — that is the
+// crossing, and it is reported against list.go.
+func (l *List[T]) drain() []T {
 	out := l.items
 	l.items = nil
 	return out

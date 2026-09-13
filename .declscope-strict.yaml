@@ -8,5 +8,5 @@ rules:
   # internal/baseline, ...) would need a label that distinguishes nothing
   # there.
   qualify: ondemand
-  # always | never
-  unqualify: always
+  # true | false
+  unqualify: true

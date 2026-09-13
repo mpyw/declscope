@@ -9,7 +9,8 @@ func userHelper() int { return 1 } // want `func userHelper is private to namesp
 //declscope:package
 func userShared() int { return 2 }
 
-// Exported identifiers are public, and carry no prefix.
+// Exported identifiers carry no boundary, and no label unless
+// rules.exportedLabels asks for one.
 func Exported() int { return userHelper() }
 
 var userCount int // want `var userCount is private to namespace "user", but is used from namespace "order"`

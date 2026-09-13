@@ -138,12 +138,57 @@ func TestEmbedded(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "embedded")
 }
 
-// TestMemberOwnerFile checks that a member violation names the file declaring
-// the type, not the file the member happens to be written in. The two differ
-// for a method declared away from its type, and the message reads as a
-// contradiction when the wrong one is named.
+// TestMemberOwnerFile checks the split between a field and a method. A field is
+// written inside its type's declaration, so the type's file bounds it wherever
+// it is read; a method is an ordinary top-level declaration and belongs to the
+// file that wrote it. Binding methods to their type's file instead left one
+// unusable from the file declaring it, with no scope able to say otherwise.
 func TestMemberOwnerFile(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "memberowner")
+}
+
+// TestCoreNamespace checks the core: several files share it, it has no name, and
+// both naming rules pass it by at their strictest settings, while an ordinary
+// namespace in the same package is still asked for its label.
+func TestCoreNamespace(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "corens")
+}
+
+// TestFileScope checks a file-level scope directive: a default for what the file
+// declares, which a declaration may still narrow back. Under the ignore this
+// replaces, the narrowing would have meant nothing.
+func TestFileScope(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "filescope")
+}
+
+// TestExportedLabels checks rules.exportedLabels, and that the label carries the
+// exportedness of the name it joins: New is reported against ClientNew, never
+// clientNew, since a rename must not delete the API it is renaming.
+func TestExportedLabels(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "exportedlabels")
+}
+
+// TestExportedScope checks that exportedness decides the default and nothing
+// else: an exported declaration carries no boundary until a directive gives it
+// one, and a directive on a type reaches its exported fields — which is how a
+// DTO capitalized for a serializer is protected, without the analysis guessing
+// at reachability it cannot compute.
+func TestExportedScope(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "exportedscope")
+}
+
+// TestRemovedPublicDirective checks that //declscope:public is answered by name
+// rather than as an unknown directive, and offers to delete itself so that -fix
+// migrates a codebase that used it.
+func TestRemovedPublicDirective(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "removedpublic")
+}
+
+// TestUnusedScopeDirective checks the structural test: a scope directive that
+// binds nothing is reported, an exported type with an unexported field still
+// binds one, and restating the scope already in force is not reported at all.
+func TestUnusedScopeDirective(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unusedscope")
 }
 
 // TestNamespaceIdentity checks that a file whose stem cannot be a label, such

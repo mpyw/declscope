@@ -5,7 +5,6 @@
 // Declaration level, stating the scope explicitly instead of deriving it from
 // the name:
 //
-//	//declscope:public
 //	//declscope:package
 //	//declscope:private
 //
@@ -78,6 +77,12 @@ const prefix = "declscope:"
 type Problem struct {
 	Pos token.Pos
 	Msg string
+
+	// End bounds the comment when deleting it is the repair, which is so for a
+	// directive that no longer exists: there is nothing to rewrite it to. It is
+	// zero for every other problem, where what to write instead is the author's
+	// decision and a fix would be a guess.
+	End token.Pos
 }
 
 // Ignore is one ignore directive. An empty Rules silences every rule.
@@ -143,13 +148,32 @@ func ParseDecl(groups ...*ast.CommentGroup) Decl {
 			if !ok {
 				continue
 			}
-			d.consume(c.Pos(), keyword, arg)
+			d.consume(c.Pos(), c.End(), keyword, arg)
 		}
 	}
 	return d
 }
 
-func (d *Decl) consume(pos token.Pos, keyword, arg string) {
+// removedPublic answers //declscope:public by name. It was removed with the
+// public scope: what is reachable from outside the package is not the subject,
+// so there is nothing for the directive to have said. Naming it beats the
+// generic "unknown directive", which would leave an upgrading codebase guessing
+// at a line it can simply delete.
+const removedPublic = "//declscope:public was removed: an exported declaration " +
+	"carries no boundary, so the directive stated nothing — delete the line"
+
+// removed reports a directive that no longer exists, with the extent of the
+// comment so that -fix can delete it. An upgrade that a tool performs is a
+// different thing from one a human greps for.
+func (d *Decl) removed(pos, end token.Pos) {
+	d.Problems = append(d.Problems, Problem{Pos: pos, Msg: removedPublic, End: end})
+}
+
+func (f *File) removed(pos, end token.Pos) {
+	f.Problems = append(f.Problems, Problem{Pos: pos, Msg: removedPublic, End: end})
+}
+
+func (d *Decl) consume(pos, end token.Pos, keyword, arg string) {
 	switch keyword {
 	case "ignore":
 		ignore, problem := parseIgnore(pos, arg)
@@ -161,6 +185,12 @@ func (d *Decl) consume(pos token.Pos, keyword, arg string) {
 
 	case "namespace":
 		d.problem(pos, "declscope:namespace must appear before the package clause")
+
+	case "core":
+		d.problem(pos, "declscope:core must appear before the package clause")
+
+	case "public":
+		d.removed(pos, end)
 
 	default:
 		s, ok := scope.Parse(keyword)
@@ -198,10 +228,19 @@ func Stray(g *ast.CommentGroup) []Problem {
 		}
 		msg := fmt.Sprintf("misplaced declscope:%s: no declaration here for it to bind to; "+
 			"write it in a declaration's doc comment or trailing its first or last line", keyword)
-		if keyword == "namespace" {
+		end := token.NoPos
+		switch keyword {
+		case "namespace":
 			msg = "declscope:namespace must appear before the package clause"
+		case "public":
+			// A directive that no longer exists is answered by name wherever it
+			// is found, and offers to delete itself. An upgrading codebase is
+			// likeliest to have drifted exactly the ones the parser could not
+			// place, and "misplaced" would send the author looking for a
+			// declaration rather than deleting the line.
+			msg, end = removedPublic, c.End()
 		}
-		out = append(out, Problem{Pos: c.Pos(), Msg: msg})
+		out = append(out, Problem{Pos: c.Pos(), Msg: msg, End: end})
 	}
 	return out
 }
@@ -211,6 +250,18 @@ type File struct {
 	Namespace    string
 	HasNamespace bool
 	NamespacePos token.Pos
+
+	// Core marks the file as part of the package's core namespace, whose label
+	// is empty. Several files may carry it and they share the one namespace,
+	// the way //declscope:namespace merges files under a name; the core has
+	// none, which is what puts it outside the naming rules.
+	Core    bool
+	CorePos token.Pos
+
+	// Scope is the file-level scope directive. It is a default for what the
+	// file declares, not a blanket: a declaration may still state its own, and
+	// a field takes its type's first.
+	Scope Decl
 
 	Ignores []Ignore
 
@@ -233,12 +284,23 @@ func ParseFile(file *ast.File) File {
 			switch keyword {
 			case "namespace":
 				f.namespace(c.Pos(), arg)
+			case "core":
+				f.core(c.Pos(), arg)
 			case "ignore":
 				f.ignore(c.Pos(), arg)
+			case "package", "private":
+				f.scope(c.Pos(), keyword, arg)
+			case "public":
+				f.removed(c.Pos(), c.End())
 			default:
 				f.problem(c.Pos(), fmt.Sprintf("declscope:%s is not a file-level directive", keyword))
 			}
 		}
+	}
+	// A core file's namespace is the core, so naming one as well contradicts it
+	// rather than adding to it.
+	if f.Core && f.HasNamespace {
+		f.problem(f.CorePos, "conflicting namespace directives: a core file's namespace is the core")
 	}
 	return f
 }
@@ -253,6 +315,37 @@ func (f *File) namespace(pos token.Pos, arg string) {
 		f.problem(pos, "duplicate declscope:namespace directive")
 	default:
 		f.Namespace, f.NamespacePos, f.HasNamespace = arg, pos, true
+	}
+}
+
+// core joins the file to the package's core namespace. A core file's namespace
+// is the core, so naming one as well is a contradiction rather than an
+// addition, and the two directives conflict.
+func (f *File) core(pos token.Pos, arg string) {
+	switch {
+	case arg != "":
+		f.problem(pos, "//declscope:core takes no argument")
+	case f.Core:
+		f.problem(pos, "duplicate declscope:core directive")
+	default:
+		f.Core, f.CorePos = true, pos
+	}
+}
+
+// scope reads a file-level scope directive, the default for what the file
+// declares.
+func (f *File) scope(pos token.Pos, keyword, arg string) {
+	sc, ok := scope.Parse(keyword)
+	switch {
+	case !ok:
+		f.problem(pos, fmt.Sprintf("declscope:%s is not a scope", keyword))
+	case arg != "":
+		f.problem(pos, fmt.Sprintf("//declscope:%s takes no argument", keyword))
+	case f.Scope.HasScope && f.Scope.Scope != sc:
+		f.problem(pos, fmt.Sprintf("conflicting scope directives: %s and //declscope:%s on one file",
+			f.Scope.Scope.Directive(), keyword))
+	default:
+		f.Scope.Scope, f.Scope.HasScope, f.Scope.ScopePos = sc, true, pos
 	}
 }
 
@@ -277,7 +370,7 @@ func parseIgnore(pos token.Pos, arg string) (Ignore, *Problem) {
 		}
 		r, ok := rule.Parse(name)
 		if !ok {
-			return Ignore{}, &Problem{pos, fmt.Sprintf("unknown rule %q in declscope:ignore (want one of %s)",
+			return Ignore{}, &Problem{Pos: pos, Msg: fmt.Sprintf("unknown rule %q in declscope:ignore (want one of %s)",
 				name, strings.Join(rule.Names(), ", "))}
 		}
 		ignore.Rules = append(ignore.Rules, r)

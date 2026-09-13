@@ -1,59 +1,228 @@
-// Every configuration key must demonstrably change an outcome.
+// Every configuration key and every directive level must demonstrably change an
+// outcome, and every restriction must be witnessed by behaviour rather than by
+// an invariant that re-spells the definition it guards.
 //
-// An unwitnessed reachable means the key does not bite in that direction — a
-// dead knob, and a lie in the documentation.
+// Scope is two-valued. A scope's default subject is a package's unexported
+// surface, and `public` would name a distinction the analysis cannot make.
+//
+// A FIELD is written inside its type's declaration, so the type's directive
+// contains it, the way a `var (...)` block contains its specs. A METHOD is an
+// ordinary top-level declaration: the file it is written in supplies its
+// namespace and its file level, and nothing above it reaches it.
+//
+// Resolution order: declaration > containing type (fields only) > file > config.
 spec Knobs {
-  enum Scope { Public, Package, Private }
-  enum Kind  { Pkg, Member }
-  enum Dir   { NoDir, DirPublic, DirPackage, DirPrivate }
+  enum Scope { Package, Private }
+  enum Kind  { Pkg, Field, Method }
+  enum Dir   { NoDir, DirPackage, DirPrivate }
   enum Refs  { NoRefs, SameNs, CrossNs }
 
   state {
-    configured: Bool, cfgExported: Scope, cfgUnexported: Scope,
-    kind: Kind, exported: Bool, dir: Dir, refs: Refs
+    configured: Bool, cfgUnexported: Scope,
+    kind: Kind, exported: Bool,
+    declDir: Dir, blockDir: Dir, typeDir: Dir, fileDir: Dir,
+    refs: Refs,
+    // reported records that the boundary check fired. Without it every
+    // invariant here would be a tautology over the defs: a spec whose only
+    // action assigns the whole state at once cannot say anything about
+    // reachability. Recording the report makes the guards that produce it
+    // load-bearing, which is what an invariant is for.
+    reported: Bool
   }
   init {
-    configured = false  cfgExported = Public  cfgUnexported = Private
-    kind = Pkg  exported = false  dir = NoDir  refs = NoRefs
+    configured = false  cfgUnexported = Private
+    kind = Pkg  exported = false
+    declDir = NoDir  blockDir = NoDir  typeDir = NoDir  fileDir = NoDir
+    refs = NoRefs  reported = false
   }
-  action configure(e: Scope, u: Scope, k: Kind, x: Bool, di: Dir, r: Refs) {
+  action configure(u: Scope, k: Kind, x: Bool,
+                   dd: Dir, bd: Dir, td: Dir, fd: Dir, r: Refs) {
     requires not configured
-    configured = true  cfgExported = e  cfgUnexported = u
-    kind = k  exported = x  dir = di  refs = r
+    configured = true  cfgUnexported = u
+    kind = k  exported = x
+    declDir = dd  blockDir = bd  typeDir = td  fileDir = fd
+    refs = r
   }
+
+  // Exportedness decides the default and nothing else: an exported declaration
+  // has no boundary unless a directive gives it one. Asking instead whether it
+  // is reachable from outside the package is a question a single-package
+  // analysis cannot answer — a type escapes through an exported signature, an
+  // embedding, an alias or an interface it satisfies — and guessing produced
+  // boundary reports on API that every importer reaches.
+  def defaultScope() = if exported then Package else cfgUnexported
+
+  // What contains a field: its type, and through the type the var/const/type
+  // block the type is declared in — addGenDecl merges the block into the spec's
+  // own directive and passes that as the field's container, so a block reaches a
+  // field even though it never reaches a method.
+  def contained() =
+    if kind == Field then (if typeDir != NoDir then typeDir else blockDir)
+    else NoDir
+
+  // A parenthesized var/const/type block reaches only the specs it holds, so
+  // only a package-level declaration has one: a field is not a spec of a block,
+  // and a method is never in one. Decl.Merge lets a spec's own scope replace the
+  // block's, which puts the block directly under the declaration.
+  def blockOf() = if kind == Pkg then blockDir else NoDir
+
   def effScope() =
-    if dir == DirPublic then Public
-    else if dir == DirPackage then Package
-    else if dir == DirPrivate then Private
-    else if exported then cfgExported
-    else cfgUnexported
+    if declDir == DirPackage then Package
+    else if declDir == DirPrivate then Private
+    else if blockOf() == DirPackage then Package
+    else if blockOf() == DirPrivate then Private
+    else if contained() == DirPackage then Package
+    else if contained() == DirPrivate then Private
+    else if fileDir == DirPackage then Package
+    else if fileDir == DirPrivate then Private
+    else defaultScope()
+
   def boundaryFires() = effScope() == Private and refs == CrossNs
 
-  // Does defaults.exported reach members?
-  reachable ExportedKnobBitesOnMembers {
-    configured and kind == Member and exported and dir == NoDir
-    and cfgExported == Private and refs == CrossNs and boundaryFires()
+  // The two guards internal/report.go applies before a boundary is reported:
+  // the scope test, and a reference from another namespace. Each invariant
+  // below fails if its guard is dropped.
+  action reportBoundary() {
+    requires configured
+    requires effScope() == Private
+    requires refs == CrossNs
+    reported = true
   }
-  // Does defaults.unexported reach members?
-  reachable UnexportedKnobSilencesMembers {
-    configured and kind == Member and not exported and dir == NoDir
-    and cfgUnexported == Package and refs == CrossNs and not boundaryFires()
+  invariant ReportImpliesConfigured    { reported => configured }
+  // An exported declaration is reported only where a directive narrowed it.
+  invariant ExportedFiresOnlyWhenStated {
+    reported and exported => declDir == DirPrivate or blockOf() == DirPrivate
+                             or contained() == DirPrivate or fileDir == DirPrivate
   }
-  // Does defaults.exported reach package-level declarations?
-  reachable ExportedKnobBitesOnPkg {
-    configured and kind == Pkg and exported and dir == NoDir
-    and cfgExported == Private and refs == CrossNs and boundaryFires()
-  }
-  // Does a directive override defaults, in both directions?
-  reachable DirectiveOverridesToPrivate {
-    configured and dir == DirPrivate and cfgUnexported == Public
+  invariant SameNamespaceNeverCrosses  { reported => refs != SameNs }
+  invariant NoRefsNeverCrosses         { reported => refs != NoRefs }
+  invariant PackageScopeNeverFires     { reported => effScope() == Private }
+  reachable BoundaryReported { reported }
+
+  // --- defaults.unexported bites, per kind, in both directions ---------------
+  // The kind is pinned in each: a semantics that resolved one kind differently
+  // would still satisfy a reachable that left it free.
+  reachable ConfigBitesOnPkg {
+    configured and kind == Pkg and cfgUnexported == Private
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and not exported and refs == CrossNs and boundaryFires()
   }
-  reachable DirectiveOverridesToPackage {
-    configured and dir == DirPackage and cfgUnexported == Private
+  reachable ConfigBitesOnField {
+    configured and kind == Field and cfgUnexported == Private
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
+    and not exported and refs == CrossNs and boundaryFires()
+  }
+  reachable ConfigBitesOnMethod {
+    configured and kind == Method and cfgUnexported == Private
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
+    and not exported and refs == CrossNs and boundaryFires()
+  }
+  reachable ConfigSilencesPkg {
+    configured and kind == Pkg and cfgUnexported == Package
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and not exported and refs == CrossNs and not boundaryFires()
   }
-  // A reference from inside the namespace never crosses a boundary.
-  invariant SameNamespaceNeverCrosses { refs == SameNs => not boundaryFires() }
-  invariant NoRefsNeverCrosses        { refs == NoRefs => not boundaryFires() }
+  reachable ConfigSilencesField {
+    configured and kind == Field and cfgUnexported == Package
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
+    and not exported and refs == CrossNs and not boundaryFires()
+  }
+
+  // --- the levels beat one another, each witnessed by a conflict -------------
+  reachable DeclDirBeatsFileDir {
+    configured and kind == Pkg and declDir == DirPrivate and fileDir == DirPackage
+    and not exported and refs == CrossNs and boundaryFires()
+  }
+  reachable DeclDirBeatsTypeDir {
+    configured and kind == Field and declDir == DirPrivate and typeDir == DirPackage
+    and not exported and refs == CrossNs and boundaryFires()
+  }
+  reachable TypeDirBeatsFileDir {
+    configured and kind == Field and declDir == NoDir
+    and typeDir == DirPackage and fileDir == DirPrivate
+    and not exported and refs == CrossNs and not boundaryFires()
+  }
+  reachable FileDirBeatsConfig {
+    configured and kind == Pkg and declDir == NoDir and typeDir == NoDir
+    and fileDir == DirPrivate and cfgUnexported == Package
+    and not exported and refs == CrossNs and boundaryFires()
+  }
+
+  // --- the type's directive reaches fields and nothing else -----------------
+  // Behavioural, not a restatement: the declaration still fires, so a semantics
+  // that let the type's directive through would be caught here.
+  reachable DeclDirBeatsBlockDir {
+    configured and kind == Pkg and declDir == DirPrivate and blockDir == DirPackage
+    and not exported and refs == CrossNs and boundaryFires()
+  }
+  reachable BlockDirBeatsFileDir {
+    configured and kind == Pkg and declDir == NoDir
+    and blockDir == DirPackage and fileDir == DirPrivate
+    and not exported and refs == CrossNs and not boundaryFires()
+  }
+  reachable BlockDirReachesFieldThroughItsType {
+    configured and kind == Field and blockDir == DirPackage
+    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
+    and cfgUnexported == Private and not exported
+    and refs == CrossNs and not boundaryFires()
+  }
+  reachable TypeDirBeatsBlockDirOnField {
+    configured and kind == Field and declDir == NoDir
+    and typeDir == DirPrivate and blockDir == DirPackage
+    and fileDir == NoDir and not exported
+    and refs == CrossNs and boundaryFires()
+  }
+  reachable BlockDirInertOnMethod {
+    configured and kind == Method and blockDir == DirPackage
+    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
+    and cfgUnexported == Private and not exported
+    and refs == CrossNs and boundaryFires()
+  }
+  reachable TypeDirInertOnPkg {
+    configured and kind == Pkg and typeDir == DirPackage
+    and declDir == NoDir and blockDir == NoDir and fileDir == NoDir and cfgUnexported == Private
+    and not exported and refs == CrossNs and boundaryFires()
+  }
+  reachable TypeDirInertOnMethod {
+    configured and kind == Method and typeDir == DirPackage
+    and declDir == NoDir and blockDir == NoDir and fileDir == NoDir and cfgUnexported == Private
+    and not exported and refs == CrossNs and boundaryFires()
+  }
+
+  // --- exportedness --------------------------------------------------------
+  // An exported declaration is silent even when a directive says private.
+  // An exported declaration is silent by default and narrowed when stated. The
+  // pair is what makes exportedness a default rather than an exemption: the
+  // author can still say what the analysis will not guess.
+  reachable ExportedSilentByDefault {
+    configured and kind == Pkg and exported
+    and declDir == NoDir and blockDir == NoDir and fileDir == NoDir
+    and cfgUnexported == Private and refs == CrossNs and not boundaryFires()
+  }
+  reachable ExportedNarrowedWhenStated {
+    configured and kind == Pkg and exported and declDir == DirPrivate
+    and refs == CrossNs and boundaryFires()
+  }
+  // An exported declaration carries no boundary by default, whatever its owner
+  // or the configuration says: the DTO whose fields are capitalized for a
+  // serializer is protected by a directive on its type, not by a guess.
+  reachable ExportedFieldSilentByDefault {
+    configured and kind == Field and exported
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
+    and fileDir == NoDir and cfgUnexported == Private
+    and refs == CrossNs and not boundaryFires()
+  }
+  reachable ExportedMethodSilentByDefault {
+    configured and kind == Method and exported
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
+    and fileDir == NoDir and cfgUnexported == Private
+    and refs == CrossNs and not boundaryFires()
+  }
+  // ... and the type's directive is what brings an exported field back in.
+  reachable TypeDirBindsExportedField {
+    configured and kind == Field and exported and typeDir == DirPrivate
+    and declDir == NoDir and blockDir == NoDir and fileDir == NoDir
+    and refs == CrossNs and boundaryFires()
+  }
+
 }

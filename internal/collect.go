@@ -12,6 +12,7 @@ import (
 
 	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/namespace"
+	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
@@ -30,6 +31,15 @@ type fileInfo struct {
 	// of whatever each declaration says for itself. Whether each silenced
 	// anything is accounted for in collection.ignores.
 	ignores []directive.Ignore
+
+	// scope is the file-level scope directive, if any. It is a default for what
+	// the file declares, not a blanket: any declaration may still state its own,
+	// and a field takes its type's before the file is consulted.
+	scope directive.Decl
+
+	// core marks the file as part of the package's core namespace, whose label
+	// is empty. Several files may carry it and they share the one namespace.
+	core bool
 }
 
 // trailingAt returns the comment group trailing the declaration starting at
@@ -42,10 +52,16 @@ func (f *fileInfo) trailingAt(fset *token.FileSet, pos token.Pos) *ast.CommentGr
 	return g
 }
 
-// key identifies the namespace for comparison. A file whose name has no stem
-// at all has no namespace, and must not be treated as sharing one with every
-// other such file, so it falls back to its own path.
+// key identifies the namespace for comparison.
+//
+// The core namespace has no name, and every core file shares it, so they share
+// one key. A file whose name has no stem at all also has no namespace, but must
+// not be treated as sharing one with every other such file, so it falls back to
+// its own path.
 func (f *fileInfo) key() string {
+	if f.core {
+		return "\x00core"
+	}
 	if f.ns != "" {
 		return f.ns
 	}
@@ -72,17 +88,14 @@ type target struct {
 
 	// file is where the declaration is written.
 	file *fileInfo
-	// ownerNS is the namespace that bounds the declaration. For package-level
-	// declarations it is the declaring file's namespace. For methods and
-	// fields it is the namespace of the type they belong to, because a member
-	// is already namespaced by its receiver and must not be namespaced twice.
+	// ownerNS is the namespace that bounds the declaration: the namespace of
+	// the file it is written in. A field is written inside its type's
+	// declaration, so for a field that is the type's file; a method is an
+	// ordinary top-level declaration and takes its own file's, like a func.
 	ownerNS  string
 	ownerKey string
-	// ownerFile is the file that namespace comes from: the declaring file for
-	// package-level declarations and fields, the file declaring the type for
-	// methods. Diagnostics describe the boundary through it, since a method
-	// may be written in a different file from its type and describing that
-	// file would name the wrong one.
+	// ownerFile is the file that namespace comes from, which is the file the
+	// declaration is written in for every kind.
 	ownerFile *fileInfo
 	// owner names the type a member belongs to, empty for package-level.
 	owner string
@@ -91,6 +104,13 @@ type target struct {
 	ownerObj types.Object
 
 	scope scope.Scope
+	// boundBy is the directive that supplied the scope, zero when the configured
+	// default did. It is not always t.dir: a field takes its type's and any
+	// declaration takes its file's, and a diagnostic that named the declaration's
+	// own directive in those cases would point at a comment that is not there.
+	boundBy directive.Decl
+	// boundAt names which level that was.
+	boundAt scopeLevel
 	// dir holds the directives reaching the declaration. Its Ignores may be
 	// shared with sibling targets — a block's directive reaches every spec —
 	// so whether one silenced anything is tracked per physical directive in
@@ -130,6 +150,9 @@ type collection struct {
 	// ignores is every ignore directive in the package, keyed by where it is
 	// written, so that one shared by several declarations is judged once.
 	ignores map[token.Pos]*ignoreSite
+	// scopes is the same accounting for scope directives: one entry per
+	// physical comment, marked when something in its reach takes its scope.
+	scopes map[token.Pos]*scopeSite
 	// consumed is every comment group some declaration or file took its
 	// directives from; a directive outside them reached nothing.
 	consumed map[*ast.CommentGroup]bool
@@ -160,9 +183,10 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		refs:   make(map[types.Object][]ref),
 		idents: make(map[types.Object][]*ast.Ident),
 
-		ignores:  make(map[token.Pos]*ignoreSite),
+		ignores: make(map[token.Pos]*ignoreSite), scopes: make(map[token.Pos]*scopeSite),
 		consumed: make(map[*ast.CommentGroup]bool),
 	}
+	cores := make(map[string]bool)
 	for _, f := range pass.Files {
 		path := pass.Fset.Position(f.Pos()).Filename
 		if ast.IsGenerated(f) || opts.Excluded(path) {
@@ -181,13 +205,36 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 				fi.lineComments[line] = g
 			}
 		}
-		if fileDir.HasNamespace {
+		fi.scope = fileDir.Scope
+		if fileDir.Scope.HasScope {
+			c.scopeSite(fileDir.Scope).fileLevel = true
+		}
+		fi.core = fileDir.Core
+		switch {
+		case fileDir.Core:
+			// The core namespace has no name. Every core file shares it, which
+			// is what makes "unlabeled" name exactly one unit.
+			fi.ns = ""
+		case fileDir.HasNamespace:
 			fi.ns = fileDir.Namespace
-		} else {
+		default:
 			fi.ns = namespace.Of(path)
 		}
 		c.files = append(c.files, fi)
 		c.byFile[f] = fi
+		if fileDir.Core {
+			cores[namespace.Of(path)] = true
+		}
+	}
+	// A test file joins its subject's namespace, which is why a namespace is
+	// derived from the stem rather than being the file name. //declscope:core
+	// comes from a directive rather than from the stem, so the joining has to be
+	// done here: without it client_test.go could not reach what client.go
+	// declares, and the mechanical repair would be to widen the whole core.
+	for _, fi := range c.files {
+		if !fi.core && cores[namespace.Of(fi.path)] {
+			fi.core, fi.ns = true, ""
+		}
 	}
 	seen := make(map[string]bool)
 	for _, fi := range c.files {
@@ -227,25 +274,36 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 		if d.Name.Name == "init" {
 			return
 		}
+		sc, boundBy, boundAt := c.bind(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
 		c.add(&target{
 			obj: obj, ident: d.Name, kind: kindFunc, file: fi,
 			ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: d.Pos(),
-			scope:      opts.resolve(d.Name.Name, dir),
+			scope:      sc,
+			boundBy:    boundBy,
+			boundAt:    boundAt,
 			renameable: true,
 		})
 		return
 	}
 
-	ownerObj, ownerNS, ownerKey, ownerFile := c.receiver(pass, obj, fi)
+	// A method is an ordinary top-level declaration that happens to name a
+	// receiver: the file it is written in gives it its namespace, exactly as
+	// for a func, and its type reaches neither its scope nor its ignores. The
+	// receiver is still read, for the name a diagnostic prints.
+	ownerObj := c.receiver(pass, obj)
 	owner := ""
 	if ownerObj != nil {
 		owner = ownerObj.Name()
 	}
+	sc, boundBy, boundAt := c.bind(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
 	c.add(&target{
 		obj: obj, ident: d.Name, kind: kindMethod, file: fi,
-		owner: owner, ownerObj: ownerObj, ownerNS: ownerNS, ownerKey: ownerKey, ownerFile: ownerFile,
+		owner: owner, ownerObj: ownerObj,
+		ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi,
 		dir: dir, anchor: d.Pos(),
-		scope: opts.resolve(d.Name.Name, dir),
+		scope:   sc,
+		boundBy: boundBy,
+		boundAt: boundAt,
 	})
 }
 
@@ -274,14 +332,17 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 				anchor = spec.Pos()
 			}
 			if obj, ok := pass.TypesInfo.Defs[spec.Name]; ok && spec.Name.Name != "_" {
+				sc, boundBy, boundAt := c.bind(opts, spec.Name.Name, dir, directive.Decl{}, fi.scope)
 				c.add(&target{
 					obj: obj, ident: spec.Name, kind: kindType, file: fi,
 					ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: anchor,
-					scope:      opts.resolve(spec.Name.Name, dir),
+					scope:      sc,
+					boundBy:    boundBy,
+					boundAt:    boundAt,
 					renameable: true,
 				})
 			}
-			c.addFields(pass, opts, fi, spec, pass.TypesInfo.Defs[spec.Name])
+			c.addFields(pass, opts, fi, spec, pass.TypesInfo.Defs[spec.Name], dir)
 
 		case *ast.ValueSpec:
 			dir := outer.Merge(c.parseDecl(c.specGroups(pass, fi, spec)...))
@@ -298,10 +359,13 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 				if !ok || name.Name == "_" {
 					continue
 				}
+				sc, boundBy, boundAt := c.bind(opts, name.Name, dir, directive.Decl{}, fi.scope)
 				c.add(&target{
 					obj: obj, ident: name, kind: k, file: fi,
 					ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: anchor,
-					scope:      opts.resolve(name.Name, dir),
+					scope:      sc,
+					boundBy:    boundBy,
+					boundAt:    boundAt,
 					renameable: true,
 				})
 			}
@@ -309,10 +373,13 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 	}
 }
 
-// addFields registers the fields of a named struct type. The owning namespace
-// is the one declaring the type, so that a type shared across the package can
-// still keep its internals to itself.
-func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, spec *ast.TypeSpec, ownerObj types.Object) {
+// addFields registers the fields of a named struct type.
+//
+// A field is written inside its type's declaration, so the file it is in is the
+// type's: that is where it is, not a binding chosen for it. The type's directive
+// therefore contains the field the way a var (...) block contains its specs, and
+// is consulted before the file level.
+func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, spec *ast.TypeSpec, ownerObj types.Object, container directive.Decl) {
 	st, ok := spec.Type.(*ast.StructType)
 	if !ok || st.Fields == nil {
 		return
@@ -332,12 +399,15 @@ func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, 
 			if !ok || name.Name == "_" {
 				continue
 			}
+			sc, boundBy, boundAt := c.bind(opts, name.Name, dir, container, fi.scope)
 			c.add(&target{
 				obj: obj, ident: name, kind: kindField, file: fi,
 				owner: spec.Name.Name, ownerObj: ownerObj,
 				ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir,
-				anchor: field.Pos(),
-				scope:  opts.resolve(name.Name, dir),
+				anchor:  field.Pos(),
+				scope:   sc,
+				boundBy: boundBy,
+				boundAt: boundAt,
 			})
 		}
 	}
@@ -346,10 +416,10 @@ func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, 
 // receiver resolves the type a method belongs to and the file declaring that
 // type, along with that file's namespace. It falls back to the method's own
 // file when the type cannot be traced to one in the package.
-func (c *collection) receiver(pass *analysis.Pass, fn *types.Func, fallback *fileInfo) (owner types.Object, ownerNS, ownerKey string, ownerFile *fileInfo) {
+func (c *collection) receiver(_ *analysis.Pass, fn *types.Func) types.Object {
 	sig, ok := fn.Type().(*types.Signature)
 	if !ok || sig.Recv() == nil {
-		return nil, fallback.ns, fallback.key(), fallback
+		return nil
 	}
 	t := sig.Recv().Type()
 	if ptr, ok := types.Unalias(t).(*types.Pointer); ok {
@@ -357,19 +427,12 @@ func (c *collection) receiver(pass *analysis.Pass, fn *types.Func, fallback *fil
 	}
 	named, ok := types.Unalias(t).(*types.Named)
 	if !ok {
-		return nil, fallback.ns, fallback.key(), fallback
+		return nil
 	}
 	// A method on a generic type receives List[T], an instantiation of List
 	// with its own type parameters. Obj() already names the origin's type name,
 	// which is the object collectTargets registered.
-	owner = named.Obj()
-	pos := pass.Fset.Position(owner.Pos())
-	for _, fi := range c.files {
-		if fi.path == pos.Filename {
-			return owner, fi.ns, fi.key(), fi
-		}
-	}
-	return owner, fallback.ns, fallback.key(), fallback
+	return named.Obj()
 }
 
 // add registers a target and names it on every ignore directive reaching it,
@@ -381,6 +444,10 @@ func (c *collection) add(t *target) {
 	c.byObj[t.obj] = t
 	for _, ig := range t.dir.Ignores {
 		s := c.site(ig)
+		s.decls = append(s.decls, t.name())
+	}
+	if t.dir.HasScope {
+		s := c.scopeSite(t.dir)
 		s.decls = append(s.decls, t.name())
 	}
 }
@@ -454,4 +521,37 @@ func embeddedTypeName(obj types.Object) types.Object {
 		return t.Obj()
 	}
 	return nil
+}
+
+// fileAt finds the file a position falls in. A directive problem is not
+// attached to any declaration — a stray comment belongs to nothing — so the
+// file is the only level that can answer for it.
+func (c *collection) fileAt(pass *analysis.Pass, pos token.Pos) *fileInfo {
+	path := pass.Fset.Position(pos).Filename
+	for _, fi := range c.files {
+		if fi.path == path {
+			return fi
+		}
+	}
+	return nil
+}
+
+// silencesFile reports whether the file stands r down for everything it holds,
+// and marks the ignore that did it used.
+//
+// The marking is what keeps an ignore written for a directive problem from
+// being reported as unused itself: it silences a report that is not attached to
+// any declaration, so the per-target accounting never sees it work.
+func (c *collection) silencesFile(fi *fileInfo, r rule.Rule) bool {
+	if fi == nil {
+		return false
+	}
+	hit := false
+	for _, ig := range fi.ignores {
+		if ig.Covers(r) {
+			c.site(ig).used = true
+			hit = true
+		}
+	}
+	return hit
 }

@@ -3,17 +3,19 @@
 package internal
 
 import (
+	"go/ast"
 	"regexp"
 	"strings"
 
 	"github.com/mpyw/declscope/internal/baseline"
-	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
-// Mode says when a naming rule applies: always, never, or only once a package
-// has a second namespace. Both naming rules read one, so one settings block
-// spells the same idea one way.
+// Mode says when the label is required: always, never, or only once a package
+// has a second namespace. Only rules.qualify reads one. rules.unqualify is a
+// boolean, because qualify already answers *when* a label applies and all the
+// other direction decides is whether it is enforced too — where the label is
+// required, unqualify is inert by construction and has nothing to select.
 type Mode int
 
 const (
@@ -91,22 +93,27 @@ func (s ModeSet) String() string {
 
 // Options is the resolved configuration for a run.
 type Options struct {
-	// Exported is the scope of an exported identifier that carries no
-	// directive.
-	Exported scope.Scope
-	// Unexported is the scope of an unexported identifier carrying no
-	// directive.
+	// Unexported is the scope of a declaration that states none of its own and
+	// inherits none. There is no Exported counterpart: what is reachable from
+	// outside the package is not declscope's subject, and a key that claimed
+	// otherwise would promise an enforcement the analysis cannot perform.
 	Unexported scope.Scope
 
-	// Qualify says when an unexported package-level declaration must carry its
-	// namespace as a label.
+	// Qualify says when a package-level declaration must carry its namespace
+	// as a label.
 	Qualify Mode
 
 	// Unqualify is the mirror of Qualify: where the label is not required, it
 	// must not be present either. Together the two settle the spelling of
-	// every unexported package-level name, in both directions. It is inert
-	// wherever Qualify applies, so it holds Always or Never.
-	Unqualify Mode
+	// every package-level name the rules reach, in both directions.
+	Unqualify bool
+
+	// ExportedLabels widens both naming rules to exported declarations. Inside
+	// the package an exported name is read as bare as any other, so the package
+	// qualifier that explains an external use is absent exactly where the label
+	// is wanted. The violation is reported; the rename is never offered, since
+	// the uses outside the package cannot be seen.
+	ExportedLabels bool
 
 	// Exclude holds glob patterns matched against file paths.
 	Exclude []string
@@ -126,16 +133,14 @@ type Options struct {
 	excludeRE []*regexp.Regexp
 }
 
-// DefaultOptions mirrors the rules stated in the README: exported is public,
-// every other declaration is private to its namespace until a directive widens
-// it, and the namespace prefix is an ownership label, required once a package
-// has a second namespace, that grants nothing by itself.
+// DefaultOptions mirrors the rules stated in the README: every declaration in
+// the subject is private to its namespace until something widens it, and the
+// namespace prefix is an ownership label, required once a package has a second
+// namespace, that grants nothing by itself.
 func DefaultOptions() Options {
 	return Options{
-		Exported:   scope.Public,
 		Unexported: scope.Private,
 		Qualify:    OnDemand,
-		Unqualify:  Never,
 	}
 }
 
@@ -168,33 +173,13 @@ func (o Options) Excluded(path string) bool {
 	return false
 }
 
-// resolve determines the scope of a declaration, package-level or member
-// alike.
-//
-// The namespace prefix plays no part in this. Encoding reach in the name would
-// mean a prefix could not also be used simply to say which unit a declaration
-// belongs to, and a prefix added for legibility would silently widen it.
-// Reach is stated with a directive; the prefix only labels ownership.
-//
-// Members resolve the same way as everything else, so that defaults.exported
-// and defaults.unexported govern every declaration in a package rather than
-// half of them. What sets members apart is the boundary their scope is
-// measured against — the namespace of their type, not of their file — and
-// their exemption from the label rule, since a type already namespaces what
-// it owns. Neither is a matter of scope, so neither belongs here.
-func (o Options) resolve(name string, dir directive.Decl) scope.Scope {
-	if dir.HasScope {
-		return dir.Scope
-	}
-	if isExported(name) {
-		return o.Exported
-	}
-	return o.Unexported
-}
-
-func isExported(name string) bool {
-	return name != "" && name[0] >= 'A' && name[0] <= 'Z'
-}
+// isExported is Go's own rule, not an ASCII approximation of it. name[0] is the
+// first *byte*: for Äpfel that is 0xC3, so a byte-range test answers
+// "unexported" for a name Go exports — which gave the declaration
+// defaults.unexported instead of package scope, reported a boundary on
+// published API, and let -fix rename it with in-package edits only, breaking
+// every importer.
+func isExported(name string) bool { return ast.IsExported(name) }
 
 // compileGlob translates a path glob into a regexp. ** matches across
 // separators, * and ? do not.

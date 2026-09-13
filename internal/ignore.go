@@ -3,6 +3,7 @@
 package internal
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"slices"
@@ -29,6 +30,9 @@ type ignoreSite struct {
 	decls     []string
 	fileLevel bool
 	used      bool
+	// siblings are the ignores parsed from the same comment group, which is
+	// where a //declscope:ignore directive answering for this one is written.
+	siblings []directive.Ignore
 }
 
 // site returns the accounting entry for ig, keyed by where it is written.
@@ -62,7 +66,22 @@ func (c *collection) parseDecl(groups ...*ast.CommentGroup) directive.Decl {
 	}
 	d := directive.ParseDecl(fresh...)
 	for _, ig := range d.Ignores {
-		c.site(ig)
+		c.site(ig).siblings = d.Ignores
+	}
+	// A scope directive is registered here too, so that one written on something
+	// declscope does not check — init, _, an embedded field — is reported unused
+	// rather than dropped. Registering it only where a target is added would
+	// lose exactly the cases the report exists for.
+	if d.HasScope {
+		c.scopeSite(d)
+	}
+	// An ignore and a problem parsed from the same comment are the author
+	// answering their own directive: the ignore is consulted here, where the
+	// declaration that carries both is still in hand. A problem is attached to
+	// no declaration once it reaches the report, so the file level is the only
+	// one that could answer for it there.
+	if len(d.Problems) > 0 && c.ignored(d.Ignores, rule.Directive) {
+		return d
 	}
 	c.problems = append(c.problems, d.Problems...)
 	return d
@@ -159,8 +178,15 @@ func (c *collection) stray() {
 // levels do not make each other look unused.
 func (c *collection) silenced(t *target, r rule.Rule) bool {
 	hit := c.ignored(t.dir.Ignores, r)
-	if owner, ok := c.byObj[t.ownerObj]; ok && owner != t {
-		hit = c.ignored(owner.dir.Ignores, r) || hit
+	// A field is written inside its type's declaration, so the type's ignores
+	// contain it the way its scope directive does. A method is an ordinary
+	// top-level declaration and its type reaches neither: the suppression
+	// chain and the scope chain walk the same levels, so that a reader who
+	// learns one has learned both.
+	if t.kind == kindField {
+		if owner, ok := c.byObj[t.ownerObj]; ok && owner != t {
+			hit = c.ignored(owner.dir.Ignores, r) || hit
+		}
 	}
 	return c.ignored(t.file.ignores, r) || hit
 }
@@ -190,25 +216,46 @@ func (c *collection) ignored(ignores []directive.Ignore, r rule.Rule) bool {
 // unreported. Under -test (the default) the test variant runs and nothing is
 // lost; with -test=false, a package with in-package tests gets no
 // unused-ignore report at all, which is the only report that can be trusted.
+// namesDirective reports whether some ignore written beside this one names the
+// directive rule explicitly.
+//
+// A bare //declscope:ignore covers every rule, this report among them, so
+// reading it as an answer here would let one exempt itself from ever being
+// called unused — which is the one thing this report exists to prevent.
+func namesDirective(igs []directive.Ignore) bool {
+	for _, ig := range igs {
+		if slices.Contains(ig.Rules, rule.Directive) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *collection) reportUnusedIgnores(pass *analysis.Pass) {
 	if c.hasUnseenTests(pass) {
 		return
 	}
 	sites := make([]*ignoreSite, 0, len(c.ignores))
 	for _, s := range c.ignores {
-		if !s.used {
+		// An ignore written beside this one, on the same declaration, answers
+		// for it — the same way reportUnusedScopes consults the directive that
+		// carries the scope. Judging it only at the file level would leave the
+		// declaration-level remedy producing a second report instead of none.
+		if !s.used && !namesDirective(s.siblings) {
 			sites = append(sites, s)
 		}
 	}
 	slices.SortFunc(sites, func(a, b *ignoreSite) int { return comparePos(pass.Fset, a.ig.Pos, b.ig.Pos) })
 	for _, s := range sites {
+		var msg string
 		switch {
 		case s.fileLevel:
-			pass.Reportf(s.ig.Pos, "unused file-level %s", s.ig)
+			msg = fmt.Sprintf("unused file-level %s", s.ig)
 		case len(s.decls) == 0:
-			pass.Reportf(s.ig.Pos, "unused %s: no checked declaration carries it", s.ig)
+			msg = fmt.Sprintf("unused %s: no checked declaration carries it", s.ig)
 		default:
-			pass.Reportf(s.ig.Pos, "unused %s on %s", s.ig, strings.Join(s.decls, ", "))
+			msg = fmt.Sprintf("unused %s on %s", s.ig, strings.Join(s.decls, ", "))
 		}
+		c.problems = append(c.problems, directive.Problem{Pos: s.ig.Pos, Msg: msg})
 	}
 }

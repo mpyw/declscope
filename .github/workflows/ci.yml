@@ -60,6 +60,26 @@ jobs:
           version: v2.13.1
           args: --timeout=5m
 
+  spec:
+    name: Spec
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # The formal specs are documentation that cannot drift only if something
+      # re-runs them. fslc is the FSL verifier: https://github.com/ymm-oss/fsl
+      - name: Install fslc
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/ymm-oss/fsl/main/install.sh | bash -s -- --no-skill
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Five specs must be proved; two must stay violated, since they hold the
+      # counterexamples for designs that are unsound.
+      - name: Verify the specs
+        run: ./spec/verify.sh
+
   dogfood:
     name: Dogfood
     runs-on: ubuntu-latest

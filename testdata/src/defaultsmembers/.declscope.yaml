@@ -1,7 +1,7 @@
-# defaults must reach members as well as package-level declarations, so that
-# a defaults key governs every declaration in a package rather than half of
-# them.
+# defaults.unexported must reach members as well as package-level declarations,
+# so that a defaults key governs every declaration in a package rather than half
+# of them.
 defaults:
-  exported: private
+  unexported: package
 rules:
   qualify: never
