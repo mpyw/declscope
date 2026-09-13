@@ -14,29 +14,32 @@ spec BoundaryFix {
   state {
     configured: Bool, cfgUnexported: Scope,
     kind: Kind, exported: Bool, ownerExported: Bool,
-    declDir: Dir, typeDir: Dir, fileDir: Dir,
+    declDir: Dir, blockDir: Dir, typeDir: Dir, fileDir: Dir,
     refs: Refs, fixed: Bool
   }
   init {
     configured = false  cfgUnexported = Private
     kind = Pkg  exported = false  ownerExported = false
-    declDir = NoDir  typeDir = NoDir  fileDir = NoDir
+    declDir = NoDir  blockDir = NoDir  typeDir = NoDir  fileDir = NoDir
     refs = NoRefs  fixed = false
   }
   action configure(u: Scope, k: Kind, x: Bool, ox: Bool,
-                   dd: Dir, td: Dir, fd: Dir, r: Refs) {
+                   dd: Dir, bd: Dir, td: Dir, fd: Dir, r: Refs) {
     requires not configured
     configured = true  cfgUnexported = u
     kind = k  exported = x  ownerExported = ox
-    declDir = dd  typeDir = td  fileDir = fd
+    declDir = dd  blockDir = bd  typeDir = td  fileDir = fd
     refs = r
   }
   def reachableOutside() = exported and (kind == Pkg or ownerExported)
   def subject() = not reachableOutside()
   def contained() = if kind == Field then typeDir else NoDir
+  def blockOf() = if kind == Pkg then blockDir else NoDir
   def effScope() =
     if declDir == DirPackage then Package
     else if declDir == DirPrivate then Private
+    else if blockOf() == DirPackage then Package
+    else if blockOf() == DirPrivate then Private
     else if contained() == DirPackage then Package
     else if contained() == DirPrivate then Private
     else if fileDir == DirPackage then Package
@@ -68,6 +71,26 @@ spec BoundaryFix {
     configured and fixed and kind == Field
     and typeDir == DirPrivate and fileDir == DirPrivate
   }
+  // The exportedness dimension has to do work here too: without these the whole
+  // subject test could be replaced by `false` and this spec would not notice.
+  reachable ExportedNeverFixed {
+    configured and exported and kind == Pkg and declDir == DirPrivate
+    and refs == CrossNs and not fixed and not boundaryFires()
+  }
+  reachable UnexportedOwnerStillFixed {
+    configured and fixed and kind == Field and exported and not ownerExported
+  }
+  // A declaration that states its own scope presents the fix with the one case
+  // it must refuse. Without a witness, FixNeverClobbersDirective is only ever
+  // checked against states where the guard was never tested.
+  reachable FixWithheldOverOwnDirective {
+    configured and boundaryFires() and declDir == DirPrivate and not fixed
+  }
+  // defaults.unexported must reach this spec too, not only knobs.
+  reachable FixUnderPackageDefault {
+    configured and fixed and cfgUnexported == Package and fileDir == DirPrivate
+  }
+
   leadsTo BoundaryEventuallyFixed {
     configured and boundaryFires() and declDir == NoDir ~> not boundaryFires()
   }

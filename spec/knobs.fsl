@@ -24,21 +24,27 @@ spec Knobs {
   state {
     configured: Bool, cfgUnexported: Scope,
     kind: Kind, exported: Bool, ownerExported: Bool,
-    declDir: Dir, typeDir: Dir, fileDir: Dir,
-    refs: Refs
+    declDir: Dir, blockDir: Dir, typeDir: Dir, fileDir: Dir,
+    refs: Refs,
+    // reported records that the boundary check fired. Without it every
+    // invariant here would be a tautology over the defs: a spec whose only
+    // action assigns the whole state at once cannot say anything about
+    // reachability. Recording the report makes the guards that produce it
+    // load-bearing, which is what an invariant is for.
+    reported: Bool
   }
   init {
     configured = false  cfgUnexported = Private
     kind = Pkg  exported = false  ownerExported = false
-    declDir = NoDir  typeDir = NoDir  fileDir = NoDir
-    refs = NoRefs
+    declDir = NoDir  blockDir = NoDir  typeDir = NoDir  fileDir = NoDir
+    refs = NoRefs  reported = false
   }
   action configure(u: Scope, k: Kind, x: Bool, ox: Bool,
-                   dd: Dir, td: Dir, fd: Dir, r: Refs) {
+                   dd: Dir, bd: Dir, td: Dir, fd: Dir, r: Refs) {
     requires not configured
     configured = true  cfgUnexported = u
     kind = k  exported = x  ownerExported = ox
-    declDir = dd  typeDir = td  fileDir = fd
+    declDir = dd  blockDir = bd  typeDir = td  fileDir = fd
     refs = r
   }
 
@@ -49,9 +55,17 @@ spec Knobs {
   // The type's directive contains its fields, and nothing else.
   def contained() = if kind == Field then typeDir else NoDir
 
+  // A parenthesized var/const/type block reaches only the specs it holds, so
+  // only a package-level declaration has one: a field is not a spec of a block,
+  // and a method is never in one. Decl.Merge lets a spec's own scope replace the
+  // block's, which puts the block directly under the declaration.
+  def blockOf() = if kind == Pkg then blockDir else NoDir
+
   def effScope() =
     if declDir == DirPackage then Package
     else if declDir == DirPrivate then Private
+    else if blockOf() == DirPackage then Package
+    else if blockOf() == DirPrivate then Private
     else if contained() == DirPackage then Package
     else if contained() == DirPrivate then Private
     else if fileDir == DirPackage then Package
@@ -60,32 +74,49 @@ spec Knobs {
 
   def boundaryFires() = subject() and effScope() == Private and refs == CrossNs
 
+  // The three guards internal/report.go applies before a boundary is reported:
+  // the subject test, the scope test, and a reference from another namespace.
+  // Each invariant below fails if its guard is dropped.
+  action reportBoundary() {
+    requires configured
+    requires subject()
+    requires effScope() == Private
+    requires refs == CrossNs
+    reported = true
+  }
+  invariant ReportImpliesConfigured    { reported => configured }
+  invariant ReachableOutsideNeverFires { reported => not reachableOutside() }
+  invariant SameNamespaceNeverCrosses  { reported => refs != SameNs }
+  invariant NoRefsNeverCrosses         { reported => refs != NoRefs }
+  invariant PackageScopeNeverFires     { reported => effScope() == Private }
+  reachable BoundaryReported { reported }
+
   // --- defaults.unexported bites, per kind, in both directions ---------------
   // The kind is pinned in each: a semantics that resolved one kind differently
   // would still satisfy a reachable that left it free.
   reachable ConfigBitesOnPkg {
     configured and kind == Pkg and cfgUnexported == Private
-    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and not exported and refs == CrossNs and boundaryFires()
   }
   reachable ConfigBitesOnField {
     configured and kind == Field and cfgUnexported == Private
-    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and not exported and refs == CrossNs and boundaryFires()
   }
   reachable ConfigBitesOnMethod {
     configured and kind == Method and cfgUnexported == Private
-    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and not exported and refs == CrossNs and boundaryFires()
   }
   reachable ConfigSilencesPkg {
     configured and kind == Pkg and cfgUnexported == Package
-    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and not exported and refs == CrossNs and not boundaryFires()
   }
   reachable ConfigSilencesField {
     configured and kind == Field and cfgUnexported == Package
-    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and not exported and refs == CrossNs and not boundaryFires()
   }
 
@@ -112,14 +143,35 @@ spec Knobs {
   // --- the type's directive reaches fields and nothing else -----------------
   // Behavioural, not a restatement: the declaration still fires, so a semantics
   // that let the type's directive through would be caught here.
+  reachable DeclDirBeatsBlockDir {
+    configured and kind == Pkg and declDir == DirPrivate and blockDir == DirPackage
+    and not exported and refs == CrossNs and boundaryFires()
+  }
+  reachable BlockDirBeatsFileDir {
+    configured and kind == Pkg and declDir == NoDir
+    and blockDir == DirPackage and fileDir == DirPrivate
+    and not exported and refs == CrossNs and not boundaryFires()
+  }
+  reachable BlockDirInertOnField {
+    configured and kind == Field and blockDir == DirPackage
+    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
+    and cfgUnexported == Private and not exported
+    and refs == CrossNs and boundaryFires()
+  }
+  reachable BlockDirInertOnMethod {
+    configured and kind == Method and blockDir == DirPackage
+    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
+    and cfgUnexported == Private and not exported
+    and refs == CrossNs and boundaryFires()
+  }
   reachable TypeDirInertOnPkg {
     configured and kind == Pkg and typeDir == DirPackage
-    and declDir == NoDir and fileDir == NoDir and cfgUnexported == Private
+    and declDir == NoDir and blockDir == NoDir and fileDir == NoDir and cfgUnexported == Private
     and not exported and refs == CrossNs and boundaryFires()
   }
   reachable TypeDirInertOnMethod {
     configured and kind == Method and typeDir == DirPackage
-    and declDir == NoDir and fileDir == NoDir and cfgUnexported == Private
+    and declDir == NoDir and blockDir == NoDir and fileDir == NoDir and cfgUnexported == Private
     and not exported and refs == CrossNs and boundaryFires()
   }
 
@@ -132,15 +184,26 @@ spec Knobs {
   // ... but an exported member of an UNEXPORTED type stays in the subject.
   reachable UnexportedOwnerKeepsExportedField {
     configured and kind == Field and exported and not ownerExported
-    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and cfgUnexported == Private and refs == CrossNs and boundaryFires()
   }
   reachable ExportedFieldOfExportedTypeIsSilent {
     configured and kind == Field and exported and ownerExported
-    and cfgUnexported == Private and refs == CrossNs and not boundaryFires()
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
+    and fileDir == NoDir and cfgUnexported == Private
+    and refs == CrossNs and not boundaryFires()
+  }
+  reachable ExportedMethodOfExportedTypeIsSilent {
+    configured and kind == Method and exported and ownerExported
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
+    and fileDir == NoDir and cfgUnexported == Private
+    and refs == CrossNs and not boundaryFires()
+  }
+  reachable UnexportedOwnerKeepsExportedMethod {
+    configured and kind == Method and exported and not ownerExported
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
+    and fileDir == NoDir and cfgUnexported == Private
+    and refs == CrossNs and boundaryFires()
   }
 
-  invariant ReachableOutsideNeverFires { reachableOutside() => not boundaryFires() }
-  invariant SameNamespaceNeverCrosses  { refs == SameNs => not boundaryFires() }
-  invariant NoRefsNeverCrosses         { refs == NoRefs => not boundaryFires() }
 }

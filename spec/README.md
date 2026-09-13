@@ -25,7 +25,10 @@ the binary.
 | `knobs.fsl` | A declaration reachable from outside the package never carries a boundary, while an exported member of an *unexported* type does | As above |
 | `knobs.fsl` | A reference from inside the namespace never crosses a boundary | As above |
 | `directive_effect.fsl` | A scope directive is used when anything in its reach binds to it, and reported when nothing does | Every combination of target presence and subjecthood, and two enclosed declarations by subjecthood and shadowing |
-| `rename_sound.fsl` | **Fails** — models a guard that checks package scope only, and enumerates what a sound guard must check beyond it | Every binding environment at the reference site |
+| `knobs.fsl` | A boundary is reported only for a subject, only for a private scope, and only across a namespace — each guard witnessed by an invariant its removal breaks | As above |
+| `label_rules.fsl` | A fix is eventually applied wherever one is offered, which is what the `fair` on the fix actions claims | As above, plus whether a rename is offered at all |
+| `rename_guarded.fsl` | The guard `renameSafe` applies — every scope Go resolves through — makes the rename sound, and dropping any one of the four checks breaks it | Every binding environment at the reference site |
+| `rename_sound.fsl` | **Fails** — models a guard that checks package scope only, and enumerates what a sound guard must check beyond it | As above |
 | `rename_siblings.fsl` | **Fails** — models fixes that check their target against the pre-fix names only, and shows two of them converging on one name | Every pair of rename targets |
 
 ## The two that fail
@@ -69,31 +72,36 @@ step and needs gigabytes for the same claims these prove in single-digit
 megabytes.
 
 ```console
-./spec/verify.sh     # what CI runs: four proved, two violated
+./spec/verify.sh     # what CI runs: five proved, two violated
 ```
 
 Or one at a time:
 
 ```console
 fslc check  label_rules.fsl
-fslc verify label_rules.fsl      --depth 3
-fslc verify boundary_fix.fsl     --depth 3
-fslc verify knobs.fsl            --depth 2
-fslc verify directive_effect.fsl --depth 2
+fslc verify label_rules.fsl      --depth 5
+fslc verify boundary_fix.fsl     --depth 4
+fslc verify knobs.fsl            --depth 4
+fslc verify directive_effect.fsl --depth 4
+fslc verify rename_guarded.fsl   --depth 4
 fslc verify rename_sound.fsl     --depth 2   # expected: violated
 fslc verify rename_siblings.fsl  --depth 3   # expected: violated
 ```
 
-Every spec configures once, so each reachable is witnessed at step 1 and the
-deadlock warning that follows is the shape of the model, not a failure. The four
-that pass are also `proved` under `--engine induction`, which is what
-`verify.sh` and CI assert — bounded verification alone would let an invariant be
-true to a depth without being inductive.
+`knobs.fsl` and `directive_effect.fsl` configure once and then have only the
+actions that record a report, so their reachables are witnessed at step 1 or 2;
+the others add a fix action and witness at step 2. The deadlock warning a bounded
+run prints is the shape of the model, not a failure, and `rename_guarded.fsl`
+also reports a vacuous antecedent — which is the guard working, and is stated as
+`NothingResolvedNewName` rather than left as a warning.
 
-Every spec here configures once and stops, so `configure` is the only action and
-each reachable is witnessed at step 1; the deadlock warning that follows is the
-shape of the model, not a failure. All five of the passing specs are also `proved`
-under `fslc verify <file> --engine induction`.
+The five that pass are `proved` under `--engine induction`, which is what
+`verify.sh` and CI assert. Bounded verification alone would let an invariant be
+true to a depth without being inductive, and reading the exit code alone would
+let a spec that stopped parsing pass as "violated, as intended" — `fslc` exits
+non-zero for a parse error too. `verify.sh` reads the JSON verdict, pins each
+failing spec to the invariant it must break, and checks that `knobs.fsl` and
+`boundary_fix.fsl` still share one scope model.
 
 ## Negative controls
 
@@ -104,17 +112,32 @@ is a semantics that contradicts the documented one; each was run:
 | Wrong design | Result |
 | --- | --- |
 | The containing type's directive reaches every kind, not only fields | `reachable_failed` |
-| An exported declaration carries a boundary | `violated` |
+| A `var`/`const`/`type` block's directive reaches every kind | `reachable_failed` |
+| The block level is dropped | `reachable_failed` |
 | A member's exportedness ignores its owner type | `reachable_failed` |
 | The file level outranks the declaration's own directive | `reachable_failed` |
+| The subject test is dropped before a boundary is reported | `violated` |
+| A boundary is reported without a cross-namespace reference | `violated` |
+| A boundary is reported for a scope that is not private | `violated` |
 | `rules.exportedLabels` is ignored and exported names are always named | `reachable_failed` |
+| `rules.exportedLabels` also gates on the namespace count | `reachable_failed` |
 | The naming rules reach members | `reachable_failed` |
 | The core namespace is named like any other | `reachable_failed` |
+| A label fix does not record itself | `reachable_failed` |
+| A fix is applied to an exported declaration | `violated` |
+| `fair` is dropped from a fix action | `violated` (`leadsTo`) |
 | A fix is offered where no violation exists, or over the author's own directive | `violated` |
 | A scope directive stops at the first thing in its reach | `reachable_failed` |
 | A scope directive ignores a nearer directive that shadows it | `violated` |
+| Any one of the four scope checks in `renameSafe` is dropped | `violated` |
 
-Two habits keep those controls sharp. **Pin every other reason.** A reachable
+Three habits keep those controls sharp. **Record the report.** A spec whose only
+action assigns the whole state at once cannot carry an invariant that any state
+could break: every property over the resulting `def`s is a tautology, and
+`--engine induction` buys nothing over `check`. Recording what the code *does* —
+`reported`, `bound`, `fixed`, `lastFix` — puts the guards that produce it under
+the invariant, which is where a guard has to be for its deletion to be noticed.
+**Pin every other reason.** A reachable
 named for one distinction must fix the variables that could satisfy it for
 another reason — `ExportedSilentByDefault` pins the kind, the namespace, the core
 flag, the mode and the label, so exportedness is the only thing left doing the

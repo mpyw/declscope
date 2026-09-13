@@ -22,6 +22,8 @@ spec DirectiveEffect {
     // the declaration the directive is written on, if any (a file-level
     // directive has none)
     hasTarget: Bool, targetSubject: Bool,
+    // bound records that some level took its scope from the directive.
+    bound: Bool,
     // two declarations within its reach: in the subject, and whether a nearer
     // directive of their own shadows this one
     aSubject: Bool, aShadowed: Bool,
@@ -29,7 +31,7 @@ spec DirectiveEffect {
   }
   init {
     configured = false
-    hasTarget = false  targetSubject = false
+    hasTarget = false  targetSubject = false  bound = false
     aSubject = false  aShadowed = false
     bSubject = false  bShadowed = false
   }
@@ -41,38 +43,53 @@ spec DirectiveEffect {
     bSubject = bs   bShadowed = bsh
   }
 
-  def bindsTarget() = hasTarget and targetSubject
-  def bindsA()      = aSubject and not aShadowed
-  def bindsB()      = bSubject and not bShadowed
-  def used()        = bindsTarget() or bindsA() or bindsB()
-  def reported()    = configured and not used()
-
-  // Nothing in the subject anywhere in the reach: never used.
-  invariant NoSubjectNeverUsed {
-    not (hasTarget and targetSubject) and not aSubject and not bSubject => not used()
+  // One action per level, mirroring the guards collection.bind applies. Written
+  // as a def over the whole state instead, every invariant below would be a
+  // tautology: a spec whose only action assigns the state at once can say
+  // nothing about reachability, only restate its own definitions.
+  action bindTarget() {
+    requires configured  requires hasTarget  requires targetSubject
+    bound = true
   }
-  // Every enclosed subject shadowed and no bindable target: never used.
+  action bindA() {
+    requires configured  requires aSubject  requires not aShadowed
+    bound = true
+  }
+  action bindB() {
+    requires configured  requires bSubject  requires not bShadowed
+    bound = true
+  }
+  def used()     = bound
+  def reported() = configured and not bound
+
+  invariant BoundImpliesConfigured { bound => configured }
+  // Nothing in the subject anywhere in the reach: never bound.
+  invariant NoSubjectNeverUsed {
+    bound => (hasTarget and targetSubject) or aSubject or bSubject
+  }
+  // Every enclosed subject shadowed and no bindable target: never bound.
   invariant AllShadowedNeverUsed {
-    not (hasTarget and targetSubject) and aShadowed and bShadowed => not used()
+    bound => (hasTarget and targetSubject)
+             or (aSubject and not aShadowed) or (bSubject and not bShadowed)
   }
 
   // The directive binds the declaration it sits on.
   reachable UsedViaTarget {
     configured and hasTarget and targetSubject
-    and not aSubject and not bSubject and used()
+    and not aSubject and not bSubject and bound
   }
   // The carve-out: an exported type is not itself a subject, but its unexported
   // field is, and that is what keeps the directive alive.
   reachable UsedViaEnclosedOnly {
     configured and hasTarget and not targetSubject
-    and aSubject and not aShadowed and used()
+    and aSubject and not aShadowed and bound
   }
   // The disjunction: the first enclosed declaration is shadowed, the second is
   // what the directive binds. A model with one enclosed declaration would miss
   // this and would accept a structural test that stopped at the first.
   reachable UsedViaSecondOnly {
     configured and not hasTarget
-    and aSubject and aShadowed and bSubject and not bShadowed and used()
+    and aSubject and aShadowed and bSubject and not bShadowed and bound
   }
   // An exported leaf: a directive on an exported func, with nothing beneath it.
   reachable UnusedOnExportedLeaf {
