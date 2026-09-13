@@ -62,7 +62,7 @@ func (c *collection) renameSafe(pass *analysis.Pass, t *target, newName string) 
 	// declscope can ever see the whole of an exported name's uses — and
 	// finishing it by hand is an API change, which is the author's call.
 	// The violation is reported either way; only the fix is withheld.
-	if isExportedName(t.obj.Name()) {
+	if isExported(t.obj.Name()) {
 		return false
 	}
 	// Renaming into a name the package already uses would not compile.
@@ -247,10 +247,4 @@ func (c *collection) hasUnseenTests(pass *analysis.Pass) bool {
 		}
 	}
 	return false
-}
-
-// isExportedName reports whether a name is exported. It is spelled here rather
-// than taken from ast so that rename.go states its own guard.
-func isExportedName(name string) bool {
-	return name != "" && name[0] >= 'A' && name[0] <= 'Z'
 }

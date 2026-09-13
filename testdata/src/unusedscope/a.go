@@ -17,10 +17,10 @@ type Box struct{ Name string }
 //declscope:package
 type Entry struct{ key string }
 
-// Restating the scope already in force is NOT reported. The test is structural,
-// not semantic: asking whether the scope differs would make recording a
-// deliberate private an error, and would turn one line of .declscope.yaml into
-// a diagnostic on every directive in the tree.
+// Restating the scope already in force is NOT reported. The test is quantified
+// over configurations rather than read off the current one: defaults.unexported
+// may be either scope, so nothing about this could have gone another way only
+// because of how the file is set today.
 //
 //declscope:private
 func restates() int { return 2 }

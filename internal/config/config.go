@@ -6,12 +6,12 @@
 // module following suit.
 //
 //	defaults:
-//	  exported: public     # public | package | private
+
 //	  unexported: private
 //
 //	rules:
 //	  qualify: ondemand    # always | never | ondemand (only once a package has two namespaces)
-//	  unqualify: never     # always | never: where the label is not required, forbid it
+//	  unqualify: false     # true | false: where the label is not required, forbid it
 //
 // Both rules read an internal.Mode. rules.qualify accepts always, never and
 // ondemand; rules.unqualify accepts always and never.
@@ -279,7 +279,7 @@ func (f *File) Apply(opts *internal.Options) error {
 		return fmt.Errorf("defaults.exported was removed: an exported declaration has no scope, " +
 			"since what is reachable from outside the package is not checked. " +
 			"To bring an exported struct's internals back under a boundary, leave its fields unexported, " +
-			"or make the type unexported")
+			"or write //declscope:private on the type")
 	}
 	if f.Defaults.Unexported != "" {
 		s, ok := scope.Parse(f.Defaults.Unexported)

@@ -18,14 +18,15 @@ the binary.
 | `label_rules.fsl` | No rename is ever applied to an exported declaration | As above |
 | `label_rules.fsl` | Each naming key bites in both directions, and each silence is witnessed with every other reason for silence pinned | As above |
 | `label_rules.fsl` | The core namespace is outside both rules, whatever is configured | As above |
-| `boundary_fix.fsl` | Inserting `//declscope:package` always removes the boundary crossing, over a `private` inherited from the containing type or the file | Every combination of `defaults.unexported`, kind, exportedness, owner exportedness, reference shape, and the declaration, type and file directives |
+| `boundary_fix.fsl` | Inserting `//declscope:package` always removes the boundary crossing, and is withheld wherever any level already stated a scope | Every combination of `defaults.unexported`, kind, exportedness, reference shape, and the declaration, block, type and file directives |
 | `boundary_fix.fsl` | The fix is offered only where a crossing exists, and never overwrites the declaration's own directive | As above |
 | `knobs.fsl` | `defaults.unexported` and every directive level demonstrably change an outcome, for each kind of declaration | As above |
 | `knobs.fsl` | The containing type's directive reaches fields and nothing else — witnessed by a package-level declaration and a method that still fire | As above |
-| `knobs.fsl` | A declaration reachable from outside the package never carries a boundary, while an exported member of an *unexported* type does | As above |
+| `knobs.fsl` | An exported declaration carries no boundary by default, for every kind | As above |
+| `knobs.fsl` | A directive narrows an exported declaration anyway, including a type's directive reaching an exported field | As above |
 | `knobs.fsl` | A reference from inside the namespace never crosses a boundary | As above |
 | `directive_effect.fsl` | A scope directive is used when anything in its reach binds to it, and reported when nothing does | Every combination of target presence and subjecthood, and two enclosed declarations by subjecthood and shadowing |
-| `knobs.fsl` | A boundary is reported only for a subject, only for a private scope, and only across a namespace — each guard witnessed by an invariant its removal breaks | As above |
+| `knobs.fsl` | A boundary is reported only for a private scope and only across a namespace, and on an exported declaration only where a directive narrowed it — each guard witnessed by an invariant its removal breaks | As above |
 | `label_rules.fsl` | A fix is eventually applied wherever one is offered, which is what the `fair` on the fix actions claims | As above, plus whether a rename is offered at all |
 | `rename_guarded.fsl` | The guard `renameSafe` applies — every scope Go resolves through — makes the rename sound, and dropping any one of the four checks breaks it | Every binding environment at the reference site |
 | `rename_sound.fsl` | **Fails** — models a guard that checks package scope only, and enumerates what a sound guard must check beyond it | As above |
@@ -114,9 +115,8 @@ is a semantics that contradicts the documented one; each was run:
 | The containing type's directive reaches every kind, not only fields | `reachable_failed` |
 | A `var`/`const`/`type` block's directive reaches every kind | `reachable_failed` |
 | The block level is dropped | `reachable_failed` |
-| A member's exportedness ignores its owner type | `reachable_failed` |
 | The file level outranks the declaration's own directive | `reachable_failed` |
-| The subject test is dropped before a boundary is reported | `violated` |
+| Exportedness is an exemption rather than a default, so a directive cannot narrow an exported declaration | `reachable_failed` |
 | A boundary is reported without a cross-namespace reference | `violated` |
 | A boundary is reported for a scope that is not private | `violated` |
 | `rules.exportedLabels` is ignored and exported names are always named | `reachable_failed` |

@@ -1,8 +1,8 @@
 package members
 
 type User struct {
-	// ID is exported, and so is User, so it is reachable from outside the package
-	// and carries no boundary.
+	// ID is exported, so it resolves to package and carries no boundary. The
+	// owner plays no part.
 	ID int
 	// name is unexported, so it is bounded by the namespace declaring User.
 	name string // want `field User.name is private to namespace "user", but is used from namespace "order"`
@@ -14,7 +14,7 @@ func (u *User) normalize() { // want `method User.normalize is private to namesp
 	u.note = u.name
 }
 
-// Name is exported, and so is User, so it carries no boundary either.
+// Name is exported, so it carries no boundary either.
 func (u *User) Name() string { return u.name }
 
 //declscope:package

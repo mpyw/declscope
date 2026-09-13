@@ -109,6 +109,8 @@ type target struct {
 	// declaration takes its file's, and a diagnostic that named the declaration's
 	// own directive in those cases would point at a comment that is not there.
 	boundBy directive.Decl
+	// boundAt names which level that was.
+	boundAt scopeLevel
 	// dir holds the directives reaching the declaration. Its Ignores may be
 	// shared with sibling targets — a block's directive reaches every spec —
 	// so whether one silenced anything is tracked per physical directive in
@@ -272,12 +274,13 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 		if d.Name.Name == "init" {
 			return
 		}
-		sc, boundBy := c.bind(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
+		sc, boundBy, boundAt := c.bind(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
 		c.add(&target{
 			obj: obj, ident: d.Name, kind: kindFunc, file: fi,
 			ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: d.Pos(),
 			scope:      sc,
 			boundBy:    boundBy,
+			boundAt:    boundAt,
 			renameable: true,
 		})
 		return
@@ -286,14 +289,13 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 	// A method is an ordinary top-level declaration that happens to name a
 	// receiver: the file it is written in gives it its namespace, exactly as
 	// for a func, and its type reaches neither its scope nor its ignores. The
-	// receiver is still read, for the name a diagnostic prints and because an
-	// exported method of an unexported type is reachable from nobody.
+	// receiver is still read, for the name a diagnostic prints.
 	ownerObj := c.receiver(pass, obj)
 	owner := ""
 	if ownerObj != nil {
 		owner = ownerObj.Name()
 	}
-	sc, boundBy := c.bind(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
+	sc, boundBy, boundAt := c.bind(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
 	c.add(&target{
 		obj: obj, ident: d.Name, kind: kindMethod, file: fi,
 		owner: owner, ownerObj: ownerObj,
@@ -301,6 +303,7 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 		dir: dir, anchor: d.Pos(),
 		scope:   sc,
 		boundBy: boundBy,
+		boundAt: boundAt,
 	})
 }
 
@@ -329,12 +332,13 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 				anchor = spec.Pos()
 			}
 			if obj, ok := pass.TypesInfo.Defs[spec.Name]; ok && spec.Name.Name != "_" {
-				sc, boundBy := c.bind(opts, spec.Name.Name, dir, directive.Decl{}, fi.scope)
+				sc, boundBy, boundAt := c.bind(opts, spec.Name.Name, dir, directive.Decl{}, fi.scope)
 				c.add(&target{
 					obj: obj, ident: spec.Name, kind: kindType, file: fi,
 					ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: anchor,
 					scope:      sc,
 					boundBy:    boundBy,
+					boundAt:    boundAt,
 					renameable: true,
 				})
 			}
@@ -355,12 +359,13 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 				if !ok || name.Name == "_" {
 					continue
 				}
-				sc, boundBy := c.bind(opts, name.Name, dir, directive.Decl{}, fi.scope)
+				sc, boundBy, boundAt := c.bind(opts, name.Name, dir, directive.Decl{}, fi.scope)
 				c.add(&target{
 					obj: obj, ident: name, kind: k, file: fi,
 					ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: anchor,
 					scope:      sc,
 					boundBy:    boundBy,
+					boundAt:    boundAt,
 					renameable: true,
 				})
 			}
@@ -394,7 +399,7 @@ func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, 
 			if !ok || name.Name == "_" {
 				continue
 			}
-			sc, boundBy := c.bind(opts, name.Name, dir, container, fi.scope)
+			sc, boundBy, boundAt := c.bind(opts, name.Name, dir, container, fi.scope)
 			c.add(&target{
 				obj: obj, ident: name, kind: kindField, file: fi,
 				owner: spec.Name.Name, ownerObj: ownerObj,
@@ -402,6 +407,7 @@ func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, 
 				anchor:  field.Pos(),
 				scope:   sc,
 				boundBy: boundBy,
+				boundAt: boundAt,
 			})
 		}
 	}

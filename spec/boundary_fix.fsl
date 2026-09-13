@@ -52,8 +52,19 @@ spec BoundaryFix {
     else defaultScope()
   def boundaryFires() = effScope() == Private and refs == CrossNs
 
+  // Whichever level stated the scope, if any. The fix is withheld for all of
+  // them, not only for the declaration's own: inserting a directive under an
+  // outer one leaves that one binding a declaration fewer, which can make it
+  // unused — a diagnostic that did not exist before the fix ran, which is what
+  // -fix must never produce.
+  def stated() =
+    if declDir != NoDir then declDir
+    else if blockOf() != NoDir then blockOf()
+    else if contained() != NoDir then contained()
+    else fileDir
+
   fair action fixBoundary() {
-    requires configured  requires boundaryFires()  requires declDir == NoDir
+    requires configured  requires boundaryFires()  requires stated() == NoDir
     declDir = DirPackage  fixed = true
   }
 
@@ -66,26 +77,30 @@ spec BoundaryFix {
   // The guards are load-bearing: without these a spurious fix, or one that
   // overwrites the author's own directive, would go unnoticed.
   trans FixOnlyWhereNeeded        { not old(fixed) and fixed => old(boundaryFires()) }
-  trans FixNeverClobbersDirective { not old(fixed) and fixed => old(declDir) == NoDir }
+  trans FixNeverClobbersDirective { not old(fixed) and fixed => old(stated()) == NoDir }
 
   reachable BoundaryCanFire { configured and boundaryFires() }
-  // The fix settles even when the containing type and the file both say private.
-  // Pinned to a field: with any other kind the type's directive is inert and the
-  // claim would be witnessed by decoration.
-  reachable FixOverridesTypeAndFile {
-    configured and fixed and kind == Field
-    and typeDir == DirPrivate and fileDir == DirPrivate
+  // A scope stated at any level withholds the fix, so the reachables below pin
+  // the withholding rather than an override.
+  reachable FixWithheldUnderTypeDirective {
+    configured and kind == Field and typeDir == DirPrivate
+    and declDir == NoDir and boundaryFires() and not fixed
   }
-  // The exportedness dimension has to do work here too: without these the whole
-  // subject test could be replaced by `false` and this spec would not notice.
+  reachable FixWithheldUnderFileDirective {
+    configured and kind == Pkg and fileDir == DirPrivate
+    and declDir == NoDir and boundaryFires() and not fixed
+  }
+  // The exportedness dimension has to do work here too: without these the
+  // default could ignore exportedness and this spec would not notice.
   // An exported declaration narrowed by its own directive does cross, and the
   // fix is withheld because the directive is the author's.
   reachable ExportedNarrowedNeverFixed {
     configured and exported and kind == Pkg and declDir == DirPrivate
     and refs == CrossNs and boundaryFires() and not fixed
   }
-  reachable ExportedFieldFixedUnderTypeDirective {
-    configured and fixed and kind == Field and exported and typeDir == DirPrivate
+  reachable ExportedFieldWithheldUnderTypeDirective {
+    configured and kind == Field and exported and typeDir == DirPrivate
+    and declDir == NoDir and boundaryFires() and not fixed
   }
   // A declaration that states its own scope presents the fix with the one case
   // it must refuse. Without a witness, FixNeverClobbersDirective is only ever
@@ -93,12 +108,14 @@ spec BoundaryFix {
   reachable FixWithheldOverOwnDirective {
     configured and boundaryFires() and declDir == DirPrivate and not fixed
   }
-  // defaults.unexported must reach this spec too, not only knobs.
-  reachable FixUnderPackageDefault {
-    configured and fixed and cfgUnexported == Package and fileDir == DirPrivate
+  // defaults.unexported must reach this spec too, not only knobs: under a
+  // package default there is no crossing to fix in the first place.
+  reachable PackageDefaultLeavesNothingToFix {
+    configured and cfgUnexported == Package and stated() == NoDir
+    and not exported and refs == CrossNs and not boundaryFires()
   }
 
   leadsTo BoundaryEventuallyFixed {
-    configured and boundaryFires() and declDir == NoDir ~> not boundaryFires()
+    configured and boundaryFires() and stated() == NoDir ~> not boundaryFires()
   }
 }

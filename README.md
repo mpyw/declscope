@@ -5,7 +5,7 @@
 
 Keep your Go packages **flat** without letting them turn into a free-for-all.
 
-declscope adds a visibility level *below* Go's package-wide `unexported` — a `private` that binds a declaration to its own file — for package-level declarations, methods and struct fields alike, and enforces it statically.
+Within one package, declscope holds a declaration to the file that declares it: what is unexported, or what a directive narrows, may be used only from there. It is the `private` Go has no word for, and it is enforced statically.
 
 ## Why
 
@@ -265,7 +265,7 @@ Without it, `ondemand` reads the namespace count, so a package that gains or los
 
 ## Scopes
 
-The subject of a **scope** is a package's unexported surface: its unexported package-level declarations, and the unexported [members](#members) of any type, exported or not. An exported identifier is the package's API, published to every importer; a boundary holding a sibling file back from what the whole program may already use would draw a line the compiler has erased. Scope does not apply to it.
+A scope's **default** subject is a package's unexported surface: its unexported package-level declarations, and the unexported [members](#members) of any type. An exported identifier is the package's API, published to every importer; a boundary holding a sibling file back from what the whole program may already use would draw a line the compiler has erased, so nothing narrows it *by default*. A directive still binds it when the author writes one.
 
 Within that surface a **scope** is how far a declaration may be used. There are two:
 
@@ -321,7 +321,7 @@ func userShared() {} // package: usable anywhere in the package
 
 A **member** is a method or a struct field, and the two are not governed alike, because they are not written alike.
 
-A **field** — and an interface's method name — is written *inside* its type's declaration. Its file is not a choice: it is where the type is. So the type's directive reaches it, for the same reason a directive on a `var (...)` block reaches its specs; this is containment, not inheritance, and there is no second file for it to disagree with.
+A **field** is written *inside* its type's declaration. Its file is not a choice: it is where the type is. So the type's directive reaches it, for the same reason a directive on a `var (...)` block reaches its specs; this is containment, not inheritance, and there is no second file for it to disagree with.
 
 A **method** is an ordinary top-level declaration that happens to name a receiver. The file it is written in gives it its namespace, exactly as for a `func`, and nothing above it reaches it.
 
@@ -506,7 +506,7 @@ A **directive** is a comment beginning `//declscope:` (`/*declscope:` … `*/` i
 
 | Directive | Level | Effect |
 | --- | --- | --- |
-| `//declscope:package`, `//declscope:private` | Declaration or file | States the [scope](#scope-resolution) instead of inheriting it from the level above — the type, then the file, then `defaults`. On a type it also reaches the type's [members](#members); on a file it is the default for what the file declares |
+| `//declscope:package`, `//declscope:private` | Declaration or file | States the [scope](#scope-resolution) instead of inheriting it from the level above — the type, then the file, then `defaults`. On a type it also reaches the type's [fields](#members) — not its methods, which take their own file's level; on a file it is the default for what the file declares |
 | `//declscope:ignore` | Declaration or file | Silences every rule |
 | `//declscope:ignore <rules>` | Declaration or file | Silences the named [rules](#rules), comma-separated (`unqualify`, `unqualify,qualify`) |
 | `//declscope:core` | File | Joins the file to the package's **core** [namespace](#the-core-namespace); mutually exclusive with `//declscope:namespace` |
@@ -644,7 +644,7 @@ A **scope** directive is judged by what it binds rather than by what it sits on,
 
 So a directive that names the default of the day is never reported — recording that a declaration is private **on purpose** stays legal, because tomorrow's default may differ — while `//declscope:package` on an exported func, or on a type whose every field is exported, binds nothing anywhere in its reach and is reported. Comparing against `defaults.unexported` directly would have done neither: it would have made the deliberate record an error, and turned a single line of `.declscope.yaml`, or a config file appearing in a parent directory, into hundreds of diagnostics in files nobody touched.
 
-These reports carry the `directive` rule, so `//declscope:ignore directive` silences one, at the declaration or the file. They take no [baseline](#adopting-on-an-existing-codebase) entry and want none: a baseline exists so that turning declscope on does not report boundaries a codebase never enforced, which is history nobody can edit. A directive the author wrote is not history — deleting it removes the report.
+These reports carry the `directive` rule, so `//declscope:ignore directive` silences one, at the declaration or the file. A bare `//declscope:ignore` covers it too at the file level, but not on the declaration carrying it: an ignore that could exempt itself from ever being called unused would answer the one report written to catch it. They take no [baseline](#adopting-on-an-existing-codebase) entry and want none: a baseline exists so that turning declscope on does not report boundaries a codebase never enforced, which is history nobody can edit. A directive the author wrote is not history — deleting it removes the report.
 
 Accounting is per physical directive, however many declarations it reaches: one on a `var (...)` block, on `var a, b`, or on `x, y int` in a struct is used as soon as **any** of them needed it, and is reported once — not once per name — when none did. A directive used up only by a member still counts as used.
 
@@ -713,7 +713,7 @@ rather than by the parser's generic complaint:
 | `defaults.exported` | The config is refused, saying why there is no scope for an exported declaration to default to |
 | `rules.unqualify: always` / `never` | The config is refused, saying the key is now `true` or `false` and which one the old word meant |
 
-A `defaults.exported: private` that was holding an exported struct's internals under a boundary has a replacement: leave the fields unexported, or make the type unexported. Either way they stay in the subject on their own, with no configuration at all — an exported field of an unexported type is [reachable from nobody](#scope-resolution).
+A `defaults.exported: private` that was holding an exported struct's internals under a boundary has one replacement: leave the fields unexported. Making the **type** unexported does not help — an exported field resolves to `package` whatever its owner is, because [asking otherwise](#scope-resolution) is a question the analysis cannot answer. To hold exported fields under a boundary, state it: `//declscope:private` on the type binds every field it reaches.
 
 Existing baseline entries for violations that can no longer be produced simply stop matching; regenerating drops them, and the deletion in `git diff .declscope-baseline.yaml` records the rules changing rather than any cleanup.
 
@@ -829,6 +829,7 @@ The three compose: `depguard` keeps the package graph honest, declscope keeps ea
 | An embedded field | Not a member: it has no name of its own, only the embedded type's. Embedding is a **use** of that type, so `type B struct{ aCount }` written outside `aCount`'s namespace is a `boundary`, and renaming the type rewrites the embedding and every `b.aCount` selection through it |
 | Members of generic types | Checked like any other: `List[int].items`, and `l.items` inside `List[T]`'s own methods, are uses of `List.items` |
 | Fields of anonymous structs, and of types declared inside a function | Not checked |
+| An interface's method name | Not checked: only struct fields are collected as members, so no scope reaches one and no directive binds it |
 | An unexported method grown on another namespace's type but **never used** | Not reported: `boundary` needs a use to find, and a method with none is dead code, an unused-code linter's business |
 
 ## License

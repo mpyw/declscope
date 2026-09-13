@@ -2,12 +2,8 @@
 // outcome, and every restriction must be witnessed by behaviour rather than by
 // an invariant that re-spells the definition it guards.
 //
-// Scope is two-valued: declscope's subject is a package's unexported surface, so
-// `public` would name a distinction the analysis cannot make.
-//
-// A member's exportedness is its own AND its owner type's: an exported field of
-// an unexported type is reachable from nobody outside the package, so it stays
-// in the subject.
+// Scope is two-valued. A scope's default subject is a package's unexported
+// surface, and `public` would name a distinction the analysis cannot make.
 //
 // A FIELD is written inside its type's declaration, so the type's directive
 // contains it, the way a `var (...)` block contains its specs. A METHOD is an
@@ -48,7 +44,6 @@ spec Knobs {
     refs = r
   }
 
-  // Reachable from outside the package: a member needs its owner exported too.
   // Exportedness decides the default and nothing else: an exported declaration
   // has no boundary unless a directive gives it one. Asking instead whether it
   // is reachable from outside the package is a question a single-package

@@ -16,8 +16,7 @@ func (l *List[T]) push(v T) { // want `method List.push is private to namespace 
 	l.size++
 }
 
-// Len is exported, and its owner is too, so it is reachable from outside the
-// package and carries no boundary.
+// Len is exported, so it resolves to package and carries no boundary.
 func (l *List[T]) Len() int { return l.size }
 
 // listNode is a generic type private to this namespace.

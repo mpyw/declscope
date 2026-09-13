@@ -5,7 +5,6 @@
 // Declaration level, stating the scope explicitly instead of deriving it from
 // the name:
 //
-//	//declscope:public
 //	//declscope:package
 //	//declscope:private
 //

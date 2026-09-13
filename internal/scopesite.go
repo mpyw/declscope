@@ -62,30 +62,69 @@ func (c *collection) scopeSite(d directive.Decl) *scopeSite {
 // configured default did. A caller needs it to say which level decided, and to
 // know whether inserting a directive on the declaration would overwrite an
 // author's decision or merely state an exception to a default.
-func (c *collection) bind(opts Options, name string, dir, container, file directive.Decl) (scope.Scope, directive.Decl) {
-	for _, d := range [...]directive.Decl{dir, container, file} {
+func (c *collection) bind(opts Options, name string, dir, container, file directive.Decl) (scope.Scope, directive.Decl, scopeLevel) {
+	levels := []directive.Decl{dir, container, file}
+	for i, d := range levels {
 		if !d.HasScope {
 			continue
 		}
-		if !inert(name, d.Scope) {
+		if !inert(opts, name, d.Scope, levels[i+1:]) {
 			c.scopeSite(d).bound = true
 		}
-		return d.Scope, d
+		return d.Scope, d, scopeLevel(i + 1)
 	}
-	// Exportedness decides the default and nothing else. An exported declaration
-	// is reached by every importer already, so the analysis has no line around it
-	// that it could also check — but an author who states one is stating it, not
-	// guessing, and the loop above binds.
-	if isExported(name) {
-		return scope.PackageInternal, directive.Decl{}
-	}
-	return opts.Unexported, directive.Decl{}
+	outer, _ := outerScope(opts, name, nil)
+	return outer, directive.Decl{}, levelDefault
 }
 
-// inert reports whether stating a scope on a declaration decides nothing, under
-// every configuration. See the comment on scopeSite.
-func inert(name string, stated scope.Scope) bool {
-	return isExported(name) && stated == scope.PackageInternal
+// scopeLevel names which level supplied a scope. A diagnostic that inferred it
+// from the kind instead would tell a reader to look for a comment that is not
+// there: a field takes its type's directive and its file's alike, and only the
+// level knows which one decided.
+type scopeLevel int
+
+const (
+	levelDefault scopeLevel = iota
+	levelDecl
+	levelContainer
+	levelFile
+)
+
+// outerScope is the scope a declaration would take from the levels outside the
+// one being judged. The second result says whether that scope is the same under
+// every configuration — it is not when it came from defaults.unexported, which
+// is the whole reason the inert test can be asked at all.
+//
+// Exportedness decides the default and nothing else. An exported declaration is
+// reached by every importer already, so the analysis has no line around it that
+// it could also check; an author who states one is stating it, not guessing, and
+// the directive binds.
+func outerScope(opts Options, name string, rest []directive.Decl) (scope.Scope, bool) {
+	for _, d := range rest {
+		if d.HasScope {
+			return d.Scope, true
+		}
+	}
+	if isExported(name) {
+		return scope.PackageInternal, true
+	}
+	return opts.Unexported, false
+}
+
+// inert reports whether stating a scope decides nothing, under every
+// configuration: the declaration would have had that very scope anyway, and no
+// setting could have made it otherwise.
+//
+// Asking only "is the name exported" would be wrong in both directions. It
+// would call //declscope:package inert on an exported field whose type says
+// private — where it is the only thing widening the field back, so a codebase
+// could narrow an exported declaration and never widen it again without a
+// permanent false report. And it would miss a directive that restates an
+// enclosing one, which decides nothing for the same reason a redundant default
+// does not: nothing about it could have gone another way.
+func inert(opts Options, name string, stated scope.Scope, rest []directive.Decl) bool {
+	outer, fixed := outerScope(opts, name, rest)
+	return fixed && stated == outer
 }
 
 // reportUnusedScopes reports every scope directive that bound nothing.

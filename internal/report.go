@@ -94,8 +94,18 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 
 	// Only now, with every ignore that silenced something marked used. An
 	// ignore report is itself a directive problem, so it is appended rather
-	// than reported directly, and joins the same ordering.
+	// than reported directly, and joins the same ordering — and the same
+	// silencing, which is why the filter runs again over the tail. Running it
+	// once would leave the one report nothing could answer.
 	c.reportUnusedIgnores(pass)
+	kept := c.problems[:0]
+	for _, p := range c.problems {
+		if c.silencesFile(c.fileAt(pass, p.Pos), rule.Directive) {
+			continue
+		}
+		kept = append(kept, p)
+	}
+	c.problems = kept
 
 	for _, p := range c.problems {
 		pass.Report(analysis.Diagnostic{
@@ -173,14 +183,14 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 	// assume: a field takes its type's directive and any declaration takes its
 	// file's, and naming the declaration's own would point at a comment that is
 	// not there.
-	switch {
-	case t.dir.HasScope:
+	switch t.boundAt {
+	case levelDecl:
 		f.msg = fmt.Sprintf("%s %s is declared %s by %s, but is used from %s",
 			t.kind, t.name(), t.scope, t.scope.Directive(), describeFile(offenders[0].file))
-	case t.boundBy.HasScope && t.kind == kindField:
+	case levelContainer:
 		f.msg = fmt.Sprintf("%s %s is declared %s by %s on %s, but is used from %s",
 			t.kind, t.name(), t.scope, t.scope.Directive(), t.owner, describeFile(offenders[0].file))
-	case t.boundBy.HasScope:
+	case levelFile:
 		f.msg = fmt.Sprintf("%s %s is declared %s by the file's %s, but is used from %s",
 			t.kind, t.name(), t.scope, t.scope.Directive(), describeFile(offenders[0].file))
 	default:
@@ -205,7 +215,7 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 	// the outer directive binding one declaration fewer, which can make it
 	// unused. Offering the fix there would produce a diagnostic that did not
 	// exist before, so it is withheld at every level that supplied the scope.
-	if t.boundBy.HasScope {
+	if t.boundAt != levelDefault {
 		return f, true
 	}
 	f.fixes = append(f.fixes, c.directiveFix(pass, t, scope.PackageInternal))

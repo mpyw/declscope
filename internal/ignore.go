@@ -30,6 +30,9 @@ type ignoreSite struct {
 	decls     []string
 	fileLevel bool
 	used      bool
+	// siblings are the ignores parsed from the same comment group, which is
+	// where a //declscope:ignore directive answering for this one is written.
+	siblings []directive.Ignore
 }
 
 // site returns the accounting entry for ig, keyed by where it is written.
@@ -63,7 +66,7 @@ func (c *collection) parseDecl(groups ...*ast.CommentGroup) directive.Decl {
 	}
 	d := directive.ParseDecl(fresh...)
 	for _, ig := range d.Ignores {
-		c.site(ig)
+		c.site(ig).siblings = d.Ignores
 	}
 	// A scope directive is registered here too, so that one written on something
 	// declscope does not check — init, _, an embedded field — is reported unused
@@ -213,13 +216,32 @@ func (c *collection) ignored(ignores []directive.Ignore, r rule.Rule) bool {
 // unreported. Under -test (the default) the test variant runs and nothing is
 // lost; with -test=false, a package with in-package tests gets no
 // unused-ignore report at all, which is the only report that can be trusted.
+// namesDirective reports whether some ignore written beside this one names the
+// directive rule explicitly.
+//
+// A bare //declscope:ignore covers every rule, this report among them, so
+// reading it as an answer here would let one exempt itself from ever being
+// called unused — which is the one thing this report exists to prevent.
+func namesDirective(igs []directive.Ignore) bool {
+	for _, ig := range igs {
+		if slices.Contains(ig.Rules, rule.Directive) {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *collection) reportUnusedIgnores(pass *analysis.Pass) {
 	if c.hasUnseenTests(pass) {
 		return
 	}
 	sites := make([]*ignoreSite, 0, len(c.ignores))
 	for _, s := range c.ignores {
-		if !s.used {
+		// An ignore written beside this one, on the same declaration, answers
+		// for it — the same way reportUnusedScopes consults the directive that
+		// carries the scope. Judging it only at the file level would leave the
+		// declaration-level remedy producing a second report instead of none.
+		if !s.used && !namesDirective(s.siblings) {
 			sites = append(sites, s)
 		}
 	}

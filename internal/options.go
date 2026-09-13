@@ -3,6 +3,7 @@
 package internal
 
 import (
+	"go/ast"
 	"regexp"
 	"strings"
 
@@ -172,9 +173,13 @@ func (o Options) Excluded(path string) bool {
 	return false
 }
 
-func isExported(name string) bool {
-	return name != "" && name[0] >= 'A' && name[0] <= 'Z'
-}
+// isExported is Go's own rule, not an ASCII approximation of it. name[0] is the
+// first *byte*: for Äpfel that is 0xC3, so a byte-range test answers
+// "unexported" for a name Go exports — which gave the declaration
+// defaults.unexported instead of package scope, reported a boundary on
+// published API, and let -fix rename it with in-package edits only, breaking
+// every importer.
+func isExported(name string) bool { return ast.IsExported(name) }
 
 // compileGlob translates a path glob into a regexp. ** matches across
 // separators, * and ? do not.
