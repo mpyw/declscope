@@ -19,7 +19,8 @@ type payload struct { // want `type payload does not carry the prefix of namespa
 
 func (p *payload) method() int { return p.field }
 
-// Exported identifiers need no label.
+// Exported identifiers need no label by default; rules.exportedLabels asks
+// them for one.
 func Exported() int {
 	p := &payload{}
 	return helper() + users() + count + limit + p.method() + userOK() + deliberatelyUnlabeled()

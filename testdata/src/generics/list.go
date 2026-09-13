@@ -1,7 +1,8 @@
 package generics
 
-// List is exported, but its unexported members are still bounded by the
-// namespace declaring it. go/types records the instantiated member for a
+// List is exported, but its unexported fields are still in the subject: they
+// are written inside this declaration, so the namespace declaring it bounds
+// them. go/types records the instantiated member for a
 // selection on List[int] — and on List[T] inside the type's own methods —
 // so the lookup has to go through the origin object.
 type List[T any] struct {
@@ -15,7 +16,8 @@ func (l *List[T]) push(v T) { // want `method List.push is private to namespace 
 	l.size++
 }
 
-// Len is exported and therefore public.
+// Len is exported, and its owner is too, so it is reachable from outside the
+// package and carries no boundary.
 func (l *List[T]) Len() int { return l.size }
 
 // listNode is a generic type private to this namespace.

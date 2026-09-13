@@ -40,7 +40,6 @@ func TestParseDeclScope(t *testing.T) {
 	}{
 		{"package", "//declscope:package", scope.PackageInternal, true},
 		{"private", "//declscope:private", scope.Private, true},
-		{"public", "//declscope:public", scope.Public, true},
 		{"spaced", "// declscope:package", scope.PackageInternal, true},
 		{"block", "/*declscope:package*/", scope.PackageInternal, true},
 		{"with reason", "//declscope:package // shared with the reporter", scope.PackageInternal, true},
@@ -250,13 +249,34 @@ func TestParseFileIgnore(t *testing.T) {
 	}
 }
 
-// TestParseFileRejectsDeclarationDirectives checks that a scope directive
-// written before the package clause is reported rather than silently ignored,
-// since it would otherwise look as though it applied to the file.
-func TestParseFileRejectsDeclarationDirectives(t *testing.T) {
+// TestParseFileScope checks that a scope directive before the package clause is
+// read as the file's default rather than reported. It is the honest form of
+// what a shared utility file used to have to spell as an ignore: a scope states
+// what the declarations are, where an ignore only stands a rule down.
+func TestParseFileScope(t *testing.T) {
 	f := directive.ParseFile(parse(t, "//declscope:package\n\npackage repo\n"))
+	if len(f.Problems) != 0 {
+		t.Fatalf("want no problem, got %v", f.Problems)
+	}
+	if !f.Scope.HasScope || f.Scope.Scope != scope.PackageInternal {
+		t.Errorf("Scope = %+v, want package-internal", f.Scope)
+	}
+}
+
+// TestParseFileCore checks the core directive, and that naming a namespace as
+// well is refused: a core file's namespace is the core.
+func TestParseFileCore(t *testing.T) {
+	f := directive.ParseFile(parse(t, "//declscope:core\n\npackage repo\n"))
+	if len(f.Problems) != 0 || !f.Core {
+		t.Fatalf("Core = %v, problems = %v", f.Core, f.Problems)
+	}
+	f = directive.ParseFile(parse(t, "//declscope:core\n//declscope:namespace user\n\npackage repo\n"))
 	if len(f.Problems) == 0 {
-		t.Error("want a problem for a declaration directive at file level")
+		t.Error("want a problem for core and namespace on one file")
+	}
+	f = directive.ParseFile(parse(t, "//declscope:core user\n\npackage repo\n"))
+	if len(f.Problems) == 0 {
+		t.Error("want a problem for an argument to core")
 	}
 }
 

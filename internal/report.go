@@ -66,9 +66,24 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	// reached later in the loop above.
 	c.reportUnusedIgnores(pass)
 
+	// Directive hygiene carries a rule like every other check, so that
+	// //declscope:ignore directive can silence one. A report with no rule is
+	// one nothing could answer.
+	//
+	// It takes no baseline entry, and wants none: a baseline exists so that
+	// turning declscope on does not report boundaries a codebase never
+	// enforced, which is history nobody can edit away. A directive the author
+	// wrote is not history — removing it removes the report.
 	slices.SortStableFunc(c.problems, func(a, b directive.Problem) int { return int(a.Pos - b.Pos) })
 	for _, p := range c.problems {
-		pass.Reportf(p.Pos, "%s", p.Msg)
+		if c.fileAt(pass, p.Pos).silences(rule.Directive) {
+			continue
+		}
+		pass.Report(analysis.Diagnostic{
+			Pos:      p.Pos,
+			Category: string(rule.Directive),
+			Message:  p.Msg,
+		})
 	}
 }
 
@@ -103,7 +118,10 @@ func (c *collection) keys(pass *analysis.Pass, opts Options) []baseline.Key {
 
 func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []finding {
 	var out []finding
-	if t.scope == scope.Private {
+	// A declaration reachable from outside the package carries no boundary:
+	// its reach is already published, and no line the analysis can check lies
+	// inside it.
+	if t.subject && t.scope == scope.Private {
 		if f, ok := c.checkBoundary(pass, opts, t); ok {
 			out = append(out, f)
 		}
@@ -135,8 +153,6 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 		f.msg = fmt.Sprintf("%s %s is declared %s by %s, but is used from %s",
 			t.kind, t.name(), t.scope, t.scope.Directive(), describeFile(offenders[0].file))
 	} else {
-		// The boundary is the owner's: for a method that is the file declaring
-		// its type, which need not be the file the method is written in.
 		f.msg = fmt.Sprintf("%s %s is private to %s, but is used from %s",
 			t.kind, t.name(), describeFile(t.ownerFile), describeFile(offenders[0].file))
 	}
@@ -158,8 +174,8 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 	return f, true
 }
 
-// checkQualify requires an unexported package-level declaration to carry its
-// namespace as a prefix.
+// checkQualify requires a package-level declaration to carry its namespace as
+// a prefix.
 //
 // The prefix grants nothing — reach is stated with a directive — so this is
 // purely an ownership label, making the owning unit legible at every use site
@@ -169,7 +185,7 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 // requiring the label only once a package has a second namespace to
 // distinguish. See Mode.
 func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.Qualify.Applies(c.namespaces) || !t.renameable {
+	if !opts.Qualify.Applies(c.namespaces) || !named(opts, t) {
 		return finding{}, false
 	}
 	// A namespace is always an identity, but not always a label: 2fa.go
@@ -179,7 +195,7 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 		return finding{}, false
 	}
 	name := t.obj.Name()
-	if isExported(name) || namespace.HasPrefix(name, t.ownerNS) {
+	if namespace.HasPrefix(name, t.ownerNS) {
 		return finding{}, false
 	}
 	// main is a name the toolchain requires, so no label can be asked of it.
@@ -208,14 +224,14 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 // the label and never part of the concept, since nothing in the name can tell
 // userID-the-label from userID-the-word.
 func (c *collection) checkUnqualify(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.Unqualify.Applies(c.namespaces) || !t.renameable || !namespace.IsLabel(t.ownerNS) {
+	if !opts.Unqualify || !named(opts, t) || !namespace.IsLabel(t.ownerNS) {
 		return finding{}, false
 	}
 	if opts.Qualify.Applies(c.namespaces) {
 		return finding{}, false
 	}
 	name := t.obj.Name()
-	if isExported(name) || !namespace.HasPrefix(name, t.ownerNS) {
+	if !namespace.HasPrefix(name, t.ownerNS) {
 		return finding{}, false
 	}
 	// A name identical to the namespace carries no label to drop. The
@@ -332,4 +348,19 @@ func describe(ns, path string) string {
 
 func describeFile(f *fileInfo) string {
 	return describe(f.ns, f.path)
+}
+
+// named reports whether the naming rules reach a declaration at all.
+//
+// They reach package-level declarations only: a member is already qualified by
+// its type at every use, so a label would only stutter. They reach an exported
+// declaration when rules.exportedLabels says so — inside the package an
+// exported name is read as bare as any other, which is the reading the label
+// exists for — and never reach the core namespace, whose label is empty and so
+// has no prefix to require or to drop.
+func named(opts Options, t *target) bool {
+	if !t.renameable || t.ownerFile.core {
+		return false
+	}
+	return !isExported(t.obj.Name()) || opts.ExportedLabels
 }

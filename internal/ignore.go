@@ -159,8 +159,15 @@ func (c *collection) stray() {
 // levels do not make each other look unused.
 func (c *collection) silenced(t *target, r rule.Rule) bool {
 	hit := c.ignored(t.dir.Ignores, r)
-	if owner, ok := c.byObj[t.ownerObj]; ok && owner != t {
-		hit = c.ignored(owner.dir.Ignores, r) || hit
+	// A field is written inside its type's declaration, so the type's ignores
+	// contain it the way its scope directive does. A method is an ordinary
+	// top-level declaration and its type reaches neither: the suppression
+	// chain and the scope chain walk the same levels, so that a reader who
+	// learns one has learned both.
+	if t.kind == kindField {
+		if owner, ok := c.byObj[t.ownerObj]; ok && owner != t {
+			hit = c.ignored(owner.dir.Ignores, r) || hit
+		}
 	}
 	return c.ignored(t.file.ignores, r) || hit
 }

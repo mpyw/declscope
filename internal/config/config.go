@@ -42,10 +42,31 @@ var Names = []string{".declscope.yaml", ".declscope.yml"}
 var BaselineNames = []string{".declscope-baseline.yaml", ".declscope-baseline.yml"}
 
 // The values each naming rule accepts.
-var (
-	qualifyModes   = internal.ModeSet{internal.Always, internal.Never, internal.OnDemand}
-	unqualifyModes = internal.ModeSet{internal.Always, internal.Never}
-)
+var qualifyModes = internal.ModeSet{internal.Always, internal.Never, internal.OnDemand}
+
+// boolSetting is a true/false key that used to be spelled always/never. A
+// removed spelling is answered by name rather than by the parser's "cannot
+// unmarshal", so that an upgrade says what to write instead.
+type boolSetting struct {
+	set   bool
+	value bool
+}
+
+func (b *boolSetting) UnmarshalYAML(node *yaml.Node) error {
+	var raw string
+	if err := node.Decode(&raw); err == nil {
+		switch raw {
+		case "always", "never":
+			return fmt.Errorf("%q is no longer a value here: this key is now true or false, "+
+				"and %q means %v", raw, raw, raw == "always")
+		}
+	}
+	if err := node.Decode(&b.value); err != nil {
+		return fmt.Errorf("want true or false")
+	}
+	b.set = true
+	return nil
+}
 
 // File is the on-disk configuration. Every field is optional, and no setting
 // has a zero value that means anything, so a field left empty is skipped by
@@ -53,13 +74,17 @@ var (
 // disabling a rule.
 type File struct {
 	Defaults struct {
+		// Exported is retained only to answer it by name. There is no scope
+		// for an exported declaration to default to: what is reachable from
+		// outside the package is not the subject.
 		Exported   string `yaml:"exported"`
 		Unexported string `yaml:"unexported"`
 	} `yaml:"defaults"`
 
 	Rules struct {
-		Qualify   string `yaml:"qualify"`
-		Unqualify string `yaml:"unqualify"`
+		Qualify        string      `yaml:"qualify"`
+		Unqualify      boolSetting `yaml:"unqualify"`
+		ExportedLabels boolSetting `yaml:"exportedLabels"`
 	} `yaml:"rules"`
 
 	Exclude []string `yaml:"exclude"`
@@ -250,41 +275,32 @@ func Load(path string) (*File, error) {
 
 // Apply layers the file's settings onto opts.
 func (f *File) Apply(opts *internal.Options) error {
-	for _, field := range []struct {
-		name  string
-		value string
-		dst   *scope.Scope
-	}{
-		{"defaults.exported", f.Defaults.Exported, &opts.Exported},
-		{"defaults.unexported", f.Defaults.Unexported, &opts.Unexported},
-	} {
-		if field.value == "" {
-			continue
-		}
-		s, ok := scope.Parse(field.value)
+	if f.Defaults.Exported != "" {
+		return fmt.Errorf("defaults.exported was removed: an exported declaration has no scope, " +
+			"since what is reachable from outside the package is not checked. " +
+			"To bring an exported struct's internals back under a boundary, leave its fields unexported, " +
+			"or make the type unexported")
+	}
+	if f.Defaults.Unexported != "" {
+		s, ok := scope.Parse(f.Defaults.Unexported)
 		if !ok {
-			return fmt.Errorf("%s: unknown scope %q (want public, package or private)", field.name, field.value)
+			return fmt.Errorf("defaults.unexported: unknown scope %q (want package or private)", f.Defaults.Unexported)
 		}
-		*field.dst = s
+		opts.Unexported = s
 	}
 
-	for _, rule := range []struct {
-		name    string
-		value   string
-		accepts internal.ModeSet
-		dst     *internal.Mode
-	}{
-		{"rules.qualify", f.Rules.Qualify, qualifyModes, &opts.Qualify},
-		{"rules.unqualify", f.Rules.Unqualify, unqualifyModes, &opts.Unqualify},
-	} {
-		if rule.value == "" {
-			continue
-		}
-		m, ok := rule.accepts.Parse(rule.value)
+	if f.Rules.Qualify != "" {
+		m, ok := qualifyModes.Parse(f.Rules.Qualify)
 		if !ok {
-			return fmt.Errorf("%s: unknown mode %q (want %s)", rule.name, rule.value, rule.accepts)
+			return fmt.Errorf("rules.qualify: unknown mode %q (want %s)", f.Rules.Qualify, qualifyModes)
 		}
-		*rule.dst = m
+		opts.Qualify = m
+	}
+	if f.Rules.Unqualify.set {
+		opts.Unqualify = f.Rules.Unqualify.value
+	}
+	if f.Rules.ExportedLabels.set {
+		opts.ExportedLabels = f.Rules.ExportedLabels.value
 	}
 	if f.Exclude != nil {
 		opts.Exclude = f.Exclude

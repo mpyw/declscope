@@ -212,6 +212,18 @@ type File struct {
 	HasNamespace bool
 	NamespacePos token.Pos
 
+	// Core marks the file as part of the package's core namespace, whose label
+	// is empty. Several files may carry it and they share the one namespace,
+	// the way //declscope:namespace merges files under a name; the core has
+	// none, which is what puts it outside the naming rules.
+	Core    bool
+	CorePos token.Pos
+
+	// Scope is the file-level scope directive. It is a default for what the
+	// file declares, not a blanket: a declaration may still state its own, and
+	// a field takes its type's first.
+	Scope Decl
+
 	Ignores []Ignore
 
 	Problems []Problem
@@ -233,12 +245,21 @@ func ParseFile(file *ast.File) File {
 			switch keyword {
 			case "namespace":
 				f.namespace(c.Pos(), arg)
+			case "core":
+				f.core(c.Pos(), arg)
 			case "ignore":
 				f.ignore(c.Pos(), arg)
+			case "package", "private":
+				f.scope(c.Pos(), keyword, arg)
 			default:
 				f.problem(c.Pos(), fmt.Sprintf("declscope:%s is not a file-level directive", keyword))
 			}
 		}
+	}
+	// A core file's namespace is the core, so naming one as well contradicts it
+	// rather than adding to it.
+	if f.Core && f.HasNamespace {
+		f.problem(f.CorePos, "conflicting namespace directives: a core file's namespace is the core")
 	}
 	return f
 }
@@ -253,6 +274,37 @@ func (f *File) namespace(pos token.Pos, arg string) {
 		f.problem(pos, "duplicate declscope:namespace directive")
 	default:
 		f.Namespace, f.NamespacePos, f.HasNamespace = arg, pos, true
+	}
+}
+
+// core joins the file to the package's core namespace. A core file's namespace
+// is the core, so naming one as well is a contradiction rather than an
+// addition, and the two directives conflict.
+func (f *File) core(pos token.Pos, arg string) {
+	switch {
+	case arg != "":
+		f.problem(pos, "//declscope:core takes no argument")
+	case f.Core:
+		f.problem(pos, "duplicate declscope:core directive")
+	default:
+		f.Core, f.CorePos = true, pos
+	}
+}
+
+// scope reads a file-level scope directive, the default for what the file
+// declares.
+func (f *File) scope(pos token.Pos, keyword, arg string) {
+	sc, ok := scope.Parse(keyword)
+	switch {
+	case !ok:
+		f.problem(pos, fmt.Sprintf("declscope:%s is not a scope", keyword))
+	case arg != "":
+		f.problem(pos, fmt.Sprintf("//declscope:%s takes no argument", keyword))
+	case f.Scope.HasScope && f.Scope.Scope != sc:
+		f.problem(pos, fmt.Sprintf("conflicting scope directives: //declscope:%s and //declscope:%s on one file",
+			f.Scope.Scope, keyword))
+	default:
+		f.Scope.Scope, f.Scope.HasScope, f.Scope.ScopePos = sc, true, pos
 	}
 }
 

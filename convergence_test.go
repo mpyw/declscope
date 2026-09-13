@@ -74,7 +74,7 @@ var fixCases = []fixCase{
 	},
 	{
 		name:   "unqualify, including a name that cannot be unqualified",
-		config: "rules:\n  unqualify: always\n",
+		config: "rules:\n  unqualify: true\n",
 		files: map[string]string{
 			"only.go": "package x\n\nfunc onlyHelper() int { return 1 }\n\nfunc onlyType() int { return 2 }\n\nvar onlyID = 3\n\nfunc Exported() int { return onlyHelper() + onlyType() + onlyID }\n",
 		},
@@ -134,14 +134,14 @@ var fixCases = []fixCase{
 	},
 	{
 		name:   "rename to a predeclared name",
-		config: "rules:\n  unqualify: always\n",
+		config: "rules:\n  unqualify: true\n",
 		files: map[string]string{
 			"only.go": "package x\n\nvar onlyLen = 3\n\nfunc Exported(s string) int { return len(s) + onlyLen }\n",
 		},
 	},
 	{
 		name:   "two unqualify renames converging on one name",
-		config: "rules:\n  qualify: never\n  unqualify: always\n",
+		config: "rules:\n  qualify: never\n  unqualify: true\n",
 		files: map[string]string{
 			"a.go": "package x\n\nvar aFoo = 1\n\nvar _ = aFoo\n",
 			"b.go": "package x\n\nvar bFoo = 2\n\nvar _ = bFoo\n",
@@ -149,7 +149,7 @@ var fixCases = []fixCase{
 	},
 	{
 		name:   "two unqualify renames converging through initialism lowering",
-		config: "rules:\n  unqualify: always\n",
+		config: "rules:\n  unqualify: true\n",
 		files: map[string]string{
 			"only.go": "package x\n\nvar onlyBar = 1\n\nvar onlyBAR = 2\n\nvar _, _ = onlyBar, onlyBAR\n",
 		},

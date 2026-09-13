@@ -55,6 +55,16 @@ func (c *collection) renames() *renameState {
 func (c *collection) renameSafe(pass *analysis.Pass, t *target, newName string) bool {
 	rs := c.renames()
 
+	// An exported declaration has uses outside the package that this analysis
+	// never sees: everything is checked within one package, so the rewrite
+	// could not be completed and would break every importer. Unlike the guards
+	// below this is not a doubt that a larger pass could settle — no run of
+	// declscope can ever see the whole of an exported name's uses — and
+	// finishing it by hand is an API change, which is the author's call.
+	// The violation is reported either way; only the fix is withheld.
+	if isExportedName(t.obj.Name()) {
+		return false
+	}
 	// Renaming into a name the package already uses would not compile.
 	if pass.Pkg.Scope().Lookup(newName) != nil {
 		return false
@@ -237,4 +247,10 @@ func (c *collection) hasUnseenTests(pass *analysis.Pass) bool {
 		}
 	}
 	return false
+}
+
+// isExportedName reports whether a name is exported. It is spelled here rather
+// than taken from ast so that rename.go states its own guard.
+func isExportedName(name string) bool {
+	return name != "" && name[0] >= 'A' && name[0] <= 'Z'
 }
