@@ -585,6 +585,7 @@ Neither rule applies to:
 | --- | --- |
 | A [member](#members) | Already qualified by its type |
 | `func main` in package `main` | A name the toolchain requires |
+| `TestXxx`, `BenchmarkXxx`, `FuzzXxx`, `ExampleXxx` in a `_test.go` file | The same. `go test` collects them by name, so a prefix would leave a function nothing runs |
 | A declaration in a namespace that cannot be a prefix (`2fa.go`) | There is no prefix to ask for or to drop |
 | An exported identifier, unless [`rules.naming.exported`](#configuration) is on | Off by default: how the package's API is spelled is the author's decision, not a linter's |
 | A declaration in the [core namespace](#the-core-namespace) | Its prefix is empty; there is none to require or to drop |
