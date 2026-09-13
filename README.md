@@ -408,6 +408,25 @@ A declaration's scope is decided by the first row that applies:
 >
 > What the author knows, the author states. A directive binds whatever it reaches, exported or not.
 
+> [!TIP]
+> `package main` is not an exception. Its exported names keep the `package` scope, because `-buildmode=plugin` makes them reachable by name from another program:
+>
+> ```go
+> // the plugin, package main
+> func Shout() string { ... }
+> ```
+> ```go
+> // another program entirely
+> s, _ := p.Lookup("Shout")
+> ```
+>
+> A `main` package that is not a plugin can say so in one line. The file-level directive reaches exported declarations too, so the whole file is held to its namespace:
+>
+> ```go
+> //declscope:private
+> package main
+> ```
+
 Widening is always **stated**. It comes from a directive on the declaration, on what contains it, or on its file, or else from the `defaults` key.
 
 A declaration's *name* plays no part. A namespace prefix is an ownership label ([`qualify`](#qualify)) and grants nothing. So a prefix can be added for legibility without changing what the declaration reaches, and a codebase that prefixes everything loses no protection.
@@ -1047,6 +1066,7 @@ scope with `//declscope:package` and say why.
 | --- | --- |
 | Generated files (`// Code generated ... DO NOT EDIT.`) | Excluded entirely: neither checked nor treated as reference sites |
 | Files matching [`exclude`](#configuration) | The same |
+| An exported declaration in `package main` | No boundary by default, like any other exported name. Nothing can *import* a main package, but `plugin.Lookup` reaches its exported symbols by name from another program, and the analysis cannot see that either. To hold a main file's whole surface, write `//declscope:private` before its package clause |
 | A use of an *exported* identifier outside its package | Out of scope. Everything is checked within one package, and `go/analysis` has no upward view of the program. An unused-code linter answers this instead. This is why [scope](#scopes) stops at the export line, and why [`rules.exportedLabels`](#configuration) reports a naming violation on an exported declaration without a fix |
 | Namespaces in different packages | Never collide, for the same reason: a namespace is implicitly package-qualified |
 | An embedded field | Not a member: it has no name of its own, only the embedded type's. Embedding is a **use** of that type. So `type B struct{ aCount }` written outside `aCount`'s namespace is a `boundary`. Renaming the type rewrites the embedding, and every `b.aCount` selection through it |
