@@ -356,16 +356,36 @@ func userShared() {} // package: usable anywhere in the package
 
 ### Members
 
-A **member** is a method or a struct field. The two are not governed alike, because they are not written alike:
+A **member** is a name written *inside* a type's declaration. Two things are:
 
-- A **field** is written *inside* its type's declaration, so its file is not a choice: it is wherever the type is. The type's directive reaches it, for the same reason a directive on a `var (...)` block reaches its specs. This is **containment, not inheritance**. There is no second file for it to disagree with.
-- A **method** is an ordinary top-level declaration that happens to name a receiver. Its own file gives it its namespace, exactly as for a `func`, and nothing above it reaches it.
+- a struct's **field**
+- an interface's **method name**
 
-| | Package-level declaration | Field | Method |
+For a member, the file is not a choice. It is wherever the type is. So the type's directive reaches it, for the same reason a directive on a `var (...)` block reaches its specs. This is **containment, not inheritance**: there is no second file for it to disagree with.
+
+A **method with a receiver** is not a member, however much it reads like one. It is an ordinary top-level declaration that happens to name a receiver. Its own file gives it its namespace, exactly as for a `func`, and nothing above it reaches it.
+
+| | Package-level declaration | Member | Method with a receiver |
 | --- | --- | --- | --- |
-| Bounding namespace | Its file's | Its **type**'s file's — the file it is written in | Its file's |
+| Bounding namespace | Its file's | Its **type**'s file's, which is where it is written | Its file's |
 | Contained by | Its `var`/`const`/`type` block | Its **type** | Nothing |
 | [Naming rules](#naming-rules) | Apply | Do not apply | Do not apply |
+
+> [!TIP]
+> An unexported interface method is the **sealed interface** idiom: only this package can spell the name, so only this package can implement. The boundary gives it file granularity.
+>
+> ```go
+> // user.go
+> type Sealed interface {
+> 	sealed() bool
+> }
+> ```
+> ```go
+> // order.go
+> func orderRun(s Sealed) bool { return s.sealed() } // reported
+> ```
+>
+> Satisfying the interface is **not** a use of the name. A method set is resolved, not written, so a type implementing `Sealed` from another namespace crosses nothing. Naming the method does cross.
 
 > [!IMPORTANT]
 > A **type alias** declares a name, not a type, and containment reads the declaration as written. A directive on one therefore reaches:
@@ -388,12 +408,12 @@ A **member** is a method or a struct field. The two are not governed alike, beca
 
 So splitting a type's methods across files works the way Go programmers already write it. `marshalKey` in `json.go` belongs to namespace `json`, and `json.go` may use it.
 
-What `sort.go` may not do is reach into `User`'s **fields**. That is the boundary that carries the weight. A method written on another namespace's type reaches that type's internals by naming them, and naming them is reported.
+What `sort.go` may not do is reach into `User`'s **members**. That is the boundary that carries the weight. A method written on another namespace's type reaches that type's internals by naming them, and naming them is reported.
 
 > [!WARNING]
 > Operations on the **whole value** name no field: copying it, comparing it, zeroing it. They are outside what this can see. See [Limits of the analysis](#limits-of-the-analysis).
 
-The naming rules do not reach members. A member is already qualified by its type at every use (`u.save()`). It collides with nothing, and a label would only stutter (`u.userSave()`).
+The naming rules do not reach members or methods. Both are already qualified by their type at every use (`u.save()`). They collide with nothing, and a label would only stutter (`u.userSave()`).
 
 What a member lacks in Go is encapsulation. Every unexported field is visible to its whole package. The `private` scope supplies what is missing:
 
@@ -484,6 +504,11 @@ func orderRun() int {
 ```
 
 The label grants nothing. Reach is stated by [scope](#scope-resolution) alone.
+
+> [!NOTE]
+> **"Package-level" means declared at the top level**, as opposed to a [member](#members). It does not mean the `package` scope.
+>
+> Neither rule reads a declaration's scope. A `private` declaration is asked for the label exactly as a `package` one is. Ownership and reach are separate questions.
 
 Neither rule applies to:
 
@@ -1016,7 +1041,7 @@ The three compose. `depguard` keeps the package graph honest, declscope keeps ea
 | Members of generic types | Checked like any other: `List[int].items`, and `l.items` inside `List[T]`'s own methods, are uses of `List.items` |
 | Fields of anonymous structs, and of types declared inside a function | Not checked |
 | A type alias | Its own name is a declaration and takes a scope like any other. A directive on it does not reach the members of the aliased **defined** type (see [Members](#members)), so their reach is stated where they are written. An alias to a struct written inline does contain its fields |
-| An interface's method name | Not checked: only struct fields are collected as members, so no scope reaches one and no directive binds it |
+| Satisfying an interface | Not a use of its method names. A method set is resolved, not written, so a type implementing an interface from another namespace crosses nothing. Naming a method does cross |
 | An unexported method grown on another namespace's type but **never used** | Not reported: `boundary` needs a use to find, and a method with none is dead code, an unused-code linter's business |
 
 ## License
