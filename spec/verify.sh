@@ -28,7 +28,7 @@ field() {
 }
 
 ## These must verify, and must be inductive rather than true only to a depth.
-proving=(boundary_fix directive_effect knobs label_rules rename_guarded)
+proving=(boundary_fix directive_effect knobs label_rules rename_guarded rename_reach)
 ## These must NOT verify, and must break on the named invariant.
 failing_specs=(rename_sound rename_siblings)
 failing_invariants=(RenameKeepsReferenceOnTarget NamesStayDistinct)

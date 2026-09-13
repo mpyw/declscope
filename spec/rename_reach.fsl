@@ -1,0 +1,95 @@
+// Reach: a rename is sound only where every file that writes the name is edited.
+//
+// rename_guarded.fsl asks whether a rename leaves each reference resolving to
+// the same object. That question presumes the analysis can see and rewrite
+// every site — which is the other half of soundness, and the half the scope
+// specs set aside. This is that half.
+//
+// The distinction that carries the model is what a file sits outside of. A
+// generated or config-excluded file is still in pass.Files, so the type checker
+// read it and its package-level declarations are in Pkg.Scope(); only the
+// rewrite skips it. A build-excluded file and an unseen in-package test file
+// are not in pass.Files at all: nothing type-checked them, no scope lookup can
+// answer for them, and the directory listing is the only evidence there is.
+//
+// ASSUME-1: one other file is enough. Soundness over a directory is the
+//   conjunction over each file in it (modelling assumption)
+// ASSUME-2: a file either writes the declaration's current name, declares the
+//   name the rename would take, both, or neither. The spelling does not
+//   matter, only which of the two names it collides with (modelling
+//   assumption)
+spec RenameReach {
+  // Why a file of this package can sit outside the set the fix edits.
+  //   Rewritten     — collected by the pass; the fix edits it
+  //   Uncollected   — in pass.Files but not collected: generated, or named by
+  //                   an exclude. Type-checked, never edited
+  //   UnseenTest    — an in-package _test.go the non-test variant lacks
+  //   BuildExcluded — a _GOOS suffix or a //go:build line left it out of this
+  //                   configuration, and out of every configuration any
+  //                   variant of this package runs under
+  enum Kind { Rewritten, Uncollected, UnseenTest, BuildExcluded }
+
+  state {
+    configured:  Bool,
+    kind:        Kind,
+    spellsOld:   Bool,   // The file writes the name being renamed away
+    declaresNew: Bool,   // The file declares the name the rename would take
+    renamed:     Bool
+  }
+
+  init {
+    configured = false  kind = Rewritten
+    spellsOld = false  declaresNew = false  renamed = false
+  }
+
+  action configure(k: Kind, s: Bool, d: Bool) {
+    requires not configured
+    configured = true  kind = k  spellsOld = s  declaresNew = d
+  }
+
+  // A file in pass.Files was type-checked, so its package-level declarations
+  // are in Pkg.Scope() whether or not the collection kept the file.
+  def typeChecked() = kind == Rewritten or kind == Uncollected
+
+  // The guard as implemented, one row per reason a file sits outside.
+  def guardAsImplemented() =
+    // usedOutside: a file the pass read but did not collect, writing the name
+    not (kind == Uncollected and spellsOld)
+    // Pkg.Scope().Lookup(newName): reaches every file the type checker read
+    and not (typeChecked() and declaresNew)
+    // An unseen in-package test withholds every rename: the test variant sees
+    // every file, decides on its own, and edits the non-test files too
+    and kind != UnseenTest
+    // A build-excluded file withholds only a rename that collides with it. No
+    // variant will ever see that file, so withholding wholesale would disable
+    // the fix for every package carrying a _GOOS suffix
+    and not (kind == BuildExcluded and (spellsOld or declaresNew))
+
+  fair action rename() {
+    requires configured
+    requires not renamed
+    requires guardAsImplemented()
+    renamed = true
+  }
+
+  // Soundness, part one: nothing left unedited still writes the old name.
+  // Rewritten is the only kind the fix edits.
+  invariant NoStaleSpelling { renamed and spellsOld => kind == Rewritten }
+
+  // Soundness, part two: the name the rename takes is not already declared
+  // where the rename does not remove it from.
+  invariant NewNameDeclaredOnce { renamed => not declaresNew }
+
+  invariant RenameImpliesConfigured { renamed => configured }
+
+  reachable RenameHappens { renamed }
+  // A file the fix edits may collide however it likes: the edit covers it.
+  reachable RenameOverRewrittenCollision { renamed and kind == Rewritten and spellsOld }
+  // The build-excluded row is no broader than it needs to be — a file that
+  // writes neither name does not withhold the rename. Treating that kind the
+  // way UnseenTest is treated makes this unreachable, which is the entire cost
+  // of the blunter choice, stated as a property rather than argued in prose.
+  reachable RenameBesideQuietExcludedFile {
+    renamed and kind == BuildExcluded and not spellsOld and not declaresNew
+  }
+}

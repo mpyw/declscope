@@ -30,6 +30,8 @@ the binary.
 | `knobs.fsl` | A boundary is reported only for a private scope and only across a namespace, and on an exported declaration only where a directive narrowed it — each guard witnessed by an invariant its removal breaks | As above |
 | `label_rules.fsl` | A fix is eventually applied wherever one is offered, which is what the `fair` on the fix actions claims | As above, plus whether a rename is offered at all |
 | `rename_guarded.fsl` | The guard `renameSafe` applies — every scope Go resolves through — makes the rename sound, and dropping any one of the four checks breaks it | Every binding environment at the reference site |
+| `rename_reach.fsl` | Nothing the fix leaves unedited still writes the old name, and the new name is never left declared twice — over every reason a file of the package can sit outside what the fix edits | Generated and `exclude`d files, unseen in-package tests, and build-excluded files, against both names |
+| `rename_reach.fsl` | The build-excluded guard is no broader than it needs to be: a rename beside an excluded file that writes neither name is still offered | As above |
 | `rename_sound.fsl` | **Fails** — models a guard that checks package scope only, and enumerates what a sound guard must check beyond it | As above |
 | `rename_siblings.fsl` | **Fails** — models fixes that check their target against the pre-fix names only, and shows two of them converging on one name | Every pair of rename targets |
 
@@ -59,10 +61,16 @@ lands on every *other* reference that wanted the builtin. That shows up only onc
 the spec also asks whether the rename captures references it was never meant to
 touch.
 
-Two causes are deliberately outside this model, because they concern the set of
-references and the set of fixes rather than scope resolution: a reference in a
-file the analyzer does not collect (generated, or excluded by config) is never
-rewritten, and `rename_siblings.fsl` covers the second.
+Two causes are outside *this* model, because they concern the set of references
+and the set of fixes rather than scope resolution. `rename_reach.fsl` covers the
+first — which files the fix actually edits, and what it has to establish about
+the ones it does not — and `rename_siblings.fsl` covers the second.
+
+That split is worth stating plainly, because the reach half went unmodelled at
+first and the one defect that could break a build lived exactly there: a file
+excluded by a `_GOOS` suffix or a `//go:build` line was in none of the guard's
+rows, so `-fix` rewrote the configuration it could see and left the other one
+calling a name that no longer existed.
 
 ## Running them
 
@@ -74,7 +82,7 @@ step and needs gigabytes for the same claims these prove in single-digit
 megabytes.
 
 ```console
-./spec/verify.sh     # what CI runs: five proved, two violated
+./spec/verify.sh     # what CI runs: six proved, two violated
 ```
 
 Or one at a time:
@@ -86,6 +94,7 @@ fslc verify boundary_fix.fsl     --depth 4
 fslc verify knobs.fsl            --depth 4
 fslc verify directive_effect.fsl --depth 4
 fslc verify rename_guarded.fsl   --depth 4
+fslc verify rename_reach.fsl     --depth 3
 fslc verify rename_sound.fsl     --depth 2   # expected: violated
 fslc verify rename_siblings.fsl  --depth 3   # expected: violated
 ```
@@ -97,7 +106,7 @@ run prints is the shape of the model, not a failure, and `rename_guarded.fsl`
 also reports a vacuous antecedent — which is the guard working, and is stated as
 `NothingResolvedNewName` rather than left as a warning.
 
-The five that pass are `proved` under `--engine induction`, which is what
+The six that pass are `proved` under `--engine induction`, which is what
 `verify.sh` and CI assert. Bounded verification alone would let an invariant be
 true to a depth without being inductive, and reading the exit code alone would
 let a spec that stopped parsing pass as "violated, as intended" — `fslc` exits
@@ -136,6 +145,8 @@ is a semantics that contradicts the documented one; each was run:
 | `fair` is dropped from `fixBoundary` | `violated` (`leadsTo`) |
 | A scope directive ignores a nearer directive that shadows it | `violated` |
 | Any one of the four scope checks in `renameSafe` is dropped | `violated` |
+| The build-excluded file is not consulted, so a rename disturbs a name only another configuration writes | `violated` |
+| An unseen in-package test file does not withhold the rename | `violated` |
 
 Three habits keep those controls sharp. **Record the report.** A spec whose only
 action assigns the whole state at once cannot carry an invariant that any state

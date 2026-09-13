@@ -157,12 +157,11 @@ type collection struct {
 	// directives from; a directive outside them reached nothing.
 	consumed map[*ast.CommentGroup]bool
 
-	// unseenTests reports whether the package directory holds in-package
-	// _test.go files that are not in pass.Files, which is what the non-test
-	// variant of a package with tests sees. Both the rename fix and the
-	// unused-ignore report defer to the test variant when it does.
-	unseenTests     bool
-	unseenTestsDone bool
+	// unseenScan is what the package directory holds that this pass does not
+	// see: in-package _test.go files under the non-test variant, and files the
+	// build configuration excluded. The rename fix and the unused-ignore
+	// report both consult it. It is filled on first use.
+	unseenScan *unseenFiles
 
 	// namespaces is how many distinct namespaces the package's non-test files
 	// declare, which is how many boundaries there are to enforce.
