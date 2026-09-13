@@ -92,7 +92,7 @@ func (c *collection) parseDecl(groups ...*ast.CommentGroup) directive.Decl {
 // trailing its first or last line that the parser attached to nothing, such
 // as one after the opening brace of a struct type. A comment the parser hung
 // on something inside the spec — a field's doc or trailing comment — is that
-// field's and is left for addFields, even when it shares the spec's first
+// field's and is left for addMembers, even when it shares the spec's first
 // line.
 func (c *collection) specGroups(pass *analysis.Pass, fi *fileInfo, spec ast.Spec) []*ast.CommentGroup {
 	var own []*ast.CommentGroup
@@ -178,12 +178,12 @@ func (c *collection) stray() {
 // levels do not make each other look unused.
 func (c *collection) silenced(t *target, r rule.Rule) bool {
 	hit := c.ignored(t.dir.Ignores, r)
-	// A field is written inside its type's declaration, so the type's ignores
-	// contain it the way its scope directive does. A method is an ordinary
-	// top-level declaration and its type reaches neither: the suppression
-	// chain and the scope chain walk the same levels, so that a reader who
-	// learns one has learned both.
-	if t.kind == kindField {
+	// A member is written inside its type's declaration, so the type's ignores
+	// contain it the way its scope directive does. A method with a receiver is
+	// an ordinary top-level declaration and its type reaches neither: the
+	// suppression chain and the scope chain walk the same levels, so that a
+	// reader who learns one has learned both.
+	if t.contained {
 		if owner, ok := c.byObj[t.ownerObj]; ok && owner != t {
 			hit = c.ignored(owner.dir.Ignores, r) || hit
 		}

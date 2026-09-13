@@ -238,3 +238,11 @@ func TestBraceIgnore(t *testing.T) {
 func TestAliases(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "aliases")
 }
+
+// TestInterfaceMembers checks that an interface's method names are members.
+// The silences carry as much as the reports: implicit satisfaction in impl.go
+// is not a use, the type's directive and its ignore reach the methods, and an
+// embedded interface or a type-constraint element declares no name to bound.
+func TestInterfaceMembers(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ifacemembers")
+}

@@ -117,6 +117,13 @@ type target struct {
 	// ownerFile is the file that namespace comes from, which is the file the
 	// declaration is written in for every kind.
 	ownerFile *fileInfo
+	// contained marks a member written inside its type's declaration: a struct
+	// field, and an interface's method name. The type's directives reach it,
+	// the way a var (...) block reaches its specs. A method with a receiver is
+	// not contained, however much it looks like a member: it is an ordinary
+	// top-level declaration that happens to name one.
+	contained bool
+
 	// owner names the type a member belongs to, empty for package-level.
 	owner string
 	// ownerObj is that type's object, through which a member inherits the
@@ -362,7 +369,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 					renameable: true,
 				})
 			}
-			c.addFields(pass, opts, fi, spec, pass.TypesInfo.Defs[spec.Name], dir)
+			c.addMembers(pass, opts, fi, spec, pass.TypesInfo.Defs[spec.Name], dir)
 
 		case *ast.ValueSpec:
 			dir := outer.Merge(c.parseDecl(c.specGroups(pass, fi, spec)...))
@@ -394,38 +401,60 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 	}
 }
 
-// addFields registers the fields of a named struct type.
+// addMembers registers the members a named type declares: a struct's fields,
+// or an interface's method names.
 //
-// A field is written inside its type's declaration, so the file it is in is the
-// type's: that is where it is, not a binding chosen for it. The type's directive
-// therefore contains the field the way a var (...) block contains its specs, and
-// is consulted before the file level.
-func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, spec *ast.TypeSpec, ownerObj types.Object, container directive.Decl) {
-	st, ok := spec.Type.(*ast.StructType)
-	if !ok || st.Fields == nil {
+// A member is written inside its type's declaration, so the file it is in is
+// the type's: that is where it is, not a binding chosen for it. The type's
+// directive therefore contains the member the way a var (...) block contains
+// its specs, and is consulted before the file level.
+//
+// Two shapes qualify, and the ast spells them alike. A struct field is one. An
+// interface's method name is the other: it is declared by the interface, only
+// this package can spell it, and a file boundary around it is what the sealed
+// interface idiom asks for. Satisfying the interface is not a use of the name
+// — a method set is resolved, not written — so a type implementing it from
+// another namespace crosses nothing. Naming the method does cross.
+func (c *collection) addMembers(pass *analysis.Pass, opts Options, fi *fileInfo, spec *ast.TypeSpec, ownerObj types.Object, container directive.Decl) {
+	var members []*ast.Field
+	var k kind
+	switch t := spec.Type.(type) {
+	case *ast.StructType:
+		if t.Fields == nil {
+			return
+		}
+		members, k = t.Fields.List, kindField
+	case *ast.InterfaceType:
+		if t.Methods == nil {
+			return
+		}
+		members, k = t.Methods.List, kindMethod
+	default:
 		return
 	}
-	for _, field := range st.Fields.List {
-		// Parsed before the embedded-field check so that a directive on an
-		// embedded field is accounted for: it reaches no checked declaration
-		// and is reported unused, rather than dropped.
-		dir := c.parseDecl(field.Doc, field.Comment)
-		// Embedded fields take their name from the embedded type; renaming or
-		// hiding them is not meaningful here.
-		if len(field.Names) == 0 {
+	for _, m := range members {
+		// Parsed before the name check so that a directive on something
+		// unnamed is accounted for: it reaches no checked declaration and is
+		// reported unused, rather than dropped.
+		dir := c.parseDecl(m.Doc, m.Comment)
+		// An entry with no name is an embedded field, an embedded interface,
+		// or an element of a type constraint. None declares a name of its own,
+		// so there is nothing here to bound or to rename.
+		if len(m.Names) == 0 {
 			continue
 		}
-		for _, name := range field.Names {
+		for _, name := range m.Names {
 			obj, ok := pass.TypesInfo.Defs[name]
 			if !ok || name.Name == "_" {
 				continue
 			}
 			sc, boundBy, boundAt := c.bind(opts, name.Name, dir, container, fi.scope)
 			c.add(&target{
-				obj: obj, ident: name, kind: kindField, file: fi,
-				owner: spec.Name.Name, ownerObj: ownerObj,
+				obj: obj, ident: name, kind: k, file: fi,
+				contained: true,
+				owner:     spec.Name.Name, ownerObj: ownerObj,
 				ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir,
-				anchor:  field.Pos(),
+				anchor:  m.Pos(),
 				scope:   sc,
 				boundBy: boundBy,
 				boundAt: boundAt,

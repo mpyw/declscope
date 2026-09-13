@@ -7,7 +7,9 @@
 // inherited from either is a default, not a decision.
 spec BoundaryFix {
   enum Scope { Package, Private }
-  enum Kind  { Pkg, Field, Method }
+  // Member is anything written inside a type's declaration: a struct field,
+  // and an interface's method name. Method is a method with a receiver.
+  enum Kind  { Pkg, Member, Method }
   enum Dir   { NoDir, DirPackage, DirPrivate }
   enum Refs  { NoRefs, SameNs, CrossNs }
 
@@ -42,12 +44,12 @@ spec BoundaryFix {
   // embedding, an alias or an interface it satisfies — and guessing produced
   // boundary reports on API that every importer reaches.
   def defaultScope() = if exported then Package else cfgUnexported
-  // What contains a field: its type, and through the type the var/const/type
+  // What contains a member: its type, and through the type the var/const/type
   // block the type is declared in — addGenDecl merges the block into the spec's
-  // own directive and passes that as the field's container, so a block reaches a
-  // field even though it never reaches a method.
+  // own directive and passes that as the member's container, so a block reaches
+  // a member even though it never reaches a method with a receiver.
   def contained() =
-    if kind == Field then (if typeDir != NoDir then typeDir else blockDir)
+    if kind == Member then (if typeDir != NoDir then typeDir else blockDir)
     else NoDir
   def blockOf() = if kind == Pkg then blockDir else NoDir
   def effScope() =
@@ -95,7 +97,7 @@ spec BoundaryFix {
   // A scope stated at any level withholds the fix, so the reachables below pin
   // the withholding rather than an override.
   reachable FixWithheldUnderTypeDirective {
-    configured and kind == Field and typeDir == DirPrivate
+    configured and kind == Member and typeDir == DirPrivate
     and declDir == NoDir and boundaryFires() and not fixed
   }
   reachable FixWithheldUnderFileDirective {
@@ -110,8 +112,8 @@ spec BoundaryFix {
     configured and exported and kind == Pkg and declDir == DirPrivate
     and refs == CrossNs and boundaryFires() and not fixed
   }
-  reachable ExportedFieldWithheldUnderTypeDirective {
-    configured and kind == Field and exported and typeDir == DirPrivate
+  reachable ExportedMemberWithheldUnderTypeDirective {
+    configured and kind == Member and exported and typeDir == DirPrivate
     and declDir == NoDir and boundaryFires() and not fixed
   }
   // A declaration that states its own scope presents the fix with the one case
