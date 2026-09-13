@@ -295,7 +295,7 @@ func TestBoolSettingRejectsAWord(t *testing.T) {
 func TestResolveLoadsBaseline(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "go.mod", "module example.com/m\n")
-	write(t, root, ".declscope-baseline.yaml", "packages:\n  example.com/m/pkg:\n    boundary: [helper]\n")
+	write(t, root, ".declscope-baseline.yaml", "packages:\n  example.com/m/pkg:\n    boundary:\n      user: [helper]\n")
 	pkg := filepath.Join(root, "pkg")
 	write(t, pkg, "keep.go", "package pkg\n")
 
@@ -306,7 +306,7 @@ func TestResolveLoadsBaseline(t *testing.T) {
 	if want := filepath.Join(root, ".declscope-baseline.yaml"); opts.BaselinePath != want {
 		t.Errorf("BaselinePath = %q, want %q", opts.BaselinePath, want)
 	}
-	if !opts.Baseline.Has(baseline.Key{Package: "example.com/m/pkg", Rule: "boundary", Decl: "helper"}) {
+	if !opts.Baseline.Has(baseline.Key{Package: "example.com/m/pkg", Rule: "boundary", Namespace: "user", Decl: "helper"}) {
 		t.Error("the baseline should be loaded")
 	}
 }
@@ -317,7 +317,7 @@ func TestResolveLoadsBaseline(t *testing.T) {
 func TestResolveForBaselineIgnoresCorruptBaseline(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "go.mod", "module example.com/m\n")
-	write(t, root, ".declscope-baseline.yaml", "packages:\n  x:\n    boundary: [helper]\nbogus: 1\n")
+	write(t, root, ".declscope-baseline.yaml", "packages:\n  x:\n    boundary:\n      user: [helper]\nbogus: 1\n")
 	pkg := filepath.Join(root, "pkg")
 	write(t, pkg, "keep.go", "package pkg\n")
 

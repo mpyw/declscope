@@ -1,5 +1,6 @@
 packages:
   baselined:
     boundary:
-      - User.name
-      - userHelper
+      user:
+        - User.name
+        - userHelper

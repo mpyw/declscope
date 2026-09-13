@@ -54,7 +54,7 @@ func TestBaselinePerPackageTargets(t *testing.T) {
 	for file, pkgs := range want {
 		set := load(t, filepath.Join(root, file))
 		for _, pkg := range pkgs {
-			if !set.Has(baseline.Key{Package: pkg, Rule: "boundary", Decl: "helper"}) {
+			if !set.Has(baseline.Key{Package: pkg, Rule: "boundary", Namespace: "user", Decl: "helper"}) {
 				t.Errorf("%s lacks the entry for %s:\n%s", file, pkg, out)
 			}
 		}
@@ -102,7 +102,7 @@ func TestBaselineFromSubdirectory(t *testing.T) {
 		t.Errorf("a run from store/ rewrote the root baseline:\n--- before ---\n%s\n--- after ---\n%s", before, after)
 	}
 	set := load(t, filepath.Join(store, ".declscope-baseline.yaml"))
-	if !set.Has(baseline.Key{Package: "example.com/m/store/inner", Rule: "boundary", Decl: "helper"}) {
+	if !set.Has(baseline.Key{Package: "example.com/m/store/inner", Rule: "boundary", Namespace: "user", Decl: "helper"}) {
 		t.Errorf("store/.declscope-baseline.yaml should hold store's entries:\n%s", out)
 	}
 	if !strings.Contains(out, "in "+filepath.Join(store, ".declscope-baseline.yaml")) {
@@ -148,7 +148,7 @@ func TestBaselineRefusesUnreachableDefault(t *testing.T) {
 	}
 	set := load(t, filepath.Join(root, "all.yaml"))
 	for _, pkg := range []string{"example.com/m", "example.com/nested"} {
-		if !set.Has(baseline.Key{Package: pkg, Rule: "boundary", Decl: "helper"}) {
+		if !set.Has(baseline.Key{Package: pkg, Rule: "boundary", Namespace: "user", Decl: "helper"}) {
 			t.Errorf("all.yaml lacks the entry for %s:\n%s", pkg, out)
 		}
 	}
@@ -160,7 +160,7 @@ func TestBaselineRegeneratesCorruptFile(t *testing.T) {
 	for name, body := range twoFiles {
 		writeTree(t, root, name, body)
 	}
-	corrupt := "packages:\n  x:\n    boundary: [helper]\nbogus: 1\n"
+	corrupt := "packages:\n  x:\n    boundary:\n      user: [helper]\nbogus: 1\n"
 	writeTree(t, root, ".declscope-baseline.yaml", corrupt)
 
 	// The analyzer must refuse the file, otherwise a typo would silently
@@ -175,7 +175,7 @@ func TestBaselineRegeneratesCorruptFile(t *testing.T) {
 		t.Fatalf("a corrupt baseline blocked its own regeneration: exit %d\n%s", code, out)
 	}
 	set := load(t, filepath.Join(root, ".declscope-baseline.yaml"))
-	if !set.Has(baseline.Key{Package: "example.com/m", Rule: "boundary", Decl: "helper"}) {
+	if !set.Has(baseline.Key{Package: "example.com/m", Rule: "boundary", Namespace: "user", Decl: "helper"}) {
 		t.Error("the regenerated file should hold the current violations")
 	}
 	assertSuppressed(t, bin, root)
@@ -211,7 +211,7 @@ func TestBaselineReportsWrittenCount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inFile := strings.Count(string(data), "\n      - ")
+	inFile := len(entryLine.FindAllString(string(data), -1))
 	if reported != inFile || inFile != 2 {
 		t.Errorf("reported %d, file holds %d, want 2 (boundary and qualify on helper):\n%s", reported, inFile, data)
 	}
@@ -284,5 +284,45 @@ func writeTree(t *testing.T, root, name, body string) {
 	}
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// entryLine matches one recorded declaration, at whatever depth the file
+// nests: counting a fixed indent would quietly read zero if the shape changed.
+var entryLine = regexp.MustCompile(`(?m)^ +- \S`)
+
+// TestBaselineDoesNotSurviveAMove checks that an entry stops matching once the
+// declaration moves to a file in another namespace.
+//
+// boundary is a statement about which namespaces a use crosses. The same
+// declaration reached from the same file is a different violation once it is
+// declared somewhere else, and a key blind to that would go on suppressing a
+// crossing nobody recorded.
+func TestBaselineDoesNotSurviveAMove(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
+	// The naming rules would otherwise report helper in both placements and
+	// drown the one thing under test.
+	writeTree(t, root, ".declscope.yaml", "rules:\n  qualify: never\n")
+	writeTree(t, root, "user.go", "package x\n\nfunc helper() int { return 1 }\n")
+	writeTree(t, root, "csv.go", "package x\n\nfunc csvRun() int { return helper() }\n\nvar _ = csvRun\n")
+
+	if out, code := runIn(t, bin, root, "baseline", "./..."); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	assertSuppressed(t, bin, root)
+
+	// The same declaration and the same use site, in a different namespace.
+	if err := os.Remove(filepath.Join(root, "user.go")); err != nil {
+		t.Fatal(err)
+	}
+	writeTree(t, root, "order.go", "package x\n\nfunc helper() int { return 1 }\n")
+
+	out, code := runIn(t, bin, root, "./...")
+	if code == 0 {
+		t.Fatalf("the crossing is now order -> csv, which the baseline never recorded:\n%s", out)
+	}
+	if !strings.Contains(out, `is private to namespace "order"`) {
+		t.Errorf("want the report to name the namespace it crosses now, got:\n%s", out)
 	}
 }

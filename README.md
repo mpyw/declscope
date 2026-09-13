@@ -861,14 +861,29 @@ Recorded violations are suppressed; new ones are reported. The file is discovere
 packages:
   github.com/you/app/store:
     boundary:
-      - User.name
-      - helper
+      user:
+        - User.name
+        - helper
+      (core):
+        - dial
     qualify:
-      - helper
+      user:
+        - helper
 ```
 
 > [!IMPORTANT]
-> An entry is keyed by **package, rule and declaration** — never by position — so it survives the code being moved, the file being renamed and the package being reformatted. A member is recorded as `Type.member`.
+> An entry is keyed by **package, rule, namespace and declaration** — never by position. It survives the code moving within its file and the package being reformatted.
+>
+> It deliberately does **not** survive a declaration moving to a file in another namespace. `boundary` is a statement about which namespaces a use crosses, so the same declaration reached from the same file is a different violation once it is declared elsewhere — and an entry blind to that would go on suppressing a crossing nobody recorded.
+
+| | Spelling |
+| --- | --- |
+| A package-level declaration | `helper`, under its file's namespace |
+| A [member](#members) | `Type.member`, under the namespace of its **type**'s file |
+| The [core namespace](#the-core-namespace) | `(core)`. It has no name of its own, and a normalized namespace is alphanumeric, so the parentheses cannot collide with one |
+
+> [!TIP]
+> Renaming a file changes the namespace of everything it declares, so every entry recorded against it stops matching at once. That is the same rule doing the same thing — those are different crossings now — and the answer is the same as for any other change: regenerate, and read the diff.
 
 A baseline is regenerated, never edited:
 

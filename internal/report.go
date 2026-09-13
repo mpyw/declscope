@@ -48,7 +48,7 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 			if c.silenced(t, f.rule) {
 				continue
 			}
-			if opts.Baseline.Has(f.key(pass)) {
+			if opts.Baseline.Has(f.key(pass, t)) {
 				continue
 			}
 			pass.Report(analysis.Diagnostic{
@@ -126,8 +126,13 @@ func comparePos(fset *token.FileSet, a, b token.Pos) int {
 }
 
 // key identifies the finding for the baseline, independently of position.
-func (f finding) key(pass *analysis.Pass) baseline.Key {
-	return baseline.Key{Package: pass.Pkg.Path(), Rule: f.rule, Decl: f.decl}
+func (f finding) key(pass *analysis.Pass, t *target) baseline.Key {
+	return baseline.Key{
+		Package:   pass.Pkg.Path(),
+		Rule:      f.rule,
+		Namespace: t.ownerFile.nsName(),
+		Decl:      f.decl,
+	}
 }
 
 // keys returns every violation the pass would report, ignoring the baseline.
@@ -139,7 +144,7 @@ func (c *collection) keys(pass *analysis.Pass, opts Options) []baseline.Key {
 			if c.silenced(t, f.rule) {
 				continue
 			}
-			out = append(out, f.key(pass))
+			out = append(out, f.key(pass, t))
 		}
 	}
 	return out
