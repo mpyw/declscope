@@ -117,7 +117,7 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 }
 
 // fileAt finds the file a position falls in. A directive problem is not
-// collectAttached to any declaration — a stray comment belongs to nothing — so the
+// attached to any declaration — a stray comment belongs to nothing — so the
 // file is the only level that can answer for it.
 func (c *collection) fileAt(pass *analysis.Pass, pos token.Pos) *fileInfo {
 	path := pass.Fset.Position(pos).Filename
@@ -330,7 +330,7 @@ func (c *collection) checkUnqualify(pass *analysis.Pass, opts Options, t *target
 // own. The formatter applied to the fixed file restores the indentation.
 func reportDirectiveFix(pass *analysis.Pass, t *target, s scope.Scope) analysis.SuggestedFix {
 	var text string
-	if reportStartsLine(pass, t.anchor) {
+	if reportAtLineStart(pass, t.anchor) {
 		col := pass.Fset.Position(t.anchor).Column
 		text = s.Directive() + "\n" + strings.Repeat("\t", max(col-1, 0))
 	} else {
@@ -346,10 +346,10 @@ func reportDirectiveFix(pass *analysis.Pass, t *target, s scope.Scope) analysis.
 	}
 }
 
-// reportStartsLine reports whether pos is preceded on its line by nothing but
+// reportAtLineStart reports whether pos is preceded on its line by nothing but
 // whitespace. It fails safe: an unreadable file is treated as not starting a
 // line, which yields an extra line break rather than a misplaced directive.
-func reportStartsLine(pass *analysis.Pass, pos token.Pos) bool {
+func reportAtLineStart(pass *analysis.Pass, pos token.Pos) bool {
 	position := pass.Fset.Position(pos)
 	if position.Column <= 1 {
 		return true

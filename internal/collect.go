@@ -147,7 +147,7 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 	// receiver: the file it is written in gives it its namespace, exactly as
 	// for a func, and its type reaches neither its scope nor its ignores. The
 	// receiver is still read, for the name a diagnostic prints.
-	ownerObj := collectReceiver(obj)
+	ownerObj := collectMethodOwner(obj)
 	owner := ""
 	if ownerObj != nil {
 		owner = ownerObj.Name()
@@ -174,7 +174,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 	grouped := d.Lparen.IsValid()
 	outer := c.parseDecl(d.Doc)
 	if grouped && len(d.Specs) > 0 {
-		attached := append(collectAttached(d.Specs[0]), collectAttached(d.Specs[len(d.Specs)-1])...)
+		attached := append(collectAttachedComments(d.Specs[0]), collectAttachedComments(d.Specs[len(d.Specs)-1])...)
 		outer = outer.Merge(c.parseDecl(fi.looseTrailing(pass.Fset, d, attached...)...))
 	}
 
@@ -289,10 +289,10 @@ func (c *collection) addMembers(pass *analysis.Pass, opts Options, fi *fileInfo,
 	}
 }
 
-// collectReceiver resolves the type a method belongs to and the file declaring that
+// collectMethodOwner resolves the type a method belongs to and the file declaring that
 // type, along with that file's namespace. It falls back to the method's own
 // file when the type cannot be traced to one in the package.
-func collectReceiver(fn *types.Func) types.Object {
+func collectMethodOwner(fn *types.Func) types.Object {
 	sig, ok := fn.Type().(*types.Signature)
 	if !ok || sig.Recv() == nil {
 		return nil
@@ -385,7 +385,7 @@ func collectSpecGroups(pass *analysis.Pass, fi *fileInfo, spec ast.Spec) []*ast.
 	case *ast.ValueSpec:
 		own = []*ast.CommentGroup{spec.Doc, spec.Comment}
 	}
-	return append(own, fi.looseTrailing(pass.Fset, spec, collectAttached(spec)...)...)
+	return append(own, fi.looseTrailing(pass.Fset, spec, collectAttachedComments(spec)...)...)
 }
 
 // trailingAt returns the comment group trailing the declaration starting at
@@ -404,7 +404,7 @@ func (f *fileInfo) trailingAt(fset *token.FileSet, pos token.Pos) *ast.CommentGr
 // closing brace. They belong to the declaration spanning those lines, the way
 // a trailing comment on a one-line declaration does.
 //
-// collectAttached lists the groups the parser did hang on something inside node,
+// collectAttachedComments lists the groups the parser did hang on something inside node,
 // which win: a comment trailing a field on the same line as the brace is the
 // field's, not the type's.
 func (f *fileInfo) looseTrailing(fset *token.FileSet, node ast.Node, attached ...*ast.CommentGroup) []*ast.CommentGroup {
@@ -419,10 +419,10 @@ func (f *fileInfo) looseTrailing(fset *token.FileSet, node ast.Node, attached ..
 	return out
 }
 
-// collectAttached returns the comment groups go/parser hung on a spec or on anything
+// collectAttachedComments returns the comment groups go/parser hung on a spec or on anything
 // inside it, so that looseTrailing does not claim them for the enclosing
 // declaration.
-func collectAttached(spec ast.Spec) []*ast.CommentGroup {
+func collectAttachedComments(spec ast.Spec) []*ast.CommentGroup {
 	var out []*ast.CommentGroup
 	switch spec := spec.(type) {
 	case *ast.TypeSpec:
