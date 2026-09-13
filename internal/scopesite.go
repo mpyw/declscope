@@ -1,5 +1,3 @@
-//declscope:namespace analyzer
-
 package internal
 
 import (
@@ -36,6 +34,8 @@ import (
 //     under every configuration. //declscope:package is the scope it already
 //     has, so it is provably inert; //declscope:private narrows it, so it is
 //     not.
+//
+//declscope:package // the collector registers and names the sites as it parses
 type scopeSite struct {
 	dir directive.Decl
 	// decls names the declarations in its reach, in source order, for the
@@ -54,6 +54,8 @@ type scopeSite struct {
 
 // scopeSite returns the accounting entry for a scope directive, keyed by where
 // it is written.
+//
+//declscope:package // the collector registers every directive it parses
 func (c *collection) scopeSite(d directive.Decl) *scopeSite {
 	s, ok := c.scopes[d.ScopePos]
 	if !ok {
@@ -66,6 +68,8 @@ func (c *collection) scopeSite(d directive.Decl) *scopeSite {
 // shadow records that a nearer directive supplied the scope of something outer
 // reaches. Called where the two are merged, since after the merge only the
 // winner's position survives.
+//
+//declscope:package // the collector merges directives, so it reports these
 func (c *collection) shadow(outer, merged directive.Decl) {
 	if outer.HasScope && merged.HasScope && merged.ScopePos != outer.ScopePos {
 		c.scopeSite(outer).shadowed = true
@@ -78,33 +82,22 @@ func (c *collection) shadow(outer, merged directive.Decl) {
 // configured default did. A caller needs it to say which level decided, and to
 // know whether inserting a directive on the declaration would overwrite an
 // author's decision or merely state an exception to a default.
+//
+//declscope:package // the one scope resolution, shared with the collector
 func (c *collection) bind(opts Options, name string, dir, container, file directive.Decl) (scope.Scope, directive.Decl, scopeLevel) {
 	levels := []directive.Decl{dir, container, file}
 	for i, d := range levels {
 		if !d.HasScope {
 			continue
 		}
-		if !inert(opts, name, d.Scope, levels[i+1:]) {
+		if !c.inert(opts, name, d.Scope, levels[i+1:]) {
 			c.scopeSite(d).bound = true
 		}
 		return d.Scope, d, scopeLevel(i + 1)
 	}
-	outer, _ := outerScope(opts, name, nil)
+	outer, _ := c.outerScope(opts, name, nil)
 	return outer, directive.Decl{}, levelDefault
 }
-
-// scopeLevel names which level supplied a scope. A diagnostic that inferred it
-// from the kind instead would tell a reader to look for a comment that is not
-// there: a field takes its type's directive and its file's alike, and only the
-// level knows which one decided.
-type scopeLevel int
-
-const (
-	levelDefault scopeLevel = iota
-	levelDecl
-	levelContainer
-	levelFile
-)
 
 // outerScope is the scope a declaration would take from the levels outside the
 // one being judged. The second result says whether that scope is the same under
@@ -115,7 +108,7 @@ const (
 // reached by every importer already, so the analysis has no line around it that
 // it could also check; an author who states one is stating it, not guessing, and
 // the directive binds.
-func outerScope(opts Options, name string, rest []directive.Decl) (scope.Scope, bool) {
+func (c *collection) outerScope(opts Options, name string, rest []directive.Decl) (scope.Scope, bool) {
 	for _, d := range rest {
 		if d.HasScope {
 			return d.Scope, true
@@ -138,8 +131,8 @@ func outerScope(opts Options, name string, rest []directive.Decl) (scope.Scope, 
 // permanent false report. And it would miss a directive that restates an
 // enclosing one, which decides nothing for the same reason a redundant default
 // does not: nothing about it could have gone another way.
-func inert(opts Options, name string, stated scope.Scope, rest []directive.Decl) bool {
-	outer, fixed := outerScope(opts, name, rest)
+func (c *collection) inert(opts Options, name string, stated scope.Scope, rest []directive.Decl) bool {
+	outer, fixed := c.outerScope(opts, name, rest)
 	return fixed && stated == outer
 }
 
@@ -150,6 +143,8 @@ func inert(opts Options, name string, stated scope.Scope, rest []directive.Decl)
 // reaches and the levels above them, never by who uses them. So it is reported
 // in every variant, where an unused ignore defers to the one that sees every
 // file.
+//
+//declscope:package // report.go drains it after every finding has been seen
 func (c *collection) reportUnusedScopes(pass *analysis.Pass) {
 	sites := make([]*scopeSite, 0, len(c.scopes))
 	for _, s := range c.scopes {

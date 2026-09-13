@@ -1,9 +1,6 @@
-//declscope:namespace analyzer
-
 package internal
 
 import (
-	"go/ast"
 	"regexp"
 	"strings"
 
@@ -153,7 +150,7 @@ func DefaultOptions() Options {
 func (o *Options) Compile() error {
 	o.excludeRE = o.excludeRE[:0]
 	for _, pattern := range o.Exclude {
-		re, err := compileGlob(pattern)
+		re, err := optionsCompileGlob(pattern)
 		if err != nil {
 			return err
 		}
@@ -173,17 +170,9 @@ func (o Options) Excluded(path string) bool {
 	return false
 }
 
-// isExported is Go's own rule, not an ASCII approximation of it. name[0] is the
-// first *byte*: for Äpfel that is 0xC3, so a byte-range test answers
-// "unexported" for a name Go exports — which gave the declaration
-// defaults.unexported instead of package scope, reported a boundary on
-// published API, and let -fix rename it with in-package edits only, breaking
-// every importer.
-func isExported(name string) bool { return ast.IsExported(name) }
-
-// compileGlob translates a path glob into a regexp. ** matches across
+// optionsCompileGlob translates a path glob into a regexp. ** matches across
 // separators, * and ? do not.
-func compileGlob(pattern string) (*regexp.Regexp, error) {
+func optionsCompileGlob(pattern string) (*regexp.Regexp, error) {
 	var b strings.Builder
 	b.WriteString("(?:^|/)")
 	for i := 0; i < len(pattern); {
