@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"go/token"
 	"slices"
 	"strings"
 
@@ -10,6 +11,18 @@ import (
 	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/rule"
 )
+
+// ignoreBook is ignore.go's half of the collection, embedded there. Its field
+// belongs to this file's namespace, so only this file may reach it.
+//
+//declscope:package // collection embeds it, and collection lives in the core
+type ignoreBook struct {
+	// ignores is every ignore directive in the package, keyed by where it is
+	// written, so that one shared by several declarations is judged once.
+	//
+	//declscope:private // the type is widened only so the core can embed it
+	ignores map[token.Pos]*ignoreSite
+}
 
 // ignoreSite is one physical ignore directive, however many declarations it
 // reaches. A directive on a block is copied into every spec by Decl.Merge and
@@ -52,6 +65,9 @@ func (s *ignoreSite) namesDirective() bool {
 //
 //declscope:package // the collector registers every directive it parses
 func (c *collection) site(ig directive.Ignore) *ignoreSite {
+	if c.ignores == nil {
+		c.ignores = make(map[token.Pos]*ignoreSite)
+	}
 	s, ok := c.ignores[ig.Pos]
 	if !ok {
 		s = &ignoreSite{ig: ig}

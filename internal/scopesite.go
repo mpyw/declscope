@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"go/token"
 	"slices"
 	"strings"
 
@@ -10,6 +11,17 @@ import (
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
+
+// scopesiteBook is scopesite.go's half of the collection, embedded there.
+//
+//declscope:package // collection embeds it, and collection lives in the core
+type scopesiteBook struct {
+	// scopes is the accounting for scope directives: one entry per physical
+	// comment, marked when something in its reach takes its scope.
+	//
+	//declscope:private // the type is widened only so the core can embed it
+	scopes map[token.Pos]*scopeSite
+}
 
 // scopeSite is one physical scope directive, however many declarations it
 // reaches: a block's is copied into every spec, a type's reaches every field,
@@ -57,6 +69,9 @@ type scopeSite struct {
 //
 //declscope:package // the collector registers every directive it parses
 func (c *collection) scopeSite(d directive.Decl) *scopeSite {
+	if c.scopes == nil {
+		c.scopes = make(map[token.Pos]*scopeSite)
+	}
 	s, ok := c.scopes[d.ScopePos]
 	if !ok {
 		s = &scopeSite{dir: d}

@@ -75,6 +75,19 @@ cmd/declscope/            singlechecker entry point, plus the `baseline` subcomm
 
 Each file of `internal/` is its own namespace, taken from its stem. `analyzer.go` and `subject.go` join the **core** instead: the model they hold is read by every stage, and in a named namespace each type would have to carry that namespace's prefix, so the builder's name would be spelled into the model every other file reads.
 
+Each stage's own working state is embedded into `collection` from a struct
+declared in the file that owns it: `ignoreBook`, `scopesiteBook`, `collectBook`,
+`renameBook`. The type carries `//declscope:package` so the core can embed it,
+and the field carries `//declscope:private` to narrow itself back — the type's
+directive would otherwise reach the field and undo the point. Embedding rather
+than nesting keeps the call sites spelling `c.ignores`, and reaching one from
+the wrong stage is a boundary crossing.
+
+The maps are filled on first use by the owning file, so the constructor in
+collect.go never writes another stage's state. `//declscope:package` on a
+constructor would have worked too, but the lazy form is what rename.go already
+did.
+
 `subject.go` carries a file-level `//declscope:package` because the shared model is shared on purpose. Everything else that crosses a namespace says so one declaration at a time, and those directives are the record of what each stage hands to another. `cmd/declscope/baseline.go` is its own namespace for the same reason; only `main.go` is `main`.
 
 > [!IMPORTANT]
