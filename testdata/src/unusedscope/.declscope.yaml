@@ -1,0 +1,4 @@
+# Focused on the directive rule: the label rule would otherwise land on the
+# same lines and obscure what this package is for.
+rules:
+  qualify: never

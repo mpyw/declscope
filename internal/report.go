@@ -64,7 +64,7 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	// Unused directives are reported only once every finding has been seen,
 	// since a type's directive may be used up by one of its members, which is
 	// reached later in the loop above.
-	c.reportUnusedIgnores(pass)
+	c.reportUnusedScopes(pass)
 
 	// Directive hygiene carries a rule like every other check, so that
 	// //declscope:ignore directive can silence one. A report with no rule is
@@ -74,11 +74,24 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	// turning declscope on does not report boundaries a codebase never
 	// enforced, which is history nobody can edit away. A directive the author
 	// wrote is not history — removing it removes the report.
+	//
+	// Silencing is settled before the unused-ignore report, not after: an
+	// ignore written for a directive problem silences something attached to no
+	// declaration, so the per-target accounting never sees it work, and
+	// reporting it unused first would tell the author to delete the very
+	// comment doing the job.
 	slices.SortStableFunc(c.problems, func(a, b directive.Problem) int { return int(a.Pos - b.Pos) })
+	surviving := c.problems[:0]
 	for _, p := range c.problems {
-		if c.fileAt(pass, p.Pos).silences(rule.Directive) {
+		if c.silencesFile(c.fileAt(pass, p.Pos), rule.Directive) {
 			continue
 		}
+		surviving = append(surviving, p)
+	}
+
+	c.reportUnusedIgnores(pass)
+
+	for _, p := range surviving {
 		pass.Report(analysis.Diagnostic{
 			Pos:      p.Pos,
 			Category: string(rule.Directive),

@@ -147,6 +147,9 @@ type collection struct {
 	// ignores is every ignore directive in the package, keyed by where it is
 	// written, so that one shared by several declarations is judged once.
 	ignores map[token.Pos]*ignoreSite
+	// scopes is the same accounting for scope directives: one entry per
+	// physical comment, marked when something in its reach takes its scope.
+	scopes map[token.Pos]*scopeSite
 	// consumed is every comment group some declaration or file took its
 	// directives from; a directive outside them reached nothing.
 	consumed map[*ast.CommentGroup]bool
@@ -177,7 +180,7 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		refs:   make(map[types.Object][]ref),
 		idents: make(map[types.Object][]*ast.Ident),
 
-		ignores:  make(map[token.Pos]*ignoreSite),
+		ignores: make(map[token.Pos]*ignoreSite), scopes: make(map[token.Pos]*scopeSite),
 		consumed: make(map[*ast.CommentGroup]bool),
 	}
 	for _, f := range pass.Files {
@@ -199,6 +202,9 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 			}
 		}
 		fi.scope = fileDir.Scope
+		if fileDir.Scope.HasScope {
+			c.scopeSite(fileDir.Scope).fileLevel = true
+		}
 		fi.core = fileDir.Core
 		switch {
 		case fileDir.Core:
@@ -251,11 +257,12 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 		if d.Name.Name == "init" {
 			return
 		}
+		subject := !reachableOutside(d.Name.Name, nil)
 		c.add(&target{
 			obj: obj, ident: d.Name, kind: kindFunc, file: fi,
 			ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: d.Pos(),
-			scope:      opts.resolve(dir, directive.Decl{}, fi.scope),
-			subject:    !reachableOutside(d.Name.Name, nil),
+			scope:      c.bind(opts, subject, dir, directive.Decl{}, fi.scope),
+			subject:    subject,
 			renameable: true,
 		})
 		return
@@ -271,13 +278,14 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 	if ownerObj != nil {
 		owner = ownerObj.Name()
 	}
+	subject := !reachableOutside(d.Name.Name, ownerObj)
 	c.add(&target{
 		obj: obj, ident: d.Name, kind: kindMethod, file: fi,
 		owner: owner, ownerObj: ownerObj,
 		ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi,
 		dir: dir, anchor: d.Pos(),
-		scope:   opts.resolve(dir, directive.Decl{}, fi.scope),
-		subject: !reachableOutside(d.Name.Name, ownerObj),
+		scope:   c.bind(opts, subject, dir, directive.Decl{}, fi.scope),
+		subject: subject,
 	})
 }
 
@@ -306,11 +314,12 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 				anchor = spec.Pos()
 			}
 			if obj, ok := pass.TypesInfo.Defs[spec.Name]; ok && spec.Name.Name != "_" {
+				subject := !reachableOutside(spec.Name.Name, nil)
 				c.add(&target{
 					obj: obj, ident: spec.Name, kind: kindType, file: fi,
 					ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: anchor,
-					scope:      opts.resolve(dir, directive.Decl{}, fi.scope),
-					subject:    !reachableOutside(spec.Name.Name, nil),
+					scope:      c.bind(opts, subject, dir, directive.Decl{}, fi.scope),
+					subject:    subject,
 					renameable: true,
 				})
 			}
@@ -331,11 +340,12 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 				if !ok || name.Name == "_" {
 					continue
 				}
+				subject := !reachableOutside(name.Name, nil)
 				c.add(&target{
 					obj: obj, ident: name, kind: k, file: fi,
 					ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: anchor,
-					scope:      opts.resolve(dir, directive.Decl{}, fi.scope),
-					subject:    !reachableOutside(name.Name, nil),
+					scope:      c.bind(opts, subject, dir, directive.Decl{}, fi.scope),
+					subject:    subject,
 					renameable: true,
 				})
 			}
@@ -374,7 +384,7 @@ func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, 
 				owner: spec.Name.Name, ownerObj: ownerObj,
 				ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir,
 				anchor:  field.Pos(),
-				scope:   opts.resolve(dir, container, fi.scope),
+				scope:   c.bind(opts, !reachableOutside(name.Name, ownerObj), dir, container, fi.scope),
 				subject: !reachableOutside(name.Name, ownerObj),
 			})
 		}
@@ -412,6 +422,10 @@ func (c *collection) add(t *target) {
 	c.byObj[t.obj] = t
 	for _, ig := range t.dir.Ignores {
 		s := c.site(ig)
+		s.decls = append(s.decls, t.name())
+	}
+	if t.dir.HasScope {
+		s := c.scopeSite(t.dir)
 		s.decls = append(s.decls, t.name())
 	}
 }
@@ -500,15 +514,22 @@ func (c *collection) fileAt(pass *analysis.Pass, pos token.Pos) *fileInfo {
 	return nil
 }
 
-// silences reports whether the file stands r down for everything it holds.
-func (f *fileInfo) silences(r rule.Rule) bool {
-	if f == nil {
+// silencesFile reports whether the file stands r down for everything it holds,
+// and marks the ignore that did it used.
+//
+// The marking is what keeps an ignore written for a directive problem from
+// being reported as unused itself: it silences a report that is not attached to
+// any declaration, so the per-target accounting never sees it work.
+func (c *collection) silencesFile(fi *fileInfo, r rule.Rule) bool {
+	if fi == nil {
 		return false
 	}
-	for _, ig := range f.ignores {
+	hit := false
+	for _, ig := range fi.ignores {
 		if ig.Covers(r) {
-			return true
+			c.site(ig).used = true
+			hit = true
 		}
 	}
-	return false
+	return hit
 }

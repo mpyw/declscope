@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/mpyw/declscope/internal/baseline"
-	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
@@ -172,29 +171,6 @@ func (o Options) Excluded(path string) bool {
 		}
 	}
 	return false
-}
-
-// resolve determines the scope of a declaration, taking the first level that
-// states one: the declaration's own directive, then whatever contains it — a
-// field's type, a spec's var/const/type block — then the file, then the
-// configured default.
-//
-// The namespace prefix plays no part in this. Encoding reach in the name would
-// mean a prefix could not also be used simply to say which unit a declaration
-// belongs to, and a prefix added for legibility would silently widen it.
-// Reach is stated with a directive; the prefix only labels ownership.
-//
-// Every kind resolves the same way, so that defaults.unexported governs every
-// declaration in a package rather than half of them. A knob that works on some
-// declarations and not others is the shape to avoid. Only the number of levels
-// differs, and only because a method has no container the way a field has.
-func (o Options) resolve(dir, container, file directive.Decl) scope.Scope {
-	for _, d := range [...]directive.Decl{dir, container, file} {
-		if d.HasScope {
-			return d.Scope
-		}
-	}
-	return o.Unexported
 }
 
 // reachableOutside reports whether a declaration can be named from another
