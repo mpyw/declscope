@@ -29,9 +29,10 @@ func TestLoadAndApply(t *testing.T) {
 defaults:
   unexported: package
 rules:
-  qualify: never
-  unqualify: true
-  exportedLabels: true
+  naming:
+    qualify: never
+    unqualify: true
+    exported: true
 exclude:
   - "**/mock_*.go"
 `)
@@ -47,7 +48,7 @@ exclude:
 	if opts.Unexported != scope.PackageInternal {
 		t.Errorf("defaults not applied: %+v", opts)
 	}
-	if opts.Qualify != internal.Never || !opts.Unqualify || !opts.ExportedLabels {
+	if opts.Qualify != internal.Never || !opts.Unqualify || !opts.NameExported {
 		t.Errorf("rules not applied: %+v", opts)
 	}
 	if len(opts.Exclude) != 1 || opts.Exclude[0] != "**/mock_*.go" {
@@ -58,7 +59,7 @@ exclude:
 // TestApplyKeepsDefaults checks that omitting a key keeps the built-in
 // default rather than resetting it to the zero value.
 func TestApplyKeepsDefaults(t *testing.T) {
-	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  unqualify: true\n")
+	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  naming:\n    unqualify: true\n")
 	f, err := config.Load(path)
 	if err != nil {
 		t.Fatal(err)
@@ -89,7 +90,8 @@ func TestLoadEmptyFile(t *testing.T) {
 func TestLoadRejectsUnknownKey(t *testing.T) {
 	for _, tt := range []struct{ yaml, want string }{
 		{"nonsense: 1\n", `unknown key "nonsense" (this section takes defaults, rules, exclude, baseline)`},
-		{"rules:\n  unqualifyy: always\n", `unknown key "rules.unqualifyy" (this section takes qualify, unqualify, exportedLabels)`},
+		{"rules:\n  unqualifyy: always\n", `unknown key "rules.unqualifyy" (this section takes naming)`},
+		{"rules:\n  naming:\n    unqualifyy: always\n", `unknown key "rules.naming.unqualifyy" (this section takes qualify, unqualify, exported)`},
 		{"defaults:\n  unexpected: private\n", `unknown key "defaults.unexpected" (this section takes unexported)`},
 	} {
 		path := write(t, t.TempDir(), ".declscope.yaml", tt.yaml)
@@ -196,9 +198,9 @@ func TestQualifyModes(t *testing.T) {
 		yaml string
 		want internal.Mode
 	}{
-		{"rules:\n  qualify: always\n", internal.Always},
-		{"rules:\n  qualify: never\n", internal.Never},
-		{"rules:\n  qualify: ondemand\n", internal.OnDemand},
+		{"rules:\n  naming:\n    qualify: always\n", internal.Always},
+		{"rules:\n  naming:\n    qualify: never\n", internal.Never},
+		{"rules:\n  naming:\n    qualify: ondemand\n", internal.OnDemand},
 	}
 	for _, tt := range tests {
 		opts, err := apply(t, tt.yaml)
@@ -218,10 +220,10 @@ func TestBoolSettings(t *testing.T) {
 		get  func(internal.Options) bool
 		want bool
 	}{
-		{"rules:\n  unqualify: true\n", func(o internal.Options) bool { return o.Unqualify }, true},
-		{"rules:\n  unqualify: false\n", func(o internal.Options) bool { return o.Unqualify }, false},
-		{"rules:\n  exportedLabels: true\n", func(o internal.Options) bool { return o.ExportedLabels }, true},
-		{"rules:\n  exportedLabels: false\n", func(o internal.Options) bool { return o.ExportedLabels }, false},
+		{"rules:\n  naming:\n    unqualify: true\n", func(o internal.Options) bool { return o.Unqualify }, true},
+		{"rules:\n  naming:\n    unqualify: false\n", func(o internal.Options) bool { return o.Unqualify }, false},
+		{"rules:\n  naming:\n    exported: true\n", func(o internal.Options) bool { return o.NameExported }, true},
+		{"rules:\n  naming:\n    exported: false\n", func(o internal.Options) bool { return o.NameExported }, false},
 	}
 	for _, tt := range tests {
 		opts, err := apply(t, tt.yaml)
@@ -234,7 +236,7 @@ func TestBoolSettings(t *testing.T) {
 	}
 }
 
-// TestDefaultModes pins the defaults: the label is required only once a
+// TestDefaultModes pins the defaults: the prefix is required only once a
 // package has a second namespace to distinguish, and is never forbidden.
 func TestDefaultModes(t *testing.T) {
 	opts := internal.DefaultOptions()
@@ -244,8 +246,8 @@ func TestDefaultModes(t *testing.T) {
 	if opts.Unqualify {
 		t.Error("default Unqualify should be off")
 	}
-	if opts.ExportedLabels {
-		t.Error("default ExportedLabels should be off")
+	if opts.NameExported {
+		t.Error("default NameExported should be off")
 	}
 }
 
@@ -257,12 +259,12 @@ func TestApplyRejectsUnknownMode(t *testing.T) {
 		yaml string
 		want string
 	}{
-		{"rules:\n  qualify: sometimes\n",
-			`rules.qualify: unknown mode "sometimes" (want always, never or ondemand)`},
-		{"rules:\n  qualify: true\n",
-			`rules.qualify: unknown mode "true" (want always, never or ondemand)`},
-		{"rules:\n  qualify: false\n",
-			`rules.qualify: unknown mode "false" (want always, never or ondemand)`},
+		{"rules:\n  naming:\n    qualify: sometimes\n",
+			`rules.naming.qualify: unknown mode "sometimes" (want always, never or ondemand)`},
+		{"rules:\n  naming:\n    qualify: true\n",
+			`rules.naming.qualify: unknown mode "true" (want always, never or ondemand)`},
+		{"rules:\n  naming:\n    qualify: false\n",
+			`rules.naming.qualify: unknown mode "false" (want always, never or ondemand)`},
 	}
 	for _, tt := range tests {
 		_, err := apply(t, tt.yaml)
@@ -277,9 +279,9 @@ func TestApplyRejectsUnknownMode(t *testing.T) {
 
 // TestBoolSettingRejectsAWord checks that a boolean setting refuses a word,
 // naming what it takes. rules.unqualify is not a mode: qualify already answers
-// when a label applies, so there is no third value for this key to hold.
+// when a prefix applies, so there is no third value for this key to hold.
 func TestBoolSettingRejectsAWord(t *testing.T) {
-	for _, yaml := range []string{"rules:\n  unqualify: sometimes\n", "rules:\n  exportedLabels: ondemand\n"} {
+	for _, yaml := range []string{"rules:\n  naming:\n    unqualify: sometimes\n", "rules:\n  naming:\n    exported: ondemand\n"} {
 		err := settingErr(t, yaml)
 		if err == nil {
 			t.Fatalf("%q: want an error", yaml)
@@ -343,7 +345,7 @@ func TestResolveForBaselineReturnsNamed(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "go.mod", "module example.com/m\n")
 	sub := filepath.Join(root, "sub")
-	write(t, sub, ".declscope.yaml", "baseline: sub-baseline.yaml\nrules:\n  unqualify: true\n")
+	write(t, sub, ".declscope.yaml", "baseline: sub-baseline.yaml\nrules:\n  naming:\n    unqualify: true\n")
 	write(t, sub, "sub-baseline.yaml", "not: [valid\n")
 	inner := filepath.Join(sub, "inner")
 	write(t, inner, "keep.go", "package inner\n")

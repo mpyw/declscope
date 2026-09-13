@@ -6,7 +6,7 @@
 // every method a package-wide name, with no way to say "this belongs to this
 // file" short of splitting the package. declscope adds private and
 // package-internal as pseudo levels, selected by explicit directives and
-// labeled by a naming convention, and enforces them statically.
+// prefixed by a naming convention, and enforces them statically.
 package declscope
 
 import (

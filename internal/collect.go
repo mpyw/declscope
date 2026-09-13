@@ -38,7 +38,7 @@ type fileInfo struct {
 	// and a field takes its type's before the file is consulted.
 	scope directive.Decl
 
-	// core marks the file as part of the package's core namespace, whose label
+	// core marks the file as part of the package's core namespace, whose prefix
 	// is empty. Several files may carry it and they share the one namespace.
 	core bool
 }
@@ -75,7 +75,7 @@ func (f *fileInfo) key() string {
 // A namespace derived from a file name is normalized to alphanumerics, and one
 // written with //declscope:namespace must be an unexported identifier, so a
 // parenthesis can appear in neither. That leaves "(core)" free for the core,
-// whose label is empty and whose files all share it, and free for the file
+// whose prefix is empty and whose files all share it, and free for the file
 // with no stem at all — which has no namespace either, and must not share a
 // key with every other such file.
 func (f *fileInfo) nsName() string {
@@ -239,7 +239,7 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		switch {
 		case fileDir.Core:
 			// The core namespace has no name. Every core file shares it, which
-			// is what makes "unlabeled" name exactly one unit.
+			// is what makes having no prefix name exactly one unit.
 			fi.ns = ""
 		case fileDir.HasNamespace:
 			fi.ns = fileDir.Namespace

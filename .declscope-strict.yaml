@@ -3,10 +3,11 @@
 # lookup walks up from each analyzed package, and a default-named file at the
 # repository root would silently change what those tests assert.
 rules:
-  # always | never | ondemand. The default is kept: under `always` every
-  # unexported helper in a single-namespace package (internal/config,
-  # internal/baseline, ...) would need a label that distinguishes nothing
-  # there.
-  qualify: ondemand
-  # true | false
-  unqualify: true
+  naming:
+    # always | never | ondemand. The default is kept: under `always` every
+    # unexported helper in a single-namespace package (internal/config,
+    # internal/baseline, ...) would need a prefix that distinguishes nothing
+    # there.
+    qualify: ondemand
+    # true | false
+    unqualify: true

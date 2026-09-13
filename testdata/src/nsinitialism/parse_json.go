@@ -1,7 +1,7 @@
 package nsinitialism
 
 // The second namespace. An initialism in a later segment is spelled the way
-// Go does, so the label is parseJSON and parseJsonTree carries it too.
+// Go does, so the prefix is parseJSON and parseJsonTree carries it too.
 func parseJSONTree() int { return 1 }
 func parseJsonTree() int { return 2 }
 

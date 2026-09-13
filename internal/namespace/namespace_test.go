@@ -39,8 +39,8 @@ func TestOf(t *testing.T) {
 		{"_shadow.go", "shadow"},
 
 		// A digit-leading stem is still an identity, so 2fa_test.go shares
-		// the namespace of 2fa.go. Whether it can also be a label is
-		// IsLabel's question, not Of's.
+		// the namespace of 2fa.go. Whether it can also be a prefix is
+		// CanPrefix's question, not Of's.
 		{"2fa_auth.go", "2faAuth"},
 		{"2fa.go", "2fa"},
 		{"2fa_test.go", "2fa"},
@@ -80,7 +80,7 @@ func TestOf(t *testing.T) {
 	}
 }
 
-func TestIsLabel(t *testing.T) {
+func TestCanPrefix(t *testing.T) {
 	tests := []struct {
 		ns   string
 		want bool
@@ -103,8 +103,8 @@ func TestIsLabel(t *testing.T) {
 		{"foo.bar", false},
 	}
 	for _, tt := range tests {
-		if got := namespace.IsLabel(tt.ns); got != tt.want {
-			t.Errorf("IsLabel(%q) = %v, want %v", tt.ns, got, tt.want)
+		if got := namespace.CanPrefix(tt.ns); got != tt.want {
+			t.Errorf("CanPrefix(%q) = %v, want %v", tt.ns, got, tt.want)
 		}
 	}
 }
@@ -133,7 +133,7 @@ func TestHasPrefix(t *testing.T) {
 		{"parseJsonTree", "parseJSON", true},
 
 		// A word break inside a multi-word namespace already confirms the
-		// label, so a lowercase continuation is a fragment after it rather
+		// prefix, so a lowercase continuation is a fragment after it rather
 		// than proof there was none.
 		{"userIdcache", "userId", true},
 		{"userIdcache", "userID", true},
@@ -171,12 +171,12 @@ func TestQualify(t *testing.T) {
 		{"identity", "user", "userIdentity"}, // not an initialism
 		{"ids", "user", "userIds"},           // nor its plural
 
-		// A name that already carries the label in another spelling is left
+		// A name that already carries the prefix in another spelling is left
 		// alone rather than doubled up.
 		{"userIDCache", "userId", "userIDCache"},
 		{"userIdCache", "userID", "userIdCache"},
 
-		// A namespace that cannot be a label leaves the name unchanged.
+		// A namespace that cannot be a prefix leaves the name unchanged.
 		{"helper", "2faAuth", "helper"},
 		{"helper", "Foo", "helper"},
 	}
@@ -201,7 +201,7 @@ func TestUnqualify(t *testing.T) {
 		{"userURLPath", "user", "urlPath"}, // not uRLPath
 		{"userIO", "user", "io"},
 
-		// The label is matched the way HasPrefix matches it, ignoring case.
+		// The prefix is matched the way HasPrefix matches it, ignoring case.
 		{"userIdCache", "userID", "cache"},
 		{"userIDCache", "userId", "cache"},
 	}
@@ -217,12 +217,12 @@ func TestUnqualify(t *testing.T) {
 // caller reports the violation regardless and puts the reason in the message.
 func TestUnqualifyDeclines(t *testing.T) {
 	tests := []struct{ name, ns string }{
-		// Reachable: there is a label, it is not wanted here, and no rename
+		// Reachable: there is a prefix, it is not wanted here, and no rename
 		// can be derived. These become "rename it by hand" diagnostics.
 		{"userType", "user"}, // would leave the keyword "type"
 		{"userFunc", "user"}, // would leave the keyword "func"
 		{"user2", "user"},    // would leave "2", which cannot start an identifier
-		// The label is confirmed by the word break inside the namespace, but
+		// The prefix is confirmed by the word break inside the namespace, but
 		// what follows is a fragment, so there is no clean place to cut.
 		{"userIdcache", "userID"},
 		// Identical to the namespace in another spelling: checkUnqualify exempts
@@ -232,8 +232,8 @@ func TestUnqualifyDeclines(t *testing.T) {
 		// Unreachable: checkUnqualify gates these out before calling, so they
 		// only pin that the function stays total rather than returning a
 		// nonsense rename for input it was not designed for.
-		{"user", "user"},   // identical to the namespace, so carries no label
-		{"users", "user"},  // not a word boundary, so never a label
+		{"user", "user"},   // identical to the namespace, so carries no prefix
+		{"users", "user"},  // not a word boundary, so never a prefix
 		{"helper", "user"}, // does not begin with the namespace
 		{"anything", ""},   // a file whose name yields no namespace
 	}

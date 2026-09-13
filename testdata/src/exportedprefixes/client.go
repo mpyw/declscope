@@ -1,6 +1,6 @@
-package exportedlabels
+package exportedprefixes
 
-// The label carries the exportedness of the name it joins: New becomes
+// The prefix carries the exportedness of the name it joins: New becomes
 // ClientNew, never clientNew. A rename that quietly unexported a declaration
 // would delete the package's API to satisfy a linter.
 func New() int { return 1 } // want `func New does not carry the prefix of namespace "client"; rename it to ClientNew`

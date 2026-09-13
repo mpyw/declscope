@@ -1,4 +1,5 @@
-# Require the label even in a package with one namespace, so that gaining a
+# Require the prefix even in a package with one namespace, so that gaining a
 # second one is not a mass rename.
 rules:
-  qualify: always
+  naming:
+    qualify: always

@@ -14,11 +14,11 @@
 //
 // A namespace does two jobs, and they are deliberately kept apart. As an
 // identity it answers "is this reference inside the same namespace?", and
-// every file that has a stem has one. As a label it is the prefix that the
+// every file that has a stem has one. As a prefix it is the prefix that the
 // naming rules ask an unexported declaration to carry, and only a namespace
-// that can start an identifier qualifies; IsLabel tells the two apart. 2fa.go
+// that can start an identifier qualifies; CanPrefix tells the two apart. 2fa.go
 // is a namespace that a test file can share, but no identifier begins with a
-// digit, so it can never be a label.
+// digit, so it can never be a prefix.
 package namespace
 
 import (
@@ -48,8 +48,8 @@ import (
 // Of always returns the normalized stem when there is one, so that a file's
 // identity never depends on whether the stem also makes a usable prefix:
 // 2fa_test.go must share the namespace of 2fa.go even though no identifier can
-// start with a digit. Whether the result can serve as a label is a separate
-// question, answered by IsLabel. Only a file with no stem at all yields "".
+// start with a digit. Whether the result can serve as a prefix is a separate
+// question, answered by CanPrefix. Only a file with no stem at all yields "".
 func Of(path string) string {
 	base := strings.TrimSuffix(filepath.Base(path), ".go")
 
@@ -62,15 +62,15 @@ func Of(path string) string {
 	return camel(base)
 }
 
-// IsLabel reports whether ns can be written as a label: prepended to an
+// CanPrefix reports whether ns can be written as a prefix: prepended to an
 // unexported identifier, it has to yield another unexported identifier.
 //
 // A namespace that cannot (2faAuth, since no identifier may start with a
 // digit) is still a perfectly good identity for the privacy rules, but the
 // naming rules have nothing they could ask for and stay silent. Any string
 // that starts an identifier and does not export it qualifies, so a keyword
-// stem such as struct.go still labels its declarations (structHelper).
-func IsLabel(ns string) bool {
+// stem such as struct.go still prefixes its declarations (structHelper).
+func CanPrefix(ns string) bool {
 	if ns == "" || ast.IsExported(ns) {
 		return false
 	}
@@ -81,11 +81,11 @@ func IsLabel(ns string) bool {
 //
 // The comparison ignores case, so that the author need not guess which
 // spelling of an initialism the namespace uses: userIDCache and userIdCache
-// both carry the label of user_id.go. What it does insist on is that the
-// label is a whole word and not a fragment of a longer one, so namespace
+// both carry the prefix of user_id.go. What it does insist on is that the
+// prefix is a whole word and not a fragment of a longer one, so namespace
 // "user" claims userCache and user2 but neither users nor usercache. A name
 // that reproduces a word break inside a multi-word namespace has already
-// shown the label is there, which is why userIdcache carries userId even
+// shown the prefix is there, which is why userIdcache carries userId even
 // though what follows is lowercase.
 func HasPrefix(name, ns string) bool {
 	if ns == "" {
@@ -106,18 +106,18 @@ func HasPrefix(name, ns string) bool {
 }
 
 // Qualify returns name rewritten to carry ns as its prefix, which is the
-// rename offered when a declaration is missing its label.
+// rename offered when a declaration is missing its prefix.
 //
 // The first word of name is capitalized the way Go spells it, so id becomes
 // userID and urlPath becomes userURLPath rather than userId and userUrlPath.
-// A namespace that cannot be a label (see IsLabel) leaves the name alone.
+// A namespace that cannot be a prefix (see CanPrefix) leaves the name alone.
 //
 // The result keeps name's exportedness. A namespace is always an unexported
 // identifier, so prepending one blindly would lower-case an exported name:
 // Load in user.go would be renamed to userLoad, deleting the package's API to
-// satisfy a linter. An exported name takes an exported label instead.
+// satisfy a linter. An exported name takes an exported prefix instead.
 func Qualify(name, ns string) string {
-	if !IsLabel(ns) || HasPrefix(name, ns) {
+	if !CanPrefix(ns) || HasPrefix(name, ns) {
 		return name
 	}
 	out := ns + capitalize(name)
@@ -279,7 +279,7 @@ var knownArch = map[string]bool{
 }
 
 // Unqualify returns name with ns stripped from its front, which is the rename
-// offered when a namespace label is not wanted.
+// offered when a namespace prefix is not wanted.
 //
 // The prefix is matched the way HasPrefix matches it, ignoring case. The
 // leading run of capitals left behind is lowered the way Go spells an
@@ -288,7 +288,7 @@ var knownArch = map[string]bool{
 //
 // When no rename can be derived, short is empty and why says so, for reporting
 // the violation without a fix: being unable to spell the new name is a limit
-// of the fix, not a reason to let the label stand.
+// of the fix, not a reason to let the prefix stand.
 func Unqualify(name, ns string) (short, why string) {
 	if ns == "" {
 		return "", "the name does not begin with the namespace"
@@ -303,13 +303,13 @@ func Unqualify(name, ns string) (short, why string) {
 
 	r, _ := utf8.DecodeRuneInString(rest)
 	if !unicode.IsUpper(r) && !unicode.IsDigit(r) {
-		// The label was confirmed by a word break inside the namespace, but
+		// The prefix was confirmed by a word break inside the namespace, but
 		// what follows it does not start a word of its own, so there is no
-		// clean place to cut: userIdcache is a label and then a fragment.
-		return "", "what follows the label does not start a new word"
+		// clean place to cut: userIdcache is a prefix and then a fragment.
+		return "", "what follows the prefix does not start a new word"
 	}
 	rest = lowerLeading(rest)
-	// Dropping the label must not change what the name is visible to either:
+	// Dropping the prefix must not change what the name is visible to either:
 	// UserID drops to ID, never to id.
 	if ast.IsExported(name) {
 		rest = capitalize(rest)

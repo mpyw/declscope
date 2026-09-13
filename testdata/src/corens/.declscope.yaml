@@ -1,6 +1,7 @@
 # The core exists to be left alone by the naming rules, so both are on their
 # strictest setting: whatever the core is spared here, it is spared everywhere.
 rules:
-  qualify: always
-  unqualify: true
-  exportedLabels: true
+  naming:
+    qualify: always
+    unqualify: true
+    exported: true

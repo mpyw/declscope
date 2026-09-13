@@ -4,4 +4,5 @@
 defaults:
   unexported: package
 rules:
-  qualify: never
+  naming:
+    qualify: never

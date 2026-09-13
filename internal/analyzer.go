@@ -6,7 +6,7 @@
 // there is namespace pollution. An unexported identifier is private to its
 // file's namespace unless a directive widens it, and the naming rules ask it
 // to carry that namespace as a prefix, so that the owning unit is legible at
-// every use site. The prefix labels ownership; it never grants reach.
+// every use site. The prefix marks ownership. It never grants reach.
 //
 // Methods and struct fields are already namespaced by the type that owns them
 // and cannot collide with anything, so the problem there is not pollution but

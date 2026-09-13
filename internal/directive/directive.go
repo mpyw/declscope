@@ -214,7 +214,7 @@ type File struct {
 	HasNamespace bool
 	NamespacePos token.Pos
 
-	// Core marks the file as part of the package's core namespace, whose label
+	// Core marks the file as part of the package's core namespace, whose prefix
 	// is empty. Several files may carry it and they share the one namespace,
 	// the way //declscope:namespace merges files under a name; the core has
 	// none, which is what puts it outside the naming rules.
