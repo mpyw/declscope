@@ -2,7 +2,7 @@ package members
 
 type User struct {
 	// ID is exported, and so is User, so it is reachable from outside the package
-// and carries no boundary.
+	// and carries no boundary.
 	ID int
 	// name is unexported, so it is bounded by the namespace declaring User.
 	name string // want `field User.name is private to namespace "user", but is used from namespace "order"`

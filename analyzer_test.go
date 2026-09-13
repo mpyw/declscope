@@ -168,6 +168,13 @@ func TestExportedLabels(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "exportedlabels")
 }
 
+// TestRemovedPublicDirective checks that //declscope:public is answered by name
+// rather than as an unknown directive, and offers to delete itself so that -fix
+// migrates a codebase that used it.
+func TestRemovedPublicDirective(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "removedpublic")
+}
+
 // TestUnusedScopeDirective checks the structural test: a scope directive that
 // binds nothing is reported, an exported type with an unexported field still
 // binds one, and restating the scope already in force is not reported at all.

@@ -78,6 +78,12 @@ const prefix = "declscope:"
 type Problem struct {
 	Pos token.Pos
 	Msg string
+
+	// End bounds the comment when deleting it is the repair, which is so for a
+	// directive that no longer exists: there is nothing to rewrite it to. It is
+	// zero for every other problem, where what to write instead is the author's
+	// decision and a fix would be a guess.
+	End token.Pos
 }
 
 // Ignore is one ignore directive. An empty Rules silences every rule.
@@ -143,13 +149,32 @@ func ParseDecl(groups ...*ast.CommentGroup) Decl {
 			if !ok {
 				continue
 			}
-			d.consume(c.Pos(), keyword, arg)
+			d.consume(c.Pos(), c.End(), keyword, arg)
 		}
 	}
 	return d
 }
 
-func (d *Decl) consume(pos token.Pos, keyword, arg string) {
+// removedPublic answers //declscope:public by name. It was removed with the
+// public scope: what is reachable from outside the package is not the subject,
+// so there is nothing for the directive to have said. Naming it beats the
+// generic "unknown directive", which would leave an upgrading codebase guessing
+// at a line it can simply delete.
+const removedPublic = "//declscope:public was removed: an exported declaration " +
+	"carries no boundary, so the directive stated nothing — delete the line"
+
+// removed reports a directive that no longer exists, with the extent of the
+// comment so that -fix can delete it. An upgrade that a tool performs is a
+// different thing from one a human greps for.
+func (d *Decl) removed(pos, end token.Pos) {
+	d.Problems = append(d.Problems, Problem{Pos: pos, Msg: removedPublic, End: end})
+}
+
+func (f *File) removed(pos, end token.Pos) {
+	f.Problems = append(f.Problems, Problem{Pos: pos, Msg: removedPublic, End: end})
+}
+
+func (d *Decl) consume(pos, end token.Pos, keyword, arg string) {
 	switch keyword {
 	case "ignore":
 		ignore, problem := parseIgnore(pos, arg)
@@ -161,6 +186,12 @@ func (d *Decl) consume(pos token.Pos, keyword, arg string) {
 
 	case "namespace":
 		d.problem(pos, "declscope:namespace must appear before the package clause")
+
+	case "core":
+		d.problem(pos, "declscope:core must appear before the package clause")
+
+	case "public":
+		d.removed(pos, end)
 
 	default:
 		s, ok := scope.Parse(keyword)
@@ -251,6 +282,8 @@ func ParseFile(file *ast.File) File {
 				f.ignore(c.Pos(), arg)
 			case "package", "private":
 				f.scope(c.Pos(), keyword, arg)
+			case "public":
+				f.removed(c.Pos(), c.End())
 			default:
 				f.problem(c.Pos(), fmt.Sprintf("declscope:%s is not a file-level directive", keyword))
 			}
@@ -329,7 +362,7 @@ func parseIgnore(pos token.Pos, arg string) (Ignore, *Problem) {
 		}
 		r, ok := rule.Parse(name)
 		if !ok {
-			return Ignore{}, &Problem{pos, fmt.Sprintf("unknown rule %q in declscope:ignore (want one of %s)",
+			return Ignore{}, &Problem{Pos: pos, Msg: fmt.Sprintf("unknown rule %q in declscope:ignore (want one of %s)",
 				name, strings.Join(rule.Names(), ", "))}
 		}
 		ignore.Rules = append(ignore.Rules, r)

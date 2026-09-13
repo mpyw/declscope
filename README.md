@@ -652,6 +652,8 @@ A malformed directive is reported at the comment:
 | `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, unqualify)` |
 | `//declscope:namespace` after the package clause | `declscope:namespace must appear before the package clause` |
 | `//declscope:namespace` with no name, a second one, or a name that is not an unexported identifier | Reported as such |
+| `//declscope:core` with an argument, or a second one on the same file | Reported as such |
+| `//declscope:public` | `was removed: an exported declaration carries no boundary, so the directive stated nothing — delete the line` |
 
 ## Configuration
 
@@ -682,6 +684,21 @@ baseline: .declscope-baseline.yaml   # relative to this file; found automaticall
 | `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` at or above the package, stopping at the module root | The baseline to consult |
 
 There is no `defaults.exported`: an exported declaration has no scope to default ([Scopes](#scopes)). `boundary` has no key; see [Rules](#rules). An unknown key is an error rather than a silent no-op, so that a typo in a rule name cannot leave the rule at its default with no sign of it. A value a key does not accept is an error naming the values it does.
+
+### Upgrading from the three-scope releases
+
+Three things were removed with the `public` scope, and each is answered by name
+rather than by the parser's generic complaint:
+
+| Written | What happens |
+| --- | --- |
+| `//declscope:public` | Reported, with a fix that deletes the line — so `declscope -fix ./...` performs the migration |
+| `defaults.exported` | The config is refused, saying why there is no scope for an exported declaration to default to |
+| `rules.unqualify: always` / `never` | The config is refused, saying the key is now `true` or `false` and which one the old word meant |
+
+A `defaults.exported: private` that was holding an exported struct's internals under a boundary has a replacement: leave the fields unexported, or make the type unexported. Either way they stay in the subject on their own, with no configuration at all — an exported field of an unexported type is [reachable from nobody](#scope-resolution).
+
+Existing baseline entries for violations that can no longer be produced simply stop matching; regenerating drops them, and the deletion in `git diff .declscope-baseline.yaml` records the rules changing rather than any cleanup.
 
 ## Adopting on an existing codebase
 
