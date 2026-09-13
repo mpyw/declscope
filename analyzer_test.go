@@ -146,9 +146,13 @@ func TestMemberOwnerFile(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "memberowner")
 }
 
-// TestCoreNamespace checks the core: several files share it, it has no name, and
-// both naming rules pass it by at their strictest settings, while an ordinary
-// namespace in the same package is still asked for its label.
+// TestCoreNamespace checks the core: several files share the one unnamed
+// namespace, the naming rules are outside it, and an ordinary namespace in the
+// same package is asked for its label as usual.
+//
+// It also checks that //declscope:core carries no scope. A core declaration is
+// private to the core by default, so naming it from outside crosses a boundary,
+// and a file wanting both states both.
 func TestCoreNamespace(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "corens")
 }

@@ -113,6 +113,27 @@ The directive says the declaration is shared. The name says which unit it came f
 > [!TIP]
 > `-fix` always widens, because that is the repair it can apply mechanically. Where the boundary is worth keeping, move the call instead and leave the declaration alone.
 
+### Where declscope sits
+
+Three linters draw boundaries in Go, at three scales:
+
+![A Go program drawn as nested frames. Between the api and store packages, depguard asks whether one package may import another; a green arrow runs from api to store and a red one back from store to api is crossed out. Inside store, between user.go and csv.go, declscope asks whether one file may reach another's declaration; a red arrow from csvParse to User.email is crossed out. At the edge of the program, deadcode asks whether anything is reachable at all; the mail package sits greyed out with no arrow entering it, captioned unreachable.](docs/boundaries.png)
+
+| Linter | Scale | The question it answers |
+| --- | --- | --- |
+| [`depguard`](https://github.com/OpenPeeDeeP/depguard) | Between packages | May this package import that one? |
+| **declscope** | Within one package | May this file reach that declaration? |
+| [`deadcode`](https://pkg.go.dev/golang.org/x/tools/cmd/deadcode) | Whole program | Is this reachable at all? |
+
+- **`depguard`** reads the import graph and enforces the lines drawn by the package layout: a domain package may not import a transport one. It says nothing about a package's inside, where every unexported name is visible to every file.
+- **declscope** draws lines inside the package, between namespaces, so a package can stay flat and keep a boundary the compiler does not provide.
+- **`deadcode`** roots a reachability analysis at a `main` package and reports what no path reaches. It answers a question declscope structurally cannot. `boundary` needs a *use* to find, so a declaration nobody uses produces no crossing and no diagnostic.
+
+The three compose. `depguard` keeps the package graph honest, declscope keeps each package honest inside, and `deadcode` removes what neither needs to reach.
+
+> [!NOTE]
+> Where [Limits of the analysis](#limits-of-the-analysis) says "an unused-code linter", the tool meant is `deadcode`, or staticcheck's `unused` for a library with no `main` to root from.
+
 ## Installation and usage
 
 ### <a href="https://mise.jdx.dev/"><img src="https://mise.jdx.dev/logo.svg" height="28" alt=""></a> Using [mise](https://mise.jdx.dev/) (macOS/Linux/Windows)
@@ -278,7 +299,15 @@ package transport
 - Nothing is lost by that. "Unlabeled" still names exactly one unit, so `Load()` read in any file still says which unit owns it.
 
 > [!IMPORTANT]
-> A file may not carry both `//declscope:core` and `//declscope:namespace`. A core file's namespace *is* the core.
+> `//declscope:core` decides the **namespace**, and nothing else. It carries no scope.
+>
+> A core declaration still takes [`defaults.unexported`](#configuration), so by default it is private *to the core*, and a file outside the core that names it crosses a boundary. Widening is stated the same way as anywhere else.
+>
+> | Written on a file | Effect |
+> | --- | --- |
+> | `//declscope:core` | The file joins the core namespace. What it declares keeps the default scope |
+> | `//declscope:core` and `//declscope:package` | Both apply. The file is core, and what it declares is package-wide |
+> | `//declscope:core` and `//declscope:namespace` | Refused. A core file's namespace *is* the core |
 
 A package that turns [`rules.exportedLabels`](#configuration) on will want a core. Labels on exported names are the package's API. The core is how a package says *these names are the API. Leave them as they are.*
 
@@ -655,7 +684,7 @@ A **directive** is a comment beginning `//declscope:` (`/*declscope:` … `*/` i
 | `//declscope:package`, `//declscope:private` | Declaration or file | States the [scope](#scope-resolution) instead of inheriting it from the level above, which is the type, then the file, then `defaults`. On a type it also reaches the type's [fields](#members), but not its methods: a method takes its own file's level. On a file it is the default for what the file declares |
 | `//declscope:ignore` | Declaration or file | Silences every rule |
 | `//declscope:ignore <rules>` | Declaration or file | Silences the named [rules](#rules), comma-separated (`unqualify`, `unqualify,qualify`) |
-| `//declscope:core` | File | Joins the file to the package's **core** [namespace](#the-core-namespace); mutually exclusive with `//declscope:namespace` |
+| `//declscope:core` | File | Joins the file to the package's **core** [namespace](#the-core-namespace). Carries no scope. Mutually exclusive with `//declscope:namespace` |
 | `//declscope:namespace <name>` | File | Sets the file's [namespace](#namespaces); the name must be an unexported identifier |
 
 A trailing `// reason` is allowed after any directive:
@@ -734,34 +763,38 @@ package repo
 > [!NOTE]
 > Flush against `package` also works. But if another file in the package carries the real package comment, that leaves a stray blank line in the rendered documentation.
 
-A file-level ignore takes the same argument as the declaration-level form, so the directive means one thing wherever it appears. It is what a file of small helpers wants, rather than a directive on each of them:
+A file-level ignore takes the same argument as the declaration-level form, so the directive means one thing wherever it appears:
 
 ```go
-// util.go   (namespace: util)
 //declscope:ignore qualify,unqualify
 
 package store
 ```
 
-A utility file whose whole contents are meant to be package-wide says so in one line. It uses a scope, not an ignore:
+A **utility file** is the clearest case for the file level, and it wants directives rather than ignores. Its contents are shared, and its helpers belong to no unit in particular. Both facts are stated, one directive each:
 
 ```go
-// util.go   (namespace: util)
-//declscope:package
+// util.go
+//declscope:core    // the unlabeled unit, so no prefix is asked for
+//declscope:package // usable from every file
 
 package store
 
-func utilMust(err error) { ... }
-func utilFirst[T any](s []T) T { ... }
+func must(err error) { ... }
+func first[T any](s []T) T { ... }
 ```
 
-The difference from `//declscope:ignore boundary` is the difference between **endorsing** and **suppressing**:
+[`//declscope:core`](#the-core-namespace) decides the namespace and `//declscope:package` decides the scope, so `must(err)` reads the same from every file and reaches every one of them.
+
+Without the core, the label is required and the same helpers are `utilMust` and `utilFirst`. That is a real choice rather than a worse one: the label tells a distant call site whose helper it is. What matters is that both options **state** something. An ignore states nothing.
+
+That is the difference between **endorsing** and **suppressing**:
 
 | | `//declscope:package` on the file | `//declscope:ignore boundary` on the file |
 | --- | --- | --- |
 | States a scope | Yes | No |
-| [`qualify`](#qualify) still asks for the label | Yes — `utilMust(err)` read elsewhere says whose helper it is | No, the rule is off |
-| A declaration can be narrowed back | Yes, with `//declscope:private` | No — it would mean nothing at all |
+| A declaration can be narrowed back | Yes, with `//declscope:private` | No. It would mean nothing at all |
+| [`qualify`](#qualify) still asks for the label | Yes, unless the file is also core | No, the rule is off |
 
 > [!NOTE]
 > The directive belongs to the **file**, not to the namespace. The namespace comes from the file name or from `//declscope:namespace`, and the package clause has nothing to do with either. Files that share a namespace each need their own. One file cannot silence a rule on behalf of another.
@@ -1007,27 +1040,6 @@ scope with `//declscope:package` and say why.
 
 > [!IMPORTANT]
 > The second sentence is the one the mechanism depends on. The cheapest repair for a `boundary` diagnostic is to **widen** the declaration. A `//declscope:package` inserted for that reason is itself a change of reach. The instruction makes the agent write that change down, and justify it, where the next reader will find it.
-
-## Where declscope sits
-
-Three linters draw boundaries in Go, at three scales:
-
-![A Go program drawn as nested frames. Between the api and store packages, depguard asks whether one package may import another; a green arrow runs from api to store and a red one back from store to api is crossed out. Inside store, between user.go and csv.go, declscope asks whether one file may reach another's declaration; a red arrow from csvParse to User.email is crossed out. At the edge of the program, deadcode asks whether anything is reachable at all; the mail package sits greyed out with no arrow entering it, captioned unreachable.](docs/boundaries.png)
-
-| Linter | Scale | The question it answers |
-| --- | --- | --- |
-| [`depguard`](https://github.com/OpenPeeDeeP/depguard) | Between packages | May this package import that one? |
-| **declscope** | Within one package | May this file reach that declaration? |
-| [`deadcode`](https://pkg.go.dev/golang.org/x/tools/cmd/deadcode) | Whole program | Is this reachable at all? |
-
-- **`depguard`** reads the import graph and enforces the lines drawn by the package layout: a domain package may not import a transport one. It says nothing about a package's inside, where every unexported name is visible to every file.
-- **declscope** draws lines inside the package, between namespaces, so a package can stay flat and keep a boundary the compiler does not provide.
-- **`deadcode`** roots a reachability analysis at a `main` package and reports what no path reaches. It answers a question declscope structurally cannot. `boundary` needs a *use* to find, so a declaration nobody uses produces no crossing and no diagnostic.
-
-The three compose. `depguard` keeps the package graph honest, declscope keeps each package honest inside, and `deadcode` removes what neither needs to reach.
-
-> [!NOTE]
-> Where [Limits of the analysis](#limits-of-the-analysis) says "an unused-code linter", the tool meant is `deadcode`, or staticcheck's `unused` for a library with no `main` to root from.
 
 ## Limits of the analysis
 
