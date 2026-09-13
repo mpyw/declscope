@@ -361,6 +361,25 @@ A **member** is a method or a struct field. The two are not governed alike, beca
 | Contained by | Its `var`/`const`/`type` block | Its **type** | Nothing |
 | [Naming rules](#naming-rules) | Apply | Do not apply | Do not apply |
 
+> [!IMPORTANT]
+> A **type alias** declares a name, not a type, and containment reads the declaration as written. A directive on one therefore reaches:
+>
+> | Written | Reached |
+> | --- | --- |
+> | `type al = impl` | `al` itself. Not `impl`, and not `impl`'s members — those sit inside `impl`'s own declaration, in whatever file holds it |
+> | `type entry = struct{ key string }` | `entry`, **and** `key`, which is written inside this declaration |
+>
+> ```go
+> // impl.go
+> type impl struct{ n int }
+>
+> // alias.go
+> //declscope:package
+> type al = impl // widens al; impl.n keeps the boundary impl.go gives it
+> ```
+>
+> The alias name is an ordinary declaration, so it is bounded by its own file and a directive on it is neither ignored nor malformed. To widen or narrow a defined type's members, write the directive where they are.
+
 So splitting a type's methods across files works the way Go programmers already write it: `marshalKey` in `json.go` belongs to namespace `json`, and `json.go` may use it. What `sort.go` may not do is reach into `User`'s **fields** — that is the boundary carrying the weight. A method grown on another namespace's type reaches that type's internals by naming them, and naming them is reported.
 
 > [!WARNING]
@@ -949,6 +968,7 @@ The three compose — `depguard` keeps the package graph honest, declscope keeps
 | An embedded field | Not a member: it has no name of its own, only the embedded type's. Embedding is a **use** of that type, so `type B struct{ aCount }` written outside `aCount`'s namespace is a `boundary`, and renaming the type rewrites the embedding and every `b.aCount` selection through it |
 | Members of generic types | Checked like any other: `List[int].items`, and `l.items` inside `List[T]`'s own methods, are uses of `List.items` |
 | Fields of anonymous structs, and of types declared inside a function | Not checked |
+| A type alias | Its own name is a declaration and takes a scope like any other. A directive on it does not reach the aliased **defined** type's members — see [Members](#members) — so the reach of those is stated where they are written. An alias to a struct written inline does contain its fields |
 | An interface's method name | Not checked: only struct fields are collected as members, so no scope reaches one and no directive binds it |
 | An unexported method grown on another namespace's type but **never used** | Not reported: `boundary` needs a use to find, and a method with none is dead code, an unused-code linter's business |
 

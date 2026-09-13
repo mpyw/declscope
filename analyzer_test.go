@@ -227,3 +227,12 @@ func TestTestOnlyIgnore(t *testing.T) {
 func TestBraceIgnore(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "braceignore")
 }
+
+// TestAliases checks what a directive on a type alias reaches. The alias name
+// is an ordinary declaration, so //declscope:package on it widens the name and
+// use.go may take an al — the silence on alias.go is the assertion. It does not
+// reach the aliased defined type's members, so Base.n keeps base.go's boundary.
+// An alias to a struct written inline does contain its fields.
+func TestAliases(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "aliases")
+}
