@@ -117,7 +117,7 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 }
 
 // fileAt finds the file a position falls in. A directive problem is not
-// attached to any declaration — a stray comment belongs to nothing — so the
+// collectAttached to any declaration — a stray comment belongs to nothing — so the
 // file is the only level that can answer for it.
 func (c *collection) fileAt(pass *analysis.Pass, pos token.Pos) *fileInfo {
 	path := pass.Fset.Position(pos).Filename
@@ -228,7 +228,7 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 	if t.boundAt != levelDefault {
 		return f, true
 	}
-	f.fixes = append(f.fixes, c.directiveFix(pass, t, scope.PackageInternal))
+	f.fixes = append(f.fixes, reportDirectiveFix(pass, t, scope.PackageInternal))
 	return f, true
 }
 
@@ -322,15 +322,15 @@ func (c *collection) checkUnqualify(pass *analysis.Pass, opts Options, t *target
 	return f, true
 }
 
-// directiveFix inserts an explicit scope directive above the declaration.
+// reportDirectiveFix inserts an explicit scope directive above the declaration.
 //
 // A directive only binds to a declaration when it sits on its own line above
 // it, so a declaration that shares a line with something else — a field of a
 // single-line struct, for instance — first has to be broken onto a line of its
 // own. The formatter applied to the fixed file restores the indentation.
-func (c *collection) directiveFix(pass *analysis.Pass, t *target, s scope.Scope) analysis.SuggestedFix {
+func reportDirectiveFix(pass *analysis.Pass, t *target, s scope.Scope) analysis.SuggestedFix {
 	var text string
-	if c.startsLine(pass, t.anchor) {
+	if reportStartsLine(pass, t.anchor) {
 		col := pass.Fset.Position(t.anchor).Column
 		text = s.Directive() + "\n" + strings.Repeat("\t", max(col-1, 0))
 	} else {
@@ -346,10 +346,10 @@ func (c *collection) directiveFix(pass *analysis.Pass, t *target, s scope.Scope)
 	}
 }
 
-// startsLine reports whether pos is preceded on its line by nothing but
+// reportStartsLine reports whether pos is preceded on its line by nothing but
 // whitespace. It fails safe: an unreadable file is treated as not starting a
 // line, which yields an extra line break rather than a misplaced directive.
-func (c *collection) startsLine(pass *analysis.Pass, pos token.Pos) bool {
+func reportStartsLine(pass *analysis.Pass, pos token.Pos) bool {
 	position := pass.Fset.Position(pos)
 	if position.Column <= 1 {
 		return true

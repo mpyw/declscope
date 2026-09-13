@@ -105,16 +105,16 @@ func (c *collection) bind(opts Options, name string, dir, container, file direct
 		if !d.HasScope {
 			continue
 		}
-		if !c.inert(opts, name, d.Scope, levels[i+1:]) {
+		if !scopesiteInert(opts, name, d.Scope, levels[i+1:]) {
 			c.scopeSite(d).bound = true
 		}
 		return d.Scope, d, scopeLevel(i + 1)
 	}
-	outer, _ := c.outerScope(opts, name, nil)
+	outer, _ := scopesiteOuterScope(opts, name, nil)
 	return outer, directive.Decl{}, levelDefault
 }
 
-// outerScope is the scope a declaration would take from the levels outside the
+// scopesiteOuterScope is the scope a declaration would take from the levels outside the
 // one being judged. The second result says whether that scope is the same under
 // every configuration — it is not when it came from defaults.unexported, which
 // is the whole reason the inert test can be asked at all.
@@ -123,7 +123,7 @@ func (c *collection) bind(opts Options, name string, dir, container, file direct
 // reached by every importer already, so the analysis has no line around it that
 // it could also check; an author who states one is stating it, not guessing, and
 // the directive binds.
-func (c *collection) outerScope(opts Options, name string, rest []directive.Decl) (scope.Scope, bool) {
+func scopesiteOuterScope(opts Options, name string, rest []directive.Decl) (scope.Scope, bool) {
 	for _, d := range rest {
 		if d.HasScope {
 			return d.Scope, true
@@ -135,7 +135,7 @@ func (c *collection) outerScope(opts Options, name string, rest []directive.Decl
 	return opts.Unexported, false
 }
 
-// inert reports whether stating a scope decides nothing, under every
+// scopesiteInert reports whether stating a scope decides nothing, under every
 // configuration: the declaration would have had that very scope anyway, and no
 // setting could have made it otherwise.
 //
@@ -146,8 +146,8 @@ func (c *collection) outerScope(opts Options, name string, rest []directive.Decl
 // permanent false report. And it would miss a directive that restates an
 // enclosing one, which decides nothing for the same reason a redundant default
 // does not: nothing about it could have gone another way.
-func (c *collection) inert(opts Options, name string, stated scope.Scope, rest []directive.Decl) bool {
-	outer, fixed := c.outerScope(opts, name, rest)
+func scopesiteInert(opts Options, name string, stated scope.Scope, rest []directive.Decl) bool {
+	outer, fixed := scopesiteOuterScope(opts, name, rest)
 	return fixed && stated == outer
 }
 
