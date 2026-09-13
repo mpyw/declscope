@@ -179,6 +179,8 @@ func TestExportedScope(t *testing.T) {
 // TestUnusedScopeDirective checks the structural test: a scope directive that
 // binds nothing is reported, an exported type with an unexported field still
 // binds one, and restating the scope already in force is not reported at all.
+// The two ways a block's directive can reach nothing — every spec overriding
+// it, and nothing checked being able to carry it — are reported apart.
 func TestUnusedScopeDirective(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unusedscope")
 }

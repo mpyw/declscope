@@ -780,6 +780,7 @@ Silencing and accounting:
 | `unused //declscope:ignore boundary on userSeed, limit` | No named declaration needed it |
 | `unused file-level //declscope:ignore qualify` | Nothing in the file needed it |
 | `unused //declscope:ignore: no checked declaration carries it` | Written on something declscope does not check: `init`, `_`, an embedded field |
+| `unused //declscope:package: every declaration it reaches states its own scope` | A block's directive that every spec overrode. One spec taking it is enough to keep it |
 | `unused //declscope:package on Helper: nothing it reaches takes a scope` | Every declaration it reaches is exported, where `package` is the scope they already have |
 | `unused file-level //declscope:package` | Every declaration in the file is out of the subject, or states its own scope |
 

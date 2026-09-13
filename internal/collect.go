@@ -326,6 +326,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 		switch spec := spec.(type) {
 		case *ast.TypeSpec:
 			dir := outer.Merge(c.parseDecl(c.specGroups(pass, fi, spec)...))
+			c.shadow(outer, dir)
 			anchor := d.Pos()
 			if grouped {
 				anchor = spec.Pos()
@@ -345,6 +346,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 
 		case *ast.ValueSpec:
 			dir := outer.Merge(c.parseDecl(c.specGroups(pass, fi, spec)...))
+			c.shadow(outer, dir)
 			anchor := d.Pos()
 			if grouped {
 				anchor = spec.Pos()
