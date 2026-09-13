@@ -11,6 +11,13 @@ the binary.
 
 ## What is proved
 
+> [!NOTE]
+> **Member** in these specs means a name written inside a type's declaration: a
+> struct field, and an interface's method name. **Method** means a method with a
+> receiver, which is an ordinary top-level declaration however much it reads like
+> a member. The two are governed differently, and most of `knobs.fsl` is about
+> keeping them apart.
+
 | Spec | Claim | Scope covered |
 | --- | --- | --- |
 | `label_rules.fsl` | `qualify` and `unqualify` never both fire for one declaration | Every combination of `rules.qualify`, `rules.unqualify`, `rules.exportedLabels`, namespace count, kind, exportedness, namespace presence, core membership and label |
@@ -21,9 +28,9 @@ the binary.
 | `boundary_fix.fsl` | Inserting `//declscope:package` always removes the boundary crossing, and is withheld wherever any level already stated a scope | Every combination of `defaults.unexported`, kind, exportedness, reference shape, and the declaration, block, type and file directives |
 | `boundary_fix.fsl` | The fix is offered only where a crossing exists, and never overwrites the declaration's own directive | As above |
 | `knobs.fsl` | `defaults.unexported` and every directive level demonstrably change an outcome, for each kind of declaration | As above |
-| `knobs.fsl` | The containing type's directive reaches fields and nothing else — witnessed by a package-level declaration and a method that still fire | As above |
+| `knobs.fsl` | The containing type's directive reaches its members and nothing else, witnessed by a package-level declaration and a method with a receiver that still fire | As above |
 | `knobs.fsl` | An exported declaration carries no boundary by default, for every kind | As above |
-| `knobs.fsl` | A directive narrows an exported declaration anyway, including a type's directive reaching an exported field | As above |
+| `knobs.fsl` | A directive narrows an exported declaration anyway, including a type's directive reaching an exported member | As above |
 | `knobs.fsl` | A reference from inside the namespace never crosses a boundary | As above |
 | `directive_effect.fsl` | A scope directive is used when anything in its reach binds to it, and reported when nothing does | Every combination of stated scope, enclosing directive, `defaults.unexported`, target presence and exportedness, and two enclosed declarations by exportedness and shadowing |
 | `directive_effect.fsl` | Binding is quantified over configurations *and* over enclosing directives — so restating the default of the day never counts, and `//declscope:package` under an enclosing `private` always does | As above |
@@ -122,7 +129,7 @@ is a semantics that contradicts the documented one; each was run:
 
 | Wrong design | Result |
 | --- | --- |
-| The containing type's directive reaches every kind, not only fields | `reachable_failed` |
+| The containing type's directive reaches every kind, not only its members | `reachable_failed` |
 | A `var`/`const`/`type` block's directive reaches every kind | `reachable_failed` |
 | The block level is dropped | `reachable_failed` |
 | The file level outranks the declaration's own directive | `reachable_failed` |
@@ -140,7 +147,7 @@ is a semantics that contradicts the documented one; each was run:
 | A scope directive stops at the first thing in its reach, or at the last | `reachable_failed` |
 | The binding test reads `defaults.unexported` instead of quantifying over it | `violated` |
 | The binding test asks only whether the name is exported, ignoring an enclosing directive | `violated` |
-| A `var`/`const`/`type` block's directive does not reach the fields of a type it holds | `reachable_failed` |
+| A `var`/`const`/`type` block's directive does not reach the members of a type it holds | `reachable_failed` |
 | `boundary_fix.fsl` stops reading `blockDir`, or stops discriminating exportedness | `reachable_failed` |
 | `fair` is dropped from `fixBoundary` | `violated` (`leadsTo`) |
 | A scope directive ignores a nearer directive that shadows it | `violated` |

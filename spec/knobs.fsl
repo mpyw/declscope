@@ -5,15 +5,19 @@
 // Scope is two-valued. A scope's default subject is a package's unexported
 // surface, and `public` would name a distinction the analysis cannot make.
 //
-// A FIELD is written inside its type's declaration, so the type's directive
-// contains it, the way a `var (...)` block contains its specs. A METHOD is an
-// ordinary top-level declaration: the file it is written in supplies its
-// namespace and its file level, and nothing above it reaches it.
+// A MEMBER is written inside its type's declaration, so the type's directive
+// contains it, the way a `var (...)` block contains its specs. A struct field
+// is one; an interface's method name is the other. A METHOD is an ordinary
+// top-level declaration: the file it is written in supplies its namespace and
+// its file level, and nothing above it reaches it.
 //
-// Resolution order: declaration > containing type (fields only) > file > config.
+// Resolution order: declaration > containing type (members only) > file > config.
 spec Knobs {
   enum Scope { Package, Private }
-  enum Kind  { Pkg, Field, Method }
+  // Member is anything written inside a type's declaration: a struct field,
+  // and an interface's method name. Method is a method with a receiver, which
+  // is an ordinary top-level declaration however much it reads like a member.
+  enum Kind  { Pkg, Member, Method }
   enum Dir   { NoDir, DirPackage, DirPrivate }
   enum Refs  { NoRefs, SameNs, CrossNs }
 
@@ -52,16 +56,16 @@ spec Knobs {
   // boundary reports on API that every importer reaches.
   def defaultScope() = if exported then Package else cfgUnexported
 
-  // What contains a field: its type, and through the type the var/const/type
+  // What contains a member: its type, and through the type the var/const/type
   // block the type is declared in — addGenDecl merges the block into the spec's
-  // own directive and passes that as the field's container, so a block reaches a
-  // field even though it never reaches a method.
+  // own directive and passes that as the member's container, so a block reaches
+  // a member even though it never reaches a method with a receiver.
   def contained() =
-    if kind == Field then (if typeDir != NoDir then typeDir else blockDir)
+    if kind == Member then (if typeDir != NoDir then typeDir else blockDir)
     else NoDir
 
   // A parenthesized var/const/type block reaches only the specs it holds, so
-  // only a package-level declaration has one: a field is not a spec of a block,
+  // only a package-level declaration has one: a member is not a spec of a block,
   // and a method is never in one. Decl.Merge lets a spec's own scope replace the
   // block's, which puts the block directly under the declaration.
   def blockOf() = if kind == Pkg then blockDir else NoDir
@@ -107,8 +111,8 @@ spec Knobs {
     and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and not exported and refs == CrossNs and boundaryFires()
   }
-  reachable ConfigBitesOnField {
-    configured and kind == Field and cfgUnexported == Private
+  reachable ConfigBitesOnMember {
+    configured and kind == Member and cfgUnexported == Private
     and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and not exported and refs == CrossNs and boundaryFires()
   }
@@ -122,8 +126,8 @@ spec Knobs {
     and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and not exported and refs == CrossNs and not boundaryFires()
   }
-  reachable ConfigSilencesField {
-    configured and kind == Field and cfgUnexported == Package
+  reachable ConfigSilencesMember {
+    configured and kind == Member and cfgUnexported == Package
     and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and not exported and refs == CrossNs and not boundaryFires()
   }
@@ -134,11 +138,11 @@ spec Knobs {
     and not exported and refs == CrossNs and boundaryFires()
   }
   reachable DeclDirBeatsTypeDir {
-    configured and kind == Field and declDir == DirPrivate and typeDir == DirPackage
+    configured and kind == Member and declDir == DirPrivate and typeDir == DirPackage
     and not exported and refs == CrossNs and boundaryFires()
   }
   reachable TypeDirBeatsFileDir {
-    configured and kind == Field and declDir == NoDir
+    configured and kind == Member and declDir == NoDir
     and typeDir == DirPackage and fileDir == DirPrivate
     and not exported and refs == CrossNs and not boundaryFires()
   }
@@ -148,7 +152,7 @@ spec Knobs {
     and not exported and refs == CrossNs and boundaryFires()
   }
 
-  // --- the type's directive reaches fields and nothing else -----------------
+  // --- the type's directive reaches members and nothing else ----------------
   // Behavioural, not a restatement: the declaration still fires, so a semantics
   // that let the type's directive through would be caught here.
   reachable DeclDirBeatsBlockDir {
@@ -160,14 +164,14 @@ spec Knobs {
     and blockDir == DirPackage and fileDir == DirPrivate
     and not exported and refs == CrossNs and not boundaryFires()
   }
-  reachable BlockDirReachesFieldThroughItsType {
-    configured and kind == Field and blockDir == DirPackage
+  reachable BlockDirReachesMemberThroughItsType {
+    configured and kind == Member and blockDir == DirPackage
     and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and cfgUnexported == Private and not exported
     and refs == CrossNs and not boundaryFires()
   }
-  reachable TypeDirBeatsBlockDirOnField {
-    configured and kind == Field and declDir == NoDir
+  reachable TypeDirBeatsBlockDirOnMember {
+    configured and kind == Member and declDir == NoDir
     and typeDir == DirPrivate and blockDir == DirPackage
     and fileDir == NoDir and not exported
     and refs == CrossNs and boundaryFires()
@@ -204,10 +208,10 @@ spec Knobs {
     and refs == CrossNs and boundaryFires()
   }
   // An exported declaration carries no boundary by default, whatever its owner
-  // or the configuration says: the DTO whose fields are capitalized for a
+  // or the configuration says: the DTO whose members are capitalized for a
   // serializer is protected by a directive on its type, not by a guess.
-  reachable ExportedFieldSilentByDefault {
-    configured and kind == Field and exported
+  reachable ExportedMemberSilentByDefault {
+    configured and kind == Member and exported
     and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
     and fileDir == NoDir and cfgUnexported == Private
     and refs == CrossNs and not boundaryFires()
@@ -218,9 +222,9 @@ spec Knobs {
     and fileDir == NoDir and cfgUnexported == Private
     and refs == CrossNs and not boundaryFires()
   }
-  // ... and the type's directive is what brings an exported field back in.
-  reachable TypeDirBindsExportedField {
-    configured and kind == Field and exported and typeDir == DirPrivate
+  // ... and the type's directive is what brings an exported member back in.
+  reachable TypeDirBindsExportedMember {
+    configured and kind == Member and exported and typeDir == DirPrivate
     and declDir == NoDir and blockDir == NoDir and fileDir == NoDir
     and refs == CrossNs and boundaryFires()
   }

@@ -146,9 +146,13 @@ func TestMemberOwnerFile(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "memberowner")
 }
 
-// TestCoreNamespace checks the core: several files share it, it has no name, and
-// both naming rules pass it by at their strictest settings, while an ordinary
-// namespace in the same package is still asked for its label.
+// TestCoreNamespace checks the core: several files share the one unnamed
+// namespace, the naming rules are outside it, and an ordinary namespace in the
+// same package is asked for its label as usual.
+//
+// It also checks that //declscope:core carries no scope. A core declaration is
+// private to the core by default, so naming it from outside crosses a boundary,
+// and a file wanting both states both.
 func TestCoreNamespace(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "corens")
 }
@@ -237,4 +241,12 @@ func TestBraceIgnore(t *testing.T) {
 // An alias to a struct written inline does contain its fields.
 func TestAliases(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "aliases")
+}
+
+// TestInterfaceMembers checks that an interface's method names are members.
+// The silences carry as much as the reports: implicit satisfaction in impl.go
+// is not a use, the type's directive and its ignore reach the methods, and an
+// embedded interface or a type-constraint element declares no name to bound.
+func TestInterfaceMembers(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ifacemembers")
 }

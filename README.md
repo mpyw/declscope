@@ -113,6 +113,27 @@ The directive says the declaration is shared. The name says which unit it came f
 > [!TIP]
 > `-fix` always widens, because that is the repair it can apply mechanically. Where the boundary is worth keeping, move the call instead and leave the declaration alone.
 
+### Where declscope sits
+
+Three linters draw boundaries in Go, at three scales:
+
+![A Go program drawn as nested frames. Between the api and store packages, depguard asks whether one package may import another; a green arrow runs from api to store and a red one back from store to api is crossed out. Inside store, between user.go and csv.go, declscope asks whether one file may reach another's declaration; a red arrow from csvParse to User.email is crossed out. At the edge of the program, deadcode asks whether anything is reachable at all; the mail package sits greyed out with no arrow entering it, captioned unreachable.](docs/boundaries.png)
+
+| Linter | Scale | The question it answers |
+| --- | --- | --- |
+| [`depguard`](https://github.com/OpenPeeDeeP/depguard) | Between packages | May this package import that one? |
+| **declscope** | Within one package | May this file reach that declaration? |
+| [`deadcode`](https://pkg.go.dev/golang.org/x/tools/cmd/deadcode) | Whole program | Is this reachable at all? |
+
+- **`depguard`** reads the import graph and enforces the lines drawn by the package layout: a domain package may not import a transport one. It says nothing about a package's inside, where every unexported name is visible to every file.
+- **declscope** draws lines inside the package, between namespaces, so a package can stay flat and keep a boundary the compiler does not provide.
+- **`deadcode`** roots a reachability analysis at a `main` package and reports what no path reaches. It answers a question declscope structurally cannot. `boundary` needs a *use* to find, so a declaration nobody uses produces no crossing and no diagnostic.
+
+The three compose. `depguard` keeps the package graph honest, declscope keeps each package honest inside, and `deadcode` removes what neither needs to reach.
+
+> [!NOTE]
+> Where [Limits of the analysis](#limits-of-the-analysis) says "an unused-code linter", the tool meant is `deadcode`, or staticcheck's `unused` for a library with no `main` to root from.
+
 ## Installation and usage
 
 ### <a href="https://mise.jdx.dev/"><img src="https://mise.jdx.dev/logo.svg" height="28" alt=""></a> Using [mise](https://mise.jdx.dev/) (macOS/Linux/Windows)
@@ -226,6 +247,45 @@ Every diagnostic carries **at most one** fix, so `-fix` never has to choose. A [
 >
 > An unused **scope** directive is reported in every variant. What it binds is decided by the declarations it reaches, never by who uses them.
 
+## Configuration
+
+Configuration is optional, and this is all of it. Every key links to the section that explains it.
+
+- Read from `.declscope.yaml` (or `.declscope.yml`).
+- Looked up from the analyzed package's directory **upwards**, stopping at the module root (the directory holding `go.mod`). So a subtree can relax or tighten the rules on its own.
+- [`-config`](#flags) names a file explicitly and skips the lookup.
+- An empty file is a valid config that changes nothing.
+
+```yaml
+defaults:                 # this resolves members too, not only package-level declarations
+  unexported: private     # package | private
+
+rules:
+  qualify: ondemand       # always | never | ondemand
+  unqualify: false        # true | false
+  exportedLabels: false   # true | false
+
+exclude:
+  - "**/mock_*.go"
+
+baseline: .declscope-baseline.yaml   # relative to this file; found automatically if named by default
+```
+
+| Key | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `defaults.unexported` | `package`, `private` | `private` | Scope of a declaration or member that carries no scope directive of its own, inherits none from its type, and sits in no file that supplies one |
+| `rules.qualify` | `always`, `never`, `ondemand` | `ondemand` | When the namespace label is required; see [`qualify`](#qualify) |
+| `rules.unqualify` | `true`, `false` | `false` | Whether a label is forbidden where it is not required; see [`unqualify`](#unqualify) |
+| `rules.exportedLabels` | `true`, `false` | `false` | Whether the naming rules also reach exported declarations. The violation is reported. The rename is never offered ([Withheld renames](#withheld-renames)). A package turning this on wants [`//declscope:core`](#the-core-namespace) on the files holding its API |
+| `exclude` | Glob patterns matched against the file path: `*` and `?` within a path segment, `**` across segments, anchored at any segment boundary | None | Files that are neither checked nor treated as reference sites |
+| `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` at or above the package, stopping at the module root | The baseline to consult |
+
+> [!NOTE]
+> - `defaults` takes only `unexported`. An exported declaration has no scope to default ([Scopes](#scopes)).
+> - `boundary` has no key. See [Rules](#rules).
+> - An **unknown key is an error**, not a silent no-op. A typo in a rule name cannot leave the rule at its default with no sign of it. The message names the key, and the keys its section does take.
+> - A value a key does not accept is also an error, and it names the values the key does take.
+
 ## Namespaces
 
 A **namespace** is the unit within which a `private` declaration may be used. By default a namespace is derived from the file name, so that each file is its own namespace:
@@ -278,7 +338,15 @@ package transport
 - Nothing is lost by that. "Unlabeled" still names exactly one unit, so `Load()` read in any file still says which unit owns it.
 
 > [!IMPORTANT]
-> A file may not carry both `//declscope:core` and `//declscope:namespace`. A core file's namespace *is* the core.
+> `//declscope:core` decides the **namespace**, and nothing else. It carries no scope.
+>
+> A core declaration still takes [`defaults.unexported`](#configuration), so by default it is private *to the core*, and a file outside the core that names it crosses a boundary. Widening is stated the same way as anywhere else.
+>
+> | Written on a file | Effect |
+> | --- | --- |
+> | `//declscope:core` | The file joins the core namespace. What it declares keeps the default scope |
+> | `//declscope:core` and `//declscope:package` | Both apply. The file is core, and what it declares is package-wide |
+> | `//declscope:core` and `//declscope:namespace` | Refused. A core file's namespace *is* the core |
 
 A package that turns [`rules.exportedLabels`](#configuration) on will want a core. Labels on exported names are the package's API. The core is how a package says *these names are the API. Leave them as they are.*
 
@@ -356,16 +424,36 @@ func userShared() {} // package: usable anywhere in the package
 
 ### Members
 
-A **member** is a method or a struct field. The two are not governed alike, because they are not written alike:
+A **member** is a name written *inside* a type's declaration. Two things are:
 
-- A **field** is written *inside* its type's declaration, so its file is not a choice: it is wherever the type is. The type's directive reaches it, for the same reason a directive on a `var (...)` block reaches its specs. This is **containment, not inheritance**. There is no second file for it to disagree with.
-- A **method** is an ordinary top-level declaration that happens to name a receiver. Its own file gives it its namespace, exactly as for a `func`, and nothing above it reaches it.
+- a struct's **field**
+- an interface's **method name**
 
-| | Package-level declaration | Field | Method |
+For a member, the file is not a choice. It is wherever the type is. So the type's directive reaches it, for the same reason a directive on a `var (...)` block reaches its specs. This is **containment, not inheritance**: there is no second file for it to disagree with.
+
+A **method with a receiver** is not a member, however much it reads like one. It is an ordinary top-level declaration that happens to name a receiver. Its own file gives it its namespace, exactly as for a `func`, and nothing above it reaches it.
+
+| | Package-level declaration | Member | Method with a receiver |
 | --- | --- | --- | --- |
-| Bounding namespace | Its file's | Its **type**'s file's — the file it is written in | Its file's |
+| Bounding namespace | Its file's | Its **type**'s file's, which is where it is written | Its file's |
 | Contained by | Its `var`/`const`/`type` block | Its **type** | Nothing |
 | [Naming rules](#naming-rules) | Apply | Do not apply | Do not apply |
+
+> [!TIP]
+> An unexported interface method is the **sealed interface** idiom: only this package can spell the name, so only this package can implement. The boundary gives it file granularity.
+>
+> ```go
+> // user.go
+> type Sealed interface {
+> 	sealed() bool
+> }
+> ```
+> ```go
+> // order.go
+> func orderRun(s Sealed) bool { return s.sealed() } // reported
+> ```
+>
+> Satisfying the interface is **not** a use of the name. A method set is resolved, not written, so a type implementing `Sealed` from another namespace crosses nothing. Naming the method does cross.
 
 > [!IMPORTANT]
 > A **type alias** declares a name, not a type, and containment reads the declaration as written. A directive on one therefore reaches:
@@ -388,12 +476,12 @@ A **member** is a method or a struct field. The two are not governed alike, beca
 
 So splitting a type's methods across files works the way Go programmers already write it. `marshalKey` in `json.go` belongs to namespace `json`, and `json.go` may use it.
 
-What `sort.go` may not do is reach into `User`'s **fields**. That is the boundary that carries the weight. A method written on another namespace's type reaches that type's internals by naming them, and naming them is reported.
+What `sort.go` may not do is reach into `User`'s **members**. That is the boundary that carries the weight. A method written on another namespace's type reaches that type's internals by naming them, and naming them is reported.
 
 > [!WARNING]
 > Operations on the **whole value** name no field: copying it, comparing it, zeroing it. They are outside what this can see. See [Limits of the analysis](#limits-of-the-analysis).
 
-The naming rules do not reach members. A member is already qualified by its type at every use (`u.save()`). It collides with nothing, and a label would only stutter (`u.userSave()`).
+The naming rules do not reach members or methods. Both are already qualified by their type at every use (`u.save()`). They collide with nothing, and a label would only stutter (`u.userSave()`).
 
 What a member lacks in Go is encapsulation. Every unexported field is visible to its whole package. The `private` scope supplies what is missing:
 
@@ -484,6 +572,11 @@ func orderRun() int {
 ```
 
 The label grants nothing. Reach is stated by [scope](#scope-resolution) alone.
+
+> [!NOTE]
+> **"Package-level" means declared at the top level**, as opposed to a [member](#members). It does not mean the `package` scope.
+>
+> Neither rule reads a declaration's scope. A `private` declaration is asked for the label exactly as a `package` one is. Ownership and reach are separate questions.
 
 Neither rule applies to:
 
@@ -630,7 +723,7 @@ A **directive** is a comment beginning `//declscope:` (`/*declscope:` … `*/` i
 | `//declscope:package`, `//declscope:private` | Declaration or file | States the [scope](#scope-resolution) instead of inheriting it from the level above, which is the type, then the file, then `defaults`. On a type it also reaches the type's [fields](#members), but not its methods: a method takes its own file's level. On a file it is the default for what the file declares |
 | `//declscope:ignore` | Declaration or file | Silences every rule |
 | `//declscope:ignore <rules>` | Declaration or file | Silences the named [rules](#rules), comma-separated (`unqualify`, `unqualify,qualify`) |
-| `//declscope:core` | File | Joins the file to the package's **core** [namespace](#the-core-namespace); mutually exclusive with `//declscope:namespace` |
+| `//declscope:core` | File | Joins the file to the package's **core** [namespace](#the-core-namespace). Carries no scope. Mutually exclusive with `//declscope:namespace` |
 | `//declscope:namespace <name>` | File | Sets the file's [namespace](#namespaces); the name must be an unexported identifier |
 
 A trailing `// reason` is allowed after any directive:
@@ -709,34 +802,38 @@ package repo
 > [!NOTE]
 > Flush against `package` also works. But if another file in the package carries the real package comment, that leaves a stray blank line in the rendered documentation.
 
-A file-level ignore takes the same argument as the declaration-level form, so the directive means one thing wherever it appears. It is what a file of small helpers wants, rather than a directive on each of them:
+A file-level ignore takes the same argument as the declaration-level form, so the directive means one thing wherever it appears:
 
 ```go
-// util.go   (namespace: util)
 //declscope:ignore qualify,unqualify
 
 package store
 ```
 
-A utility file whose whole contents are meant to be package-wide says so in one line. It uses a scope, not an ignore:
+A **utility file** is the clearest case for the file level, and it wants directives rather than ignores. Its contents are shared, and its helpers belong to no unit in particular. Both facts are stated, one directive each:
 
 ```go
-// util.go   (namespace: util)
-//declscope:package
+// util.go
+//declscope:core    // the unlabeled unit, so no prefix is asked for
+//declscope:package // usable from every file
 
 package store
 
-func utilMust(err error) { ... }
-func utilFirst[T any](s []T) T { ... }
+func must(err error) { ... }
+func first[T any](s []T) T { ... }
 ```
 
-The difference from `//declscope:ignore boundary` is the difference between **endorsing** and **suppressing**:
+[`//declscope:core`](#the-core-namespace) decides the namespace and `//declscope:package` decides the scope, so `must(err)` reads the same from every file and reaches every one of them.
+
+Without the core, the label is required and the same helpers are `utilMust` and `utilFirst`. That is a real choice rather than a worse one: the label tells a distant call site whose helper it is. What matters is that both options **state** something. An ignore states nothing.
+
+That is the difference between **endorsing** and **suppressing**:
 
 | | `//declscope:package` on the file | `//declscope:ignore boundary` on the file |
 | --- | --- | --- |
 | States a scope | Yes | No |
-| [`qualify`](#qualify) still asks for the label | Yes — `utilMust(err)` read elsewhere says whose helper it is | No, the rule is off |
-| A declaration can be narrowed back | Yes, with `//declscope:private` | No — it would mean nothing at all |
+| A declaration can be narrowed back | Yes, with `//declscope:private` | No. It would mean nothing at all |
+| [`qualify`](#qualify) still asks for the label | Yes, unless the file is also core | No, the rule is off |
 
 > [!NOTE]
 > The directive belongs to the **file**, not to the namespace. The namespace comes from the file name or from `//declscope:namespace`, and the package clause has nothing to do with either. Files that share a namespace each need their own. One file cannot silence a rule on behalf of another.
@@ -836,45 +933,6 @@ A malformed directive is reported at the comment:
 | `//declscope:namespace` after the package clause | `declscope:namespace must appear before the package clause` |
 | `//declscope:namespace` with no name, a second one, or a name that is not an unexported identifier | Reported as such |
 | `//declscope:core` with an argument, or a second one on the same file | Reported as such |
-
-## Configuration
-
-Configuration is optional.
-
-- Read from `.declscope.yaml` (or `.declscope.yml`).
-- Looked up from the analyzed package's directory **upwards**, stopping at the module root (the directory holding `go.mod`). So a subtree can relax or tighten the rules on its own.
-- [`-config`](#flags) names a file explicitly and skips the lookup.
-- An empty file is a valid config that changes nothing.
-
-```yaml
-defaults:                 # this resolves members too, not only package-level declarations
-  unexported: private     # package | private
-
-rules:
-  qualify: ondemand       # always | never | ondemand
-  unqualify: false        # true | false
-  exportedLabels: false   # true | false
-
-exclude:
-  - "**/mock_*.go"
-
-baseline: .declscope-baseline.yaml   # relative to this file; found automatically if named by default
-```
-
-| Key | Values | Default | Effect |
-| --- | --- | --- | --- |
-| `defaults.unexported` | `package`, `private` | `private` | Scope of a declaration or member that carries no scope directive of its own, inherits none from its type, and sits in no file that supplies one |
-| `rules.qualify` | `always`, `never`, `ondemand` | `ondemand` | When the namespace label is required; see [`qualify`](#qualify) |
-| `rules.unqualify` | `true`, `false` | `false` | Whether a label is forbidden where it is not required; see [`unqualify`](#unqualify) |
-| `rules.exportedLabels` | `true`, `false` | `false` | Whether the naming rules also reach exported declarations. The violation is reported. The rename is never offered ([Withheld renames](#withheld-renames)). A package turning this on wants [`//declscope:core`](#the-core-namespace) on the files holding its API |
-| `exclude` | Glob patterns matched against the file path: `*` and `?` within a path segment, `**` across segments, anchored at any segment boundary | None | Files that are neither checked nor treated as reference sites |
-| `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` at or above the package, stopping at the module root | The baseline to consult |
-
-> [!NOTE]
-> - `defaults` takes only `unexported`. An exported declaration has no scope to default ([Scopes](#scopes)).
-> - `boundary` has no key. See [Rules](#rules).
-> - An **unknown key is an error**, not a silent no-op. A typo in a rule name cannot leave the rule at its default with no sign of it. The message names the key, and the keys its section does take.
-> - A value a key does not accept is also an error, and it names the values the key does take.
 
 ## Adopting on an existing codebase
 
@@ -983,27 +1041,6 @@ scope with `//declscope:package` and say why.
 > [!IMPORTANT]
 > The second sentence is the one the mechanism depends on. The cheapest repair for a `boundary` diagnostic is to **widen** the declaration. A `//declscope:package` inserted for that reason is itself a change of reach. The instruction makes the agent write that change down, and justify it, where the next reader will find it.
 
-## Where declscope sits
-
-Three linters draw boundaries in Go, at three scales:
-
-![A Go program drawn as nested frames. Between the api and store packages, depguard asks whether one package may import another; a green arrow runs from api to store and a red one back from store to api is crossed out. Inside store, between user.go and csv.go, declscope asks whether one file may reach another's declaration; a red arrow from csvParse to User.email is crossed out. At the edge of the program, deadcode asks whether anything is reachable at all; the mail package sits greyed out with no arrow entering it, captioned unreachable.](docs/boundaries.png)
-
-| Linter | Scale | The question it answers |
-| --- | --- | --- |
-| [`depguard`](https://github.com/OpenPeeDeeP/depguard) | Between packages | May this package import that one? |
-| **declscope** | Within one package | May this file reach that declaration? |
-| [`deadcode`](https://pkg.go.dev/golang.org/x/tools/cmd/deadcode) | Whole program | Is this reachable at all? |
-
-- **`depguard`** reads the import graph and enforces the lines drawn by the package layout: a domain package may not import a transport one. It says nothing about a package's inside, where every unexported name is visible to every file.
-- **declscope** draws lines inside the package, between namespaces, so a package can stay flat and keep a boundary the compiler does not provide.
-- **`deadcode`** roots a reachability analysis at a `main` package and reports what no path reaches. It answers a question declscope structurally cannot. `boundary` needs a *use* to find, so a declaration nobody uses produces no crossing and no diagnostic.
-
-The three compose. `depguard` keeps the package graph honest, declscope keeps each package honest inside, and `deadcode` removes what neither needs to reach.
-
-> [!NOTE]
-> Where [Limits of the analysis](#limits-of-the-analysis) says "an unused-code linter", the tool meant is `deadcode`, or staticcheck's `unused` for a library with no `main` to root from.
-
 ## Limits of the analysis
 
 | Construct | Treatment |
@@ -1016,7 +1053,7 @@ The three compose. `depguard` keeps the package graph honest, declscope keeps ea
 | Members of generic types | Checked like any other: `List[int].items`, and `l.items` inside `List[T]`'s own methods, are uses of `List.items` |
 | Fields of anonymous structs, and of types declared inside a function | Not checked |
 | A type alias | Its own name is a declaration and takes a scope like any other. A directive on it does not reach the members of the aliased **defined** type (see [Members](#members)), so their reach is stated where they are written. An alias to a struct written inline does contain its fields |
-| An interface's method name | Not checked: only struct fields are collected as members, so no scope reaches one and no directive binds it |
+| Satisfying an interface | Not a use of its method names. A method set is resolved, not written, so a type implementing an interface from another namespace crosses nothing. Naming a method does cross |
 | An unexported method grown on another namespace's type but **never used** | Not reported: `boundary` needs a use to find, and a method with none is dead code, an unused-code linter's business |
 
 ## License

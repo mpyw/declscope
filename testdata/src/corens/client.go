@@ -8,4 +8,4 @@ func New() int { return 1 }
 
 type ClientConfig struct{ retries int }
 
-func helper() int { return 2 }
+func helper() int { return 2 } // want `func helper is private to the core namespace, but is used from namespace "retry"`
