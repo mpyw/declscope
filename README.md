@@ -247,6 +247,45 @@ Every diagnostic carries **at most one** fix, so `-fix` never has to choose. A [
 >
 > An unused **scope** directive is reported in every variant. What it binds is decided by the declarations it reaches, never by who uses them.
 
+## Configuration
+
+Configuration is optional, and this is all of it. Every key links to the section that explains it.
+
+- Read from `.declscope.yaml` (or `.declscope.yml`).
+- Looked up from the analyzed package's directory **upwards**, stopping at the module root (the directory holding `go.mod`). So a subtree can relax or tighten the rules on its own.
+- [`-config`](#flags) names a file explicitly and skips the lookup.
+- An empty file is a valid config that changes nothing.
+
+```yaml
+defaults:                 # this resolves members too, not only package-level declarations
+  unexported: private     # package | private
+
+rules:
+  qualify: ondemand       # always | never | ondemand
+  unqualify: false        # true | false
+  exportedLabels: false   # true | false
+
+exclude:
+  - "**/mock_*.go"
+
+baseline: .declscope-baseline.yaml   # relative to this file; found automatically if named by default
+```
+
+| Key | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `defaults.unexported` | `package`, `private` | `private` | Scope of a declaration or member that carries no scope directive of its own, inherits none from its type, and sits in no file that supplies one |
+| `rules.qualify` | `always`, `never`, `ondemand` | `ondemand` | When the namespace label is required; see [`qualify`](#qualify) |
+| `rules.unqualify` | `true`, `false` | `false` | Whether a label is forbidden where it is not required; see [`unqualify`](#unqualify) |
+| `rules.exportedLabels` | `true`, `false` | `false` | Whether the naming rules also reach exported declarations. The violation is reported. The rename is never offered ([Withheld renames](#withheld-renames)). A package turning this on wants [`//declscope:core`](#the-core-namespace) on the files holding its API |
+| `exclude` | Glob patterns matched against the file path: `*` and `?` within a path segment, `**` across segments, anchored at any segment boundary | None | Files that are neither checked nor treated as reference sites |
+| `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` at or above the package, stopping at the module root | The baseline to consult |
+
+> [!NOTE]
+> - `defaults` takes only `unexported`. An exported declaration has no scope to default ([Scopes](#scopes)).
+> - `boundary` has no key. See [Rules](#rules).
+> - An **unknown key is an error**, not a silent no-op. A typo in a rule name cannot leave the rule at its default with no sign of it. The message names the key, and the keys its section does take.
+> - A value a key does not accept is also an error, and it names the values the key does take.
+
 ## Namespaces
 
 A **namespace** is the unit within which a `private` declaration may be used. By default a namespace is derived from the file name, so that each file is its own namespace:
@@ -894,45 +933,6 @@ A malformed directive is reported at the comment:
 | `//declscope:namespace` after the package clause | `declscope:namespace must appear before the package clause` |
 | `//declscope:namespace` with no name, a second one, or a name that is not an unexported identifier | Reported as such |
 | `//declscope:core` with an argument, or a second one on the same file | Reported as such |
-
-## Configuration
-
-Configuration is optional.
-
-- Read from `.declscope.yaml` (or `.declscope.yml`).
-- Looked up from the analyzed package's directory **upwards**, stopping at the module root (the directory holding `go.mod`). So a subtree can relax or tighten the rules on its own.
-- [`-config`](#flags) names a file explicitly and skips the lookup.
-- An empty file is a valid config that changes nothing.
-
-```yaml
-defaults:                 # this resolves members too, not only package-level declarations
-  unexported: private     # package | private
-
-rules:
-  qualify: ondemand       # always | never | ondemand
-  unqualify: false        # true | false
-  exportedLabels: false   # true | false
-
-exclude:
-  - "**/mock_*.go"
-
-baseline: .declscope-baseline.yaml   # relative to this file; found automatically if named by default
-```
-
-| Key | Values | Default | Effect |
-| --- | --- | --- | --- |
-| `defaults.unexported` | `package`, `private` | `private` | Scope of a declaration or member that carries no scope directive of its own, inherits none from its type, and sits in no file that supplies one |
-| `rules.qualify` | `always`, `never`, `ondemand` | `ondemand` | When the namespace label is required; see [`qualify`](#qualify) |
-| `rules.unqualify` | `true`, `false` | `false` | Whether a label is forbidden where it is not required; see [`unqualify`](#unqualify) |
-| `rules.exportedLabels` | `true`, `false` | `false` | Whether the naming rules also reach exported declarations. The violation is reported. The rename is never offered ([Withheld renames](#withheld-renames)). A package turning this on wants [`//declscope:core`](#the-core-namespace) on the files holding its API |
-| `exclude` | Glob patterns matched against the file path: `*` and `?` within a path segment, `**` across segments, anchored at any segment boundary | None | Files that are neither checked nor treated as reference sites |
-| `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` at or above the package, stopping at the module root | The baseline to consult |
-
-> [!NOTE]
-> - `defaults` takes only `unexported`. An exported declaration has no scope to default ([Scopes](#scopes)).
-> - `boundary` has no key. See [Rules](#rules).
-> - An **unknown key is an error**, not a silent no-op. A typo in a rule name cannot leave the rule at its default with no sign of it. The message names the key, and the keys its section does take.
-> - A value a key does not accept is also an error, and it names the values the key does take.
 
 ## Adopting on an existing codebase
 
