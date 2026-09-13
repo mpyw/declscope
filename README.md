@@ -609,7 +609,7 @@ The violation is reported, and the fix withheld, when any of the following holds
 
 | Condition | Why |
 | --- | --- |
-| The declaration is exported | Its uses outside the package are never analyzed, so the rename could not be completed — and finishing it by hand is an API change, which is the author's call |
+| The declaration is exported | Its uses outside the package are never analyzed, so the rename could not be completed. Finishing it by hand is an API change, which is the author's call |
 | The new name is already declared in the package | Would not compile |
 | The new name is predeclared (`len`, `error`, `string`, …) | The declaration compiles and shadows the builtin for the whole package |
 | Any file of the package imports the new name | Go rejects a package-level name that any file imports |
@@ -978,7 +978,7 @@ Two properties distinguish this from a written convention:
 | Property | Effect on the agent |
 | --- | --- |
 | The diagnostic names the namespace crossed | The agent is told *why* the use is wrong, not only that it is, and the repair is mechanical |
-| A directive is a durable record of intent | When `//declscope:package` is in the source, the next agent to read the file inherits the decision instead of re-deriving it, and the next one that widens something silently is caught |
+| A directive is a durable record of intent | When `//declscope:package` is in the source, the next agent inherits the decision instead of re-deriving it. The next agent that widens something in silence is caught |
 
 A line in `CLAUDE.md`, or the equivalent for the agent in use, is enough:
 
