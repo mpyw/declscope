@@ -107,17 +107,12 @@ type target struct {
 	ident *ast.Ident
 	kind  kind
 
-	// file is where the declaration is written.
-	file *fileInfo
-	// ownerNS is the namespace that bounds the declaration: the namespace of
-	// the file it is written in. A field is written inside its type's
-	// declaration, so for a field that is the type's file; a method is an
+	// file is where the declaration is written, and so the file whose
+	// namespace bounds it. A member is written inside its type's declaration,
+	// so for a member this is the type's file; a method with a receiver is an
 	// ordinary top-level declaration and takes its own file's, like a func.
-	ownerNS  string
-	ownerKey string
-	// ownerFile is the file that namespace comes from, which is the file the
-	// declaration is written in for every kind.
-	ownerFile *fileInfo
+	// The two can never differ, which is why there is one field and not two.
+	file *fileInfo
 	// contained marks a member written inside its type's declaration: a struct
 	// field, and an interface's method name. The type's directives reach it,
 	// the way a var (...) block reaches its specs. A method with a receiver is

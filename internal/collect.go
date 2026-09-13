@@ -121,8 +121,7 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 		}
 		sc, boundBy, boundAt := c.bind(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
 		c.add(&target{
-			obj: obj, ident: d.Name, kind: kindFunc, file: fi,
-			ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: d.Pos(),
+			obj: obj, ident: d.Name, kind: kindFunc, file: fi, dir: dir, anchor: d.Pos(),
 			scope:      sc,
 			boundBy:    boundBy,
 			boundAt:    boundAt,
@@ -143,9 +142,7 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 	sc, boundBy, boundAt := c.bind(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
 	c.add(&target{
 		obj: obj, ident: d.Name, kind: kindMethod, file: fi,
-		owner: owner, ownerObj: ownerObj,
-		ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi,
-		dir: dir, anchor: d.Pos(),
+		owner: owner, ownerObj: ownerObj, dir: dir, anchor: d.Pos(),
 		scope:   sc,
 		boundBy: boundBy,
 		boundAt: boundAt,
@@ -180,8 +177,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 			if obj, ok := pass.TypesInfo.Defs[spec.Name]; ok && spec.Name.Name != "_" {
 				sc, boundBy, boundAt := c.bind(opts, spec.Name.Name, dir, directive.Decl{}, fi.scope)
 				c.add(&target{
-					obj: obj, ident: spec.Name, kind: kindType, file: fi,
-					ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: anchor,
+					obj: obj, ident: spec.Name, kind: kindType, file: fi, dir: dir, anchor: anchor,
 					scope:      sc,
 					boundBy:    boundBy,
 					boundAt:    boundAt,
@@ -208,8 +204,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 				}
 				sc, boundBy, boundAt := c.bind(opts, name.Name, dir, directive.Decl{}, fi.scope)
 				c.add(&target{
-					obj: obj, ident: name, kind: k, file: fi,
-					ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: anchor,
+					obj: obj, ident: name, kind: k, file: fi, dir: dir, anchor: anchor,
 					scope:      sc,
 					boundBy:    boundBy,
 					boundAt:    boundAt,
@@ -271,8 +266,7 @@ func (c *collection) addMembers(pass *analysis.Pass, opts Options, fi *fileInfo,
 			c.add(&target{
 				obj: obj, ident: name, kind: k, file: fi,
 				contained: true,
-				owner:     spec.Name.Name, ownerObj: ownerObj,
-				ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir,
+				owner:     spec.Name.Name, ownerObj: ownerObj, dir: dir,
 				anchor:  m.Pos(),
 				scope:   sc,
 				boundBy: boundBy,

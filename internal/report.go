@@ -134,7 +134,7 @@ func (f reportFinding) key(pass *analysis.Pass, t *target) baseline.Key {
 	return baseline.Key{
 		Package:   pass.Pkg.Path(),
 		Rule:      f.rule,
-		Namespace: t.ownerFile.nsName(),
+		Namespace: t.file.nsName(),
 		Decl:      f.decl,
 	}
 }
@@ -180,7 +180,7 @@ func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []repor
 func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target) (reportFinding, bool) {
 	var offenders []ref
 	for _, r := range c.refs[t.obj] {
-		if r.file.key() != t.ownerKey {
+		if r.file.key() != t.file.key() {
 			offenders = append(offenders, r)
 		}
 	}
@@ -205,7 +205,7 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 			t.kind, t.name(), t.scope, t.scope.Directive(), reportDescribeFile(offenders[0].file))
 	default:
 		f.msg = fmt.Sprintf("%s %s is private to %s, but is used from %s",
-			t.kind, t.name(), reportDescribeFile(t.ownerFile), reportDescribeFile(offenders[0].file))
+			t.kind, t.name(), reportDescribeFile(t.file), reportDescribeFile(offenders[0].file))
 	}
 	for _, r := range offenders {
 		f.related = append(f.related, analysis.RelatedInformation{
@@ -249,11 +249,11 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 	// A namespace is always an identity, but not always a prefix: 2fa.go
 	// bounds its declarations like any other file, yet no identifier can
 	// start with a digit, so there is no prefix to ask for.
-	if !namespace.CanPrefix(t.ownerNS) {
+	if !namespace.CanPrefix(t.file.ns) {
 		return reportFinding{}, false
 	}
 	name := t.obj.Name()
-	if namespace.HasPrefix(name, t.ownerNS) {
+	if namespace.HasPrefix(name, t.file.ns) {
 		return reportFinding{}, false
 	}
 	// main is a name the toolchain requires, so no prefix can be asked of it.
@@ -266,9 +266,9 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 		decl: name,
 		pos:  t.ident.Pos(),
 		msg: fmt.Sprintf("%s %s does not carry the prefix of %s; rename it to %s",
-			t.kind, name, reportDescribe(t.ownerNS, t.file.path), namespace.Qualify(name, t.ownerNS)),
+			t.kind, name, reportDescribe(t.file.ns, t.file.path), namespace.Qualify(name, t.file.ns)),
 	}
-	if fix, ok := c.renameFix(pass, t, namespace.Qualify(name, t.ownerNS),
+	if fix, ok := c.renameFix(pass, t, namespace.Qualify(name, t.file.ns),
 		"prefix it with its namespace"); ok {
 		f.fixes = append(f.fixes, fix)
 	}
@@ -282,14 +282,14 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 // the prefix and never part of the concept, since nothing in the name can tell
 // userID-the-prefix from userID-the-word.
 func (c *collection) checkUnqualify(pass *analysis.Pass, opts Options, t *target) (reportFinding, bool) {
-	if !opts.Unqualify || !t.named(opts) || !namespace.CanPrefix(t.ownerNS) {
+	if !opts.Unqualify || !t.named(opts) || !namespace.CanPrefix(t.file.ns) {
 		return reportFinding{}, false
 	}
 	if opts.Qualify.Applies(c.namespaces) {
 		return reportFinding{}, false
 	}
 	name := t.obj.Name()
-	if !namespace.HasPrefix(name, t.ownerNS) {
+	if !namespace.HasPrefix(name, t.file.ns) {
 		return reportFinding{}, false
 	}
 	// A name identical to the namespace carries no prefix to drop. The
@@ -299,23 +299,23 @@ func (c *collection) checkUnqualify(pass *analysis.Pass, opts Options, t *target
 	// here for unqualify to strip. The prefix is matched ignoring case, so the
 	// exemption is too: userId in user_id.go is the namespace, spelled by
 	// someone who did not know how the linter would spell it.
-	if strings.EqualFold(name, t.ownerNS) {
+	if strings.EqualFold(name, t.file.ns) {
 		return reportFinding{}, false
 	}
 
 	// Not being able to spell the new name is a limit of the fix, not a reason
 	// to let the prefix stand: the violation is reported either way, and only
 	// the suggestion is withheld.
-	short, why := namespace.Unqualify(name, t.ownerNS)
+	short, why := namespace.Unqualify(name, t.file.ns)
 	f := reportFinding{rule: rule.Unqualify, decl: name, pos: t.ident.Pos()}
 	if short == "" {
 		f.msg = fmt.Sprintf("%s %s carries the prefix of %s, which is not required here, but %s; rename it by hand",
-			t.kind, name, reportDescribe(t.ownerNS, t.file.path), why)
+			t.kind, name, reportDescribe(t.file.ns, t.file.path), why)
 		return f, true
 	}
 
 	f.msg = fmt.Sprintf("%s %s carries the prefix of %s, which is not required here; rename it to %s",
-		t.kind, name, reportDescribe(t.ownerNS, t.file.path), short)
+		t.kind, name, reportDescribe(t.file.ns, t.file.path), short)
 	if fix, ok := c.renameFix(pass, t, short, "drop the namespace prefix"); ok {
 		f.fixes = append(f.fixes, fix)
 	}
@@ -396,7 +396,7 @@ func reportDescribeFile(f *fileInfo) string {
 // exists for — and never reach the core namespace, whose prefix is empty and so
 // has no prefix to require or to drop.
 func (t *target) named(opts Options) bool {
-	if !t.renameable || t.ownerFile.core {
+	if !t.renameable || t.file.core {
 		return false
 	}
 	return !isExported(t.obj.Name()) || opts.NameExported
