@@ -1,0 +1,3 @@
+# always, so that the func main exemption is exercised rather than assumed.
+rules:
+  qualify: always

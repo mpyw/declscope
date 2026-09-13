@@ -250,3 +250,14 @@ func TestAliases(t *testing.T) {
 func TestInterfaceMembers(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ifacemembers")
 }
+
+// TestPackageMain checks the two rules that only package main exercises.
+//
+// func main is the one name the toolchain requires, so the naming rules pass
+// it by even at qualify: always. And exportedness keeps its meaning here:
+// nothing can import a main package, but plugin.Lookup reaches its exported
+// symbols by name, so Config and ServerNew are held back only because the file
+// says so -- a file-level directive reaches exported declarations too.
+func TestPackageMain(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "mainpkg")
+}
