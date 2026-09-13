@@ -45,7 +45,7 @@ var Names = []string{".declscope.yaml", ".declscope.yml"}
 var BaselineNames = []string{".declscope-baseline.yaml", ".declscope-baseline.yml"}
 
 // The values each naming rule accepts.
-var qualifyModes = internal.ModeSet{internal.Always, internal.Never, internal.OnDemand}
+var qualifyModes = internal.ModeSet{internal.ModeAlways, internal.ModeNever, internal.ModeOnDemand}
 
 // boolSetting is a true/false key, with its own error naming the two values it
 // takes rather than the parser's "cannot unmarshal".

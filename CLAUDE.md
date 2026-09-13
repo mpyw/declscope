@@ -58,7 +58,8 @@ internal/
   subject.go              core. The model every stage shares: fileInfo, target,
                           ref, kind, the index over them, and the problem sink
   collect.go              builds the index: files, targets, references
-  options.go              resolved configuration, qualify's Mode and the boolean flags, exclude globs
+  options.go              resolved configuration: the booleans and the exclude globs
+  mode.go                 Mode, the vocabulary rules.naming.qualify is spelled in
   scopesite.go            scope resolution (bind), and which directives bound nothing
   report.go               diagnostics and suggested fixes
   ignore.go               ignore accounting: which comment silenced what, and which bound to nothing

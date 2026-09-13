@@ -11,3 +11,7 @@ rules:
     qualify: ondemand
     # true | false
     unqualify: true
+    # true | false. The naming rules reach exported declarations too. Inside
+    # this module an exported name is read as bare as any other, so the prefix
+    # is wanted at exactly the same call sites.
+    exported: true
