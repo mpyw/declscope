@@ -1,3 +1,4 @@
 # The naming rules do not reach members, so they would only add noise here.
 rules:
-  qualify: never
+  naming:
+    qualify: never

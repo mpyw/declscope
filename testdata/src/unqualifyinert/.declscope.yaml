@@ -1,4 +1,5 @@
-# unqualify is inert wherever the label is required: here the package has two
+# unqualify is inert wherever the prefix is required: here the package has two
 # namespaces, so ondemand requires it.
 rules:
-  unqualify: true
+  naming:
+    unqualify: true

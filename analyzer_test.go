@@ -33,13 +33,13 @@ func TestGeneratedFilesExcluded(t *testing.T) {
 }
 
 // TestQualify checks that an unexported package-level declaration must carry
-// its namespace as a label, and that members and exported identifiers are
+// its namespace as a prefix, and that members and exported identifiers are
 // exempt.
 func TestQualify(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "qualifyrule")
 }
 
-// TestSingleNamespace checks that the label is not required in a package with
+// TestSingleNamespace checks that the prefix is not required in a package with
 // only one namespace, where there is no boundary for it to mark.
 func TestSingleNamespace(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "singlens")
@@ -72,19 +72,19 @@ func TestExplicitScopeConflict(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "explicit")
 }
 
-// TestQualifyAlways checks rules.qualify: always, which requires the label even
+// TestQualifyAlways checks rules.qualify: always, which requires the prefix even
 // in a package with a single namespace.
 func TestQualifyAlways(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "qualifyalways")
 }
 
-// TestUnqualify checks the mirror of the label rule: where the label is not
+// TestUnqualify checks the mirror of the naming rule: where the prefix is not
 // required, it must not be present.
 func TestUnqualify(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unqualify")
 }
 
-// TestUnqualifyInert checks that unqualify says nothing wherever the label is
+// TestUnqualifyInert checks that unqualify says nothing wherever the prefix is
 // required, so the two rules can never contradict each other.
 func TestUnqualifyInert(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unqualifyinert")
@@ -148,7 +148,7 @@ func TestMemberOwnerFile(t *testing.T) {
 
 // TestCoreNamespace checks the core: several files share the one unnamed
 // namespace, the naming rules are outside it, and an ordinary namespace in the
-// same package is asked for its label as usual.
+// same package is asked for its prefix as usual.
 //
 // It also checks that //declscope:core carries no scope. A core declaration is
 // private to the core by default, so naming it from outside crosses a boundary,
@@ -164,11 +164,11 @@ func TestFileScope(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "filescope")
 }
 
-// TestExportedLabels checks rules.exportedLabels, and that the label carries the
+// TestNameExported checks rules.naming.exported, and that the prefix carries the
 // exportedness of the name it joins: New is reported against ClientNew, never
 // clientNew, since a rename must not delete the API it is renaming.
-func TestExportedLabels(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "exportedlabels")
+func TestNameExported(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "exportedprefixes")
 }
 
 // TestExportedScope checks that exportedness decides the default and nothing
@@ -189,9 +189,9 @@ func TestUnusedScopeDirective(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unusedscope")
 }
 
-// TestNamespaceIdentity checks that a file whose stem cannot be a label, such
+// TestNamespaceIdentity checks that a file whose stem cannot be a prefix, such
 // as 2fa.go, is still a namespace: its test file shares it, a use from another
-// namespace is reported, and the label rule asks nothing of it.
+// namespace is reported, and the naming rule asks nothing of it.
 func TestNamespaceIdentity(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nsidentity")
 }
@@ -204,7 +204,7 @@ func TestNamespaceNormalize(t *testing.T) {
 }
 
 // TestNamespaceInitialism checks that a namespace spells its initialisms the
-// way Go does, that the label is matched ignoring case, and that the rename
+// way Go does, that the prefix is matched ignoring case, and that the rename
 // offered by qualify spells the name's first word the same way.
 func TestNamespaceInitialism(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nsinitialism")

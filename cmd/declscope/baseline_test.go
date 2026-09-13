@@ -303,7 +303,7 @@ func TestBaselineDoesNotSurviveAMove(t *testing.T) {
 	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
 	// The naming rules would otherwise report helper in both placements and
 	// drown the one thing under test.
-	writeTree(t, root, ".declscope.yaml", "rules:\n  qualify: never\n")
+	writeTree(t, root, ".declscope.yaml", "rules:\n  naming:\n    qualify: never\n")
 	writeTree(t, root, "user.go", "package x\n\nfunc helper() int { return 1 }\n")
 	writeTree(t, root, "csv.go", "package x\n\nfunc csvRun() int { return helper() }\n\nvar _ = csvRun\n")
 

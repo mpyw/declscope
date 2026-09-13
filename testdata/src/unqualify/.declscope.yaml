@@ -1,3 +1,4 @@
-# The mirror of the label rule: where the label is not required, forbid it.
+# The mirror of the naming rule: where the prefix is not required, forbid it.
 rules:
-  unqualify: true
+  naming:
+    unqualify: true

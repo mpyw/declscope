@@ -4,7 +4,7 @@ package filescope
 
 // A file whose whole contents are meant to be package-wide says so in one line,
 // with a scope rather than an ignore. The difference is endorsing rather than
-// suppressing: these declarations *are* package, so the label rule still reaches
+// suppressing: these declarations *are* package, so the naming rule still reaches
 // them, and one that turns out not to be shared can be narrowed back below.
 func utilMust(e error) error { return e }
 

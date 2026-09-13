@@ -1,6 +1,6 @@
 package ignorescope
 
-// Silencing one rule leaves the rest in force: the missing label is ignored,
+// Silencing one rule leaves the rest in force: the missing prefix is ignored,
 // the boundary crossing is not.
 //
 //declscope:ignore qualify
@@ -11,9 +11,9 @@ func helper() int { return 1 } // want `func helper is private to namespace "use
 //declscope:ignore
 func helper2() int { return 2 }
 
-// Two directives, each judged on its own: the label rule is silenced and so
+// Two directives, each judged on its own: the naming rule is silenced and so
 // the first is used, while unqualify is inert in a package that requires the
-// label, so the second is reported.
+// prefix, so the second is reported.
 //
 //declscope:ignore qualify
 //declscope:ignore unqualify // want `unused //declscope:ignore unqualify on kept`

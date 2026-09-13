@@ -19,7 +19,7 @@ func TestSuggestedFixInlineStruct(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixinline")
 }
 
-// TestSuggestedFixQualify checks the rename offered by the label rule. It
+// TestSuggestedFixQualify checks the rename offered by the naming rule. It
 // never changes a declaration's reach, so it cannot conflict with the
 // directive fix.
 func TestSuggestedFixQualify(t *testing.T) {

@@ -2,7 +2,7 @@
 
 package fileignore
 
-// The file stands outside the label rule, so neither of these is asked to
+// The file stands outside the naming rule, so neither of these is asked to
 // carry the "util" prefix.
 func helper() int { return 1 }
 

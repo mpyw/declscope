@@ -20,11 +20,11 @@ the binary.
 
 | Spec | Claim | Scope covered |
 | --- | --- | --- |
-| `label_rules.fsl` | `qualify` and `unqualify` never both fire for one declaration | Every combination of `rules.qualify`, `rules.unqualify`, `rules.exportedLabels`, namespace count, kind, exportedness, namespace presence, core membership and label |
-| `label_rules.fsl` | Applying either label fix removes the violation it addresses, and neither is applied where its violation does not exist | As above |
-| `label_rules.fsl` | No rename is ever applied to an exported declaration | As above |
-| `label_rules.fsl` | Each naming key bites in both directions, and each silence is witnessed with every other reason for silence pinned | As above |
-| `label_rules.fsl` | The core namespace is outside both rules, whatever is configured | As above |
+| `naming_rules.fsl` | `qualify` and `unqualify` never both fire for one declaration | Every combination of `rules.naming.qualify`, `rules.naming.unqualify`, `rules.naming.exported`, namespace count, kind, exportedness, namespace presence, core membership and prefix |
+| `naming_rules.fsl` | Applying either prefix fix removes the violation it addresses, and neither is applied where its violation does not exist | As above |
+| `naming_rules.fsl` | No rename is ever applied to an exported declaration | As above |
+| `naming_rules.fsl` | Each naming key bites in both directions, and each silence is witnessed with every other reason for silence pinned | As above |
+| `naming_rules.fsl` | The core namespace is outside both rules, whatever is configured | As above |
 | `boundary_fix.fsl` | Inserting `//declscope:package` always removes the boundary crossing, and is withheld wherever any level already stated a scope | Every combination of `defaults.unexported`, kind, exportedness, reference shape, and the declaration, block, type and file directives |
 | `boundary_fix.fsl` | The fix is offered only where a crossing exists, and never overwrites the declaration's own directive | As above |
 | `knobs.fsl` | `defaults.unexported` and every directive level demonstrably change an outcome, for each kind of declaration | As above |
@@ -35,7 +35,7 @@ the binary.
 | `directive_effect.fsl` | A scope directive is used when anything in its reach binds to it, and reported when nothing does | Every combination of stated scope, enclosing directive, `defaults.unexported`, target presence and exportedness, and two enclosed declarations by exportedness and shadowing |
 | `directive_effect.fsl` | Binding is quantified over configurations *and* over enclosing directives — so restating the default of the day never counts, and `//declscope:package` under an enclosing `private` always does | As above |
 | `knobs.fsl` | A boundary is reported only for a private scope and only across a namespace, and on an exported declaration only where a directive narrowed it — each guard witnessed by an invariant its removal breaks | As above |
-| `label_rules.fsl` | A fix is eventually applied wherever one is offered, which is what the `fair` on the fix actions claims | As above, plus whether a rename is offered at all |
+| `naming_rules.fsl` | A fix is eventually applied wherever one is offered, which is what the `fair` on the fix actions claims | As above, plus whether a rename is offered at all |
 | `rename_guarded.fsl` | The guard `renameSafe` applies — every scope Go resolves through — makes the rename sound, and dropping any one of the four checks breaks it | Every binding environment at the reference site |
 | `rename_reach.fsl` | Nothing the fix leaves unedited still writes the old name, and the new name is never left declared twice — over every reason a file of the package can sit outside what the fix edits | Generated and `exclude`d files, unseen in-package tests, and build-excluded files, against both names |
 | `rename_reach.fsl` | The build-excluded guard is no broader than it needs to be: a rename beside an excluded file that writes neither name is still offered | As above |
@@ -95,8 +95,8 @@ megabytes.
 Or one at a time:
 
 ```console
-fslc check  label_rules.fsl
-fslc verify label_rules.fsl      --depth 5
+fslc check  naming_rules.fsl
+fslc verify naming_rules.fsl      --depth 5
 fslc verify boundary_fix.fsl     --depth 4
 fslc verify knobs.fsl            --depth 4
 fslc verify directive_effect.fsl --depth 4
@@ -136,11 +136,11 @@ is a semantics that contradicts the documented one; each was run:
 | Exportedness is an exemption rather than a default, so a directive cannot narrow an exported declaration | `reachable_failed` |
 | A boundary is reported without a cross-namespace reference | `violated` |
 | A boundary is reported for a scope that is not private | `violated` |
-| `rules.exportedLabels` is ignored and exported names are always named | `reachable_failed` |
-| `rules.exportedLabels` also gates on the namespace count | `reachable_failed` |
+| `rules.naming.exported` is ignored and exported names are always named | `reachable_failed` |
+| `rules.naming.exported` also gates on the namespace count | `reachable_failed` |
 | The naming rules reach members | `reachable_failed` |
 | The core namespace is named like any other | `reachable_failed` |
-| A label fix does not record itself | `reachable_failed` |
+| A prefix fix does not record itself | `reachable_failed` |
 | A fix is applied to an exported declaration | `violated` |
 | `fair` is dropped from a fix action | `violated` (`leadsTo`) |
 | A fix is offered where no violation exists, or over the author's own directive | `violated` |
@@ -164,7 +164,7 @@ the invariant, which is where a guard has to be for its deletion to be noticed.
 **Pin every other reason.** A reachable
 named for one distinction must fix the variables that could satisfy it for
 another reason — `ExportedSilentByDefault` pins the kind, the namespace, the core
-flag, the mode and the label, so exportedness is the only thing left doing the
+flag, the mode and the prefix, so exportedness is the only thing left doing the
 work. **Prefer a witness to a restatement.** An invariant that re-spells the
 definition it guards pins that definition but proves nothing about behaviour;
 `TypeDirInertOnPkg` and `TypeDirInertOnMethod` instead assert that the

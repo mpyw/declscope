@@ -15,10 +15,10 @@ const (
 	// Boundary: a declaration used from outside the namespace it is private
 	// to — a boundary crossing.
 	Boundary Rule = "boundary"
-	// Qualify: a package-level declaration missing its namespace label, which
+	// Qualify: a package-level declaration missing its namespace prefix, which
 	// namespace.Qualify adds.
 	Qualify Rule = "qualify"
-	// Unqualify: a namespace label present where it is not required, which
+	// Unqualify: a namespace prefix present where it is not required, which
 	// namespace.Unqualify drops.
 	Unqualify Rule = "unqualify"
 	// Directive: a directive that binds nothing, or that is malformed or

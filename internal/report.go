@@ -230,27 +230,27 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 // a prefix.
 //
 // The prefix grants nothing — reach is stated with a directive — so this is
-// purely an ownership label, making the owning unit legible at every use site
+// purely an ownership prefix, making the owning unit legible at every use site
 // and in every stack trace and grep result.
 //
 // Whether it applies at all depends on rules.qualify, which defaults to
-// requiring the label only once a package has a second namespace to
+// requiring the prefix only once a package has a second namespace to
 // distinguish. See Mode.
 func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
 	if !opts.Qualify.Applies(c.namespaces) || !named(opts, t) {
 		return finding{}, false
 	}
-	// A namespace is always an identity, but not always a label: 2fa.go
+	// A namespace is always an identity, but not always a prefix: 2fa.go
 	// bounds its declarations like any other file, yet no identifier can
 	// start with a digit, so there is no prefix to ask for.
-	if !namespace.IsLabel(t.ownerNS) {
+	if !namespace.CanPrefix(t.ownerNS) {
 		return finding{}, false
 	}
 	name := t.obj.Name()
 	if namespace.HasPrefix(name, t.ownerNS) {
 		return finding{}, false
 	}
-	// main is a name the toolchain requires, so no label can be asked of it.
+	// main is a name the toolchain requires, so no prefix can be asked of it.
 	if t.kind == kindFunc && name == "main" && pass.Pkg.Name() == "main" {
 		return finding{}, false
 	}
@@ -263,20 +263,20 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 			t.kind, name, describe(t.ownerNS, t.file.path), namespace.Qualify(name, t.ownerNS)),
 	}
 	if fix, ok := c.renameFix(pass, t, namespace.Qualify(name, t.ownerNS),
-		"label it with its namespace"); ok {
+		"prefix it with its namespace"); ok {
 		f.fixes = append(f.fixes, fix)
 	}
 	return f, true
 }
 
-// checkUnqualify is the mirror of checkQualify: where the label is not required,
+// checkUnqualify is the mirror of checkQualify: where the prefix is not required,
 // it must not be there either.
 //
 // Enabling it asserts that in this codebase a namespace prefix always means
-// the label and never part of the concept, since nothing in the name can tell
-// userID-the-label from userID-the-word.
+// the prefix and never part of the concept, since nothing in the name can tell
+// userID-the-prefix from userID-the-word.
 func (c *collection) checkUnqualify(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	if !opts.Unqualify || !named(opts, t) || !namespace.IsLabel(t.ownerNS) {
+	if !opts.Unqualify || !named(opts, t) || !namespace.CanPrefix(t.ownerNS) {
 		return finding{}, false
 	}
 	if opts.Qualify.Applies(c.namespaces) {
@@ -286,11 +286,11 @@ func (c *collection) checkUnqualify(pass *analysis.Pass, opts Options, t *target
 	if !namespace.HasPrefix(name, t.ownerNS) {
 		return finding{}, false
 	}
-	// A name identical to the namespace carries no label to drop. The
+	// A name identical to the namespace carries no prefix to drop. The
 	// causality usually runs the other way there: user.go is named after the
 	// user it declares, not the other way about. qualify still accepts such a
 	// name, since the owning unit is legible from it, but there is nothing
-	// here for unqualify to strip. The label is matched ignoring case, so the
+	// here for unqualify to strip. The prefix is matched ignoring case, so the
 	// exemption is too: userId in user_id.go is the namespace, spelled by
 	// someone who did not know how the linter would spell it.
 	if strings.EqualFold(name, t.ownerNS) {
@@ -298,19 +298,19 @@ func (c *collection) checkUnqualify(pass *analysis.Pass, opts Options, t *target
 	}
 
 	// Not being able to spell the new name is a limit of the fix, not a reason
-	// to let the label stand: the violation is reported either way, and only
+	// to let the prefix stand: the violation is reported either way, and only
 	// the suggestion is withheld.
 	short, why := namespace.Unqualify(name, t.ownerNS)
 	f := finding{rule: rule.Unqualify, decl: name, pos: t.ident.Pos()}
 	if short == "" {
-		f.msg = fmt.Sprintf("%s %s carries the label of %s, which is not required here, but %s; rename it by hand",
+		f.msg = fmt.Sprintf("%s %s carries the prefix of %s, which is not required here, but %s; rename it by hand",
 			t.kind, name, describe(t.ownerNS, t.file.path), why)
 		return f, true
 	}
 
-	f.msg = fmt.Sprintf("%s %s carries the label of %s, which is not required here; rename it to %s",
+	f.msg = fmt.Sprintf("%s %s carries the prefix of %s, which is not required here; rename it to %s",
 		t.kind, name, describe(t.ownerNS, t.file.path), short)
-	if fix, ok := c.renameFix(pass, t, short, "drop the namespace label"); ok {
+	if fix, ok := c.renameFix(pass, t, short, "drop the namespace prefix"); ok {
 		f.fixes = append(f.fixes, fix)
 	}
 	return f, true
@@ -412,14 +412,14 @@ func describeFile(f *fileInfo) string {
 // named reports whether the naming rules reach a declaration at all.
 //
 // They reach package-level declarations only: a member is already qualified by
-// its type at every use, so a label would only stutter. They reach an exported
-// declaration when rules.exportedLabels says so — inside the package an
-// exported name is read as bare as any other, which is the reading the label
-// exists for — and never reach the core namespace, whose label is empty and so
+// its type at every use, so a prefix would only stutter. They reach an exported
+// declaration when rules.naming.exported says so — inside the package an
+// exported name is read as bare as any other, which is the reading the prefix
+// exists for — and never reach the core namespace, whose prefix is empty and so
 // has no prefix to require or to drop.
 func named(opts Options, t *target) bool {
 	if !t.renameable || t.ownerFile.core {
 		return false
 	}
-	return !isExported(t.obj.Name()) || opts.ExportedLabels
+	return !isExported(t.obj.Name()) || opts.NameExported
 }

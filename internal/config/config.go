@@ -10,10 +10,10 @@
 //
 //	rules:
 //	  qualify: ondemand    # always | never | ondemand (only once a package has two namespaces)
-//	  unqualify: false     # true | false: where the label is not required, forbid it
+//	  unqualify: false     # true | false: where the prefix is not required, forbid it
 //
 // rules.qualify reads an internal.Mode; rules.unqualify and
-// rules.exportedLabels are true/false.
+// rules.naming.exported are true/false.
 //
 // Unknown keys are an error, and the message names the key and the keys the
 // section does take.
@@ -62,17 +62,25 @@ func (b *boolSetting) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
-// defaultsSection and rulesSection are named so that go-yaml's strict-decoding
-// error can name the section a misspelled key sits in, rather than printing the
-// anonymous struct's whole type literal.
+// Each section is a named type so that go-yaml's strict-decoding error can name
+// the section a misspelled key sits in, rather than printing the anonymous
+// struct's whole type literal.
 type defaultsSection struct {
 	Unexported string `yaml:"unexported"`
 }
 
 type rulesSection struct {
-	Qualify        string      `yaml:"qualify"`
-	Unqualify      boolSetting `yaml:"unqualify"`
-	ExportedLabels boolSetting `yaml:"exportedLabels"`
+	Naming namingSection `yaml:"naming"`
+}
+
+// namingSection holds the two mirror rules and the one thing they share.
+// exported belongs to the pair rather than to either: it decides which
+// declarations both rules reach, and turning it on widens qualify and
+// unqualify alike.
+type namingSection struct {
+	Qualify   string      `yaml:"qualify"`
+	Unqualify boolSetting `yaml:"unqualify"`
+	Exported  boolSetting `yaml:"exported"`
 }
 
 // File is the on-disk configuration. Every field is optional, and no setting
@@ -278,6 +286,7 @@ var sections = map[string]struct {
 	"config.File":            {"", File{}},
 	"config.defaultsSection": {"defaults.", defaultsSection{}},
 	"config.rulesSection":    {"rules.", rulesSection{}},
+	"config.namingSection":   {"rules.naming.", namingSection{}},
 }
 
 var unknownField = regexp.MustCompile(`^line (\d+): field (\S+) not found in type (\S+)$`)
@@ -332,18 +341,18 @@ func (f *File) Apply(opts *internal.Options) error {
 		opts.Unexported = s
 	}
 
-	if f.Rules.Qualify != "" {
-		m, ok := qualifyModes.Parse(f.Rules.Qualify)
+	if f.Rules.Naming.Qualify != "" {
+		m, ok := qualifyModes.Parse(f.Rules.Naming.Qualify)
 		if !ok {
-			return fmt.Errorf("rules.qualify: unknown mode %q (want %s)", f.Rules.Qualify, qualifyModes)
+			return fmt.Errorf("rules.naming.qualify: unknown mode %q (want %s)", f.Rules.Naming.Qualify, qualifyModes)
 		}
 		opts.Qualify = m
 	}
-	if f.Rules.Unqualify.set {
-		opts.Unqualify = f.Rules.Unqualify.value
+	if f.Rules.Naming.Unqualify.set {
+		opts.Unqualify = f.Rules.Naming.Unqualify.value
 	}
-	if f.Rules.ExportedLabels.set {
-		opts.ExportedLabels = f.Rules.ExportedLabels.value
+	if f.Rules.Naming.Exported.set {
+		opts.NameExported = f.Rules.Naming.Exported.value
 	}
 	if f.Exclude != nil {
 		opts.Exclude = f.Exclude

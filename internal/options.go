@@ -11,10 +11,10 @@ import (
 	"github.com/mpyw/declscope/internal/scope"
 )
 
-// Mode says when the label is required: always, never, or only once a package
+// Mode says when the prefix is required: always, never, or only once a package
 // has a second namespace. Only rules.qualify reads one. rules.unqualify is a
-// boolean, because qualify already answers *when* a label applies and all the
-// other direction decides is whether it is enforced too — where the label is
+// boolean, because qualify already answers *when* a prefix applies and all the
+// other direction decides is whether it is enforced too — where the prefix is
 // required, unqualify is inert by construction and has nothing to select.
 type Mode int
 
@@ -22,12 +22,12 @@ const (
 	// Never disables the rule.
 	Never Mode = iota
 
-	// Always applies the rule to every package. For the label rule this
+	// Always applies the rule to every package. For the naming rule this
 	// means a package gaining its second namespace is not a mass rename.
 	Always
 
 	// OnDemand applies the rule only to a package with more than one
-	// namespace. In a package with one there is no boundary for a label to
+	// namespace. In a package with one there is no boundary for a prefix to
 	// mark: every other rule is structurally inert there, since every
 	// reference is already inside the single namespace, and a prefix repeated
 	// on every declaration would distinguish nothing.
@@ -100,20 +100,20 @@ type Options struct {
 	Unexported scope.Scope
 
 	// Qualify says when a package-level declaration must carry its namespace
-	// as a label.
+	// as a prefix.
 	Qualify Mode
 
-	// Unqualify is the mirror of Qualify: where the label is not required, it
+	// Unqualify is the mirror of Qualify: where the prefix is not required, it
 	// must not be present either. Together the two settle the spelling of
 	// every package-level name the rules reach, in both directions.
 	Unqualify bool
 
-	// ExportedLabels widens both naming rules to exported declarations. Inside
+	// NameExported widens both naming rules to exported declarations. Inside
 	// the package an exported name is read as bare as any other, so the package
-	// qualifier that explains an external use is absent exactly where the label
-	// is wanted. The violation is reported; the rename is never offered, since
-	// the uses outside the package cannot be seen.
-	ExportedLabels bool
+	// qualifier that explains an external use is absent exactly where the
+	// prefix is wanted. The violation is reported. The rename is never offered,
+	// since the uses outside the package cannot be seen.
+	NameExported bool
 
 	// Exclude holds glob patterns matched against file paths.
 	Exclude []string
@@ -135,7 +135,7 @@ type Options struct {
 
 // DefaultOptions mirrors the rules stated in the README: every declaration in
 // the subject is private to its namespace until something widens it, and the
-// namespace prefix is an ownership label, required once a package has a second
+// namespace prefix is an ownership prefix, required once a package has a second
 // namespace, that grants nothing by itself.
 func DefaultOptions() Options {
 	return Options{
