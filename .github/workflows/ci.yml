@@ -17,13 +17,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Set up Go
-        uses: actions/setup-go@v7
+      # Every tool is pinned in mise.toml, so CI and a contributor's machine run
+      # the same binaries. test_all.sh checks that mise.toml's go still matches
+      # go.mod's toolchain, which golangci-lint is strict about.
+      - uses: jdx/mise-action@v2
         with:
-          # Track the go directive in go.mod. setup-go sets GOTOOLCHAIN=local,
-          # so a hardcoded version fails outright once a dependency bump raises
-          # the directive above it, instead of picking up a newer toolchain.
-          go-version-file: go.mod
+          cache: true
 
       - name: Run tests with coverage
         run: go test -v -race -coverprofile=coverage.txt -covermode=atomic -coverpkg=./... ./...
@@ -46,19 +45,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Set up Go
-        uses: actions/setup-go@v7
+      - uses: jdx/mise-action@v2
         with:
-          go-version-file: go.mod
+          cache: true
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          # golangci-lint refuses to load a module whose go directive is newer
-          # than the Go it was built with, so this pin has to move whenever the
-          # directive in go.mod does. v2.13.0+ is built with Go 1.27.
-          version: v2.13.1
-          args: --timeout=5m
+        run: golangci-lint run --timeout=5m ./...
 
   spec:
     name: Spec
@@ -75,7 +67,7 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/ymm-oss/fsl/main/install.sh | bash -s -- --no-skill
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      # Five specs must be proved; two must stay violated, since they hold the
+      # Seven specs must be proved; two must stay violated, since they hold the
       # counterexamples for designs that are unsound.
       - name: Verify the specs
         run: ./spec/verify.sh
@@ -88,13 +80,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Set up Go
-        uses: actions/setup-go@v7
+      - uses: jdx/mise-action@v2
         with:
-          go-version-file: go.mod
+          cache: true
 
       # declscope is subject to its own rules, at the strictest setting.
-      # The files of internal/ form one unit and declare a shared namespace.
+      # Silence is the assertion: every namespace crossing inside the tool is
+      # stated in the source, so anything printed here is one nobody wrote down.
       - name: Run declscope on itself
         run: go run ./cmd/declscope -config .declscope-strict.yaml ./...
 

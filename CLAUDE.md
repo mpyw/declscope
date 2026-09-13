@@ -227,7 +227,7 @@ The analyzer deliberately does **not** report unmatched baseline entries. A pack
 
 ```bash
 go test ./...          # analysistest + unit tests
-./test_all.sh          # tests, golangci-lint, and dogfooding
+mise x -- ./test_all.sh   # tests, golangci-lint, dogfooding and the specs
 ```
 
 - `testdata/src/*` are `analysistest` packages. Several carry their own `.declscope.yaml` (`qualifyalways/`, `unqualify/`, `unqualifyinert/`, and the `fix*` packages that need a non-default rule), which also exercises config discovery end to end.
@@ -246,7 +246,7 @@ go test ./...          # analysistest + unit tests
 
 ### Formal specs
 
-`spec/*.fsl` are machine-checked models of the rules, the configuration space and the rename guard; `spec/README.md` lists what each proves and the exact `fslc` commands and depths. `spec/verify.sh` runs them — four must be `proved` under induction, two must stay `violated` — and is wired into `test_all.sh` and a CI job. Documentation that nothing re-runs is documentation that drifts.
+`spec/*.fsl` are machine-checked models of the rules, the configuration space and the rename guard; `spec/README.md` lists what each proves and the exact `fslc` commands and depths. `spec/verify.sh` runs them — seven must be `proved` under induction, two must stay `violated` — and is wired into `test_all.sh` and a CI job. Documentation that nothing re-runs is documentation that drifts.
 
 > [!CAUTION]
 > `fslc verify` is a bounded model checker that holds the whole reachable state space in memory. A spec that models the full product in one action with many parameters needs gigabytes for the same claims the split specs prove in single-digit megabytes. Keep each spec to the variables its own properties read, keep the depths given in `spec/README.md`, and do not run `fslc verify` on a machine that cannot spare the memory.
