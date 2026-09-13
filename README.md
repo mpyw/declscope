@@ -202,7 +202,7 @@ declscope baseline [flags] [packages]  # record current violations; see Adopting
 Every diagnostic carries **at most one** fix, so `-fix` never has to choose: a [`boundary`](#boundary) is fixed by inserting `//declscope:package`, a [`qualify`](#qualify) or [`unqualify`](#unqualify) violation by renaming, and a rename never changes a declaration's reach. A rename is offered only when it is [provably safe](#withheld-renames).
 
 > [!IMPORTANT]
-> Only the test variant of a package sees its in-package `_test.go` files, so in a package that has them, renames and unused-directive reports come from the test variant alone. With `-test=false`, such a package gets no rename fix and no unused-directive report.
+> Only the test variant of a package sees its in-package `_test.go` files, so in a package that has them, renames and unused-**ignore** reports come from the test variant alone. With `-test=false`, such a package gets neither. An unused **scope** directive is reported in every variant: what it binds is decided by the declarations it reaches, never by who uses them.
 
 ## Namespaces
 
@@ -284,15 +284,26 @@ A declaration's scope is decided by the first row that applies:
 
 | The declaration | Scope |
 | --- | --- |
-| Is reachable from outside the package | None. It is outside the subject and carries no boundary |
 | Carries a scope directive (`//declscope:package`, `//declscope:private`) | The directive's |
 | Is contained by something that carries one — a [field](#members) by its type, a spec by its `var`/`const`/`type` block | The container's |
 | Sits in a file carrying a [file-level scope directive](#file-level-directives) | The file's |
+| Is exported | `package`. Nothing narrows it that the analysis did not read in the source |
 | Otherwise | [`defaults.unexported`](#configuration), `private` unless configured |
 
-**Reachable from outside** is not quite the same as exported. A package-level declaration is reachable when it is exported. A [member](#members) is reachable when it is exported *and* its type is: an exported field of an unexported type is published to nobody, whatever its capitalization says. `type entry struct { Key string }` is capitalized for `encoding/json`, not for an audience, and it stays in the subject — which is where a DTO, whose every field is exported, most needs to be.
+**Exportedness decides the default, and nothing else.** It is tempting to ask instead whether a declaration is *reachable from outside the package*, and to keep an exported field of an unexported type in the subject on the grounds that nobody can see it. A single-package analysis cannot answer that question: a type escapes through an exported signature, through an embedding in an exported type, through an exported alias, and through any exported interface it satisfies. Guessing reports boundaries on names every importer reaches — the failure that gets a linter deleted — so the default stops at the export line, where the compiler's own answer is unambiguous.
 
-An exported declaration takes the first row and stops there, but a scope directive on an exported **type** is not thereby wasted: it reaches the type's unexported fields through the third row, which is the only thing a scope directive on an exported declaration can ever do.
+What the author knows, the author states. A directive binds whatever it reaches, exported or not:
+
+```go
+// A DTO capitalized for encoding/json rather than for an audience. Nothing
+// guesses that; one line says it, and the fields are bound by it.
+//
+//declscope:private
+type entry struct {
+	Key   string `json:"key"`
+	Value []byte `json:"value"`
+}
+```
 
 Widening is always stated, by a directive on the declaration, on what contains it, on its file, or by the `defaults` key for the package. The name of a declaration plays no part: a namespace prefix is an ownership label ([`qualify`](#qualify)) and grants nothing, so a prefix can be added for legibility without changing what the declaration reaches, and a codebase that prefixes everything loses no protection.
 
@@ -320,7 +331,7 @@ A **method** is an ordinary top-level declaration that happens to name a receive
 | Contained by | Its `var`/`const`/`type` block | Its **type** | Nothing |
 | [Naming rules](#naming-rules) | Apply | Do not apply | Do not apply |
 
-So splitting a type's methods across files works the way Go programmers already write it: `marshalKey` in `json.go` belongs to namespace `json`, and `json.go` may use it. What `sort.go` may not do is reach into `User`'s **fields** — and that is the boundary that was doing the work all along. A method grown on another namespace's type can only leak that type's internals by touching them, and touching them is reported.
+So splitting a type's methods across files works the way Go programmers already write it: `marshalKey` in `json.go` belongs to namespace `json`, and `json.go` may use it. What `sort.go` may not do is reach into `User`'s **fields**, and that is the boundary carrying the weight: a method grown on another namespace's type reaches that type's internals by naming them, and naming them is reported. Operations on the whole value — copying it, comparing it, zeroing it — name no field and are outside what this can see; see [Limits of the analysis](#limits-of-the-analysis).
 
 A member is already qualified by its type at every use (`u.save()`), so it collides with nothing and a label would only stutter (`u.userSave()`). What a member lacks in Go is encapsulation — every unexported field is visible to its whole package — and the `private` scope supplies it:
 
@@ -348,7 +359,7 @@ A **rule** is one check. There are four, and a rule's name is at once the diagno
 | [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:package` | No |
 | [`qualify`](#qualify) | A package-level declaration missing its namespace label | Rename to add the label | `rules.qualify`, `rules.exportedLabels` |
 | [`unqualify`](#unqualify) | A namespace label present where it is not required | Rename to drop the label | `rules.unqualify`, `rules.exportedLabels` |
-| [`directive`](#unused-and-malformed-directives) | A directive that binds nothing, or that is malformed or misplaced | None | No |
+| [`directive`](#unused-and-malformed-directives) | A directive that binds nothing, or that is malformed or misplaced | Delete the line, for a directive that no longer exists | No |
 
 Reach enforcement has no switch; naming discipline has. `boundary` is silenced per declaration with `//declscope:ignore boundary`, or per codebase with a [baseline](#adopting-on-an-existing-codebase). `qualify` and `unqualify` are mirrors and never both apply to one declaration: `unqualify` is inert wherever `qualify` requires the label.
 
@@ -373,7 +384,7 @@ func orderRun() int { return userCache() } // reported
 | Field, scope taken from its type's directive | `field User.id is declared private by //declscope:private on User, but is used from namespace "order"` |
 | Scope from a file-level directive | `func userCache is declared private by the file's //declscope:private, but is used from namespace "order"` |
 
-Every use site is attached to the diagnostic as related information.
+Every **crossing** use site is attached to the diagnostic as related information; uses from inside the declaration's own namespace are not.
 
 The report lands on the **declaration**. A method grown on another namespace's type is not itself a crossing — it belongs to the file that wrote it — but the fields it reaches for are reported where they are declared:
 
@@ -600,7 +611,7 @@ A diagnostic is silenced by any directive that covers its rule at any of these l
 | Level | Covers |
 | --- | --- |
 | The declaration | Itself |
-| The **type**, for a method or field | Every member the type owns, wherever the member is declared |
+| The **type**, for a field | Every field written inside its declaration. A method is an ordinary top-level declaration and the type's ignore does not reach it, exactly as its scope directive does not |
 | The file, before the package clause | Every declaration in that file |
 | A [baseline](#adopting-on-an-existing-codebase) | Every violation recorded in it |
 
@@ -613,7 +624,8 @@ type User struct {
 	id   int
 }
 
-// covered too, even from another file
+// NOT covered: a method is its own declaration and needs its own directive,
+// the same way it takes its own file's scope rather than its type's.
 func (u *User) normalize() { ... }
 ```
 
@@ -623,11 +635,16 @@ Every level is consulted, and every **ignore** directive that covers the rule co
 
 A directive that decides nothing is reported, so that neither a suppression nor a claim of intent outlives what justified it. `//declscope:ignore unqualify` is unused if nothing but `unqualify` would have fired.
 
-A **scope** directive is judged the same way, and the test is what it binds rather than what it sits on: is there anything in its reach that takes its scope from it. Because [scope](#scopes) stops at what is reachable from outside the package, an exported declaration is not itself something a scope directive can bind — on an exported type the directive lives through the type's unexported [fields](#members), and on an exported func, or a type whose every field is exported, it binds nothing and is reported.
+A **scope** directive is judged by what it binds rather than by what it sits on, and a declaration is bound when the scope named is one it could not have had anyway — **under every configuration**. That quantifier is what keeps the answer out of the configuration's hands:
 
-The test is deliberately *structural*: it does not ask whether the scope named differs from the one already in force. Such a test would make `//declscope:private` — written to record that a declaration is private **on purpose** rather than by default — an error, which is the opposite of what a directive is for. It would also turn a single line of `.declscope.yaml`, or a config file appearing in a parent directory, into hundreds of new diagnostics in files nobody touched.
+| The declaration | `//declscope:package` | `//declscope:private` |
+| --- | --- | --- |
+| Unexported | Binds — the default may be either scope | Binds, for the same reason |
+| Exported | Inert. It has no boundary under any configuration, so naming `package` decides nothing | Binds. It narrows something nothing else would |
 
-These reports carry the `directive` rule, so `//declscope:ignore directive` silences one and a [baseline](#adopting-on-an-existing-codebase) records one, like any other rule.
+So a directive that names the default of the day is never reported — recording that a declaration is private **on purpose** stays legal, because tomorrow's default may differ — while `//declscope:package` on an exported func, or on a type whose every field is exported, binds nothing anywhere in its reach and is reported. Comparing against `defaults.unexported` directly would have done neither: it would have made the deliberate record an error, and turned a single line of `.declscope.yaml`, or a config file appearing in a parent directory, into hundreds of diagnostics in files nobody touched.
+
+These reports carry the `directive` rule, so `//declscope:ignore directive` silences one, at the declaration or the file. They take no [baseline](#adopting-on-an-existing-codebase) entry and want none: a baseline exists so that turning declscope on does not report boundaries a codebase never enforced, which is history nobody can edit. A directive the author wrote is not history — deleting it removes the report.
 
 Accounting is per physical directive, however many declarations it reaches: one on a `var (...)` block, on `var a, b`, or on `x, y int` in a struct is used as soon as **any** of them needed it, and is reported once — not once per name — when none did. A directive used up only by a member still counts as used.
 
@@ -636,10 +653,10 @@ Accounting is per physical directive, however many declarations it reaches: one 
 | `unused //declscope:ignore boundary on userSeed, limit` | No named declaration needed it |
 | `unused file-level //declscope:ignore qualify` | Nothing in the file needed it |
 | `unused //declscope:ignore: no checked declaration carries it` | Written on something declscope does not check: `init`, `_`, an embedded field |
-| `unused //declscope:package on Helper: nothing it reaches takes a scope` | Written on an exported declaration with no unexported field beneath it |
+| `unused //declscope:package on Helper: nothing it reaches takes a scope` | Every declaration it reaches is exported, where `package` is the scope they already have |
 | `unused file-level //declscope:package` | Every declaration in the file is out of the subject, or states its own scope |
 
-A directive is called unused only by a pass that sees **every** reference in the package. When a package has in-package `_test.go` files, the ordinary variant cannot see what they use, so a directive needed only by a test would be unused there and necessary in the test variant, with no way to satisfy both; the ordinary variant leaves the judgment to the test variant, which sees every file. Under `-test` (the default) that variant runs and nothing is lost. With `-test=false`, a package with in-package tests gets no unused-directive report at all.
+An **ignore** is called unused only by a pass that sees **every** reference in the package. When a package has in-package `_test.go` files, the ordinary variant cannot see what they use, so an ignore needed only by a test would be unused there and necessary in the test variant, with no way to satisfy both; the ordinary variant leaves the judgment to the test variant, which sees every file. Under `-test` (the default) that variant runs and nothing is lost. With `-test=false`, a package with in-package tests gets no unused-ignore report at all. A **scope** directive reads no references, so it is judged in every variant.
 
 A malformed directive is reported at the comment:
 
@@ -649,7 +666,7 @@ A malformed directive is reported at the comment:
 | `//declscope:package x` | `//declscope:package takes no argument` |
 | `//declscope:private` and `//declscope:package` on one declaration, or on one file | `conflicting scope directives: …` |
 | `//declscope:core` and `//declscope:namespace` on one file | `conflicting namespace directives: a core file's namespace is the core` |
-| `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, unqualify)` |
+| `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, unqualify, directive)` |
 | `//declscope:namespace` after the package clause | `declscope:namespace must appear before the package clause` |
 | `//declscope:namespace` with no name, a second one, or a name that is not an unexported identifier | Reported as such |
 | `//declscope:core` with an argument, or a second one on the same file | Reported as such |

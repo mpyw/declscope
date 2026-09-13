@@ -13,26 +13,31 @@ spec BoundaryFix {
 
   state {
     configured: Bool, cfgUnexported: Scope,
-    kind: Kind, exported: Bool, ownerExported: Bool,
+    kind: Kind, exported: Bool,
     declDir: Dir, blockDir: Dir, typeDir: Dir, fileDir: Dir,
     refs: Refs, fixed: Bool
   }
   init {
     configured = false  cfgUnexported = Private
-    kind = Pkg  exported = false  ownerExported = false
+    kind = Pkg  exported = false
     declDir = NoDir  blockDir = NoDir  typeDir = NoDir  fileDir = NoDir
     refs = NoRefs  fixed = false
   }
-  action configure(u: Scope, k: Kind, x: Bool, ox: Bool,
+  action configure(u: Scope, k: Kind, x: Bool,
                    dd: Dir, bd: Dir, td: Dir, fd: Dir, r: Refs) {
     requires not configured
     configured = true  cfgUnexported = u
-    kind = k  exported = x  ownerExported = ox
+    kind = k  exported = x
     declDir = dd  blockDir = bd  typeDir = td  fileDir = fd
     refs = r
   }
-  def reachableOutside() = exported and (kind == Pkg or ownerExported)
-  def subject() = not reachableOutside()
+  // Exportedness decides the default and nothing else: an exported declaration
+  // has no boundary unless a directive gives it one. Asking instead whether it
+  // is reachable from outside the package is a question a single-package
+  // analysis cannot answer — a type escapes through an exported signature, an
+  // embedding, an alias or an interface it satisfies — and guessing produced
+  // boundary reports on API that every importer reaches.
+  def defaultScope() = if exported then Package else cfgUnexported
   def contained() = if kind == Field then typeDir else NoDir
   def blockOf() = if kind == Pkg then blockDir else NoDir
   def effScope() =
@@ -44,8 +49,8 @@ spec BoundaryFix {
     else if contained() == DirPrivate then Private
     else if fileDir == DirPackage then Package
     else if fileDir == DirPrivate then Private
-    else cfgUnexported
-  def boundaryFires() = subject() and effScope() == Private and refs == CrossNs
+    else defaultScope()
+  def boundaryFires() = effScope() == Private and refs == CrossNs
 
   fair action fixBoundary() {
     requires configured  requires boundaryFires()  requires declDir == NoDir
@@ -73,12 +78,14 @@ spec BoundaryFix {
   }
   // The exportedness dimension has to do work here too: without these the whole
   // subject test could be replaced by `false` and this spec would not notice.
-  reachable ExportedNeverFixed {
+  // An exported declaration narrowed by its own directive does cross, and the
+  // fix is withheld because the directive is the author's.
+  reachable ExportedNarrowedNeverFixed {
     configured and exported and kind == Pkg and declDir == DirPrivate
-    and refs == CrossNs and not fixed and not boundaryFires()
+    and refs == CrossNs and boundaryFires() and not fixed
   }
-  reachable UnexportedOwnerStillFixed {
-    configured and fixed and kind == Field and exported and not ownerExported
+  reachable ExportedFieldFixedUnderTypeDirective {
+    configured and fixed and kind == Field and exported and typeDir == DirPrivate
   }
   // A declaration that states its own scope presents the fix with the one case
   // it must refuse. Without a witness, FixNeverClobbersDirective is only ever

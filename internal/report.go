@@ -138,10 +138,10 @@ func (c *collection) keys(pass *analysis.Pass, opts Options) []baseline.Key {
 
 func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []finding {
 	var out []finding
-	// A declaration reachable from outside the package carries no boundary:
-	// its reach is already published, and no line the analysis can check lies
-	// inside it.
-	if t.subject && t.scope == scope.Private {
+	// An exported declaration resolves to package scope unless a directive
+	// narrows it, so the one test below covers both: what is reachable from
+	// outside carries no boundary, and what an author narrowed does.
+	if t.scope == scope.Private {
 		if f, ok := c.checkBoundary(pass, opts, t); ok {
 			out = append(out, f)
 		}

@@ -168,6 +168,15 @@ func TestExportedLabels(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "exportedlabels")
 }
 
+// TestExportedScope checks that exportedness decides the default and nothing
+// else: an exported declaration carries no boundary until a directive gives it
+// one, and a directive on a type reaches its exported fields — which is how a
+// DTO capitalized for a serializer is protected, without the analysis guessing
+// at reachability it cannot compute.
+func TestExportedScope(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "exportedscope")
+}
+
 // TestRemovedPublicDirective checks that //declscope:public is answered by name
 // rather than as an unknown directive, and offers to delete itself so that -fix
 // migrates a codebase that used it.

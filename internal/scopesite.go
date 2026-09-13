@@ -19,13 +19,23 @@ import (
 // ignore, and for the same reason — judged per target it would be reported
 // whenever any sibling did not take it.
 //
-// The test is structural: is there anything in its reach that takes its scope
-// from it. It deliberately does not ask whether the scope named differs from
-// the one already in force. That question flips with a config key two
-// directories up, so a single line of .declscope.yaml would report hundreds of
-// directives in files nobody touched; and it would make //declscope:private,
-// written to record that a declaration is private on purpose rather than by
-// default, an error — which is the opposite of what a directive is for.
+// A directive binds a declaration when the scope it names is one that
+// declaration could not have had anyway — under ANY configuration. That
+// quantifier is what keeps the test out of the trap a plain comparison falls
+// into: comparing against defaults.unexported would flip every directive in a
+// tree when one line of YAML changes, or when a config file appears two
+// directories up, and would make recording a deliberate private an error.
+//
+// Quantified instead, the answer cannot depend on configuration at all:
+//
+//   - An UNEXPORTED declaration takes defaults.unexported, which may be either
+//     scope, so neither //declscope:private nor //declscope:package is ever
+//     inert on one. Recording an intent that matches today's default stays
+//     legal, because tomorrow's default may differ.
+//   - An EXPORTED declaration has no boundary unless a directive gives it one,
+//     under every configuration. //declscope:package is the scope it already
+//     has, so it is provably inert; //declscope:private narrows it, so it is
+//     not.
 type scopeSite struct {
 	dir directive.Decl
 	// decls names the declarations in its reach, in source order, for the
@@ -48,26 +58,34 @@ func (c *collection) scopeSite(d directive.Decl) *scopeSite {
 
 // bind resolves a declaration's scope and records which directive supplied it.
 //
-// Only a subject can bind one. A declaration reachable from outside the package
-// takes no scope at all, so a directive written on it is bound by nothing —
-// unless it is a type, whose fields reach it through their own resolution and
-// mark it there. That is the whole of the carve-out: an exported type with an
-// unexported field has a subject beneath it, an exported func has none.
 // The second result is the directive that supplied the scope, zero when the
 // configured default did. A caller needs it to say which level decided, and to
 // know whether inserting a directive on the declaration would overwrite an
 // author's decision or merely state an exception to a default.
-func (c *collection) bind(opts Options, subject bool, dir, container, file directive.Decl) (scope.Scope, directive.Decl) {
+func (c *collection) bind(opts Options, name string, dir, container, file directive.Decl) (scope.Scope, directive.Decl) {
 	for _, d := range [...]directive.Decl{dir, container, file} {
 		if !d.HasScope {
 			continue
 		}
-		if subject {
+		if !inert(name, d.Scope) {
 			c.scopeSite(d).bound = true
 		}
 		return d.Scope, d
 	}
+	// Exportedness decides the default and nothing else. An exported declaration
+	// is reached by every importer already, so the analysis has no line around it
+	// that it could also check — but an author who states one is stating it, not
+	// guessing, and the loop above binds.
+	if isExported(name) {
+		return scope.PackageInternal, directive.Decl{}
+	}
 	return opts.Unexported, directive.Decl{}
+}
+
+// inert reports whether stating a scope on a declaration decides nothing, under
+// every configuration. See the comment on scopeSite.
+func inert(name string, stated scope.Scope) bool {
+	return isExported(name) && stated == scope.PackageInternal
 }
 
 // reportUnusedScopes reports every scope directive that bound nothing.

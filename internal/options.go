@@ -3,7 +3,6 @@
 package internal
 
 import (
-	"go/types"
 	"regexp"
 	"strings"
 
@@ -171,20 +170,6 @@ func (o Options) Excluded(path string) bool {
 		}
 	}
 	return false
-}
-
-// reachableOutside reports whether a declaration can be named from another
-// package, which is what puts it outside the subject.
-//
-// A package-level declaration is reachable when it is exported. A member needs
-// its owner exported too: an exported field of an unexported type is published
-// to nobody, whatever its capitalization says, and a DTO whose every field is
-// exported for a serializer is exactly where the boundary is most wanted.
-func reachableOutside(name string, owner types.Object) bool {
-	if !isExported(name) {
-		return false
-	}
-	return owner == nil || isExported(owner.Name())
 }
 
 func isExported(name string) bool {

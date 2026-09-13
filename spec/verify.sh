@@ -41,7 +41,7 @@ status=0
 ## while every verdict below stayed green. Comments and blank lines are ignored;
 ## the code is not.
 shared() {
-  sed -n '/def reachableOutside/,/def boundaryFires/p' "$1" | grep -v '^[[:space:]]*//' | grep -v '^[[:space:]]*$'
+  sed -n '/def defaultScope/,/def boundaryFires/p' "$1" | grep -v '^[[:space:]]*//' | grep -v '^[[:space:]]*$'
 }
 if ! diff <(shared knobs.fsl) <(shared boundary_fix.fsl) > /dev/null; then
   echo "  FAILED   knobs.fsl and boundary_fix.fsl no longer share one scope model" >&2

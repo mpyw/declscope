@@ -109,10 +109,6 @@ type target struct {
 	// declaration takes its file's, and a diagnostic that named the declaration's
 	// own directive in those cases would point at a comment that is not there.
 	boundBy directive.Decl
-	// subject says whether the declaration is declscope's business at all. A
-	// declaration reachable from outside the package is not: its reach is
-	// already published, and no boundary the analysis can check lies inside it.
-	subject bool
 	// dir holds the directives reaching the declaration. Its Ignores may be
 	// shared with sibling targets — a block's directive reaches every spec —
 	// so whether one silenced anything is tracked per physical directive in
@@ -276,14 +272,12 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 		if d.Name.Name == "init" {
 			return
 		}
-		subject := !reachableOutside(d.Name.Name, nil)
-		sc, boundBy := c.bind(opts, subject, dir, directive.Decl{}, fi.scope)
+		sc, boundBy := c.bind(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
 		c.add(&target{
 			obj: obj, ident: d.Name, kind: kindFunc, file: fi,
 			ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: d.Pos(),
 			scope:      sc,
 			boundBy:    boundBy,
-			subject:    subject,
 			renameable: true,
 		})
 		return
@@ -299,8 +293,7 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 	if ownerObj != nil {
 		owner = ownerObj.Name()
 	}
-	subject := !reachableOutside(d.Name.Name, ownerObj)
-	sc, boundBy := c.bind(opts, subject, dir, directive.Decl{}, fi.scope)
+	sc, boundBy := c.bind(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
 	c.add(&target{
 		obj: obj, ident: d.Name, kind: kindMethod, file: fi,
 		owner: owner, ownerObj: ownerObj,
@@ -308,7 +301,6 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 		dir: dir, anchor: d.Pos(),
 		scope:   sc,
 		boundBy: boundBy,
-		subject: subject,
 	})
 }
 
@@ -337,14 +329,12 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 				anchor = spec.Pos()
 			}
 			if obj, ok := pass.TypesInfo.Defs[spec.Name]; ok && spec.Name.Name != "_" {
-				subject := !reachableOutside(spec.Name.Name, nil)
-				sc, boundBy := c.bind(opts, subject, dir, directive.Decl{}, fi.scope)
+				sc, boundBy := c.bind(opts, spec.Name.Name, dir, directive.Decl{}, fi.scope)
 				c.add(&target{
 					obj: obj, ident: spec.Name, kind: kindType, file: fi,
 					ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: anchor,
 					scope:      sc,
 					boundBy:    boundBy,
-					subject:    subject,
 					renameable: true,
 				})
 			}
@@ -365,14 +355,12 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 				if !ok || name.Name == "_" {
 					continue
 				}
-				subject := !reachableOutside(name.Name, nil)
-				sc, boundBy := c.bind(opts, subject, dir, directive.Decl{}, fi.scope)
+				sc, boundBy := c.bind(opts, name.Name, dir, directive.Decl{}, fi.scope)
 				c.add(&target{
 					obj: obj, ident: name, kind: k, file: fi,
 					ownerNS: fi.ns, ownerKey: fi.key(), ownerFile: fi, dir: dir, anchor: anchor,
 					scope:      sc,
 					boundBy:    boundBy,
-					subject:    subject,
 					renameable: true,
 				})
 			}
@@ -406,8 +394,7 @@ func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, 
 			if !ok || name.Name == "_" {
 				continue
 			}
-			subject := !reachableOutside(name.Name, ownerObj)
-			sc, boundBy := c.bind(opts, subject, dir, container, fi.scope)
+			sc, boundBy := c.bind(opts, name.Name, dir, container, fi.scope)
 			c.add(&target{
 				obj: obj, ident: name, kind: kindField, file: fi,
 				owner: spec.Name.Name, ownerObj: ownerObj,
@@ -415,7 +402,6 @@ func (c *collection) addFields(pass *analysis.Pass, opts Options, fi *fileInfo, 
 				anchor:  field.Pos(),
 				scope:   sc,
 				boundBy: boundBy,
-				subject: subject,
 			})
 		}
 	}

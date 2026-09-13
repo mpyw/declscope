@@ -11,7 +11,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 | `package` | Usable anywhere in the package — what Go's unexported already means |
 | `private` | Usable only inside its own **namespace** |
 
-The subject is what is **not reachable from outside the package**: unexported package-level declarations, plus members that are unexported *or* whose owner type is. An exported field of an unexported type is published to nobody — a DTO is capitalized for a serializer — so it stays in. A use outside the package is never analyzed, so `public` would be a level nothing could check; there is no `defaults.exported`, and adding one back means claiming an enforcement the analysis cannot perform.
+**Exportedness decides the default and nothing else.** An exported declaration resolves to `package` — no boundary — unless a directive gives it one. Do not reach for "is it reachable from outside the package": a single-package analysis cannot answer it, since a type escapes through an exported signature, an embedding, an alias, or an interface it satisfies, and an earlier attempt to guess reported boundaries on API every importer reaches. What the author knows, the author states: a directive binds whatever it reaches, exported or not, which is how a DTO capitalized for a serializer is protected. A use outside the package is never analyzed, so `public` would be a level nothing could check; there is no `defaults.exported`, and adding one back means claiming an enforcement the analysis cannot perform.
 
 **Fields and methods are not one thing.** A field, and an interface's method name, is written *inside* its type's declaration: its file is where the type is, not a binding we chose, so the type's directive contains it the way a `var (...)` block contains its specs. A method is an ordinary top-level declaration — its file gives it its namespace, and nothing above it reaches it. Binding methods to their type's file instead made a method unusable from the file that wrote it, with no scope able to express what the author meant. Encapsulation never rested on it: a method reaching another namespace's private field is caught by the **field**.
 
@@ -33,7 +33,7 @@ A file marked `//declscope:core` joins the package's core namespace, whose label
 
 **Members are exempt from the label rule.** They are already namespaced by the type that owns them and cannot collide, so a label would produce `u.userSave()`, exactly the stutter Go idiom avoids. Their problem is encapsulation, not naming, and a member violation is never fixed by renaming.
 
-Scope resolution is shared: `Options.resolve` serves every kind, so that `defaults.unexported`, the file-level directive and the declaration's own govern every declaration in a package. A **field** takes one extra step first, from the type that contains it; a method takes none. A knob that works on some declarations and not others is the shape to avoid. A knob that works on some declarations and not others is the shape to avoid.
+Scope resolution is shared: `collection.bind` (`internal/scopesite.go`) serves every kind, so that `defaults.unexported`, the file-level directive and the declaration's own govern every declaration in a package. A **field** takes one extra step first, from the type that contains it; a method takes none. A knob that works on some declarations and not others is the shape to avoid.
 
 ### Namespaces
 
@@ -56,7 +56,8 @@ analyzer.go               Analyzer definition, -config flag, config discovery
 internal/
   analyzer.go             Run: collect files -> targets -> refs -> report
   collect.go              fileInfo, target, reference collection
-  options.go              resolved configuration, qualify's Mode and the boolean flags, scope resolution, exclude globs
+  options.go              resolved configuration, qualify's Mode and the boolean flags, exclude globs
+  scopesite.go            scope resolution (bind), and which directives bound nothing
   report.go               diagnostics and suggested fixes
   ignore.go               ignore accounting: which comment silenced what, and which bound to nothing
   rename.go               the conditions under which a rename fix is offered at all
@@ -127,7 +128,9 @@ There is no declaration-site rule for a method grown on another namespace's type
 
 Scope resolution walks the same levels in the same order — the declaration, the containing type for a field, then the file the declaration is written in. The two chains share an **order**, not a rule: scope resolution takes the first hit, suppression consults all of them. Keep the order aligned when either changes.
 
-`collection.silenced` walks the levels: the declaration, then the type that owns it (`target.ownerObj`, for methods and fields, wherever the member is declared), then the file. It consults **all** of them rather than stopping at the first hit, and `ignored()` marks **every** directive covering the rule as used, so overlapping directives at different levels never make each other look unused.
+`bind` marks a directive bound only when the scope it names is one the declaration could not have had under **any** configuration (`inert`, same file). That quantifier is the whole of why the unused-directive test does not read `defaults.unexported`: comparing against it directly would flip every directive in the tree when one line of YAML changed, and would make recording a deliberate `private` an error.
+
+`collection.silenced` walks the levels: the declaration, then, **for a field**, the type that owns it (`target.ownerObj`), then the file. It consults **all** of them rather than stopping at the first hit, and `ignored()` marks **every** directive covering the rule as used, so overlapping directives at different levels never make each other look unused.
 
 Unused directives are therefore reported in a **second pass**, after every finding has been seen: a type's directive is often used up by a member reached later in the target list.
 
