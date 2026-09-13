@@ -13,11 +13,15 @@ the binary.
 
 | Spec | Claim | Scope covered |
 | --- | --- | --- |
-| `label_rules.fsl` | `qualify` and `unqualify` never both fire for one declaration | Every combination of `rules.qualify`, `rules.unqualify`, namespace count, kind, exportedness, namespace presence and label |
+| `label_rules.fsl` | `qualify` and `unqualify` never both fire for one declaration | Every combination of `rules.qualify`, `rules.unqualify`, `rules.exportedLabels`, namespace count, kind, exportedness, namespace presence and label |
 | `label_rules.fsl` | Applying either label fix removes the violation it addresses | As above |
-| `boundary_fix.fsl` | Inserting `//declscope:package` always removes the boundary crossing | Every combination of `defaults.exported`, `defaults.unexported`, exportedness, scope directive and reference shape |
-| `knobs.fsl` | Every configuration key demonstrably changes an outcome, for members as well as package-level declarations | As above, plus kind |
+| `label_rules.fsl` | No rename is ever applied to an exported declaration | As above |
+| `boundary_fix.fsl` | Inserting `//declscope:package` always removes the boundary crossing, over any directive nearer the default | Every combination of `defaults.unexported`, kind, exportedness, and the declaration, type and file directives |
+| `knobs.fsl` | Every configuration key and every directive level demonstrably changes an outcome, for members as well as package-level declarations | As above, plus reference shape |
+| `knobs.fsl` | An exported symbol never carries a boundary, and the type's directive reaches members only | As above |
 | `knobs.fsl` | A reference from inside the namespace never crosses a boundary | As above |
+| `directive_effect.fsl` | A scope directive that binds nothing is reported, whether its reach holds no subject or it restates the scope already in force | Every combination of stated scope, surrounding scope, exportedness and enclosed subject |
+| `member_file.fsl` | A member's bounding namespace and its file-level default come from different files, with the consequences that follow | Every combination of the two files, the three directive levels, config and reference site |
 | `rename_sound.fsl` | **Fails** — models a guard that checks package scope only, and enumerates what a sound guard must check beyond it | Every binding environment at the reference site |
 | `rename_siblings.fsl` | **Fails** — models fixes that check their target against the pre-fix names only, and shows two of them converging on one name | Every pair of rename targets |
 

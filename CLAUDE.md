@@ -4,13 +4,14 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Project overview
 
-**declscope** is a Go linter that adds two pseudo visibility levels between `Exported` and `unexported`, and enforces them with [`go/analysis`](https://pkg.go.dev/golang.org/x/tools/go/analysis). It exists so that a package can stay **flat** without losing every internal boundary.
+**declscope** is a Go linter that adds a pseudo visibility level below `unexported`, and a real one for methods and struct fields, and enforces them with [`go/analysis`](https://pkg.go.dev/golang.org/x/tools/go/analysis). It exists so that a package can stay **flat** without losing every internal boundary.
 
 | Scope | Meaning |
 | --- | --- |
-| `public` | Usable outside the package |
-| `package` | Usable anywhere in the package |
+| `package` | Usable anywhere in the package — what Go's unexported already means |
 | `private` | Usable only inside its own **namespace** |
+
+The subject is the package's **unexported surface**: unexported package-level declarations, plus the unexported members of any type. An exported declaration has no scope at all — a use outside the package is never analyzed, so `public` would be a level nothing could check, and a boundary between an exported name and a sibling file would redraw a line the compiler has erased. There is no `defaults.exported`; adding one back means claiming an enforcement the analysis cannot perform.
 
 ### Core concept: reach is stated, ownership is named
 
@@ -18,13 +19,13 @@ The single most important thing to understand before changing anything here is t
 
 Everything unexported is private to its namespace; `//declscope:package` is the only thing that widens it. A namespace prefix must never mean package-internal: that overloads one signal with two meanings, so a prefix added purely for legibility would silently widen a declaration, and a codebase that prefixed everything for readability would end up with nothing protected. The same separation is what keeps a boundary crossing from ever having a rename fix, and a diagnostic from ever carrying two conflicting alternatives.
 
-The prefix does a separate job: it is an **ownership label** on unexported package-level declarations, making the owning unit legible at every use site. Only the naming rules (`qualify`, `unqualify`) are configurable. Reach enforcement is not, and neither is whether members are checked — a key that gates the collection of methods and fields switches off more than its name suggests. A cross-cutting toggle in a map keyed by rule names is the shape to avoid.
+The prefix does a separate job: it is an **ownership label** on package-level declarations, making the owning unit legible at every use site. It applies to unexported declarations, and to exported ones when `rules.exportedLabels` is on — inside the package an exported name is read as bare as any other, so the package qualifier that explains an external use is absent exactly where the label is wanted. An exported rename is never offered, only reported: the uses outside the package cannot be seen, and completing it by hand is an API change. Only the naming rules (`qualify`, `unqualify`) are configurable. Reach enforcement is not, and neither is whether members are checked — a key that gates the collection of methods and fields switches off more than its name suggests. A cross-cutting toggle in a map keyed by rule names is the shape to avoid.
 
-Both naming rules read an `internal.Mode` — `Always`, `Never` or `OnDemand` — and `Mode.Applies` is the one predicate they gate on. `rules.qualify` defaults to `ondemand`, requiring the label only once a package has a second namespace — in a package with one, every other rule is structurally inert anyway, since every reference is already inside the single namespace. `rules.unqualify` defaults to `never` and accepts only `always` and `never`. Each setting declares the values it accepts as an `internal.ModeSet`, so a rejected value is answered with what that setting accepts rather than with everything the type can hold. The settings take the words `always`, `never` and `ondemand` and nothing else; `Mode.String()` returns the same spelling, so an error message names exactly what can be written.
+Both naming rules read an `internal.Mode` — `Always`, `Never` or `OnDemand` — and `Mode.Applies` is the one predicate they gate on. `rules.qualify` defaults to `ondemand`, requiring the label only once a package has a second namespace — in a package with one, every other rule is structurally inert anyway, since every reference is already inside the single namespace. `rules.unqualify` is a boolean and defaults to `false`: `qualify` already answers *when* a label applies, so this key only decides whether the other direction is enforced too. Do not give it a third value — where the label is required it is inert by construction, so there is nothing left for a mode to select. Each setting declares the values it accepts as an `internal.ModeSet`, so a rejected value is answered with what that setting accepts rather than with everything the type can hold. The settings take the words `always`, `never` and `ondemand` and nothing else; `Mode.String()` returns the same spelling, so an error message names exactly what can be written.
 
 **Methods and struct fields are governed differently.** They are already namespaced by the type that owns them and cannot collide, so a label would produce `u.userSave()`, exactly the stutter Go idiom avoids. Their problem is encapsulation, not naming, so the boundary is the namespace of the **type**, not of the file, and a member violation is never fixed by renaming.
 
-What sets members apart is *only* that boundary and their exemption from the label rule. Scope resolution is shared: `Options.resolve` serves both, so that `defaults.exported` and `defaults.unexported` govern every declaration in a package. A knob that works on some declarations and not others is the shape to avoid.
+What sets members apart is *only* that boundary and their exemption from the label rule. Scope resolution is shared: `Options.resolve` serves both, so that `defaults.unexported`, the file-level directive and the declaration's own govern every declaration in a package. A member takes one extra step first — it inherits its **type's** scope directive before the file level is consulted — and the file it consults is the one it is *written* in, while the namespace that bounds it comes from its type's file. A knob that works on some declarations and not others is the shape to avoid.
 
 ### Namespaces
 
@@ -53,7 +54,7 @@ internal/
   rename.go               the conditions under which a rename fix is offered at all
   rule/                   the rule vocabulary, shared by diagnostics, config, baseline and ignores
   namespace/              file name -> namespace, prefix matching, qualify/unqualify
-  scope/                  the three-level Scope enum
+  scope/                  the two-level Scope enum
   directive/              //declscope:... comment parsing
   config/                 YAML loading and lookup
   baseline/               baseline file format, lookup and regeneration
@@ -87,7 +88,7 @@ The files of `internal/` form one logical unit and declare `//declscope:namespac
 | Rule | Reports | Fix |
 | --- | --- | --- |
 | `boundary` | A declaration used from outside the namespace it is private to | Insert `//declscope:package`, unless the scope came from a directive |
-| `qualify` | An unexported package-level declaration missing its namespace label | Rename via `namespace.Qualify`, when provably safe |
+| `qualify` | A package-level declaration missing its namespace label | Rename via `namespace.Qualify`, when provably safe and not exported |
 | `unqualify` | A namespace label present where it is not required | Rename via `namespace.Unqualify`, when derivable and provably safe |
 
 `qualify` and `unqualify` are exclusive **by construction**: `checkUnqualify` returns early wherever `opts.Qualify.Applies(c.namespaces)` holds, so they can never contradict each other on one declaration. Preserve that property when adding checks.
@@ -98,15 +99,14 @@ There is no declaration-site rule for a method grown on another namespace's type
 
 `checkUnqualify` exempts a name identical to its namespace. The causality usually runs the other way there — `user.go` is named after the `user` it declares — so there is no label to strip, and the only advice available would be "rename it by hand". `qualify` accepts such a name too.
 
-**Not being able to derive a rename is never a reason to stay silent.** `checkUnqualify` gates on `namespace.HasPrefix` — whether there is a label at all — and then reports either way, embedding `Unqualify`'s reason when it has no suggestion. Skipping the declaration would leave a codebase half-converted under `unqualify: always` with nothing saying why. `checkQualify` behaves the same way when its rename target is taken; keep new rules consistent with both.
+**Not being able to derive a rename is never a reason to stay silent.** `checkUnqualify` gates on `namespace.HasPrefix` — whether there is a label at all — and then reports either way, embedding `Unqualify`'s reason when it has no suggestion. Skipping the declaration would leave a codebase half-converted under `unqualify: true` with nothing saying why. The same principle is why an exported declaration is reported under `rules.exportedLabels` even though no rename can ever be offered for it. `checkQualify` behaves the same way when its rename target is taken; keep new rules consistent with both.
 
 ## Directives
 
 | Directive | Level | Effect |
 | --- | --- | --- |
-| `//declscope:public` | Declaration | State the scope instead of deriving it from the defaults |
-| `//declscope:package` | Declaration | Same |
-| `//declscope:private` | Declaration | Same |
+| `//declscope:package` | Declaration or file | State the scope instead of deriving it from the defaults. On a type it also reaches the type's members; before the package clause it is the file's default, still overridable per declaration |
+| `//declscope:private` | Declaration or file | Same |
 | `//declscope:ignore` | Declaration or file | Silence every rule for the declaration, or for the whole file |
 | `//declscope:ignore <rules>` | Declaration or file | Silence only the named rules (`boundary`, `qualify`, `unqualify`) |
 | `//declscope:namespace <name>` | File, before the package clause | Override the namespace derived from the file name |
@@ -114,6 +114,8 @@ There is no declaration-site rule for a method grown on another namespace's type
 `parseIgnore` is shared by both levels, so `//declscope:ignore` cannot come to mean different things depending on where it is written. File-level directives live on `fileInfo.ignores`; declaration-level ones on `Decl.Ignores`. A file-level ignore is scoped to its **file**, not to its namespace, so files sharing a namespace each need their own — one file silently changing another's diagnostics would be much harder to trace back.
 
 ### The suppression chain
+
+Scope resolution walks the same three levels in the same order — the declaration, the owning type for a member, then the file — so the suppression chain and the scope chain stay one shape. Keep them aligned when either changes.
 
 `collection.silenced` walks the levels: the declaration, then the type that owns it (`target.ownerObj`, for methods and fields, wherever the member is declared), then the file. It consults **all** of them rather than stopping at the first hit, and `ignored()` marks **every** directive covering the rule as used, so overlapping directives at different levels never make each other look unused.
 

@@ -1,36 +1,58 @@
 // Inserting //declscope:package always removes the boundary crossing.
 //
-// Only the variables these properties read are modeled: 216 action instances.
+// Scope is two-valued and an exported symbol carries no boundary, so the fix is
+// only ever needed on an unexported one. The declaration's own directive is the
+// top of the resolution order, so the fix must win over the enclosing type's
+// directive and the file's alike.
 spec BoundaryFix {
-  enum Scope { Public, Package, Private }
-  enum Dir   { NoDir, DirPublic, DirPackage, DirPrivate }
+  enum Scope { Package, Private }
+  enum Kind  { Pkg, Member }
+  enum Dir   { NoDir, DirPackage, DirPrivate }
   enum Refs  { NoRefs, SameNs, CrossNs }
 
   state {
-    configured: Bool, cfgExported: Scope, cfgUnexported: Scope,
-    exported: Bool, dir: Dir, refs: Refs, fixed: Bool
+    configured: Bool, cfgUnexported: Scope,
+    kind: Kind, exported: Bool,
+    declDir: Dir, typeDir: Dir, fileDir: Dir,
+    refs: Refs, fixed: Bool
   }
   init {
-    configured = false  cfgExported = Public  cfgUnexported = Private
-    exported = false  dir = NoDir  refs = NoRefs  fixed = false
+    configured = false  cfgUnexported = Private
+    kind = Pkg  exported = false
+    declDir = NoDir  typeDir = NoDir  fileDir = NoDir
+    refs = NoRefs  fixed = false
   }
-  action configure(e: Scope, u: Scope, x: Bool, di: Dir, r: Refs) {
+  action configure(u: Scope, k: Kind, x: Bool, dd: Dir, td: Dir, fd: Dir, r: Refs) {
     requires not configured
-    configured = true  cfgExported = e  cfgUnexported = u
-    exported = x  dir = di  refs = r
+    configured = true  cfgUnexported = u
+    kind = k  exported = x
+    declDir = dd  typeDir = td  fileDir = fd
+    refs = r
   }
+  def inherited() = if kind == Member then typeDir else NoDir
   def effScope() =
-    if dir == DirPublic then Public
-    else if dir == DirPackage then Package
-    else if dir == DirPrivate then Private
-    else if exported then cfgExported
+    if declDir == DirPackage then Package
+    else if declDir == DirPrivate then Private
+    else if inherited() == DirPackage then Package
+    else if inherited() == DirPrivate then Private
+    else if fileDir == DirPackage then Package
+    else if fileDir == DirPrivate then Private
     else cfgUnexported
-  def boundaryFires() = effScope() == Private and refs == CrossNs
+  def boundaryFires() = not exported and effScope() == Private and refs == CrossNs
 
   fair action fixBoundary() {
-    requires configured  requires boundaryFires()  requires dir == NoDir
-    dir = DirPackage  fixed = true
+    requires configured  requires boundaryFires()  requires declDir == NoDir
+    declDir = DirPackage  fixed = true
   }
+  // Auxiliary: a fix happens only after configuration, and is recorded by the
+  // directive it inserts. Together these make BoundaryFixSettles inductive
+  // rather than merely true to depth.
+  invariant FixImpliesConfigured { fixed => configured }
+  invariant FixRecordsDirective { fixed => declDir == DirPackage }
   invariant BoundaryFixSettles { fixed => not boundaryFires() }
   reachable BoundaryCanFire { configured and boundaryFires() }
+  // The fix must settle even when the type's and the file's directives say private.
+  reachable FixOverridesTypeAndFile {
+    configured and fixed and typeDir == DirPrivate and fileDir == DirPrivate
+  }
 }

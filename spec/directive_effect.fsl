@@ -1,0 +1,62 @@
+// A scope directive that changes no declaration's effective scope is reported,
+// on the same principle as an unused ignore: a directive that decides nothing
+// should not sit in the source claiming to.
+//
+// The test is semantic, not structural. A directive is used when some subject
+// in its subtree ends up with a scope it would not otherwise have had; naming
+// the scope that already applies is as inert as naming a scope for a subtree
+// that holds no subject at all.
+//
+// The subject is the unexported surface, so an exported declaration counts only
+// through what it encloses: an exported type with an unexported member has a
+// subject beneath it, an exported func has none.
+spec DirectiveEffect {
+  enum Scope { Package, Private }
+  enum Dir   { DirPackage, DirPrivate }
+
+  state {
+    configured: Bool,
+    dir: Dir, outer: Scope,
+    targetExported: Bool, subtreeHasUnexported: Bool
+  }
+  init {
+    configured = false
+    dir = DirPackage  outer = Private
+    targetExported = false  subtreeHasUnexported = false
+  }
+  action configure(d: Dir, o: Scope, x: Bool, s: Bool) {
+    requires not configured
+    configured = true  dir = d  outer = o
+    targetExported = x  subtreeHasUnexported = s
+  }
+
+  def stated() = if dir == DirPackage then Package else Private
+  // Something the directive could bind: the declaration itself when it is a
+  // subject, or a subject it encloses.
+  def hasSubject() = not targetExported or subtreeHasUnexported
+  def used()       = hasSubject() and stated() != outer
+  def reported()   = configured and not used()
+
+  // An exported declaration with nothing unexported beneath it can never be
+  // bound by a scope directive.
+  invariant ExportedLeafNeverUsed {
+    targetExported and not subtreeHasUnexported => not used()
+  }
+  // Restating the scope that already applies binds nothing.
+  invariant RedundantNeverUsed { stated() == outer => not used() }
+
+  // The carve-out: an exported type still carries its unexported members.
+  reachable UsedOnExportedTypeWithUnexportedMember {
+    configured and targetExported and subtreeHasUnexported
+    and stated() != outer and used()
+  }
+  reachable UnusedOnExportedLeaf {
+    configured and targetExported and not subtreeHasUnexported and reported()
+  }
+  reachable UnusedBecauseRedundant {
+    configured and hasSubject() and stated() == outer and reported()
+  }
+  reachable UsedOnUnexportedDecl {
+    configured and not targetExported and stated() != outer and used()
+  }
+}
