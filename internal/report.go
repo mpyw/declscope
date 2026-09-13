@@ -80,7 +80,9 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	// declaration, so the per-target accounting never sees it work, and
 	// reporting it unused first would tell the author to delete the very
 	// comment doing the job.
-	slices.SortStableFunc(c.problems, func(a, b directive.Problem) int { return int(a.Pos - b.Pos) })
+	slices.SortStableFunc(c.problems, func(a, b directive.Problem) int {
+		return comparePos(pass.Fset, a.Pos, b.Pos)
+	})
 	surviving := c.problems[:0]
 	for _, p := range c.problems {
 		if c.silencesFile(c.fileAt(pass, p.Pos), rule.Directive) {
@@ -88,10 +90,14 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 		}
 		surviving = append(surviving, p)
 	}
+	c.problems = surviving
 
+	// Only now, with every ignore that silenced something marked used. An
+	// ignore report is itself a directive problem, so it is appended rather
+	// than reported directly, and joins the same ordering.
 	c.reportUnusedIgnores(pass)
 
-	for _, p := range surviving {
+	for _, p := range c.problems {
 		pass.Report(analysis.Diagnostic{
 			Pos:            p.Pos,
 			Category:       string(rule.Directive),
@@ -163,10 +169,21 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 	}
 
 	f := finding{rule: rule.Boundary, decl: t.name(), pos: t.ident.Pos()}
-	if t.dir.HasScope {
+	// The message names the level that decided, not the level a reader might
+	// assume: a field takes its type's directive and any declaration takes its
+	// file's, and naming the declaration's own would point at a comment that is
+	// not there.
+	switch {
+	case t.dir.HasScope:
 		f.msg = fmt.Sprintf("%s %s is declared %s by %s, but is used from %s",
 			t.kind, t.name(), t.scope, t.scope.Directive(), describeFile(offenders[0].file))
-	} else {
+	case t.boundBy.HasScope && t.kind == kindField:
+		f.msg = fmt.Sprintf("%s %s is declared %s by %s on %s, but is used from %s",
+			t.kind, t.name(), t.scope, t.scope.Directive(), t.owner, describeFile(offenders[0].file))
+	case t.boundBy.HasScope:
+		f.msg = fmt.Sprintf("%s %s is declared %s by the file's %s, but is used from %s",
+			t.kind, t.name(), t.scope, t.scope.Directive(), describeFile(offenders[0].file))
+	default:
 		f.msg = fmt.Sprintf("%s %s is private to %s, but is used from %s",
 			t.kind, t.name(), describeFile(t.ownerFile), describeFile(offenders[0].file))
 	}
@@ -178,10 +195,17 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 		})
 	}
 
-	// When the author stated the scope, the conflict is between two explicit
-	// decisions and only they can resolve it: widening would have -fix
-	// silently overwrite the directive they wrote.
-	if t.dir.HasScope {
+	// When the author stated the scope ON THE DECLARATION, the conflict is
+	// between two explicit decisions and only they can resolve it: widening
+	// would have -fix silently overwrite the directive they wrote.
+	//
+	// A scope inherited from the containing type or from the file is a default,
+	// and a directive inserted on the declaration states an exception to it
+	// rather than overwriting a decision — but inserting one would also leave
+	// the outer directive binding one declaration fewer, which can make it
+	// unused. Offering the fix there would produce a diagnostic that did not
+	// exist before, so it is withheld at every level that supplied the scope.
+	if t.boundBy.HasScope {
 		return f, true
 	}
 	f.fixes = append(f.fixes, c.directiveFix(pass, t, scope.PackageInternal))
@@ -361,6 +385,13 @@ func describe(ns, path string) string {
 }
 
 func describeFile(f *fileInfo) string {
+	// The core namespace has no name, and the "file X.go" fallback in describe
+	// was written for a file with no stem at all. Letting the core fall into it
+	// would say "private to file client.go" about a declaration every other core
+	// file may use — telling the reader something the analyzer does not believe.
+	if f.core {
+		return "the core namespace"
+	}
 	return describe(f.ns, f.path)
 }
 

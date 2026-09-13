@@ -229,10 +229,19 @@ func Stray(g *ast.CommentGroup) []Problem {
 		}
 		msg := fmt.Sprintf("misplaced declscope:%s: no declaration here for it to bind to; "+
 			"write it in a declaration's doc comment or trailing its first or last line", keyword)
-		if keyword == "namespace" {
+		end := token.NoPos
+		switch keyword {
+		case "namespace":
 			msg = "declscope:namespace must appear before the package clause"
+		case "public":
+			// A directive that no longer exists is answered by name wherever it
+			// is found, and offers to delete itself. An upgrading codebase is
+			// likeliest to have drifted exactly the ones the parser could not
+			// place, and "misplaced" would send the author looking for a
+			// declaration rather than deleting the line.
+			msg, end = removedPublic, c.End()
 		}
-		out = append(out, Problem{Pos: c.Pos(), Msg: msg})
+		out = append(out, Problem{Pos: c.Pos(), Msg: msg, End: end})
 	}
 	return out
 }
@@ -334,8 +343,8 @@ func (f *File) scope(pos token.Pos, keyword, arg string) {
 	case arg != "":
 		f.problem(pos, fmt.Sprintf("//declscope:%s takes no argument", keyword))
 	case f.Scope.HasScope && f.Scope.Scope != sc:
-		f.problem(pos, fmt.Sprintf("conflicting scope directives: //declscope:%s and //declscope:%s on one file",
-			f.Scope.Scope, keyword))
+		f.problem(pos, fmt.Sprintf("conflicting scope directives: %s and //declscope:%s on one file",
+			f.Scope.Scope.Directive(), keyword))
 	default:
 		f.Scope.Scope, f.Scope.HasScope, f.Scope.ScopePos = sc, true, pos
 	}

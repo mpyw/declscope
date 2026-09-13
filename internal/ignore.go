@@ -3,6 +3,7 @@
 package internal
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"slices"
@@ -63,6 +64,21 @@ func (c *collection) parseDecl(groups ...*ast.CommentGroup) directive.Decl {
 	d := directive.ParseDecl(fresh...)
 	for _, ig := range d.Ignores {
 		c.site(ig)
+	}
+	// A scope directive is registered here too, so that one written on something
+	// declscope does not check — init, _, an embedded field — is reported unused
+	// rather than dropped. Registering it only where a target is added would
+	// lose exactly the cases the report exists for.
+	if d.HasScope {
+		c.scopeSite(d)
+	}
+	// An ignore and a problem parsed from the same comment are the author
+	// answering their own directive: the ignore is consulted here, where the
+	// declaration that carries both is still in hand. A problem is attached to
+	// no declaration once it reaches the report, so the file level is the only
+	// one that could answer for it there.
+	if len(d.Problems) > 0 && c.ignored(d.Ignores, rule.Directive) {
+		return d
 	}
 	c.problems = append(c.problems, d.Problems...)
 	return d
@@ -209,13 +225,15 @@ func (c *collection) reportUnusedIgnores(pass *analysis.Pass) {
 	}
 	slices.SortFunc(sites, func(a, b *ignoreSite) int { return comparePos(pass.Fset, a.ig.Pos, b.ig.Pos) })
 	for _, s := range sites {
+		var msg string
 		switch {
 		case s.fileLevel:
-			pass.Reportf(s.ig.Pos, "unused file-level %s", s.ig)
+			msg = fmt.Sprintf("unused file-level %s", s.ig)
 		case len(s.decls) == 0:
-			pass.Reportf(s.ig.Pos, "unused %s: no checked declaration carries it", s.ig)
+			msg = fmt.Sprintf("unused %s: no checked declaration carries it", s.ig)
 		default:
-			pass.Reportf(s.ig.Pos, "unused %s on %s", s.ig, strings.Join(s.decls, ", "))
+			msg = fmt.Sprintf("unused %s on %s", s.ig, strings.Join(s.decls, ", "))
 		}
+		c.problems = append(c.problems, directive.Problem{Pos: s.ig.Pos, Msg: msg})
 	}
 }

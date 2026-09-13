@@ -9,6 +9,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/mpyw/declscope/internal/directive"
+	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
@@ -52,7 +53,11 @@ func (c *collection) scopeSite(d directive.Decl) *scopeSite {
 // unless it is a type, whose fields reach it through their own resolution and
 // mark it there. That is the whole of the carve-out: an exported type with an
 // unexported field has a subject beneath it, an exported func has none.
-func (c *collection) bind(opts Options, subject bool, dir, container, file directive.Decl) scope.Scope {
+// The second result is the directive that supplied the scope, zero when the
+// configured default did. A caller needs it to say which level decided, and to
+// know whether inserting a directive on the declaration would overwrite an
+// author's decision or merely state an exception to a default.
+func (c *collection) bind(opts Options, subject bool, dir, container, file directive.Decl) (scope.Scope, directive.Decl) {
 	for _, d := range [...]directive.Decl{dir, container, file} {
 		if !d.HasScope {
 			continue
@@ -60,9 +65,9 @@ func (c *collection) bind(opts Options, subject bool, dir, container, file direc
 		if subject {
 			c.scopeSite(d).bound = true
 		}
-		return d.Scope
+		return d.Scope, d
 	}
-	return opts.Unexported
+	return opts.Unexported, directive.Decl{}
 }
 
 // reportUnusedScopes reports every scope directive that bound nothing.
@@ -75,7 +80,10 @@ func (c *collection) bind(opts Options, subject bool, dir, container, file direc
 func (c *collection) reportUnusedScopes(pass *analysis.Pass) {
 	sites := make([]*scopeSite, 0, len(c.scopes))
 	for _, s := range c.scopes {
-		if !s.bound {
+		// A declaration-level ignore reaches this report through the directive
+		// that carries it: the scope directive and the ignore were written on
+		// the same declaration, so the author already answered.
+		if !s.bound && !c.ignored(s.dir.Ignores, rule.Directive) {
 			sites = append(sites, s)
 		}
 	}
