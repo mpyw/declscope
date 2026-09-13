@@ -52,8 +52,13 @@ spec Knobs {
   // boundary reports on API that every importer reaches.
   def defaultScope() = if exported then Package else cfgUnexported
 
-  // The type's directive contains its fields, and nothing else.
-  def contained() = if kind == Field then typeDir else NoDir
+  // What contains a field: its type, and through the type the var/const/type
+  // block the type is declared in — addGenDecl merges the block into the spec's
+  // own directive and passes that as the field's container, so a block reaches a
+  // field even though it never reaches a method.
+  def contained() =
+    if kind == Field then (if typeDir != NoDir then typeDir else blockDir)
+    else NoDir
 
   // A parenthesized var/const/type block reaches only the specs it holds, so
   // only a package-level declaration has one: a field is not a spec of a block,
@@ -155,10 +160,16 @@ spec Knobs {
     and blockDir == DirPackage and fileDir == DirPrivate
     and not exported and refs == CrossNs and not boundaryFires()
   }
-  reachable BlockDirInertOnField {
+  reachable BlockDirReachesFieldThroughItsType {
     configured and kind == Field and blockDir == DirPackage
     and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and cfgUnexported == Private and not exported
+    and refs == CrossNs and not boundaryFires()
+  }
+  reachable TypeDirBeatsBlockDirOnField {
+    configured and kind == Field and declDir == NoDir
+    and typeDir == DirPrivate and blockDir == DirPackage
+    and fileDir == NoDir and not exported
     and refs == CrossNs and boundaryFires()
   }
   reachable BlockDirInertOnMethod {

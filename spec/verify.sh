@@ -35,13 +35,27 @@ failing_invariants=(RenameKeepsReferenceOnTarget NamesStayDistinct)
 
 status=0
 
+## Every spec in the directory must be named above. The lists are hand-written,
+## so a file added — or renamed — would otherwise never run, and the gate would
+## stay green over a spec nothing checks.
+for f in *.fsl; do
+  name=${f%.fsl}
+  if [[ " ${proving[*]} ${failing_specs[*]} " != *" $name "* ]]; then
+    echo "  FAILED   $f is named in neither list, so nothing verifies it" >&2
+    status=1
+  fi
+done
+
 ## knobs.fsl and boundary_fix.fsl share the scope model verbatim. The copy is by
 ## hand, and they are the pair most likely to be edited separately, so a one-
 ## sided edit would leave the two specs proving things about different systems
 ## while every verdict below stayed green. Comments and blank lines are ignored;
 ## the code is not.
 shared() {
-  sed -n '/def defaultScope/,/def boundaryFires/p' "$1" | grep -v '^[[:space:]]*//' | grep -v '^[[:space:]]*$'
+  {
+    sed -n '/^  enum Scope/,/^  enum Refs/p' "$1"
+    sed -n '/def defaultScope/,/def boundaryFires/p' "$1"
+  } | grep -v '^[[:space:]]*//' | grep -v '^[[:space:]]*$'
 }
 if ! diff <(shared knobs.fsl) <(shared boundary_fix.fsl) > /dev/null; then
   echo "  FAILED   knobs.fsl and boundary_fix.fsl no longer share one scope model" >&2

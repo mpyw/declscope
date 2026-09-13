@@ -15,13 +15,17 @@ spec BoundaryFix {
     configured: Bool, cfgUnexported: Scope,
     kind: Kind, exported: Bool,
     declDir: Dir, blockDir: Dir, typeDir: Dir, fileDir: Dir,
-    refs: Refs, fixed: Bool
+    refs: Refs, fixed: Bool,
+    // A pass that reported and did not fix — -fix off, or the fix withheld. It
+    // is what lets a run go on forever with a crossing pending, which is what
+    // makes `fair` on fixBoundary a claim rather than decoration.
+    stalled: Bool
   }
   init {
     configured = false  cfgUnexported = Private
     kind = Pkg  exported = false
     declDir = NoDir  blockDir = NoDir  typeDir = NoDir  fileDir = NoDir
-    refs = NoRefs  fixed = false
+    refs = NoRefs  fixed = false  stalled = false
   }
   action configure(u: Scope, k: Kind, x: Bool,
                    dd: Dir, bd: Dir, td: Dir, fd: Dir, r: Refs) {
@@ -38,7 +42,13 @@ spec BoundaryFix {
   // embedding, an alias or an interface it satisfies — and guessing produced
   // boundary reports on API that every importer reaches.
   def defaultScope() = if exported then Package else cfgUnexported
-  def contained() = if kind == Field then typeDir else NoDir
+  // What contains a field: its type, and through the type the var/const/type
+  // block the type is declared in — addGenDecl merges the block into the spec's
+  // own directive and passes that as the field's container, so a block reaches a
+  // field even though it never reaches a method.
+  def contained() =
+    if kind == Field then (if typeDir != NoDir then typeDir else blockDir)
+    else NoDir
   def blockOf() = if kind == Pkg then blockDir else NoDir
   def effScope() =
     if declDir == DirPackage then Package
@@ -62,6 +72,8 @@ spec BoundaryFix {
     else if blockOf() != NoDir then blockOf()
     else if contained() != NoDir then contained()
     else fileDir
+
+  action reportOnly() { requires configured  stalled = true }
 
   fair action fixBoundary() {
     requires configured  requires boundaryFires()  requires stated() == NoDir
@@ -113,6 +125,30 @@ spec BoundaryFix {
   reachable PackageDefaultLeavesNothingToFix {
     configured and cfgUnexported == Package and stated() == NoDir
     and not exported and refs == CrossNs and not boundaryFires()
+  }
+
+  // The block level and exportedness must do work here too, not only in knobs:
+  // without these, defaultScope() could ignore exportedness and blockDir could
+  // go unread, and this spec would not notice.
+  reachable BoundaryFromBlockDirectiveFires {
+    configured and kind == Pkg and blockDir == DirPrivate
+    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
+    and cfgUnexported == Package and refs == CrossNs and boundaryFires()
+  }
+  reachable ExportedNeverCrossesByDefault {
+    configured and exported and kind == Pkg
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
+    and fileDir == NoDir and cfgUnexported == Private
+    and refs == CrossNs and not boundaryFires()
+  }
+
+  // The stall itself. Without it nothing reads `stalled` and the assignment
+  // recording it could be deleted with no verdict moving.
+  reachable CrossingSurvivesAPassWithoutFix {
+    stalled and boundaryFires() and stated() == NoDir
+  }
+  reachable WithheldFixSurvivesAPass {
+    stalled and boundaryFires() and stated() != NoDir
   }
 
   leadsTo BoundaryEventuallyFixed {

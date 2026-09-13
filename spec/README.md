@@ -25,7 +25,8 @@ the binary.
 | `knobs.fsl` | An exported declaration carries no boundary by default, for every kind | As above |
 | `knobs.fsl` | A directive narrows an exported declaration anyway, including a type's directive reaching an exported field | As above |
 | `knobs.fsl` | A reference from inside the namespace never crosses a boundary | As above |
-| `directive_effect.fsl` | A scope directive is used when anything in its reach binds to it, and reported when nothing does | Every combination of target presence and subjecthood, and two enclosed declarations by subjecthood and shadowing |
+| `directive_effect.fsl` | A scope directive is used when anything in its reach binds to it, and reported when nothing does | Every combination of stated scope, enclosing directive, `defaults.unexported`, target presence and exportedness, and two enclosed declarations by exportedness and shadowing |
+| `directive_effect.fsl` | Binding is quantified over configurations *and* over enclosing directives — so restating the default of the day never counts, and `//declscope:package` under an enclosing `private` always does | As above |
 | `knobs.fsl` | A boundary is reported only for a private scope and only across a namespace, and on an exported declaration only where a directive narrowed it — each guard witnessed by an invariant its removal breaks | As above |
 | `label_rules.fsl` | A fix is eventually applied wherever one is offered, which is what the `fair` on the fix actions claims | As above, plus whether a rename is offered at all |
 | `rename_guarded.fsl` | The guard `renameSafe` applies — every scope Go resolves through — makes the rename sound, and dropping any one of the four checks breaks it | Every binding environment at the reference site |
@@ -127,7 +128,12 @@ is a semantics that contradicts the documented one; each was run:
 | A fix is applied to an exported declaration | `violated` |
 | `fair` is dropped from a fix action | `violated` (`leadsTo`) |
 | A fix is offered where no violation exists, or over the author's own directive | `violated` |
-| A scope directive stops at the first thing in its reach | `reachable_failed` |
+| A scope directive stops at the first thing in its reach, or at the last | `reachable_failed` |
+| The binding test reads `defaults.unexported` instead of quantifying over it | `violated` |
+| The binding test asks only whether the name is exported, ignoring an enclosing directive | `violated` |
+| A `var`/`const`/`type` block's directive does not reach the fields of a type it holds | `reachable_failed` |
+| `boundary_fix.fsl` stops reading `blockDir`, or stops discriminating exportedness | `reachable_failed` |
+| `fair` is dropped from `fixBoundary` | `violated` (`leadsTo`) |
 | A scope directive ignores a nearer directive that shadows it | `violated` |
 | Any one of the four scope checks in `renameSafe` is dropped | `violated` |
 

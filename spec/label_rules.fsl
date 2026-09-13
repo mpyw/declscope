@@ -180,6 +180,16 @@ spec LabelRules {
     and not fixable()
   }
 
+  // The stall itself, which is the state the leadsTo below has to escape.
+  // Without these nothing reads `stalled`, and the assignment recording it
+  // could be deleted with no verdict moving.
+  reachable ViolationSurvivesAPassWithoutFix {
+    stalled and qualifyFires() and fixable()
+  }
+  reachable WithheldRenameSurvivesAPass {
+    stalled and qualifyFires() and not fixable()
+  }
+
   leadsTo QualifyEventuallyFixed {
     configured and qualifyFires() and fixable() ~> not qualifyFires()
   }
