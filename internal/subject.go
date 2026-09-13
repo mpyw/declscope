@@ -173,9 +173,13 @@ type ref struct {
 }
 
 // collection is the working state of one pass. collect.go builds the index
-// half; the accounting halves are reached through the owning file's methods:
-// ignores and consumed through ignore.go's, scopes through scopesite.go's,
-// rename through rename.go's.
+// half, which every later stage reads, so it lives here and is package-wide.
+//
+// Each stage's own working state is embedded instead, from a struct declared
+// in the file that owns it. Embedding rather than nesting keeps the call sites
+// spelling c.ignores, while the field itself belongs to ignore.go's namespace
+// and is private to it. Reaching one from the wrong stage is a boundary
+// crossing, which is the thing this package was split up to be able to say.
 type collection struct {
 	files   []*fileInfo
 	byFile  map[*ast.File]*fileInfo
@@ -187,15 +191,11 @@ type collection struct {
 	idents   map[types.Object][]*ast.Ident
 	problems []directive.Problem
 
-	// ignores is every ignore directive in the package, keyed by where it is
-	// written, so that one shared by several declarations is judged once.
-	ignores map[token.Pos]*ignoreSite
-	// scopes is the same accounting for scope directives: one entry per
-	// physical comment, marked when something in its reach takes its scope.
-	scopes map[token.Pos]*scopeSite
-	// consumed is every comment group some declaration or file took its
-	// directives from; a directive outside them reached nothing.
-	consumed map[*ast.CommentGroup]bool
+	// The stage-owned halves. Each is declared in the file that owns it.
+	ignoreBook
+	scopesiteBook
+	collectBook
+	renameBook
 
 	// unseenScan is what the package directory holds that this pass does not
 	// see: in-package _test.go files under the non-test variant, and files the
@@ -206,10 +206,6 @@ type collection struct {
 	// namespaces is how many distinct namespaces the package's non-test files
 	// declare, which is how many boundaries there are to enforce.
 	namespaces int
-
-	// rename is what the rename fix knows beyond the references above. It is
-	// created on first use, since most passes offer no rename.
-	rename *renameState
 }
 
 // origin maps an instantiated field or method back to the object declared in

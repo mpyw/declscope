@@ -9,6 +9,17 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
+// renameBook is rename.go's half of the collection, embedded there.
+//
+//declscope:package // collection embeds it, and collection lives in the core
+type renameBook struct {
+	// rename is what the rename fix knows beyond the references the index
+	// holds. It is created on first use, since most passes offer no rename.
+	//
+	//declscope:private // the type is widened only so the core can embed it
+	rename *renameState
+}
+
 // renameState is what the rename fix needs to know beyond the references the
 // collection gathers for the diagnostics. A rename is offered only when it is
 // provably safe, and proving that takes facts the diagnostics never need:
