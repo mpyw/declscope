@@ -323,23 +323,13 @@ A declaration's scope is decided by the first row that applies:
 | Otherwise | [`defaults.unexported`](#configuration), `private` unless configured |
 
 > [!IMPORTANT]
-> **Exportedness decides the default, and nothing else.**
+> Exportedness decides the default, and nothing else. The owner plays no part. An **exported field of an unexported type** still resolves to `package`, so making the type unexported protects nothing.
 >
-> The tempting alternative is to ask whether a declaration is *reachable from outside the package*. That would keep an exported field of an unexported type in the subject, on the grounds that nobody outside can see it. A single-package analysis cannot answer that question. A type escapes through:
->
-> - an exported signature
-> - an embedding in an exported type
-> - an exported alias
-> - any exported interface it satisfies
->
-> Guessing would report boundaries on names that every importer already reaches. That is the kind of false report that gets a linter deleted. So the default stops at the export line, where the compiler's own answer is clear.
-
-> [!TIP]
-> What the author knows, the author states. A directive binds whatever it reaches, exported or not:
+> To hold exported fields under a boundary, state it. `//declscope:private` on the type binds every field it reaches:
 >
 > ```go
 > // A DTO capitalized for encoding/json rather than for an audience. Nothing
-> // guesses that; one line says it, and the fields are bound by it.
+> // guesses that. One line says it, and the fields are bound by it.
 > //
 > //declscope:private
 > type entry struct {
@@ -347,6 +337,8 @@ A declaration's scope is decided by the first row that applies:
 > 	Value []byte `json:"value"`
 > }
 > ```
+>
+> What the author knows, the author states. A directive binds whatever it reaches, exported or not.
 
 Widening is always **stated**. It comes from a directive on the declaration, on what contains it, or on its file, or else from the `defaults` key.
 
