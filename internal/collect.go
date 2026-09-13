@@ -4,7 +4,6 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
-	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -174,14 +173,14 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 	grouped := d.Lparen.IsValid()
 	outer := c.parseDecl(d.Doc)
 	if grouped && len(d.Specs) > 0 {
-		attached := append(collectAttachedComments(d.Specs[0]), collectAttachedComments(d.Specs[len(d.Specs)-1])...)
+		attached := append(commentsAttached(d.Specs[0]), commentsAttached(d.Specs[len(d.Specs)-1])...)
 		outer = outer.Merge(c.parseDecl(fi.looseTrailing(pass.Fset, d, attached...)...))
 	}
 
 	for _, spec := range d.Specs {
 		switch spec := spec.(type) {
 		case *ast.TypeSpec:
-			dir := outer.Merge(c.parseDecl(collectSpecGroups(pass, fi, spec)...))
+			dir := outer.Merge(c.parseDecl(commentsForSpec(pass, fi, spec)...))
 			c.shadow(outer, dir)
 			anchor := d.Pos()
 			if grouped {
@@ -200,7 +199,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 			c.addMembers(pass, opts, fi, spec, pass.TypesInfo.Defs[spec.Name], dir)
 
 		case *ast.ValueSpec:
-			dir := outer.Merge(c.parseDecl(collectSpecGroups(pass, fi, spec)...))
+			dir := outer.Merge(c.parseDecl(commentsForSpec(pass, fi, spec)...))
 			c.shadow(outer, dir)
 			anchor := d.Pos()
 			if grouped {
@@ -368,81 +367,6 @@ func (c *collection) parseDecl(groups ...*ast.CommentGroup) directive.Decl {
 	}
 	c.problems = append(c.problems, d.Problems...)
 	return d
-}
-
-// collectSpecGroups returns the comment groups a spec takes its directives from: its
-// doc comment, the trailing comment go/parser attached to it, and any comment
-// trailing its first or last line that the parser attached to nothing, such
-// as one after the opening brace of a struct type. A comment the parser hung
-// on something inside the spec — a field's doc or trailing comment — is that
-// field's and is left for addMembers, even when it shares the spec's first
-// line.
-func collectSpecGroups(pass *analysis.Pass, fi *fileInfo, spec ast.Spec) []*ast.CommentGroup {
-	var own []*ast.CommentGroup
-	switch spec := spec.(type) {
-	case *ast.TypeSpec:
-		own = []*ast.CommentGroup{spec.Doc, spec.Comment}
-	case *ast.ValueSpec:
-		own = []*ast.CommentGroup{spec.Doc, spec.Comment}
-	}
-	return append(own, fi.looseTrailing(pass.Fset, spec, collectAttachedComments(spec)...)...)
-}
-
-// trailingAt returns the comment group trailing the declaration starting at
-// pos, if any.
-func (f *fileInfo) trailingAt(fset *token.FileSet, pos token.Pos) *ast.CommentGroup {
-	g, ok := f.lineComments[fset.Position(pos).Line]
-	if !ok || g.Pos() < pos {
-		return nil
-	}
-	return g
-}
-
-// looseTrailing returns the comment groups on the first and last lines of
-// node that go/parser attached to nothing — one after the opening brace of a
-// struct type, after the parenthesis of a block, or after a function's
-// closing brace. They belong to the declaration spanning those lines, the way
-// a trailing comment on a one-line declaration does.
-//
-// collectAttachedComments lists the groups the parser did hang on something inside node,
-// which win: a comment trailing a field on the same line as the brace is the
-// field's, not the type's.
-func (f *fileInfo) looseTrailing(fset *token.FileSet, node ast.Node, attached ...*ast.CommentGroup) []*ast.CommentGroup {
-	var out []*ast.CommentGroup
-	for _, pos := range []token.Pos{node.Pos(), node.End()} {
-		g := f.trailingAt(fset, pos)
-		if g == nil || slices.Contains(attached, g) || slices.Contains(out, g) {
-			continue
-		}
-		out = append(out, g)
-	}
-	return out
-}
-
-// collectAttachedComments returns the comment groups go/parser hung on a spec or on anything
-// inside it, so that looseTrailing does not claim them for the enclosing
-// declaration.
-func collectAttachedComments(spec ast.Spec) []*ast.CommentGroup {
-	var out []*ast.CommentGroup
-	switch spec := spec.(type) {
-	case *ast.TypeSpec:
-		out = append(out, spec.Doc, spec.Comment)
-		var fields *ast.FieldList
-		switch t := spec.Type.(type) {
-		case *ast.StructType:
-			fields = t.Fields
-		case *ast.InterfaceType:
-			fields = t.Methods
-		}
-		if fields != nil {
-			for _, field := range fields.List {
-				out = append(out, field.Doc, field.Comment)
-			}
-		}
-	case *ast.ValueSpec:
-		out = append(out, spec.Doc, spec.Comment)
-	}
-	return out
 }
 
 // stray reports every directive written after the package clause that no
