@@ -11,12 +11,12 @@ import (
 func TestSaveLoadRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", ".declscope-baseline.yaml")
 	keys := []baseline.Key{
-		{Package: "example.com/b", Rule: "boundary", Decl: "zeta"},
-		{Package: "example.com/a", Rule: "boundary", Decl: "helper"},
-		{Package: "example.com/a", Rule: "boundary", Decl: "User.name"},
-		{Package: "example.com/a", Rule: "foreign-method", Decl: "User.normalize"},
+		{Package: "example.com/b", Rule: "boundary", Namespace: "user", Decl: "zeta"},
+		{Package: "example.com/a", Rule: "boundary", Namespace: "user", Decl: "helper"},
+		{Package: "example.com/a", Rule: "boundary", Namespace: "user", Decl: "User.name"},
+		{Package: "example.com/a", Rule: "foreign-method", Namespace: "user", Decl: "User.normalize"},
 		// A duplicate, as produced by a package and its test variant.
-		{Package: "example.com/a", Rule: "boundary", Decl: "helper"},
+		{Package: "example.com/a", Rule: "boundary", Namespace: "user", Decl: "helper"},
 	}
 	n, err := baseline.Save(path, keys)
 	if err != nil {
@@ -41,9 +41,9 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		}
 	}
 	for _, k := range []baseline.Key{
-		{Package: "example.com/a", Rule: "boundary", Decl: "missing"},
-		{Package: "example.com/a", Rule: "demotion", Decl: "helper"},
-		{Package: "example.com/other", Rule: "boundary", Decl: "helper"},
+		{Package: "example.com/a", Rule: "boundary", Namespace: "user", Decl: "missing"},
+		{Package: "example.com/a", Rule: "demotion", Namespace: "user", Decl: "helper"},
+		{Package: "example.com/other", Rule: "boundary", Namespace: "user", Decl: "helper"},
 	} {
 		if set.Has(k) {
 			t.Errorf("Has(%+v) = true, want false", k)
@@ -56,9 +56,9 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 func TestSaveIsDeterministic(t *testing.T) {
 	dir := t.TempDir()
 	keys := []baseline.Key{
-		{Package: "example.com/b", Rule: "boundary", Decl: "zeta"},
-		{Package: "example.com/a", Rule: "boundary", Decl: "helper"},
-		{Package: "example.com/a", Rule: "boundary", Decl: "alpha"},
+		{Package: "example.com/b", Rule: "boundary", Namespace: "user", Decl: "zeta"},
+		{Package: "example.com/a", Rule: "boundary", Namespace: "user", Decl: "helper"},
+		{Package: "example.com/a", Rule: "boundary", Namespace: "user", Decl: "alpha"},
 	}
 	shuffled := []baseline.Key{keys[1], keys[0], keys[2]}
 
@@ -119,7 +119,7 @@ func TestLoadRejectsUnknownKey(t *testing.T) {
 // is how the analyzer runs when none is configured.
 func TestNilSet(t *testing.T) {
 	var set *baseline.Set
-	if set.Has(baseline.Key{Package: "a", Rule: "boundary", Decl: "x"}) {
+	if set.Has(baseline.Key{Package: "a", Rule: "boundary", Namespace: "user", Decl: "x"}) {
 		t.Error("a nil set should suppress nothing")
 	}
 	if set.Len() != 0 {
@@ -132,7 +132,7 @@ func TestNilSet(t *testing.T) {
 // replace the old entries rather than leave them.
 func TestSaveEmpty(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "empty.yaml")
-	if _, err := baseline.Save(path, []baseline.Key{{Package: "a", Rule: "boundary", Decl: "x"}}); err != nil {
+	if _, err := baseline.Save(path, []baseline.Key{{Package: "a", Rule: "boundary", Namespace: "user", Decl: "x"}}); err != nil {
 		t.Fatal(err)
 	}
 	n, err := baseline.Save(path, nil)
@@ -148,5 +148,53 @@ func TestSaveEmpty(t *testing.T) {
 	}
 	if set.Len() != 0 {
 		t.Errorf("Len = %d, want 0: the previous entries should be gone", set.Len())
+	}
+}
+
+// TestNamespaceIsPartOfTheKey checks that the same declaration in two
+// namespaces is two entries.
+//
+// This is the whole reason the namespace is in the key. A declaration that
+// moved to another file crosses a different pair of namespaces, so it is a
+// different violation, and an entry that matched it anyway would suppress
+// something nobody recorded.
+func TestNamespaceIsPartOfTheKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".declscope-baseline.yaml")
+	recorded := baseline.Key{Package: "example.com/a", Rule: "boundary", Namespace: "user", Decl: "helper"}
+	moved := baseline.Key{Package: "example.com/a", Rule: "boundary", Namespace: "order", Decl: "helper"}
+	if _, err := baseline.Save(path, []baseline.Key{recorded}); err != nil {
+		t.Fatal(err)
+	}
+	set, err := baseline.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !set.Has(recorded) {
+		t.Error("the recorded crossing is not suppressed")
+	}
+	if set.Has(moved) {
+		t.Error("the same declaration in another namespace is a different crossing, and must not be suppressed")
+	}
+}
+
+// TestCoreNamespaceRoundTrips checks the one namespace with no name of its
+// own. It is spelled (core), which a normalized namespace cannot be, so a
+// package holding both a core file and a core.go keeps them apart.
+func TestCoreNamespaceRoundTrips(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".declscope-baseline.yaml")
+	core := baseline.Key{Package: "example.com/a", Rule: "boundary", Namespace: "(core)", Decl: "dial"}
+	named := baseline.Key{Package: "example.com/a", Rule: "boundary", Namespace: "core", Decl: "dial"}
+	if _, err := baseline.Save(path, []baseline.Key{core}); err != nil {
+		t.Fatal(err)
+	}
+	set, err := baseline.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !set.Has(core) {
+		t.Error("the core namespace does not round-trip")
+	}
+	if set.Has(named) {
+		t.Error("a namespace named core is not the core namespace")
 	}
 }

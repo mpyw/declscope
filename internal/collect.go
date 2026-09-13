@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -66,6 +67,25 @@ func (f *fileInfo) key() string {
 		return f.ns
 	}
 	return "\x00" + f.path
+}
+
+// nsName spells the namespace for the baseline, which is the one place it has
+// to be written down rather than compared.
+//
+// A namespace derived from a file name is normalized to alphanumerics, and one
+// written with //declscope:namespace must be an unexported identifier, so a
+// parenthesis can appear in neither. That leaves "(core)" free for the core,
+// whose label is empty and whose files all share it, and free for the file
+// with no stem at all — which has no namespace either, and must not share a
+// key with every other such file.
+func (f *fileInfo) nsName() string {
+	if f.core {
+		return "(core)"
+	}
+	if f.ns != "" {
+		return f.ns
+	}
+	return "(file " + filepath.Base(f.path) + ")"
 }
 
 // kind describes what a target declares, for diagnostic wording.
