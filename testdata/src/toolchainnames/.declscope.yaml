@@ -1,0 +1,6 @@
+# Strictest, so the exemption is exercised rather than assumed: without it the
+# toolchain names would every one be asked for a prefix.
+rules:
+  naming:
+    qualify: always
+    exported: true

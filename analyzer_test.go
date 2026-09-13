@@ -258,3 +258,20 @@ func TestInterfaceMembers(t *testing.T) {
 func TestPackageMain(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "mainpkg")
 }
+
+// TestToolchainNames checks that a name the toolchain finds by name is never
+// asked for a prefix. The silences carry the assertion: TestLoad, BenchmarkLoad,
+// FuzzLoad and ExampleTestHelper would each be a function nothing runs once
+// prefixed. TestHelper in a non-test file is still asked, because nothing
+// collects it by name.
+func TestToolchainNames(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "toolchainnames")
+}
+
+// TestToolchainNamesUnqualify checks the mirror rule, which is the only one a
+// toolchain name can otherwise reach: ExampleLoad in example_test.go carries
+// the prefix of namespace "example", and dropping it would spell Load, which
+// is taken, and would stop being an example.
+func TestToolchainNamesUnqualify(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "toolchainunqualify")
+}

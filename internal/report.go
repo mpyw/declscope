@@ -396,8 +396,37 @@ func reportDescribeFile(f *fileInfo) string {
 // exists for — and never reach the core namespace, whose prefix is empty and so
 // has no prefix to require or to drop.
 func (t *target) named(opts Options) bool {
-	if !t.renameable || t.file.core {
+	if !t.renameable || t.file.core || t.toolchainName() {
 		return false
 	}
 	return !isExported(t.obj.Name()) || opts.NameExported
+}
+
+// toolchainName reports whether the toolchain finds this declaration by its
+// name, so that no prefix can be asked of it. `go test` collects a test by
+// name, and renaming TestLoad to userTestLoad leaves a function nothing runs.
+//
+// This is checked in named rather than beside the `func main` carve-out in
+// checkQualify because unqualify can fire on one of these: ExampleLoad in
+// example_test.go does carry the prefix of namespace "example", and dropping
+// it would leave a name `go doc` no longer pairs with anything. main cannot
+// reach unqualify, since a name identical to its namespace has no prefix to
+// drop.
+//
+// The match is looser than the toolchain's own, which also reads the signature
+// and requires that TestXxx's Xxx not begin with a lowercase letter. Erring
+// toward exempting is the safe direction here: exempting one name too many
+// costs a prefix nobody asked for, and exempting one too few is advice that
+// breaks the build.
+func (t *target) toolchainName() bool {
+	if t.kind != kindFunc || !strings.HasSuffix(t.file.path, "_test.go") {
+		return false
+	}
+	name := t.obj.Name()
+	for _, prefix := range [...]string{"Test", "Benchmark", "Fuzz", "Example"} {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
 }
