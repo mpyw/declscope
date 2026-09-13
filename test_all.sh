@@ -7,10 +7,9 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m' # No Color
 
-# Pinned to the version CI uses. golangci-lint refuses to load a module whose
-# toolchain directive is newer than the Go it was built with, so a golangci-lint
-# on PATH is often too old; going through `go run` keeps local and CI identical.
-GOLANGCI_LINT="github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1"
+# Every tool is pinned in mise.toml and reached through the PATH mise sets, so
+# local and CI run the same binaries. `go run <tool>@<version>` did that too,
+# but relinked golangci-lint on every run: 31 seconds against 0 once installed.
 
 # Track results
 declare -a failed_tests=()
@@ -37,8 +36,23 @@ echo ""
 run_test "analyzer" \
     go test -v ./...
 
+## go.mod's toolchain and mise.toml's go say the same thing in two places,
+## which is the cost of pinning Go with mise. golangci-lint refuses to load a
+## module whose go directive is newer than the Go it was built with, so a drift
+## here surfaces as an unrelated-looking lint failure. Check it first instead.
+run_test "toolchain" \
+    bash -c '
+      mod=$(sed -n "s/^toolchain go//p" go.mod)
+      mise=$(sed -n "s/^go = \"\(.*\)\"/\1/p" mise.toml)
+      if [ "$mod" != "$mise" ]; then
+        echo "go.mod toolchain=$mod but mise.toml go=$mise" >&2
+        exit 1
+      fi
+      echo "toolchain $mod"
+    '
+
 run_test "lint" \
-    go run "$GOLANGCI_LINT" run ./...
+    golangci-lint run ./...
 
 # declscope is subject to its own rules, at the strictest setting. Silence is
 # the assertion: every namespace crossing inside the tool is stated in the
