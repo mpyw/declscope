@@ -116,9 +116,8 @@ func TestTypeIgnore(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "typeignore")
 }
 
-// TestDefaultsReachMembers checks that defaults.exported and
-// defaults.unexported resolve members too, not only package-level
-// declarations.
+// TestDefaultsReachMembers checks that defaults.unexported resolves members
+// too, not only package-level declarations.
 func TestDefaultsReachMembers(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "defaultsmembers")
 }
@@ -175,13 +174,6 @@ func TestExportedLabels(t *testing.T) {
 // at reachability it cannot compute.
 func TestExportedScope(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "exportedscope")
-}
-
-// TestRemovedPublicDirective checks that //declscope:public is answered by name
-// rather than as an unknown directive, and offers to delete itself so that -fix
-// migrates a codebase that used it.
-func TestRemovedPublicDirective(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "removedpublic")
 }
 
 // TestUnusedScopeDirective checks the structural test: a scope directive that

@@ -250,9 +250,9 @@ func TestParseFileIgnore(t *testing.T) {
 }
 
 // TestParseFileScope checks that a scope directive before the package clause is
-// read as the file's default rather than reported. It is the honest form of
-// what a shared utility file used to have to spell as an ignore: a scope states
-// what the declarations are, where an ignore only stands a rule down.
+// read as the file's default rather than reported. It is what a wholly shared
+// utility file wants instead of an ignore: a scope states what the declarations
+// are, where an ignore only stands a rule down.
 func TestParseFileScope(t *testing.T) {
 	f := directive.ParseFile(parse(t, "//declscope:package\n\npackage repo\n"))
 	if len(f.Problems) != 0 {

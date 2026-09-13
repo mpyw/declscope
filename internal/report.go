@@ -109,10 +109,9 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 
 	for _, p := range c.problems {
 		pass.Report(analysis.Diagnostic{
-			Pos:            p.Pos,
-			Category:       string(rule.Directive),
-			Message:        p.Msg,
-			SuggestedFixes: removalFix(pass, p),
+			Pos:      p.Pos,
+			Category: string(rule.Directive),
+			Message:  p.Msg,
 		})
 	}
 }
@@ -418,25 +417,4 @@ func named(opts Options, t *target) bool {
 		return false
 	}
 	return !isExported(t.obj.Name()) || opts.ExportedLabels
-}
-
-// removalFix offers to delete a directive that no longer exists, which is the
-// whole of its repair: there is nothing to rewrite it to. A whole-line comment
-// takes its newline with it, so the deletion leaves no blank line behind.
-//
-// Every other directive problem gets no fix. What to write instead of a
-// malformed or misplaced one is the author's decision, and a guess there would
-// be a rewrite of intent rather than a migration.
-func removalFix(pass *analysis.Pass, p directive.Problem) []analysis.SuggestedFix {
-	if p.End == token.NoPos {
-		return nil
-	}
-	start, end := p.Pos, p.End
-	if pass.Fset.Position(start).Column == 1 {
-		end++ // the newline ending the line the comment owns
-	}
-	return []analysis.SuggestedFix{{
-		Message:   "delete the directive",
-		TextEdits: []analysis.TextEdit{{Pos: start, End: end}},
-	}}
 }

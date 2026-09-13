@@ -399,7 +399,7 @@ A report with no rule would be one nothing could silence and no baseline could a
 | [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:package` | No |
 | [`qualify`](#qualify) | A package-level declaration missing its namespace label | Rename to add the label | `rules.qualify`, `rules.exportedLabels` |
 | [`unqualify`](#unqualify) | A namespace label present where it is not required | Rename to drop the label | `rules.unqualify`, `rules.exportedLabels` |
-| [`directive`](#unused-and-malformed-directives) | A directive that binds nothing, or that is malformed or misplaced | Delete the line, for a directive that no longer exists | No |
+| [`directive`](#unused-and-malformed-directives) | A directive that binds nothing, or that is malformed or misplaced | None — what to write instead is the author's decision | No |
 
 > [!NOTE]
 > Reach enforcement has no switch; naming discipline has. `boundary` is silenced per declaration with `//declscope:ignore boundary`, or per codebase with a [baseline](#adopting-on-an-existing-codebase). `qualify` and `unqualify` are mirrors and never both apply to one declaration — `unqualify` is inert wherever `qualify` requires the label.
@@ -788,7 +788,6 @@ A malformed directive is reported at the comment:
 | `//declscope:namespace` after the package clause | `declscope:namespace must appear before the package clause` |
 | `//declscope:namespace` with no name, a second one, or a name that is not an unexported identifier | Reported as such |
 | `//declscope:core` with an argument, or a second one on the same file | Reported as such |
-| `//declscope:public` | `was removed: an exported declaration carries no boundary, so the directive stated nothing — delete the line` |
 
 ## Configuration
 
@@ -824,28 +823,9 @@ baseline: .declscope-baseline.yaml   # relative to this file; found automaticall
 | `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` at or above the package, stopping at the module root | The baseline to consult |
 
 > [!NOTE]
-> - There is no `defaults.exported`: an exported declaration has no scope to default ([Scopes](#scopes)).
+> - `defaults` takes only `unexported`. An exported declaration has no scope to default ([Scopes](#scopes)).
 > - `boundary` has no key; see [Rules](#rules).
-> - An **unknown key is an error**, not a silent no-op, so a typo in a rule name cannot leave the rule at its default with no sign of it. A value a key does not accept is an error naming the values it does.
-
-### Upgrading from the three-scope releases
-
-Three things were removed with the `public` scope, and each is answered by name
-rather than by the parser's generic complaint:
-
-| Written | What happens |
-| --- | --- |
-| `//declscope:public` | Reported, with a fix that deletes the line — so `declscope -fix ./...` performs the migration |
-| `defaults.exported` | The config is refused, saying why there is no scope for an exported declaration to default to |
-| `rules.unqualify: always` / `never` | The config is refused, saying the key is now `true` or `false` and which one the old word meant |
-
-> [!IMPORTANT]
-> A `defaults.exported: private` that was holding an exported struct's internals under a boundary has one replacement: **leave the fields unexported**.
->
-> Making the *type* unexported does not help — an exported field resolves to `package` whatever its owner is, because [asking otherwise](#scope-resolution) is a question the analysis cannot answer. To hold exported fields under a boundary, state it: `//declscope:private` on the type binds every field it reaches.
-
-> [!NOTE]
-> Existing baseline entries for violations that can no longer be produced simply stop matching. Regenerating drops them, and the deletion in `git diff .declscope-baseline.yaml` records the rules changing rather than any cleanup.
+> - An **unknown key is an error**, not a silent no-op, so a typo in a rule name cannot leave the rule at its default with no sign of it. The message names the key and the keys its section does take; a value a key does not accept is an error naming the values it does.
 
 ## Adopting on an existing codebase
 

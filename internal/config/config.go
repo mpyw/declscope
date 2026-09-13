@@ -6,17 +6,17 @@
 // module following suit.
 //
 //	defaults:
-
 //	  unexported: private
 //
 //	rules:
 //	  qualify: ondemand    # always | never | ondemand (only once a package has two namespaces)
 //	  unqualify: false     # true | false: where the label is not required, forbid it
 //
-// Both rules read an internal.Mode. rules.qualify accepts always, never and
-// ondemand; rules.unqualify accepts always and never.
+// rules.qualify reads an internal.Mode; rules.unqualify and
+// rules.exportedLabels are true/false.
 //
-// Unknown keys are an error.
+// Unknown keys are an error, and the message names the key and the keys the
+// section does take.
 package config
 
 import (
@@ -26,6 +26,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
+	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -44,23 +47,14 @@ var BaselineNames = []string{".declscope-baseline.yaml", ".declscope-baseline.ym
 // The values each naming rule accepts.
 var qualifyModes = internal.ModeSet{internal.Always, internal.Never, internal.OnDemand}
 
-// boolSetting is a true/false key that used to be spelled always/never. A
-// removed spelling is answered by name rather than by the parser's "cannot
-// unmarshal", so that an upgrade says what to write instead.
+// boolSetting is a true/false key, with its own error naming the two values it
+// takes rather than the parser's "cannot unmarshal".
 type boolSetting struct {
 	set   bool
 	value bool
 }
 
 func (b *boolSetting) UnmarshalYAML(node *yaml.Node) error {
-	var raw string
-	if err := node.Decode(&raw); err == nil {
-		switch raw {
-		case "always", "never":
-			return fmt.Errorf("%q is no longer a value here: this key is now true or false, "+
-				"and %q means %v", raw, raw, raw == "always")
-		}
-	}
 	if err := node.Decode(&b.value); err != nil {
 		return fmt.Errorf("want true or false")
 	}
@@ -68,24 +62,26 @@ func (b *boolSetting) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
+// defaultsSection and rulesSection are named so that go-yaml's strict-decoding
+// error can name the section a misspelled key sits in, rather than printing the
+// anonymous struct's whole type literal.
+type defaultsSection struct {
+	Unexported string `yaml:"unexported"`
+}
+
+type rulesSection struct {
+	Qualify        string      `yaml:"qualify"`
+	Unqualify      boolSetting `yaml:"unqualify"`
+	ExportedLabels boolSetting `yaml:"exportedLabels"`
+}
+
 // File is the on-disk configuration. Every field is optional, and no setting
 // has a zero value that means anything, so a field left empty is skipped by
 // Apply: omitting a key keeps the built-in default rather than silently
 // disabling a rule.
 type File struct {
-	Defaults struct {
-		// Exported is retained only to answer it by name. There is no scope
-		// for an exported declaration to default to: what is reachable from
-		// outside the package is not the subject.
-		Exported   string `yaml:"exported"`
-		Unexported string `yaml:"unexported"`
-	} `yaml:"defaults"`
-
-	Rules struct {
-		Qualify        string      `yaml:"qualify"`
-		Unqualify      boolSetting `yaml:"unqualify"`
-		ExportedLabels boolSetting `yaml:"exportedLabels"`
-	} `yaml:"rules"`
+	Defaults defaultsSection `yaml:"defaults"`
+	Rules    rulesSection    `yaml:"rules"`
 
 	Exclude []string `yaml:"exclude"`
 
@@ -268,19 +264,66 @@ func Load(path string) (*File, error) {
 	dec.KnownFields(true)
 	// An empty document is a valid config that changes nothing.
 	if err := dec.Decode(&f); err != nil && !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, fmt.Errorf("%s: %w", path, namedKeys(err))
 	}
 	return &f, nil
 }
 
+// The sections a key can sit in, by the type name go-yaml puts in its
+// strict-decoding complaint.
+var sections = map[string]struct {
+	prefix string
+	fields any
+}{
+	"config.File":            {"", File{}},
+	"config.defaultsSection": {"defaults.", defaultsSection{}},
+	"config.rulesSection":    {"rules.", rulesSection{}},
+}
+
+var unknownField = regexp.MustCompile(`^line (\d+): field (\S+) not found in type (\S+)$`)
+
+// namedKeys rewrites go-yaml's strict-decoding complaint, which names the Go
+// type it could not fill. For a nested section that type has no name of its
+// own, so go-yaml spells the whole struct literal — a line of field tags where
+// the author wants the key they misspelled and the ones that would have
+// worked.
+func namedKeys(err error) error {
+	var typeErr *yaml.TypeError
+	if !errors.As(err, &typeErr) {
+		return err
+	}
+	out := make([]string, 0, len(typeErr.Errors))
+	for _, e := range typeErr.Errors {
+		m := unknownField.FindStringSubmatch(e)
+		if m == nil {
+			out = append(out, e)
+			continue
+		}
+		sec, ok := sections[strings.TrimPrefix(m[3], "*")]
+		if !ok {
+			out = append(out, e)
+			continue
+		}
+		out = append(out, fmt.Sprintf("line %s: unknown key %q (this section takes %s)",
+			m[1], sec.prefix+m[2], strings.Join(keysOf(sec.fields), ", ")))
+	}
+	return errors.New(strings.Join(out, "\n"))
+}
+
+// keysOf lists a section's keys as they are spelled in YAML.
+func keysOf(section any) []string {
+	t := reflect.TypeOf(section)
+	names := make([]string, 0, t.NumField())
+	for i := range t.NumField() {
+		if tag, ok := t.Field(i).Tag.Lookup("yaml"); ok {
+			names = append(names, strings.Split(tag, ",")[0])
+		}
+	}
+	return names
+}
+
 // Apply layers the file's settings onto opts.
 func (f *File) Apply(opts *internal.Options) error {
-	if f.Defaults.Exported != "" {
-		return fmt.Errorf("defaults.exported was removed: an exported declaration has no scope, " +
-			"since what is reachable from outside the package is not checked. " +
-			"To bring an exported struct's internals back under a boundary, leave its fields unexported, " +
-			"or write //declscope:private on the type")
-	}
 	if f.Defaults.Unexported != "" {
 		s, ok := scope.Parse(f.Defaults.Unexported)
 		if !ok {
