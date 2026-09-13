@@ -153,6 +153,28 @@ func (t *target) name() string {
 	return t.obj.Name()
 }
 
+// methodOwner returns the object of the type a method is declared on, nil
+// when the receiver names no type in the package. It fills ownerObj for a
+// method, the way the enclosing TypeSpec fills it for a member.
+func methodOwner(fn *types.Func) types.Object {
+	sig, ok := fn.Type().(*types.Signature)
+	if !ok || sig.Recv() == nil {
+		return nil
+	}
+	t := sig.Recv().Type()
+	if ptr, ok := types.Unalias(t).(*types.Pointer); ok {
+		t = ptr.Elem()
+	}
+	named, ok := types.Unalias(t).(*types.Named)
+	if !ok {
+		return nil
+	}
+	// A method on a generic type receives List[T], an instantiation of List
+	// with its own type parameters. Obj() already names the origin's type name,
+	// which is the object collectTargets registered.
+	return named.Obj()
+}
+
 // scopeLevel names which level supplied a scope. A diagnostic that inferred it
 // from the kind instead would tell a reader to look for a comment that is not
 // there: a field takes its type's directive and its file's alike, and only the

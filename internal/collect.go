@@ -146,7 +146,7 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 	// receiver: the file it is written in gives it its namespace, exactly as
 	// for a func, and its type reaches neither its scope nor its ignores. The
 	// receiver is still read, for the name a diagnostic prints.
-	ownerObj := collectMethodOwner(obj)
+	ownerObj := methodOwner(obj)
 	owner := ""
 	if ownerObj != nil {
 		owner = ownerObj.Name()
@@ -286,28 +286,6 @@ func (c *collection) addMembers(pass *analysis.Pass, opts Options, fi *fileInfo,
 			})
 		}
 	}
-}
-
-// collectMethodOwner resolves the type a method belongs to and the file declaring that
-// type, along with that file's namespace. It falls back to the method's own
-// file when the type cannot be traced to one in the package.
-func collectMethodOwner(fn *types.Func) types.Object {
-	sig, ok := fn.Type().(*types.Signature)
-	if !ok || sig.Recv() == nil {
-		return nil
-	}
-	t := sig.Recv().Type()
-	if ptr, ok := types.Unalias(t).(*types.Pointer); ok {
-		t = ptr.Elem()
-	}
-	named, ok := types.Unalias(t).(*types.Named)
-	if !ok {
-		return nil
-	}
-	// A method on a generic type receives List[T], an instantiation of List
-	// with its own type parameters. Obj() already names the origin's type name,
-	// which is the object collectTargets registered.
-	return named.Obj()
 }
 
 // add registers a target and names it on every ignore directive reaching it,
