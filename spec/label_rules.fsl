@@ -1,13 +1,17 @@
-// qualify and unqualify are mutually exclusive, and each fix removes the
-// violation it addresses.
+// qualify and unqualify are mutually exclusive, each fix removes the violation
+// it addresses, and each fix is offered only where its violation exists.
 //
-// rules.unqualify is a boolean, not a three-valued mode: it enforces the
-// complement of qualify, so wherever the label is required it is inert by
-// construction and has nothing of its own to decide.
+// rules.unqualify is a boolean, not a mode: it enforces the complement of
+// qualify, so wherever the label is required it is inert by construction.
 //
-// With rules.exportedLabels on, both rules also reach exported declarations.
-// The rename is never offered there: it rewrites every use in the package, and
-// an exported name has uses outside it that the analysis cannot see.
+// rules.exportedLabels lets both rules reach exported declarations. The rename
+// is never applied there — it rewrites every use in the package, and an exported
+// name has uses outside it the analysis cannot see.
+//
+// A file marked //declscope:core joins the package's core namespace, whose label
+// is empty. There is nothing for either rule to require or to forbid, so the
+// core is outside them both — which is also how a package pins the spelling of
+// its API against the namespace count that `ondemand` reads.
 //
 // The scope settings are not read by these rules, so they are left out.
 spec LabelRules {
@@ -19,23 +23,25 @@ spec LabelRules {
   state {
     configured: Bool, cfgQualify: Qualify, cfgUnqualify: Bool,
     cfgExportedLabels: Bool, manyNs: Bool,
-    kind: Kind, exported: Bool, hasNs: Bool, label: Label, lastFix: Fix
+    kind: Kind, exported: Bool, hasNs: Bool, isCore: Bool,
+    label: Label, lastFix: Fix
   }
   init {
     configured = false  cfgQualify = OnDemand  cfgUnqualify = false
     cfgExportedLabels = false  manyNs = false
-    kind = Pkg  exported = false  hasNs = true  label = NoLabel  lastFix = NoFix
+    kind = Pkg  exported = false  hasNs = true  isCore = false
+    label = NoLabel  lastFix = NoFix
   }
   action configure(p: Qualify, d: Bool, e: Bool, m: Bool,
-                   k: Kind, x: Bool, h: Bool, l: Label) {
+                   k: Kind, x: Bool, h: Bool, c: Bool, l: Label) {
     requires not configured
     configured = true  cfgQualify = p  cfgUnqualify = d
     cfgExportedLabels = e  manyNs = m
-    kind = k  exported = x  hasNs = h  label = l
+    kind = k  exported = x  hasNs = h  isCore = c  label = l
   }
   def qualifyRequired() = cfgQualify == Always or (cfgQualify == OnDemand and manyNs)
-  // A naming rule reaches an exported declaration only when configured to.
-  def named() = kind == Pkg and hasNs and (not exported or cfgExportedLabels)
+  def named() = kind == Pkg and hasNs and not isCore
+                and (not exported or cfgExportedLabels)
   def qualifyFires()   = named() and qualifyRequired() and label == NoLabel
   def unqualifyFires() = named() and cfgUnqualify and not qualifyRequired()
                          and label == Prefixed
@@ -50,30 +56,68 @@ spec LabelRules {
     label = NoLabel  lastFix = FixedUnqualify
   }
 
-  invariant Exclusive           { not (qualifyFires() and unqualifyFires()) }
-  // Auxiliary: a fix happens only after configuration, and is recorded by the
-  // spelling it produces.
-  invariant FixImpliesConfigured { lastFix != NoFix => configured }
-  invariant QualifyFixRecorded   { lastFix == FixedQualify   => label == Prefixed }
-  invariant UnqualifyFixRecorded { lastFix == FixedUnqualify => label == NoLabel }
-  invariant QualifyFixSettles   { lastFix == FixedQualify   => not qualifyFires() }
-  invariant UnqualifyFixSettles { lastFix == FixedUnqualify => not unqualifyFires() }
-  // No rename is ever applied to an exported declaration.
-  invariant ExportedNeverFixed  { lastFix != NoFix => not exported }
+  invariant FixImpliesConfigured  { lastFix != NoFix => configured }
+  invariant QualifyFixRecorded    { lastFix == FixedQualify   => label == Prefixed }
+  invariant UnqualifyFixRecorded  { lastFix == FixedUnqualify => label == NoLabel }
+  invariant Exclusive             { not (qualifyFires() and unqualifyFires()) }
+  invariant QualifyFixSettles     { lastFix == FixedQualify   => not qualifyFires() }
+  invariant UnqualifyFixSettles   { lastFix == FixedUnqualify => not unqualifyFires() }
+  invariant ExportedNeverFixed    { lastFix != NoFix => not exported }
+
+  trans QualifyFixOnlyWhereNeeded {
+    old(lastFix) != FixedQualify and lastFix == FixedQualify => old(qualifyFires())
+  }
+  trans UnqualifyFixOnlyWhereNeeded {
+    old(lastFix) != FixedUnqualify and lastFix == FixedUnqualify => old(unqualifyFires())
+  }
 
   reachable QualifyCanFire   { configured and qualifyFires() }
   reachable UnqualifyCanFire { configured and unqualifyFires() }
-  // Exported names stay silent unless the opt-in is on ...
+
+  // Each silence below pins every other reason for silence, so that the one it
+  // is named for is the one being witnessed.
   reachable ExportedSilentByDefault {
-    configured and exported and not cfgExportedLabels
+    configured and kind == Pkg and hasNs and not isCore and exported
+    and not cfgExportedLabels and cfgQualify == Always and label == NoLabel
     and not qualifyFires() and not unqualifyFires()
   }
-  // ... and are then reported, with no fix available.
   reachable ExportedReportedWithoutFix {
-    configured and exported and cfgExportedLabels
+    configured and kind == Pkg and hasNs and not isCore and exported
+    and cfgExportedLabels and cfgQualify == Always and label == NoLabel
     and qualifyFires() and not fixable()
   }
   reachable ExportedUnqualifyReported {
-    configured and exported and cfgExportedLabels and unqualifyFires()
+    configured and kind == Pkg and hasNs and not isCore and exported
+    and cfgExportedLabels and cfgUnqualify and cfgQualify == Never
+    and label == Prefixed and unqualifyFires()
+  }
+  reachable CoreSilentUnderAlways {
+    configured and kind == Pkg and hasNs and isCore and not exported
+    and cfgQualify == Always and cfgUnqualify and label == NoLabel
+    and not qualifyFires() and not unqualifyFires()
+  }
+  reachable CoreSilentUnderUnqualify {
+    configured and kind == Pkg and hasNs and isCore and not exported
+    and cfgQualify == Never and cfgUnqualify and label == Prefixed
+    and not qualifyFires() and not unqualifyFires()
+  }
+  reachable OnDemandSilentInSingleNamespace {
+    configured and kind == Pkg and hasNs and not isCore and not exported
+    and cfgQualify == OnDemand and not manyNs and label == NoLabel
+    and not qualifyFires()
+  }
+  reachable UnqualifySilentWhenOff {
+    configured and kind == Pkg and hasNs and not isCore and not exported
+    and not cfgUnqualify and cfgQualify == Never and label == Prefixed
+    and not unqualifyFires()
+  }
+  reachable MembersAreNeverNamed {
+    configured and kind == Member and hasNs and not isCore and not exported
+    and cfgQualify == Always and cfgUnqualify and label == NoLabel
+    and not qualifyFires() and not unqualifyFires()
+  }
+  reachable NoNamespaceNeverNamed {
+    configured and kind == Pkg and not hasNs and not isCore and not exported
+    and cfgQualify == Always and label == NoLabel and not qualifyFires()
   }
 }

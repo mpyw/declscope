@@ -45,6 +45,11 @@ run_test "lint" \
 run_test "dogfood" \
     go run ./cmd/declscope -config .declscope-strict.yaml ./...
 
+# The formal specs. Skipped with a notice when fslc is not installed, so that a
+# contributor without it is not blocked; CI installs it.
+run_test "spec" \
+    ./spec/verify.sh
+
 # Summary
 echo ""
 echo "===== Summary ====="

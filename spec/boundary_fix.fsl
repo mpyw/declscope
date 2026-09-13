@@ -1,58 +1,74 @@
-// Inserting //declscope:package always removes the boundary crossing.
+// Inserting //declscope:package always removes the boundary crossing, it is
+// offered only where one exists, and it never overwrites a scope the author
+// stated on the declaration itself.
 //
-// Scope is two-valued and an exported symbol carries no boundary, so the fix is
-// only ever needed on an unexported one. The declaration's own directive is the
-// top of the resolution order, so the fix must win over the enclosing type's
-// directive and the file's alike.
+// The declaration's own directive is the top of the resolution order, so the fix
+// must win over the containing type's directive and the file's alike — a `private`
+// inherited from either is a default, not a decision.
 spec BoundaryFix {
   enum Scope { Package, Private }
-  enum Kind  { Pkg, Member }
+  enum Kind  { Pkg, Field, Method }
   enum Dir   { NoDir, DirPackage, DirPrivate }
   enum Refs  { NoRefs, SameNs, CrossNs }
 
   state {
     configured: Bool, cfgUnexported: Scope,
-    kind: Kind, exported: Bool,
+    kind: Kind, exported: Bool, ownerExported: Bool,
     declDir: Dir, typeDir: Dir, fileDir: Dir,
     refs: Refs, fixed: Bool
   }
   init {
     configured = false  cfgUnexported = Private
-    kind = Pkg  exported = false
+    kind = Pkg  exported = false  ownerExported = false
     declDir = NoDir  typeDir = NoDir  fileDir = NoDir
     refs = NoRefs  fixed = false
   }
-  action configure(u: Scope, k: Kind, x: Bool, dd: Dir, td: Dir, fd: Dir, r: Refs) {
+  action configure(u: Scope, k: Kind, x: Bool, ox: Bool,
+                   dd: Dir, td: Dir, fd: Dir, r: Refs) {
     requires not configured
     configured = true  cfgUnexported = u
-    kind = k  exported = x
+    kind = k  exported = x  ownerExported = ox
     declDir = dd  typeDir = td  fileDir = fd
     refs = r
   }
-  def inherited() = if kind == Member then typeDir else NoDir
+  def reachableOutside() = exported and (kind == Pkg or ownerExported)
+  def subject() = not reachableOutside()
+  def contained() = if kind == Field then typeDir else NoDir
   def effScope() =
     if declDir == DirPackage then Package
     else if declDir == DirPrivate then Private
-    else if inherited() == DirPackage then Package
-    else if inherited() == DirPrivate then Private
+    else if contained() == DirPackage then Package
+    else if contained() == DirPrivate then Private
     else if fileDir == DirPackage then Package
     else if fileDir == DirPrivate then Private
     else cfgUnexported
-  def boundaryFires() = not exported and effScope() == Private and refs == CrossNs
+  def boundaryFires() = subject() and effScope() == Private and refs == CrossNs
 
   fair action fixBoundary() {
     requires configured  requires boundaryFires()  requires declDir == NoDir
     declDir = DirPackage  fixed = true
   }
+
   // Auxiliary: a fix happens only after configuration, and is recorded by the
-  // directive it inserts. Together these make BoundaryFixSettles inductive
-  // rather than merely true to depth.
+  // directive it inserts. Together these make BoundaryFixSettles inductive.
   invariant FixImpliesConfigured { fixed => configured }
-  invariant FixRecordsDirective { fixed => declDir == DirPackage }
-  invariant BoundaryFixSettles { fixed => not boundaryFires() }
+  invariant FixRecordsDirective  { fixed => declDir == DirPackage }
+  invariant BoundaryFixSettles   { fixed => not boundaryFires() }
+
+  // The guards are load-bearing: without these a spurious fix, or one that
+  // overwrites the author's own directive, would go unnoticed.
+  trans FixOnlyWhereNeeded        { not old(fixed) and fixed => old(boundaryFires()) }
+  trans FixNeverClobbersDirective { not old(fixed) and fixed => old(declDir) == NoDir }
+
   reachable BoundaryCanFire { configured and boundaryFires() }
-  // The fix must settle even when the type's and the file's directives say private.
+  // The fix settles even when the containing type and the file both say private.
+  // Pinned to a field: with any other kind the type's directive is inert and the
+  // claim would be witnessed by decoration.
   reachable FixOverridesTypeAndFile {
-    configured and fixed and typeDir == DirPrivate and fileDir == DirPrivate
+    configured and fixed and kind == Field
+    and typeDir == DirPrivate and fileDir == DirPrivate
+  }
+  leadsTo BoundaryEventuallyFixed {
+    configured and boundaryFires() and declDir == NoDir ~> not boundaryFires()
   }
 }

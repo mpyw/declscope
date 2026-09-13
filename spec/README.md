@@ -13,15 +13,18 @@ the binary.
 
 | Spec | Claim | Scope covered |
 | --- | --- | --- |
-| `label_rules.fsl` | `qualify` and `unqualify` never both fire for one declaration | Every combination of `rules.qualify`, `rules.unqualify`, `rules.exportedLabels`, namespace count, kind, exportedness, namespace presence and label |
-| `label_rules.fsl` | Applying either label fix removes the violation it addresses | As above |
+| `label_rules.fsl` | `qualify` and `unqualify` never both fire for one declaration | Every combination of `rules.qualify`, `rules.unqualify`, `rules.exportedLabels`, namespace count, kind, exportedness, namespace presence, core membership and label |
+| `label_rules.fsl` | Applying either label fix removes the violation it addresses, and neither is applied where its violation does not exist | As above |
 | `label_rules.fsl` | No rename is ever applied to an exported declaration | As above |
-| `boundary_fix.fsl` | Inserting `//declscope:package` always removes the boundary crossing, over any directive nearer the default | Every combination of `defaults.unexported`, kind, exportedness, and the declaration, type and file directives |
-| `knobs.fsl` | Every configuration key and every directive level demonstrably changes an outcome, for members as well as package-level declarations | As above, plus reference shape |
-| `knobs.fsl` | An exported symbol never carries a boundary, and the type's directive reaches members only | As above |
+| `label_rules.fsl` | Each naming key bites in both directions, and each silence is witnessed with every other reason for silence pinned | As above |
+| `label_rules.fsl` | The core namespace is outside both rules, whatever is configured | As above |
+| `boundary_fix.fsl` | Inserting `//declscope:package` always removes the boundary crossing, over a `private` inherited from the containing type or the file | Every combination of `defaults.unexported`, kind, exportedness, owner exportedness, reference shape, and the declaration, type and file directives |
+| `boundary_fix.fsl` | The fix is offered only where a crossing exists, and never overwrites the declaration's own directive | As above |
+| `knobs.fsl` | `defaults.unexported` and every directive level demonstrably change an outcome, for each kind of declaration | As above |
+| `knobs.fsl` | The containing type's directive reaches fields and nothing else — witnessed by a package-level declaration and a method that still fire | As above |
+| `knobs.fsl` | A declaration reachable from outside the package never carries a boundary, while an exported member of an *unexported* type does | As above |
 | `knobs.fsl` | A reference from inside the namespace never crosses a boundary | As above |
-| `directive_effect.fsl` | A scope directive that binds nothing is reported, whether its reach holds no subject or it restates the scope already in force | Every combination of stated scope, surrounding scope, exportedness and enclosed subject |
-| `member_file.fsl` | A member's bounding namespace and its file-level default come from different files, with the consequences that follow | Every combination of the two files, the three directive levels, config and reference site |
+| `directive_effect.fsl` | A scope directive is used when anything in its reach binds to it, and reported when nothing does | Every combination of target presence and subjecthood, and two enclosed declarations by subjecthood and shadowing |
 | `rename_sound.fsl` | **Fails** — models a guard that checks package scope only, and enumerates what a sound guard must check beyond it | Every binding environment at the reference site |
 | `rename_siblings.fsl` | **Fails** — models fixes that check their target against the pre-fix names only, and shows two of them converging on one name | Every pair of rename targets |
 
@@ -61,22 +64,64 @@ rewritten, and `rename_siblings.fsl` covers the second.
 `fslc verify` is a bounded model checker: it holds the whole reachable state space
 for the depth it is given. Each spec is therefore kept to the variables its own
 properties read. A single spec over the full product of the configuration is one
-action with eleven parameters, which is 31,104 action instances per step and needs
-gigabytes for the same claims these prove in single-digit megabytes.
+action with eighteen parameters, which is several million action instances per
+step and needs gigabytes for the same claims these prove in single-digit
+megabytes.
+
+```console
+./spec/verify.sh     # what CI runs: four proved, two violated
+```
+
+Or one at a time:
 
 ```console
 fslc check  label_rules.fsl
-fslc verify label_rules.fsl --depth 3
-fslc verify boundary_fix.fsl --depth 3
-fslc verify knobs.fsl           --depth 2
-fslc verify rename_sound.fsl    --depth 2   # expected: violated
-fslc verify rename_siblings.fsl --depth 3   # expected: violated
+fslc verify label_rules.fsl      --depth 3
+fslc verify boundary_fix.fsl     --depth 3
+fslc verify knobs.fsl            --depth 2
+fslc verify directive_effect.fsl --depth 2
+fslc verify rename_sound.fsl     --depth 2   # expected: violated
+fslc verify rename_siblings.fsl  --depth 3   # expected: violated
 ```
+
+Every spec configures once, so each reachable is witnessed at step 1 and the
+deadlock warning that follows is the shape of the model, not a failure. The four
+that pass are also `proved` under `--engine induction`, which is what
+`verify.sh` and CI assert — bounded verification alone would let an invariant be
+true to a depth without being inductive.
+
+Every spec here configures once and stops, so `configure` is the only action and
+each reachable is witnessed at step 1; the deadlock warning that follows is the
+shape of the model, not a failure. All five of the passing specs are also `proved`
+under `fslc verify <file> --engine induction`.
 
 ## Negative controls
 
-A spec that passes whether or not the code is correct proves nothing. `knobs.fsl`
-discriminates: run against semantics in which members do not resolve from
-`defaults`, it returns `reachable_failed`, because the knob cannot be shown to
-bite. A change here that makes every check pass unconditionally has stopped the
-check discriminating.
+A spec that passes whether or not the code is correct proves nothing. These were
+built by writing the wrong design and checking that the spec rejects it. Each row
+is a semantics that contradicts the documented one; each was run:
+
+| Wrong design | Result |
+| --- | --- |
+| The containing type's directive reaches every kind, not only fields | `reachable_failed` |
+| An exported declaration carries a boundary | `violated` |
+| A member's exportedness ignores its owner type | `reachable_failed` |
+| The file level outranks the declaration's own directive | `reachable_failed` |
+| `rules.exportedLabels` is ignored and exported names are always named | `reachable_failed` |
+| The naming rules reach members | `reachable_failed` |
+| The core namespace is named like any other | `reachable_failed` |
+| A fix is offered where no violation exists, or over the author's own directive | `violated` |
+| A scope directive stops at the first thing in its reach | `reachable_failed` |
+| A scope directive ignores a nearer directive that shadows it | `violated` |
+
+Two habits keep those controls sharp. **Pin every other reason.** A reachable
+named for one distinction must fix the variables that could satisfy it for
+another reason — `ExportedSilentByDefault` pins the kind, the namespace, the core
+flag, the mode and the label, so exportedness is the only thing left doing the
+work. **Prefer a witness to a restatement.** An invariant that re-spells the
+definition it guards pins that definition but proves nothing about behaviour;
+`TypeDirInertOnPkg` and `TypeDirInertOnMethod` instead assert that the
+declaration still fires, which a leaking semantics cannot satisfy.
+
+A change here that makes every check pass unconditionally has stopped the check
+discriminating.

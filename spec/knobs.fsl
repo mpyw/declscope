@@ -1,111 +1,146 @@
 // Every configuration key and every directive level must demonstrably change an
-// outcome.
+// outcome, and every restriction must be witnessed by behaviour rather than by
+// an invariant that re-spells the definition it guards.
 //
-// An unwitnessed reachable means the level does not bite in that direction — a
-// dead knob, and a lie in the documentation.
+// Scope is two-valued: declscope's subject is a package's unexported surface, so
+// `public` would name a distinction the analysis cannot make.
 //
-// Scope is two-valued: declscope's subject is the unexported surface of a
-// package, so an exported symbol is never bounded by a namespace and `public`
-// would name a distinction the analysis cannot make.
+// A member's exportedness is its own AND its owner type's: an exported field of
+// an unexported type is reachable from nobody outside the package, so it stays
+// in the subject.
 //
-// Resolution order: declaration > enclosing type (members only) > file > config.
+// A FIELD is written inside its type's declaration, so the type's directive
+// contains it, the way a `var (...)` block contains its specs. A METHOD is an
+// ordinary top-level declaration: the file it is written in supplies its
+// namespace and its file level, and nothing above it reaches it.
+//
+// Resolution order: declaration > containing type (fields only) > file > config.
 spec Knobs {
   enum Scope { Package, Private }
-  enum Kind  { Pkg, Member }
+  enum Kind  { Pkg, Field, Method }
   enum Dir   { NoDir, DirPackage, DirPrivate }
   enum Refs  { NoRefs, SameNs, CrossNs }
 
   state {
     configured: Bool, cfgUnexported: Scope,
-    kind: Kind, exported: Bool,
+    kind: Kind, exported: Bool, ownerExported: Bool,
     declDir: Dir, typeDir: Dir, fileDir: Dir,
     refs: Refs
   }
   init {
     configured = false  cfgUnexported = Private
-    kind = Pkg  exported = false
+    kind = Pkg  exported = false  ownerExported = false
     declDir = NoDir  typeDir = NoDir  fileDir = NoDir
     refs = NoRefs
   }
-  action configure(u: Scope, k: Kind, x: Bool, dd: Dir, td: Dir, fd: Dir, r: Refs) {
+  action configure(u: Scope, k: Kind, x: Bool, ox: Bool,
+                   dd: Dir, td: Dir, fd: Dir, r: Refs) {
     requires not configured
     configured = true  cfgUnexported = u
-    kind = k  exported = x
+    kind = k  exported = x  ownerExported = ox
     declDir = dd  typeDir = td  fileDir = fd
     refs = r
   }
 
-  // The enclosing type's directive reaches members only.
-  def inherited() = if kind == Member then typeDir else NoDir
+  // Reachable from outside the package: a member needs its owner exported too.
+  def reachableOutside() = exported and (kind == Pkg or ownerExported)
+  def subject() = not reachableOutside()
+
+  // The type's directive contains its fields, and nothing else.
+  def contained() = if kind == Field then typeDir else NoDir
 
   def effScope() =
     if declDir == DirPackage then Package
     else if declDir == DirPrivate then Private
-    else if inherited() == DirPackage then Package
-    else if inherited() == DirPrivate then Private
+    else if contained() == DirPackage then Package
+    else if contained() == DirPrivate then Private
     else if fileDir == DirPackage then Package
     else if fileDir == DirPrivate then Private
     else cfgUnexported
 
-  // An exported symbol is outside the subject: it carries no boundary.
-  def subject() = not exported
   def boundaryFires() = subject() and effScope() == Private and refs == CrossNs
 
-  // Does defaults.unexported bite, in both directions, for each kind?
-  // The kind is pinned in each: a semantics under which members did not resolve
-  // from defaults would still satisfy a reachable that left it free.
+  // --- defaults.unexported bites, per kind, in both directions ---------------
+  // The kind is pinned in each: a semantics that resolved one kind differently
+  // would still satisfy a reachable that left it free.
   reachable ConfigBitesOnPkg {
-    configured and kind == Pkg and cfgUnexported == Private and declDir == NoDir
-    and typeDir == NoDir and fileDir == NoDir
+    configured and kind == Pkg and cfgUnexported == Private
+    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and not exported and refs == CrossNs and boundaryFires()
   }
-  reachable ConfigBitesOnMembers {
-    configured and kind == Member and cfgUnexported == Private and declDir == NoDir
-    and typeDir == NoDir and fileDir == NoDir
+  reachable ConfigBitesOnField {
+    configured and kind == Field and cfgUnexported == Private
+    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
+    and not exported and refs == CrossNs and boundaryFires()
+  }
+  reachable ConfigBitesOnMethod {
+    configured and kind == Method and cfgUnexported == Private
+    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and not exported and refs == CrossNs and boundaryFires()
   }
   reachable ConfigSilencesPkg {
-    configured and kind == Pkg and cfgUnexported == Package and declDir == NoDir
-    and typeDir == NoDir and fileDir == NoDir
+    configured and kind == Pkg and cfgUnexported == Package
+    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and not exported and refs == CrossNs and not boundaryFires()
   }
-  reachable ConfigSilencesMembers {
-    configured and kind == Member and cfgUnexported == Package and declDir == NoDir
-    and typeDir == NoDir and fileDir == NoDir
+  reachable ConfigSilencesField {
+    configured and kind == Field and cfgUnexported == Package
+    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
     and not exported and refs == CrossNs and not boundaryFires()
   }
-  // Does the file-level directive override the config, in both directions?
-  reachable FileDirOverridesToPrivate {
-    configured and fileDir == DirPrivate and cfgUnexported == Package
-    and declDir == NoDir and typeDir == NoDir
+
+  // --- the levels beat one another, each witnessed by a conflict -------------
+  reachable DeclDirBeatsFileDir {
+    configured and kind == Pkg and declDir == DirPrivate and fileDir == DirPackage
     and not exported and refs == CrossNs and boundaryFires()
   }
-  reachable FileDirOverridesToPackage {
-    configured and fileDir == DirPackage and cfgUnexported == Private
-    and declDir == NoDir and typeDir == NoDir
-    and not exported and refs == CrossNs and not boundaryFires()
-  }
-  // Does the enclosing type's directive reach members, over the file level?
-  reachable TypeDirReachesMembers {
-    configured and kind == Member and typeDir == DirPackage and fileDir == DirPrivate
-    and declDir == NoDir and not exported and refs == CrossNs and not boundaryFires()
-  }
-  // Does the declaration's own directive win over the type's?
   reachable DeclDirBeatsTypeDir {
-    configured and kind == Member and declDir == DirPrivate and typeDir == DirPackage
+    configured and kind == Field and declDir == DirPrivate and typeDir == DirPackage
     and not exported and refs == CrossNs and boundaryFires()
   }
-  // The type's directive must NOT reach package-level declarations.
-  invariant TypeDirIsMemberOnly {
-    kind == Pkg => effScope() == (if declDir == DirPackage then Package
-                                  else if declDir == DirPrivate then Private
-                                  else if fileDir == DirPackage then Package
-                                  else if fileDir == DirPrivate then Private
-                                  else cfgUnexported)
+  reachable TypeDirBeatsFileDir {
+    configured and kind == Field and declDir == NoDir
+    and typeDir == DirPackage and fileDir == DirPrivate
+    and not exported and refs == CrossNs and not boundaryFires()
   }
-  // An exported symbol never carries a boundary, whatever is configured.
-  invariant ExportedNeverFires { exported => not boundaryFires() }
-  // A reference from inside the namespace never crosses a boundary.
-  invariant SameNamespaceNeverCrosses { refs == SameNs => not boundaryFires() }
-  invariant NoRefsNeverCrosses        { refs == NoRefs => not boundaryFires() }
+  reachable FileDirBeatsConfig {
+    configured and kind == Pkg and declDir == NoDir and typeDir == NoDir
+    and fileDir == DirPrivate and cfgUnexported == Package
+    and not exported and refs == CrossNs and boundaryFires()
+  }
+
+  // --- the type's directive reaches fields and nothing else -----------------
+  // Behavioural, not a restatement: the declaration still fires, so a semantics
+  // that let the type's directive through would be caught here.
+  reachable TypeDirInertOnPkg {
+    configured and kind == Pkg and typeDir == DirPackage
+    and declDir == NoDir and fileDir == NoDir and cfgUnexported == Private
+    and not exported and refs == CrossNs and boundaryFires()
+  }
+  reachable TypeDirInertOnMethod {
+    configured and kind == Method and typeDir == DirPackage
+    and declDir == NoDir and fileDir == NoDir and cfgUnexported == Private
+    and not exported and refs == CrossNs and boundaryFires()
+  }
+
+  // --- exportedness --------------------------------------------------------
+  // An exported declaration is silent even when a directive says private.
+  reachable ExportedSilentUnderPrivate {
+    configured and kind == Pkg and exported and declDir == DirPrivate
+    and refs == CrossNs and not boundaryFires()
+  }
+  // ... but an exported member of an UNEXPORTED type stays in the subject.
+  reachable UnexportedOwnerKeepsExportedField {
+    configured and kind == Field and exported and not ownerExported
+    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
+    and cfgUnexported == Private and refs == CrossNs and boundaryFires()
+  }
+  reachable ExportedFieldOfExportedTypeIsSilent {
+    configured and kind == Field and exported and ownerExported
+    and cfgUnexported == Private and refs == CrossNs and not boundaryFires()
+  }
+
+  invariant ReachableOutsideNeverFires { reachableOutside() => not boundaryFires() }
+  invariant SameNamespaceNeverCrosses  { refs == SameNs => not boundaryFires() }
+  invariant NoRefsNeverCrosses         { refs == NoRefs => not boundaryFires() }
 }
