@@ -47,12 +47,15 @@ type scopesiteBook struct {
 //     has, so it is provably inert; //declscope:private narrows it, so it is
 //     not.
 //
-//declscope:package // the collector registers and names the sites as it parses
+//declscope:private // only scopeSite hands it out, and no caller spells the type
 type scopeSite struct {
 	dir directive.Decl
 	// decls names the declarations in its reach, in source order, for the
 	// report. Empty for a file-level directive.
-	decls     []string
+	//
+	//declscope:package // collect.go names each target on it as it adds them
+	decls []string
+	//declscope:package // collect.go marks it when the directive is the file's
 	fileLevel bool
 	bound     bool
 
@@ -91,6 +94,22 @@ func (c *collection) shadow(outer, merged directive.Decl) {
 	}
 }
 
+// scopesiteLevel names which level supplied a scope. A diagnostic that
+// inferred it from the kind instead would tell a reader to look for a comment
+// that is not there: a field takes its type's directive and its file's alike,
+// and only the level knows which one decided.
+//
+//declscope:package // subject.go's target records it in boundAt
+type scopesiteLevel int
+
+//declscope:package // report.go words each boundary finding by the level
+const (
+	scopesiteLevelDefault scopesiteLevel = iota
+	scopesiteLevelDecl
+	scopesiteLevelContainer
+	scopesiteLevelFile
+)
+
 // bind resolves a declaration's scope and records which directive supplied it.
 //
 // The second result is the directive that supplied the scope, zero when the
@@ -99,7 +118,7 @@ func (c *collection) shadow(outer, merged directive.Decl) {
 // author's decision or merely state an exception to a default.
 //
 //declscope:package // the one scope resolution, shared with the collector
-func (c *collection) bind(opts Options, name string, dir, container, file directive.Decl) (scope.Scope, directive.Decl, scopeLevel) {
+func (c *collection) bind(opts Options, name string, dir, container, file directive.Decl) (scope.Scope, directive.Decl, scopesiteLevel) {
 	levels := []directive.Decl{dir, container, file}
 	for i, d := range levels {
 		if !d.HasScope {
@@ -108,10 +127,10 @@ func (c *collection) bind(opts Options, name string, dir, container, file direct
 		if !scopesiteInert(opts, name, d.Scope, levels[i+1:]) {
 			c.scopeSite(d).bound = true
 		}
-		return d.Scope, d, scopeLevel(i + 1)
+		return d.Scope, d, scopesiteLevel(i + 1)
 	}
 	outer, _ := scopesiteOuterScope(opts, name, nil)
-	return outer, directive.Decl{}, levelDefault
+	return outer, directive.Decl{}, scopesiteLevelDefault
 }
 
 // scopesiteOuterScope is the scope a declaration would take from the levels outside the

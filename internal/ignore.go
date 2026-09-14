@@ -31,18 +31,23 @@ type ignoreBook struct {
 // per target, it would be reported unused whenever any sibling did not need
 // it, and a wholly unused one would be reported once per sibling.
 //
-//declscope:package // the collector registers and names the sites as it parses
+//declscope:private // only site hands it out, and no caller spells the type
 type ignoreSite struct {
 	ig directive.Ignore
 	// decls names the declarations the directive reaches, in source order,
 	// for the report. It is empty for a file-level directive, and for one
 	// carried only by declarations declscope does not check (init, _, an
 	// embedded field), which is then unused by construction.
-	decls     []string
+	//
+	//declscope:package // collect.go names each target on it as it adds them
+	decls []string
+	//declscope:package // collect.go marks it when the directive is the file's
 	fileLevel bool
 	used      bool
 	// siblings are the ignores parsed from the same comment group, which is
 	// where a //declscope:ignore directive answering for this one is written.
+	//
+	//declscope:package // collect.go records them as it parses the group
 	siblings []directive.Ignore
 }
 

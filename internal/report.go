@@ -129,6 +129,25 @@ func (c *collection) fileAt(pass *analysis.Pass, pos token.Pos) *fileInfo {
 	return nil
 }
 
+// nsName spells the namespace for the baseline, which is the one place it has
+// to be written down rather than compared.
+//
+// A namespace derived from a file name is normalized to alphanumerics, and one
+// written with //declscope:namespace must be an unexported identifier, so a
+// parenthesis can appear in neither. That leaves "(core)" free for the core,
+// whose prefix is empty and whose files all share it, and free for the file
+// with no stem at all — which has no namespace either, and must not share a
+// key with every other such file.
+func (f *fileInfo) nsName() string {
+	if f.core {
+		return "(core)"
+	}
+	if f.ns != "" {
+		return f.ns
+	}
+	return "(file " + filepath.Base(f.path) + ")"
+}
+
 // key identifies the finding for the baseline, independently of position.
 func (f reportFinding) key(pass *analysis.Pass, t *target) baseline.Key {
 	return baseline.Key{
@@ -194,13 +213,13 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 	// file's, and naming the declaration's own would point at a comment that is
 	// not there.
 	switch t.boundAt {
-	case levelDecl:
+	case scopesiteLevelDecl:
 		f.msg = fmt.Sprintf("%s %s is declared %s by %s, but is used from %s",
 			t.kind, t.name(), t.scope, t.scope.Directive(), reportDescribeFile(offenders[0].file))
-	case levelContainer:
+	case scopesiteLevelContainer:
 		f.msg = fmt.Sprintf("%s %s is declared %s by %s on %s, but is used from %s",
 			t.kind, t.name(), t.scope, t.scope.Directive(), t.owner, reportDescribeFile(offenders[0].file))
-	case levelFile:
+	case scopesiteLevelFile:
 		f.msg = fmt.Sprintf("%s %s is declared %s by the file's %s, but is used from %s",
 			t.kind, t.name(), t.scope, t.scope.Directive(), reportDescribeFile(offenders[0].file))
 	default:
@@ -225,7 +244,7 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 	// the outer directive binding one declaration fewer, which can make it
 	// unused. Offering the fix there would produce a diagnostic that did not
 	// exist before, so it is withheld at every level that supplied the scope.
-	if t.boundAt != levelDefault {
+	if t.boundAt != scopesiteLevelDefault {
 		return f, true
 	}
 	f.fixes = append(f.fixes, reportDirectiveFix(pass, t, scope.PackageInternal))
