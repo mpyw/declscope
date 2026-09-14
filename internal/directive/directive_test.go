@@ -95,26 +95,26 @@ func TestParseDeclIgnore(t *testing.T) {
 		},
 		{
 			name:    "one rule",
-			comment: "//declscope:ignore unqualify",
-			covers:  []rule.Rule{rule.Unqualify},
-			misses:  []rule.Rule{rule.Boundary, rule.Qualify},
+			comment: "//declscope:ignore qualify",
+			covers:  []rule.Rule{rule.Qualify},
+			misses:  []rule.Rule{rule.Boundary, rule.Directive},
 		},
 		{
 			name:    "several rules",
-			comment: "//declscope:ignore unqualify,qualify",
-			covers:  []rule.Rule{rule.Unqualify, rule.Qualify},
-			misses:  []rule.Rule{rule.Boundary},
+			comment: "//declscope:ignore boundary,qualify",
+			covers:  []rule.Rule{rule.Boundary, rule.Qualify},
+			misses:  []rule.Rule{rule.Directive},
 		},
 		{
 			name:    "spaces around the separator",
-			comment: "//declscope:ignore unqualify, qualify",
-			covers:  []rule.Rule{rule.Unqualify, rule.Qualify},
-			misses:  []rule.Rule{rule.Boundary},
+			comment: "//declscope:ignore boundary, qualify",
+			covers:  []rule.Rule{rule.Boundary, rule.Qualify},
+			misses:  []rule.Rule{rule.Directive},
 		},
 		{
 			name:    "with a reason",
-			comment: "//declscope:ignore unqualify // the prefix is part of the concept",
-			covers:  []rule.Rule{rule.Unqualify},
+			comment: "//declscope:ignore qualify // the namespace word is part of the concept",
+			covers:  []rule.Rule{rule.Qualify},
 			misses:  []rule.Rule{rule.Boundary},
 		},
 	}
@@ -145,7 +145,7 @@ func TestParseDeclIgnore(t *testing.T) {
 // TestParseDeclIgnoreAccumulates checks that several ignore directives on one
 // declaration are all kept, so that each can be reported unused on its own.
 func TestParseDeclIgnoreAccumulates(t *testing.T) {
-	fn := firstFunc(t, "package p\n\n//declscope:ignore unqualify\n//declscope:ignore qualify\nfunc f() {}\n")
+	fn := firstFunc(t, "package p\n\n//declscope:ignore boundary\n//declscope:ignore qualify\nfunc f() {}\n")
 	if d := directive.ParseDecl(fn.Doc); len(d.Ignores) != 2 {
 		t.Errorf("got %d ignores, want 2", len(d.Ignores))
 	}
@@ -169,7 +169,7 @@ func TestMerge(t *testing.T) {
 // CLAUDE.md describe this behavior and must not drift from it.
 func TestMergeAccumulatesIgnores(t *testing.T) {
 	outer := directive.Decl{Ignores: []directive.Ignore{{}}}
-	inner := directive.Decl{Ignores: []directive.Ignore{{Rules: []rule.Rule{rule.Unqualify}}}}
+	inner := directive.Decl{Ignores: []directive.Ignore{{Rules: []rule.Rule{rule.Qualify}}}}
 
 	got := outer.Merge(inner)
 	if len(got.Ignores) != 2 {
@@ -210,9 +210,9 @@ func TestParseFileIgnore(t *testing.T) {
 	}{
 		{
 			name:    "named rules",
-			comment: "//declscope:ignore qualify,unqualify",
-			covers:  []rule.Rule{rule.Qualify, rule.Unqualify},
-			misses:  []rule.Rule{rule.Boundary},
+			comment: "//declscope:ignore qualify,boundary",
+			covers:  []rule.Rule{rule.Qualify, rule.Boundary},
+			misses:  []rule.Rule{rule.Directive},
 		},
 		{
 			name:    "reach may be silenced too",

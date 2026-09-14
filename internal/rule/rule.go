@@ -15,12 +15,9 @@ const (
 	// Boundary: a declaration used from outside the namespace it is private
 	// to — a boundary crossing.
 	Boundary Rule = "boundary"
-	// Qualify: a package-level declaration missing its namespace prefix, which
-	// namespace.Qualify adds.
+	// Qualify: a package-level declaration whose name does not carry its
+	// namespace, which namespace.Qualify fixes by prefixing.
 	Qualify Rule = "qualify"
-	// Unqualify: a namespace prefix present where it is not required, which
-	// namespace.Unqualify drops.
-	Unqualify Rule = "unqualify"
 	// Directive: a directive that binds nothing, or that is malformed or
 	// misplaced. It has no fix and no configuration; it carries a name so that
 	// an ignore can silence one and a baseline can record one, which a report
@@ -29,7 +26,7 @@ const (
 )
 
 // All lists every rule, in the order they are reported.
-var All = []Rule{Boundary, Qualify, Unqualify, Directive}
+var All = []Rule{Boundary, Qualify, Directive}
 
 // Parse resolves a rule name.
 func Parse(name string) (Rule, bool) {

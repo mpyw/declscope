@@ -1,7 +1,6 @@
-# The core exists to be left alone by the naming rules, so both are on their
+# The core exists to be left alone by the naming rule, so it is on its
 # strictest setting: whatever the core is spared here, it is spared everywhere.
 rules:
   naming:
     qualify: always
-    unqualify: true
     exported: true

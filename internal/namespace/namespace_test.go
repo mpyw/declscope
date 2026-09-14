@@ -109,51 +109,6 @@ func TestCanPrefix(t *testing.T) {
 	}
 }
 
-func TestHasPrefix(t *testing.T) {
-	tests := []struct {
-		name, ns string
-		want     bool
-	}{
-		{"userCache", "user", true},
-		{"user", "user", true},
-		{"user2", "user", true},
-		{"users", "user", false},
-		{"userscache", "user", false},
-		{"usercache", "user", false},
-		{"cache", "user", false},
-		{"anything", "", false},
-
-		// Case is ignored, so the author need not guess which spelling of
-		// an initialism the namespace uses.
-		{"userIDCache", "userId", true},
-		{"userIdCache", "userID", true},
-		{"userID", "userId", true},
-		{"userid", "userID", true},
-		{"useridCache", "userID", true},
-		{"parseJsonTree", "parseJSON", true},
-
-		// A word break inside a multi-word namespace already confirms the
-		// prefix, so a lowercase continuation is a fragment after it rather
-		// than proof there was none.
-		{"userIdcache", "userId", true},
-		{"userIdcache", "userID", true},
-		{"userIDcache", "userId", true},
-
-		// But a single word followed by lowercase is just a longer word.
-		{"useridentity", "userID", false},
-		{"userids", "userID", false},
-
-		// Unrelated names.
-		{"orderIDCache", "userID", false},
-		{"user", "userID", false},
-	}
-	for _, tt := range tests {
-		if got := namespace.HasPrefix(tt.name, tt.ns); got != tt.want {
-			t.Errorf("HasPrefix(%q, %q) = %v, want %v", tt.name, tt.ns, got, tt.want)
-		}
-	}
-}
-
 func TestQualify(t *testing.T) {
 	tests := []struct {
 		name, ns, qualified string
@@ -176,6 +131,12 @@ func TestQualify(t *testing.T) {
 		{"userIDCache", "userId", "userIDCache"},
 		{"userIdCache", "userID", "userIdCache"},
 
+		// A name that carries the namespace inside is already qualified, so
+		// nothing is prepended. The rule would not have fired on it either;
+		// the guard keeps Qualify idempotent under the same test.
+		{"LoadConfig", "config", "LoadConfig"},
+		{"statementReducer", "reducer", "statementReducer"},
+
 		// A namespace that cannot be a prefix leaves the name unchanged.
 		{"helper", "2faAuth", "helper"},
 		{"helper", "Foo", "helper"},
@@ -187,63 +148,39 @@ func TestQualify(t *testing.T) {
 	}
 }
 
-func TestUnqualify(t *testing.T) {
+func TestContainsCases(t *testing.T) {
 	tests := []struct {
-		name, ns, want string
+		name, ns string
+		want     bool
 	}{
-		{"userHelper", "user", "helper"},
-		// A namespace of several words, as user_repository.go yields.
-		{"userRepositoryCache", "userRepository", "cache"},
-
-		// An initialism left behind is spelled the way Go spells one, rather
-		// than by lowering only the first letter.
-		{"userID", "user", "id"},           // not iD
-		{"userURLPath", "user", "urlPath"}, // not uRLPath
-		{"userIO", "user", "io"},
-
-		// The prefix is matched the way HasPrefix matches it, ignoring case.
-		{"userIdCache", "userID", "cache"},
-		{"userIDCache", "userId", "cache"},
+		// 実測で「接頭辞を強いると語が二重になる」形。すべて通るべき。
+		{"statementReducer", "reducer", true},
+		{"NewRegistry", "registry", true},
+		{"LoadConfig", "config", true},
+		{"NewTracer", "tracer", true},
+		{"hasDirective", "directive", true},
+		{"AWSScope", "scope", true},
+		{"BuildIgnoreMap", "ignore", true},
+		// 語の派生。右端が語の途中で終わる。
+		{"SpecifierParser", "parse", true},
+		{"CheckConflicts", "conflict", true},
+		{"APIParser", "parse", true},
+		// ファイル stem と識別子でトークン分割がずれる場合。
+		{"NewAzureAppConfigParamStrategy", "azureAppconfigParam", true},
+		// 名前空間そのもの。
+		{"collect", "collect", true},
+		// 左端が語境界でない。通ってはいけない。
+		{"monkey", "key", false},
+		{"UntagCommand", "tag", false},
+		// 名前空間をまったく含まない。
+		{"Wrap", "client", false},
+		{"nounSecret", "command", false},
+		// 左端固定の代償として受理されるもの。意図的。
+		{"models", "mode", true},
 	}
 	for _, tt := range tests {
-		got, why := namespace.Unqualify(tt.name, tt.ns)
-		if got != tt.want || why != "" {
-			t.Errorf("Unqualify(%q, %q) = %q, %q, want %q and no reason", tt.name, tt.ns, got, why, tt.want)
-		}
-	}
-}
-
-// TestUnqualifyDeclines checks that every refusal explains itself, since the
-// caller reports the violation regardless and puts the reason in the message.
-func TestUnqualifyDeclines(t *testing.T) {
-	tests := []struct{ name, ns string }{
-		// Reachable: there is a prefix, it is not wanted here, and no rename
-		// can be derived. These become "rename it by hand" diagnostics.
-		{"userType", "user"}, // would leave the keyword "type"
-		{"userFunc", "user"}, // would leave the keyword "func"
-		{"user2", "user"},    // would leave "2", which cannot start an identifier
-		// The prefix is confirmed by the word break inside the namespace, but
-		// what follows is a fragment, so there is no clean place to cut.
-		{"userIdcache", "userID"},
-		// Identical to the namespace in another spelling: checkUnqualify exempts
-		// it, and nothing would remain anyway.
-		{"userId", "userID"},
-
-		// Unreachable: checkUnqualify gates these out before calling, so they
-		// only pin that the function stays total rather than returning a
-		// nonsense rename for input it was not designed for.
-		{"user", "user"},   // identical to the namespace, so carries no prefix
-		{"users", "user"},  // not a word boundary, so never a prefix
-		{"helper", "user"}, // does not begin with the namespace
-		{"anything", ""},   // a file whose name yields no namespace
-	}
-	for _, tt := range tests {
-		got, why := namespace.Unqualify(tt.name, tt.ns)
-		if got != "" {
-			t.Errorf("Unqualify(%q, %q) = %q, want no rename", tt.name, tt.ns, got)
-		}
-		if why == "" {
-			t.Errorf("Unqualify(%q, %q) declined without explaining itself", tt.name, tt.ns)
+		if got := namespace.Contains(tt.name, tt.ns); got != tt.want {
+			t.Errorf("Contains(%q, %q) = %v, want %v", tt.name, tt.ns, got, tt.want)
 		}
 	}
 }

@@ -14,8 +14,8 @@
 // rest:
 //
 //	//declscope:ignore
-//	//declscope:ignore unqualify
-//	//declscope:ignore unqualify,qualify
+//	//declscope:ignore qualify
+//	//declscope:ignore boundary,qualify
 //
 // File level, placed before the package clause, overriding the namespace that
 // would otherwise be derived from the file name:
@@ -27,7 +27,7 @@
 // same argument as the declaration-level form, so a bare one silences
 // everything in the file:
 //
-//	//declscope:ignore qualify,unqualify
+//	//declscope:ignore boundary,qualify
 //
 //	package util
 //

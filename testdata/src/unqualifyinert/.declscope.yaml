@@ -1,5 +1,0 @@
-# unqualify is inert wherever the prefix is required: here the package has two
-# namespaces, so ondemand requires it.
-rules:
-  naming:
-    unqualify: true

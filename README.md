@@ -78,7 +78,7 @@ Nothing here is unusual, and nothing the compiler can object to. `email` is unex
 $ declscope ./...
 user.go:7:2:  field User.email is private to namespace "user", but is used from namespace "csv"
 user.go:10:6: func emailNormalize is private to namespace "user", but is used from namespace "csv"
-user.go:10:6: func emailNormalize does not carry the prefix of namespace "user"; rename it to userEmailNormalize
+user.go:10:6: func emailNormalize does not carry namespace "user" anywhere in its name; rename it to userEmailNormalize
 ```
 
 Each crossing has two answers:
@@ -240,7 +240,7 @@ declscope baseline [flags] [packages]  # record current violations; see Adopting
 
 `-test`, `-fix` and `-diff` are `go/analysis` driver flags. `declscope -help` lists the rest.
 
-Every diagnostic carries **at most one** fix, so `-fix` never has to choose. A [`boundary`](#boundary) is fixed by inserting `//declscope:package`. A [`qualify`](#qualify) or [`unqualify`](#unqualify) violation is fixed by renaming. A rename never changes a declaration's reach, and is offered only when [provably safe](#withheld-renames).
+Every diagnostic carries **at most one** fix, so `-fix` never has to choose. A [`boundary`](#boundary) is fixed by inserting `//declscope:package`. A [`qualify`](#qualify) violation is fixed by renaming. A rename never changes a declaration's reach, and is offered only when [provably safe](#withheld-renames).
 
 > [!IMPORTANT]
 > Only the test variant of a package sees its in-package `_test.go` files. So in a package that has them, renames and unused-**ignore** reports come from the test variant alone. With `-test=false`, such a package gets neither.
@@ -263,7 +263,6 @@ defaults:                 # this resolves members too, not only package-level de
 rules:
   naming:
     qualify: ondemand     # always | never | ondemand
-    unqualify: false      # true | false
     exported: false       # true | false
 
 exclude:
@@ -275,9 +274,8 @@ baseline: .declscope-baseline.yaml   # relative to this file; found automaticall
 | Key | Values | Default | Effect |
 | --- | --- | --- | --- |
 | `defaults.unexported` | `package`, `private` | `private` | Scope of a declaration or member that carries no scope directive of its own, inherits none from its type, and sits in no file that supplies one |
-| `rules.naming.qualify` | `always`, `never`, `ondemand` | `ondemand` | When the namespace prefix is required; see [`qualify`](#qualify) |
-| `rules.naming.unqualify` | `true`, `false` | `false` | Whether a prefix is forbidden where it is not required; see [`unqualify`](#unqualify) |
-| `rules.naming.exported` | `true`, `false` | `false` | Whether the naming rules also reach exported declarations. The violation is reported. The rename is never offered ([Withheld renames](#withheld-renames)). A package turning this on wants [`//declscope:core`](#the-core-namespace) on the files holding its API |
+| `rules.naming.qualify` | `always`, `never`, `ondemand` | `ondemand` | When a name must carry its namespace; see [`qualify`](#qualify) |
+| `rules.naming.exported` | `true`, `false` | `false` | Whether the naming rule also reaches exported declarations. The violation is reported. The rename is never offered ([Withheld renames](#withheld-renames)). A package turning this on wants [`//declscope:core`](#the-core-namespace) on the files holding its API |
 | `exclude` | Glob patterns matched against the file path: `*` and `?` within a path segment, `**` across segments, anchored at any segment boundary | None | Files that are neither checked nor treated as reference sites |
 | `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` at or above the package, stopping at the module root | The baseline to consult |
 
@@ -309,7 +307,7 @@ A namespace has two roles:
 | Role | Question it answers | Which namespaces have it |
 | --- | --- | --- |
 | Identity | Is this use inside the same namespace as the declaration? | Every file with a stem, `2fa.go` included: `2fa_test.go` shares its namespace like any other test |
-| Naming | Which prefix does [`qualify`](#qualify) require on the file's package-level declarations? | Only one that can start an identifier. No identifier begins with a digit, so `2faAuth` bounds its declarations and the [naming rules](#naming-rules) ask nothing of them |
+| Naming | Which namespace does [`qualify`](#qualify) ask the file's package-level declarations to carry? | Only one that can start an identifier, since the fix prefixes. No identifier begins with a digit, so `2faAuth` bounds its declarations and the [naming rule](#the-naming-rule) asks nothing of them |
 
 Files opt into a **shared** namespace with a directive before the package clause, which is how one logical unit spans several files:
 
@@ -335,7 +333,7 @@ package transport
 ```
 
 - Several files may carry `//declscope:core`. They share the one core namespace. This is how `//declscope:namespace` merges files, except that the core has no name to write.
-- The core's prefix is empty. So [`qualify`](#qualify) has no prefix to require, and [`unqualify`](#unqualify) has none to drop. The core is outside both rules.
+- The core's prefix is empty. So [`qualify`](#qualify) has nothing to ask a name to carry. The core is outside the rule.
 - Nothing is lost by that. Having no prefix still names exactly one unit, so `Load()` read in any file still says which unit owns it.
 
 > [!IMPORTANT]
@@ -411,7 +409,7 @@ A declaration's scope is decided by the first row that applies:
 
 Widening is always **stated**. It comes from a directive on the declaration, on what contains it, or on its file, or else from the `defaults` key.
 
-A declaration's *name* plays no part. A namespace prefix marks ownership ([`qualify`](#qualify)) and grants nothing. So a prefix can be added for legibility without changing what the declaration reaches, and a codebase that prefixes everything loses no protection.
+A declaration's *name* plays no part. The namespace in a name marks ownership ([`qualify`](#qualify)) and grants nothing. So a prefix can be added for legibility without changing what the declaration reaches, and a codebase that prefixes everything loses no protection.
 
 ```go
 // user.go   (namespace: user)
@@ -438,7 +436,7 @@ A **method with a receiver** is not a member, however much it reads like one. It
 | --- | --- | --- | --- |
 | Bounding namespace | Its file's | Its **type**'s file's, which is where it is written | Its file's |
 | Contained by | Its `var`/`const`/`type` block | Its **type** | Nothing |
-| [Naming rules](#naming-rules) | Apply | Do not apply | Do not apply |
+| [Naming rules](#the-naming-rule) | Apply | Do not apply | Do not apply |
 
 > [!TIP]
 > An unexported interface method is the **sealed interface** idiom: only this package can spell the name, so only this package can implement. The boundary gives it file granularity.
@@ -482,7 +480,7 @@ What `sort.go` may not do is reach into `User`'s **members**. That is the bounda
 > [!WARNING]
 > Operations on the **whole value** name no field: copying it, comparing it, zeroing it. They are outside what this can see. See [Limits of the analysis](#limits-of-the-analysis).
 
-The naming rules do not reach members or methods. Both are already qualified by their type at every use (`u.save()`). They collide with nothing, and a prefix would only stutter (`u.userSave()`).
+The naming rule does not reach members or methods. Both are already qualified by their type at every use (`u.save()`). They collide with nothing, and a prefix would only stutter (`u.userSave()`).
 
 What a member lacks in Go is encapsulation. Every unexported field is visible to its whole package. The `private` scope supplies what is missing:
 
@@ -503,7 +501,7 @@ func orderUse(u *User) {
 
 ## Rules
 
-A **rule** is one check. There are four. A rule's name is simultaneously:
+A **rule** is one check. There are three. A rule's name is simultaneously:
 
 - the diagnostic's category
 - its configuration key
@@ -515,12 +513,11 @@ A report with no rule would be one nothing could silence and no baseline could a
 | Rule | Reports | Fix | Configurable |
 | --- | --- | --- | --- |
 | [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:package` | No |
-| [`qualify`](#qualify) | A package-level declaration missing its namespace prefix | Rename to add the prefix | `rules.naming.qualify`, `rules.naming.exported` |
-| [`unqualify`](#unqualify) | A namespace prefix present where it is not required | Rename to drop the prefix | `rules.naming.unqualify`, `rules.naming.exported` |
+| [`qualify`](#qualify) | A package-level declaration whose name does not carry its namespace | Rename to prefix it | `rules.naming.qualify`, `rules.naming.exported` |
 | [`directive`](#unused-and-malformed-directives) | A directive that binds nothing, or that is malformed or misplaced | None — what to write instead is the author's decision | No |
 
 > [!NOTE]
-> Reach enforcement has no switch. Naming discipline has one. `boundary` is silenced per declaration with `//declscope:ignore boundary`, or per codebase with a [baseline](#adopting-on-an-existing-codebase). `qualify` and `unqualify` are mirrors, and never both apply to one declaration. `unqualify` is inert wherever `qualify` requires the prefix.
+> Reach enforcement has no switch. Naming discipline has one. `boundary` is silenced per declaration with `//declscope:ignore boundary`, or per codebase with a [baseline](#adopting-on-an-existing-codebase).
 
 ### `boundary`
 
@@ -559,11 +556,11 @@ The fix inserts `//declscope:package` above the declaration.
 >
 > A `private` inherited from the declaration's *type* or from a *file-level* directive does not withhold the fix. The inserted directive sits on the declaration, which outranks both. So the fix states an exception to a default. It does not overwrite a decision.
 
-### Naming rules
+### The naming rule
 
-`qualify` and `unqualify` govern one property of a package-level declaration: whether its name carries the namespace as a prefix. That prefix is the **prefix**.
+`qualify` governs one property of a package-level declaration: whether its name carries the namespace of its file, anywhere, starting at a word boundary. `statementReducer` carries `reducer`, and `NewTracer` carries `tracer`, as plainly as `userShared` carries `user`. The namespace need not lead the name. Go names a type for what it is and puts the category last, and it spells a constructor `NewX`.
 
-The prefix says which unit owns the declaration. That is what makes a cross-namespace use readable at the call site, in a stack trace, and in a grep result:
+The namespace in the name says which unit owns the declaration. That is what makes a cross-namespace use readable at the call site, in a stack trace, and in a grep result:
 
 ```go
 // order.go
@@ -572,107 +569,75 @@ func orderRun() int {
 }
 ```
 
-The prefix grants nothing. Reach is stated by [scope](#scope-resolution) alone.
+The mark grants nothing. Reach is stated by [scope](#scope-resolution) alone.
 
 > [!NOTE]
 > **"Package-level" means declared at the top level**, as opposed to a [member](#members). It does not mean the `package` scope.
 >
-> Neither rule reads a declaration's scope. A `private` declaration is asked for the prefix exactly as a `package` one is. Ownership and reach are separate questions.
+> The rule reads no declaration's scope. A `private` declaration is asked for the namespace exactly as a `package` one is. Ownership and reach are separate questions.
 
-Neither rule applies to:
+The rule does not apply to:
 
 | Declaration | Reason |
 | --- | --- |
 | A [member](#members) | Already qualified by its type |
 | `func main` in package `main` | A name the toolchain requires |
-| `TestXxx`, `BenchmarkXxx`, `FuzzXxx`, `ExampleXxx` in a `_test.go` file | The same. `go test` collects them by name, so a prefix would leave a function nothing runs |
-| A declaration in a namespace that cannot be a prefix (`2fa.go`) | There is no prefix to ask for or to drop |
+| `TestXxx`, `BenchmarkXxx`, `FuzzXxx`, `ExampleXxx` in a `_test.go` file | The same. `go test` collects them by name, so a rename would leave a function nothing runs |
+| A declaration in a namespace that cannot be a prefix (`2fa.go`) | The name could carry `2fa` inside, but the fix prefixes, and no identifier starts with a digit. The rule stays out rather than report what it cannot remedy |
 | An exported identifier, unless [`rules.naming.exported`](#configuration) is on | Off by default: how the package's API is spelled is the author's decision, not a linter's |
-| A declaration in the [core namespace](#the-core-namespace) | Its prefix is empty; there is none to require or to drop |
+| A declaration in the [core namespace](#the-core-namespace) | Its prefix is empty; there is nothing to require |
 
 > [!NOTE]
-> [Scope](#scopes) stops at the export line, because reach beyond it cannot be checked. The naming rules have a reason to cross it.
+> [Scope](#scopes) stops at the export line, because reach beyond it cannot be checked. The naming rule has a reason to cross it.
 >
-> A prefix answers one question: *which unit owns this name?* That question is asked wherever the name is read **bare**. Inside the package, an exported name is read exactly as bare as an unexported one: `Load()`, not `store.Load()`. The package qualifier that makes an external use self-explanatory is missing at precisely the use sites the prefix exists for.
+> The namespace answers one question: *which unit owns this name?* That question is asked wherever the name is read **bare**. Inside the package, an exported name is read exactly as bare as an unexported one: `Load()`, not `store.Load()`. The package qualifier that makes an external use self-explanatory is missing at precisely the use sites the mark exists for.
 >
 > So the rule is available for exported declarations, and off by default. Where it is on, the rename is never offered ([Withheld renames](#withheld-renames)). The violation is reported either way.
 
 Where [`rules.naming.qualify`](#qualify) is `ondemand`, the namespace count it depends on is the one described under [Namespaces](#namespaces).
 
-**Prefix matching.** A name carries the prefix when it begins with the namespace **ignoring case** and the prefix ends at a **word boundary**.
+**Namespace matching.** A name carries the namespace when the namespace is written anywhere in it, **ignoring case**, starting at a **word boundary**. The match may end inside a word, so a plural or an agent noun still carries it.
 
-| In `user_id.go` (namespace `userID`) | Carries the prefix |
+| In `user_id.go` (namespace `userID`) | Carries the namespace |
 | --- | --- |
-| `userIDCache`, `userIdCache`, `userIdcache` | Yes |
-| `useridentity` | No — the prefix does not end at a word boundary |
-| `user` in `user.go` | Yes for `qualify`; nothing for `unqualify` to drop |
+| `userIDCache`, `userIdCache`, `useridentity` | Yes |
+| `loadUserID`, `parseUserIds` | Yes — anywhere in the name, and the right edge may run on |
+| `poweruserID` | No — `user` does not start a word there |
+| `user` in `user.go` | Yes — the name is the namespace |
 
-**Rename spelling.** Both halves are spelled the way Go spells an initialism, and exportedness is carried across in both directions:
+> [!NOTE]
+> The left edge is anchored because the right one is not. Without the anchor, `key` would be found in `monkey`, and every short namespace would stop meaning anything. With it, the cost is a name that opens with the namespace by accident: `mode` is found in `models`. That is the narrower failure of the two.
 
-| Direction | Example | Never |
+**Rename spelling.** The fix prefixes. Both halves are spelled the way Go spells an initialism, and exportedness is kept:
+
+| Case | Example | Never |
 | --- | --- | --- |
-| `qualify` adds | `id` → `userID`, `urlPath` → `userURLPath` | `userId` |
-| `unqualify` drops | `userID` → `id`, `userURLPath` → `urlPath` | `iD` |
-| Exported, under [`rules.naming.exported`](#configuration) | `Load` → `UserLoad`, `UserID` → `ID` | `userLoad`, `id` |
+| Unexported | `id` → `userID`, `urlPath` → `userURLPath` | `userId` |
+| Exported, under [`rules.naming.exported`](#configuration) | `Load` → `UserLoad` | `userLoad` |
 
 > [!IMPORTANT]
 > A rename never changes what a name is visible to. A rename that quietly unexported a declaration would delete the package's API to satisfy a linter.
 >
 > For an exported declaration, the suggested name is all the author gets, since no rename is offered ([Withheld renames](#withheld-renames)). So the message has to be enough to act on.
 
-**Fix.** The fix of either rule renames every use of the declaration in the package. It is offered only when [provably safe](#withheld-renames). The violation is reported either way.
+> [!NOTE]
+> The suggestion is a suggestion. `statementReducer` is never asked to become `reducerStatementReducer`, since it already carries `reducer`. A name that carries nothing gets a plain prefix, and the author may prefer to weave the namespace in elsewhere. Any spelling that carries the namespace at a word boundary settles the rule.
+
+**Fix.** The fix renames every use of the declaration in the package. It is offered only when [provably safe](#withheld-renames). The violation is reported either way.
 
 #### `qualify`
 
-`qualify` requires the prefix.
+`qualify` requires the namespace in the name.
 
 | `rules.naming.qualify` | Effect |
 | --- | --- |
-| `ondemand` *(default)* | Required only once the package has a **second namespace**. In a package with one namespace there is no boundary for a prefix to mark. A prefix repeated on every declaration would distinguish nothing. |
+| `ondemand` *(default)* | Required only once the package has a **second namespace**. In a package with one namespace there is no boundary for the name to mark. A namespace repeated in every name would distinguish nothing. |
 | `always` | Required in every package, so that a package gaining its second namespace is not a mass rename. |
 | `never` | Off. |
 
 ```
-func id does not carry the prefix of namespace "user"; rename it to userID
+func id does not carry namespace "user" anywhere in its name; rename it to userID
 ```
-
-#### `unqualify`
-
-`unqualify` forbids the prefix wherever `qualify` does not require it. With both rules on, the spelling of every package-level name they reach is decided in both directions. Each direction is fixable wherever a rename is [provably safe](#withheld-renames).
-
-| `rules.naming.unqualify` | Effect |
-| --- | --- |
-| `false` *(default)* | Off. |
-| `true` | Forbidden wherever `qualify` does not require the prefix. |
-
-> [!NOTE]
-> `unqualify` is a **boolean, not a mode.** [`rules.naming.qualify`](#qualify) already answers every question about *when* a prefix applies. All this key adds is whether the other direction is enforced too.
->
-> `always`/`never` would suggest a third setting that could never exist. It would also misdescribe `true`, which is conditional by construction:
->
-> | Paired with | `unqualify: true` acts |
-> | --- | --- |
-> | `qualify: ondemand` *(default)* | Only in a package with one namespace |
-> | `qualify: always` | Nowhere. The prefix is always required |
-> | `qualify: never` | Everywhere, stripping prefixes throughout |
->
-> That last pairing is the coherent way to say *this codebase does not use prefixes; take them off*.
-
-> [!WARNING]
-> Under `unqualify: true`, **every** prefix matching the namespace is treated as the prefix. Nothing in a name tells `userID`-the-prefix from `userID`-the-word. A prefix that is part of the concept is declared on the declaration:
->
-> ```go
-> //declscope:ignore unqualify
-> var userID int
-> ```
-
-Where no new name can be derived, the violation is still reported, with the reason and without a fix. Being unable to spell the new name is a limit of the fix, not a reason to let the prefix stand.
-
-| Name | Reported as |
-| --- | --- |
-| `userCache` in `user.go` | `func userCache carries the prefix of namespace "user", which is not required here; rename it to cache` |
-| `userType` in `user.go` | `func userType carries the prefix of namespace "user", which is not required here, but "type" is a keyword; rename it by hand` |
-| `userIdcache` in `user_id.go` | `… but what follows the prefix does not start a new word; rename it by hand` |
 
 #### Withheld renames
 
@@ -704,7 +669,7 @@ The violation is reported, and the fix withheld, when any of the following holds
 | The declaration is used from a generated or `exclude`d file | Those files are never rewritten, so the use would dangle |
 | A file the build configuration excludes writes the declaration's name, or already declares the new one | A `_GOOS` suffix or a `//go:build` line keeps the file out of this configuration. The fix rewrites only what it can see. The other configuration would be left calling a name that no longer exists, or declaring the new one twice |
 | A `//go:linkname` or `//export` directive names the declaration | The directive names it as text, which a rename cannot follow |
-| Another fix in the same run already renames something to that name | Two declarations would end up with one name (`a.go:bX` and `a_b.go:x` both prefix to `aBX`; `fooBar` and `fooBAR` both drop to `bar`) |
+| Another fix in the same run already renames something to that name | Two declarations would end up with one name: `a.go`'s `bX` and `a_b.go`'s `x` both prefix to `aBX` |
 | The package has in-package `_test.go` files that this variant does not see, or its directory cannot be listed | The test files may declare or use the name; the test variant, which sees every file, decides, and its fix covers the non-test files too |
 
 Each condition is conservative: **a doubt withholds the fix, never the diagnostic.** The *exported* row is not a doubt but a certainty. No run of declscope can ever see all the uses of an exported name.
@@ -724,7 +689,7 @@ A **directive** is a comment beginning `//declscope:` (`/*declscope:` … `*/` i
 | --- | --- | --- |
 | `//declscope:package`, `//declscope:private` | Declaration or file | States the [scope](#scope-resolution) instead of inheriting it from the level above, which is the type, then the file, then `defaults`. On a type it also reaches the type's [fields](#members), but not its methods: a method takes its own file's level. On a file it is the default for what the file declares |
 | `//declscope:ignore` | Declaration or file | Silences every rule |
-| `//declscope:ignore <rules>` | Declaration or file | Silences the named [rules](#rules), comma-separated (`unqualify`, `unqualify,qualify`) |
+| `//declscope:ignore <rules>` | Declaration or file | Silences the named [rules](#rules), comma-separated (`qualify`, `boundary,qualify`) |
 | `//declscope:core` | File | Joins the file to the package's **core** [namespace](#the-core-namespace). Carries no scope. Mutually exclusive with `//declscope:namespace` |
 | `//declscope:namespace <name>` | File | Sets the file's [namespace](#namespaces); the name must be an unexported identifier |
 
@@ -807,7 +772,7 @@ package repo
 A file-level ignore takes the same argument as the declaration-level form, so the directive means one thing wherever it appears:
 
 ```go
-//declscope:ignore qualify,unqualify
+//declscope:ignore boundary,qualify
 
 package store
 ```
@@ -816,7 +781,7 @@ A **utility file** is the clearest case for the file level, and it wants directi
 
 ```go
 // util.go
-//declscope:core    // the unprefixed unit, so no prefix is asked for
+//declscope:core    // the unprefixed unit, so nothing is asked of its names
 //declscope:package // usable from every file
 
 package store
@@ -827,7 +792,7 @@ func first[T any](s []T) T { ... }
 
 [`//declscope:core`](#the-core-namespace) decides the namespace and `//declscope:package` decides the scope, so `must(err)` reads the same from every file and reaches every one of them.
 
-Without the core, the prefix is required and the same helpers are `utilMust` and `utilFirst`. That is a real choice rather than a worse one: the prefix tells a distant call site whose helper it is. What matters is that both options **state** something. An ignore states nothing.
+Without the core, the namespace is required in the names and the same helpers are `utilMust` and `utilFirst`. That is a real choice rather than a worse one: the namespace tells a distant call site whose helper it is. What matters is that both options **state** something. An ignore states nothing.
 
 That is the difference between **endorsing** and **suppressing**:
 
@@ -835,7 +800,7 @@ That is the difference between **endorsing** and **suppressing**:
 | --- | --- | --- |
 | States a scope | Yes | No |
 | A declaration can be narrowed back | Yes, with `//declscope:private` | No. It would mean nothing at all |
-| [`qualify`](#qualify) still asks for the prefix | Yes, unless the file is also core | No, the rule is off |
+| [`qualify`](#qualify) still asks for the namespace | Yes, unless the file is also core | No, the rule is off |
 
 > [!NOTE]
 > The directive belongs to the **file**, not to the namespace. The namespace comes from the file name or from `//declscope:namespace`, and the package clause has nothing to do with either. Files that share a namespace each need their own. One file cannot silence a rule on behalf of another.
@@ -879,7 +844,7 @@ A diagnostic is silenced by any directive that covers its rule at any of these l
 
 ### Unused and malformed directives
 
-A directive that decides nothing is reported, so that neither a suppression nor a claim of intent outlives what justified it. `//declscope:ignore unqualify` is unused if nothing but `unqualify` would have fired.
+A directive that decides nothing is reported, so that neither a suppression nor a claim of intent outlives what justified it. `//declscope:ignore qualify` is unused if nothing but `qualify` would have fired.
 
 A **scope** directive is judged by what it binds, not by what it sits on. A declaration is bound when the scope named is one it could not have had anyway, **under every configuration**. Quantifying over configurations is what keeps the answer out of the configuration's hands:
 
@@ -931,7 +896,7 @@ A malformed directive is reported at the comment:
 | `//declscope:package x` | `//declscope:package takes no argument` |
 | `//declscope:private` and `//declscope:package` on one declaration, or on one file | `conflicting scope directives: …` |
 | `//declscope:core` and `//declscope:namespace` on one file | `conflicting namespace directives: a core file's namespace is the core` |
-| `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, unqualify, directive)` |
+| `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, directive)` |
 | `//declscope:namespace` after the package clause | `declscope:namespace must appear before the package clause` |
 | `//declscope:namespace` with no name, a second one, or a name that is not an unexported identifier | Reported as such |
 | `//declscope:core` with an argument, or a second one on the same file | Reported as such |

@@ -1,4 +1,0 @@
-# The mirror of the naming rule: where the prefix is not required, forbid it.
-rules:
-  naming:
-    unqualify: true

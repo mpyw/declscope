@@ -14,15 +14,15 @@
 //
 // A namespace does two jobs, and they are deliberately kept apart. As an
 // identity it answers "is this reference inside the same namespace?", and
-// every file that has a stem has one. As a prefix it is the prefix that the
-// naming rules ask an unexported declaration to carry, and only a namespace
-// that can start an identifier qualifies; CanPrefix tells the two apart. 2fa.go
-// is a namespace that a test file can share, but no identifier begins with a
-// digit, so it can never be a prefix.
+// every file that has a stem has one. As a mark it is what the naming rule
+// asks a declaration's name to carry somewhere (Contains), offering a prefix
+// when it is absent (Qualify), and only a namespace that can start an
+// identifier qualifies for the fix; CanPrefix tells the two apart. 2fa.go is a
+// namespace that a test file can share, but no identifier begins with a digit,
+// so it can never be a prefix.
 package namespace
 
 import (
-	"fmt"
 	"go/ast"
 	"go/token"
 	"path/filepath"
@@ -77,36 +77,10 @@ func CanPrefix(ns string) bool {
 	return token.IsIdentifier(ns) || token.IsKeyword(ns)
 }
 
-// HasPrefix reports whether an identifier carries ns as a namespace prefix.
-//
-// The comparison ignores case, so that the author need not guess which
-// spelling of an initialism the namespace uses: userIDCache and userIdCache
-// both carry the prefix of user_id.go. What it does insist on is that the
-// prefix is a whole word and not a fragment of a longer one, so namespace
-// "user" claims userCache and user2 but neither users nor usercache. A name
-// that reproduces a word break inside a multi-word namespace has already
-// shown the prefix is there, which is why userIdcache carries userId even
-// though what follows is lowercase.
-func HasPrefix(name, ns string) bool {
-	if ns == "" {
-		return false
-	}
-	rest, ok := cutFold(name, ns)
-	if !ok {
-		return false
-	}
-	if rest == "" {
-		return true
-	}
-	r, _ := utf8.DecodeRuneInString(rest)
-	if unicode.IsUpper(r) || unicode.IsDigit(r) {
-		return true
-	}
-	return hasWordBreak(name[:len(name)-len(rest)])
-}
-
-// Qualify returns name rewritten to carry ns as its prefix, which is the
-// rename offered when a declaration is missing its prefix.
+// Qualify returns name rewritten to carry ns as a prefix, which is the rename
+// offered when a name does not carry its namespace anywhere (see Contains). A
+// name that already carries it is left alone, so the fix can never double a
+// word the name already has.
 //
 // The first word of name is capitalized the way Go spells it, so id becomes
 // userID and urlPath becomes userURLPath rather than userId and userUrlPath.
@@ -117,7 +91,7 @@ func HasPrefix(name, ns string) bool {
 // Load in user.go would be renamed to userLoad, deleting the package's API to
 // satisfy a linter. An exported name takes an exported prefix instead.
 func Qualify(name, ns string) string {
-	if !CanPrefix(ns) || HasPrefix(name, ns) {
+	if !CanPrefix(ns) || Contains(name, ns) {
 		return name
 	}
 	out := ns + capitalize(name)
@@ -231,17 +205,6 @@ func cutFold(name, prefix string) (rest string, ok bool) {
 	return name, true
 }
 
-// hasWordBreak reports whether s contains a capital anywhere but its first
-// rune, which in a lowerCamelCase identifier means it is more than one word.
-func hasWordBreak(s string) bool {
-	for i, r := range s {
-		if i > 0 && unicode.IsUpper(r) {
-			return true
-		}
-	}
-	return false
-}
-
 func isInitialism(s string) bool { return commonInitialisms[strings.ToUpper(s)] }
 func isKnownOS(s string) bool    { return knownOS[s] }
 func isKnownArch(s string) bool  { return knownArch[s] }
@@ -278,48 +241,52 @@ var knownArch = map[string]bool{
 	"s390x": true, "sparc": true, "sparc64": true, "wasm": true,
 }
 
-// Unqualify returns name with ns stripped from its front, which is the rename
-// offered when a namespace prefix is not wanted.
+// Contains reports whether ns is written in name, beginning at a word boundary.
+// The match may end inside a word, so parse is carried by SpecifierParser and
+// conflict by CheckConflicts: a name that spells its namespace as a plural or
+// an agent noun carries it as plainly as one that spells it whole.
 //
-// The prefix is matched the way HasPrefix matches it, ignoring case. The
-// leading run of capitals left behind is lowered the way Go spells an
-// identifier that starts with an initialism, so userID yields id and
-// userURLPath yields urlPath rather than iD and uRLPath.
+// The left edge is anchored because the right one is not. Without the anchor,
+// key would be found in monkey and every short namespace would stop meaning
+// anything. With it, the cost is names that open with the namespace by accident
+// — mode is found in models — which is the narrower failure of the two.
 //
-// When no rename can be derived, short is empty and why says so, for reporting
-// the violation without a fix: being unable to spell the new name is a limit
-// of the fix, not a reason to let the prefix stand.
-func Unqualify(name, ns string) (short, why string) {
+// Matching is case-folded: a namespace is an identity, and the leading letter
+// of a name is decided by whether it is exported, not by the namespace.
+func Contains(name, ns string) bool {
 	if ns == "" {
-		return "", "the name does not begin with the namespace"
+		return false
 	}
-	rest, ok := cutFold(name, ns)
-	if !ok {
-		return "", "the name does not begin with the namespace"
+	for i := range name {
+		if !wordStart(name, i) {
+			continue
+		}
+		if _, ok := cutFold(name[i:], ns); ok {
+			return true
+		}
 	}
-	if rest == "" {
-		return "", "nothing would remain"
-	}
+	return false
+}
 
-	r, _ := utf8.DecodeRuneInString(rest)
-	if !unicode.IsUpper(r) && !unicode.IsDigit(r) {
-		// The prefix was confirmed by a word break inside the namespace, but
-		// what follows it does not start a word of its own, so there is no
-		// clean place to cut: userIdcache is a prefix and then a fragment.
-		return "", "what follows the prefix does not start a new word"
+// wordStart reports whether the rune at byte offset i opens a word of a
+// camelCase identifier. An initialism counts as one word, so the P of APIParser
+// opens a word while the I of API does not: inside a run of capitals, only the
+// last one does, and only because a lowercase rune follows it.
+func wordStart(name string, i int) bool {
+	if i == 0 {
+		return true
 	}
-	rest = lowerLeading(rest)
-	// Dropping the prefix must not change what the name is visible to either:
-	// UserID drops to ID, never to id.
-	if ast.IsExported(name) {
-		rest = capitalize(rest)
+	r, size := utf8.DecodeRuneInString(name[i:])
+	prev, _ := utf8.DecodeLastRuneInString(name[:i])
+	if unicode.IsDigit(r) != unicode.IsDigit(prev) {
+		return true
 	}
-
-	switch {
-	case token.IsKeyword(rest):
-		return "", fmt.Sprintf("%q is a keyword", rest)
-	case !token.IsIdentifier(rest):
-		return "", fmt.Sprintf("%q is not a valid identifier", rest)
+	if !unicode.IsUpper(r) {
+		return false
 	}
-	return rest, ""
+	if !unicode.IsUpper(prev) {
+		return true
+	}
+	next, _ := utf8.DecodeRuneInString(name[i+size:])
+	return unicode.IsLower(next)
 }

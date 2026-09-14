@@ -4,15 +4,16 @@
 //
 // Package-level identifiers compete in one flat namespace, so the problem
 // there is namespace pollution. An unexported identifier is private to its
-// file's namespace unless a directive widens it, and the naming rules ask it
-// to carry that namespace as a prefix, so that the owning unit is legible at
-// every use site. The prefix marks ownership. It never grants reach.
+// file's namespace unless a directive widens it, and the naming rule asks it
+// to carry that namespace somewhere in its name, so that the owning unit is
+// legible at every use site. The namespace marks ownership. It never grants
+// reach.
 //
 // Methods and struct fields are already namespaced by the type that owns them
 // and cannot collide with anything, so the problem there is not pollution but
 // encapsulation: Go makes every unexported member visible to the whole
 // package, with no way to say otherwise. Members are exempt from the naming
-// rules, and their bound is the namespace of the type, not of the file.
+// rule, and their bound is the namespace of the type, not of the file.
 //
 //declscope:core
 package internal

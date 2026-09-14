@@ -1,8 +1,8 @@
-//declscope:ignore unqualify // want `unused file-level //declscope:ignore unqualify`
+//declscope:ignore qualify // want `unused file-level //declscope:ignore qualify`
 
 package fileignore
 
-// Prefixed, and unqualify is off, so the directive silences nothing.
+// The name carries its namespace, so the directive silences nothing.
 func cleanOK() int { return 4 }
 
 var _ = cleanOK
