@@ -247,3 +247,40 @@ func TestUnqualifyDeclines(t *testing.T) {
 		}
 	}
 }
+
+func TestContainsCases(t *testing.T) {
+	tests := []struct {
+		name, ns string
+		want     bool
+	}{
+		// 実測で「接頭辞を強いると語が二重になる」形。すべて通るべき。
+		{"statementReducer", "reducer", true},
+		{"NewRegistry", "registry", true},
+		{"LoadConfig", "config", true},
+		{"NewTracer", "tracer", true},
+		{"hasDirective", "directive", true},
+		{"AWSScope", "scope", true},
+		{"BuildIgnoreMap", "ignore", true},
+		// 語の派生。右端が語の途中で終わる。
+		{"SpecifierParser", "parse", true},
+		{"CheckConflicts", "conflict", true},
+		{"APIParser", "parse", true},
+		// ファイル stem と識別子でトークン分割がずれる場合。
+		{"NewAzureAppConfigParamStrategy", "azureAppconfigParam", true},
+		// 名前空間そのもの。
+		{"collect", "collect", true},
+		// 左端が語境界でない。通ってはいけない。
+		{"monkey", "key", false},
+		{"UntagCommand", "tag", false},
+		// 名前空間をまったく含まない。
+		{"Wrap", "client", false},
+		{"nounSecret", "command", false},
+		// 左端固定の代償として受理されるもの。意図的。
+		{"models", "mode", true},
+	}
+	for _, tt := range tests {
+		if got := namespace.Contains(tt.name, tt.ns); got != tt.want {
+			t.Errorf("Contains(%q, %q) = %v, want %v", tt.name, tt.ns, got, tt.want)
+		}
+	}
+}

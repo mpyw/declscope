@@ -323,3 +323,53 @@ func Unqualify(name, ns string) (short, why string) {
 	}
 	return rest, ""
 }
+
+// Contains reports whether ns is written in name, beginning at a word boundary.
+// The match may end inside a word, so parse is carried by SpecifierParser and
+// conflict by CheckConflicts: a name that spells its namespace as a plural or
+// an agent noun carries it as plainly as one that spells it whole.
+//
+// The left edge is anchored because the right one is not. Without the anchor,
+// key would be found in monkey and every short namespace would stop meaning
+// anything. With it, the cost is names that open with the namespace by accident
+// — mode is found in models — which is the narrower failure of the two.
+//
+// Matching is case-folded, as HasPrefix is: a namespace is an identity, and the
+// leading letter of a name is decided by whether it is exported.
+func Contains(name, ns string) bool {
+	if ns == "" {
+		return false
+	}
+	for i := range name {
+		if !wordStart(name, i) {
+			continue
+		}
+		if _, ok := cutFold(name[i:], ns); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// wordStart reports whether the rune at byte offset i opens a word of a
+// camelCase identifier. An initialism counts as one word, so the P of APIParser
+// opens a word while the I of API does not: inside a run of capitals, only the
+// last one does, and only because a lowercase rune follows it.
+func wordStart(name string, i int) bool {
+	if i == 0 {
+		return true
+	}
+	r, size := utf8.DecodeRuneInString(name[i:])
+	prev, _ := utf8.DecodeLastRuneInString(name[:i])
+	if unicode.IsDigit(r) != unicode.IsDigit(prev) {
+		return true
+	}
+	if !unicode.IsUpper(r) {
+		return false
+	}
+	if !unicode.IsUpper(prev) {
+		return true
+	}
+	next, _ := utf8.DecodeRuneInString(name[i+size:])
+	return unicode.IsLower(next)
+}
