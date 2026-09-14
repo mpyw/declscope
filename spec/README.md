@@ -20,11 +20,11 @@ the binary.
 
 | Spec | Claim | Scope covered |
 | --- | --- | --- |
-| `naming_rules.fsl` | `qualify` and `unqualify` never both fire for one declaration | Every combination of `rules.naming.qualify`, `rules.naming.unqualify`, `rules.naming.exported`, namespace count, kind, exportedness, namespace presence, core membership and prefix |
-| `naming_rules.fsl` | Applying either prefix fix removes the violation it addresses, and neither is applied where its violation does not exist | As above |
+| `naming_rules.fsl` | `qualify` fires only where the name carries its namespace nowhere. A name carrying it inside — `statementReducer` in `reducer.go` — is silent even under `always` | Every combination of `rules.naming.qualify`, `rules.naming.exported`, namespace count, kind, exportedness, core membership, prefixability and where the name carries the namespace |
+| `naming_rules.fsl` | Applying the prefix fix removes the violation, and no fix is applied where no violation exists | As above |
 | `naming_rules.fsl` | No rename is ever applied to an exported declaration | As above |
-| `naming_rules.fsl` | Each naming key bites in both directions, and each silence is witnessed with every other reason for silence pinned | As above |
-| `naming_rules.fsl` | The core namespace is outside both rules, whatever is configured | As above |
+| `naming_rules.fsl` | Each naming key bites, and each silence is witnessed with every other reason for silence pinned | As above |
+| `naming_rules.fsl` | The core namespace is outside the rule, whatever is configured | As above |
 | `boundary_fix.fsl` | Inserting `//declscope:package` always removes the boundary crossing, and is withheld wherever any level already stated a scope | Every combination of `defaults.unexported`, kind, exportedness, reference shape, and the declaration, block, type and file directives |
 | `boundary_fix.fsl` | The fix is offered only where a crossing exists, and never overwrites the declaration's own directive | As above |
 | `knobs.fsl` | `defaults.unexported` and every directive level demonstrably change an outcome, for each kind of declaration | As above |
@@ -138,7 +138,8 @@ is a semantics that contradicts the documented one; each was run:
 | A boundary is reported for a scope that is not private | `violated` |
 | `rules.naming.exported` is ignored and exported names are always named | `reachable_failed` |
 | `rules.naming.exported` also gates on the namespace count | `reachable_failed` |
-| The naming rules reach members | `reachable_failed` |
+| The naming rule reaches members | `reachable_failed` |
+| Containment is narrowed back to a prefix requirement | `reachable_failed` (`InsideSilentUnderAlways`, `InsideWouldHaveFiredBefore`) |
 | The core namespace is named like any other | `reachable_failed` |
 | A prefix fix does not record itself | `reachable_failed` |
 | A fix is applied to an exported declaration | `violated` |
