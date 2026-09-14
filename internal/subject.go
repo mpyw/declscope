@@ -1,11 +1,12 @@
 // subject.go is the subject the stages share: the file and declaration
 // model, the index built over it, and the problem sink. collect.go fills
 // the index, every later stage reads it, and each stage appends what it
-// finds to the one problem list, so everything here is deliberately
-// package-wide. The file joins the core namespace so the model keeps its
-// bare names: in a named namespace every type here would need that
-// namespace's prefix, and a collectTarget would spell the builder's name
-// into the model that every other file reads.
+// finds to the one problem list, so the model is deliberately
+// package-wide; what states its own scope below is the exception. The
+// file joins the core namespace so the model keeps its bare names: in a
+// named namespace every type here would need that namespace's prefix,
+// and a collectTarget would spell the builder's name into the model that
+// every other file reads.
 //
 //declscope:core
 //declscope:package
@@ -70,25 +71,6 @@ func (f *fileInfo) key() string {
 	return "\x00" + f.path
 }
 
-// nsName spells the namespace for the baseline, which is the one place it has
-// to be written down rather than compared.
-//
-// A namespace derived from a file name is normalized to alphanumerics, and one
-// written with //declscope:namespace must be an unexported identifier, so a
-// parenthesis can appear in neither. That leaves "(core)" free for the core,
-// whose prefix is empty and whose files all share it, and free for the file
-// with no stem at all — which has no namespace either, and must not share a
-// key with every other such file.
-func (f *fileInfo) nsName() string {
-	if f.core {
-		return "(core)"
-	}
-	if f.ns != "" {
-		return f.ns
-	}
-	return "(file " + filepath.Base(f.path) + ")"
-}
-
 // kind describes what a target declares, for diagnostic wording.
 type kind string
 
@@ -133,7 +115,7 @@ type target struct {
 	// own directive in those cases would point at a comment that is not there.
 	boundBy directive.Decl
 	// boundAt names which level that was.
-	boundAt scopeLevel
+	boundAt scopesiteLevel
 	// dir holds the directives reaching the declaration. Its Ignores may be
 	// shared with sibling targets — a block's directive reaches every spec —
 	// so whether one silenced anything is tracked per physical directive in
@@ -153,18 +135,27 @@ func (t *target) name() string {
 	return t.obj.Name()
 }
 
-// scopeLevel names which level supplied a scope. A diagnostic that inferred it
-// from the kind instead would tell a reader to look for a comment that is not
-// there: a field takes its type's directive and its file's alike, and only the
-// level knows which one decided.
-type scopeLevel int
-
-const (
-	levelDefault scopeLevel = iota
-	levelDecl
-	levelContainer
-	levelFile
-)
+// methodOwner returns the object of the type a method is declared on, nil
+// when the receiver names no type in the package. It fills ownerObj for a
+// method, the way the enclosing TypeSpec fills it for a member.
+func methodOwner(fn *types.Func) types.Object {
+	sig, ok := fn.Type().(*types.Signature)
+	if !ok || sig.Recv() == nil {
+		return nil
+	}
+	t := sig.Recv().Type()
+	if ptr, ok := types.Unalias(t).(*types.Pointer); ok {
+		t = ptr.Elem()
+	}
+	named, ok := types.Unalias(t).(*types.Named)
+	if !ok {
+		return nil
+	}
+	// A method on a generic type receives List[T], an instantiation of List
+	// with its own type parameters. Obj() already names the origin's type name,
+	// which is the object collectTargets registered.
+	return named.Obj()
+}
 
 // ref is a use of a target from somewhere in the package.
 type ref struct {
@@ -277,15 +268,21 @@ func isExported(name string) bool { return ast.IsExported(name) }
 // ever offered in a package that carries a _GOOS suffix. Those files are read
 // instead for the identifiers they write, and only a rename that disturbs one
 // of them is withheld.
+//
+//declscope:private // only unseen hands it out, and no caller spells the type
 type unseenFiles struct {
 	// all withholds every rename: an in-package test file this pass does not
 	// see, or something in the directory that could not be read or parsed.
+	//
+	//declscope:package // rename.go and ignore.go defer wholesale on it
 	all bool
 
 	// names is every identifier written in an unseen file that was read. A
 	// rename is withheld when it takes one of these names away or claims one:
 	// the excluded file would otherwise still spell the old name, or would
 	// find the new one declared twice.
+	//
+	//declscope:package // rename.go checks the old and the new name against it
 	names map[string]bool
 }
 

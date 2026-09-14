@@ -47,12 +47,15 @@ type scopesiteBook struct {
 //     has, so it is provably inert; //declscope:private narrows it, so it is
 //     not.
 //
-//declscope:package // the collector registers and names the sites as it parses
+//declscope:private // only scopeSite hands it out, and no caller spells the type
 type scopeSite struct {
 	dir directive.Decl
 	// decls names the declarations in its reach, in source order, for the
 	// report. Empty for a file-level directive.
-	decls     []string
+	//
+	//declscope:package // collect.go names each target on it as it adds them
+	decls []string
+	//declscope:package // collect.go marks it when the directive is the file's
 	fileLevel bool
 	bound     bool
 
@@ -91,6 +94,22 @@ func (c *collection) shadow(outer, merged directive.Decl) {
 	}
 }
 
+// scopesiteLevel names which level supplied a scope. A diagnostic that
+// inferred it from the kind instead would tell a reader to look for a comment
+// that is not there: a field takes its type's directive and its file's alike,
+// and only the level knows which one decided.
+//
+//declscope:package // subject.go's target records it in boundAt
+type scopesiteLevel int
+
+//declscope:package // report.go words each boundary finding by the level
+const (
+	scopesiteLevelDefault scopesiteLevel = iota
+	scopesiteLevelDecl
+	scopesiteLevelContainer
+	scopesiteLevelFile
+)
+
 // bind resolves a declaration's scope and records which directive supplied it.
 //
 // The second result is the directive that supplied the scope, zero when the
@@ -99,22 +118,22 @@ func (c *collection) shadow(outer, merged directive.Decl) {
 // author's decision or merely state an exception to a default.
 //
 //declscope:package // the one scope resolution, shared with the collector
-func (c *collection) bind(opts Options, name string, dir, container, file directive.Decl) (scope.Scope, directive.Decl, scopeLevel) {
+func (c *collection) bind(opts Options, name string, dir, container, file directive.Decl) (scope.Scope, directive.Decl, scopesiteLevel) {
 	levels := []directive.Decl{dir, container, file}
 	for i, d := range levels {
 		if !d.HasScope {
 			continue
 		}
-		if !c.inert(opts, name, d.Scope, levels[i+1:]) {
+		if !scopesiteInert(opts, name, d.Scope, levels[i+1:]) {
 			c.scopeSite(d).bound = true
 		}
-		return d.Scope, d, scopeLevel(i + 1)
+		return d.Scope, d, scopesiteLevel(i + 1)
 	}
-	outer, _ := c.outerScope(opts, name, nil)
-	return outer, directive.Decl{}, levelDefault
+	outer, _ := scopesiteOuterScope(opts, name, nil)
+	return outer, directive.Decl{}, scopesiteLevelDefault
 }
 
-// outerScope is the scope a declaration would take from the levels outside the
+// scopesiteOuterScope is the scope a declaration would take from the levels outside the
 // one being judged. The second result says whether that scope is the same under
 // every configuration — it is not when it came from defaults.unexported, which
 // is the whole reason the inert test can be asked at all.
@@ -123,7 +142,7 @@ func (c *collection) bind(opts Options, name string, dir, container, file direct
 // reached by every importer already, so the analysis has no line around it that
 // it could also check; an author who states one is stating it, not guessing, and
 // the directive binds.
-func (c *collection) outerScope(opts Options, name string, rest []directive.Decl) (scope.Scope, bool) {
+func scopesiteOuterScope(opts Options, name string, rest []directive.Decl) (scope.Scope, bool) {
 	for _, d := range rest {
 		if d.HasScope {
 			return d.Scope, true
@@ -135,7 +154,7 @@ func (c *collection) outerScope(opts Options, name string, rest []directive.Decl
 	return opts.Unexported, false
 }
 
-// inert reports whether stating a scope decides nothing, under every
+// scopesiteInert reports whether stating a scope decides nothing, under every
 // configuration: the declaration would have had that very scope anyway, and no
 // setting could have made it otherwise.
 //
@@ -146,8 +165,8 @@ func (c *collection) outerScope(opts Options, name string, rest []directive.Decl
 // permanent false report. And it would miss a directive that restates an
 // enclosing one, which decides nothing for the same reason a redundant default
 // does not: nothing about it could have gone another way.
-func (c *collection) inert(opts Options, name string, stated scope.Scope, rest []directive.Decl) bool {
-	outer, fixed := c.outerScope(opts, name, rest)
+func scopesiteInert(opts Options, name string, stated scope.Scope, rest []directive.Decl) bool {
+	outer, fixed := scopesiteOuterScope(opts, name, rest)
 	return fixed && stated == outer
 }
 
