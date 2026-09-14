@@ -77,37 +77,6 @@ func CanPrefix(ns string) bool {
 	return token.IsIdentifier(ns) || token.IsKeyword(ns)
 }
 
-// HasPrefix reports whether an identifier carries ns as a namespace prefix.
-// It is stricter than Contains on both edges: the namespace must lead the
-// name and must end at a word boundary. The qualify rule gates on Contains;
-// this is the test for the specific shape the fix produces.
-//
-// The comparison ignores case, so that the author need not guess which
-// spelling of an initialism the namespace uses: userIDCache and userIdCache
-// both carry the prefix of user_id.go. What it does insist on is that the
-// prefix is a whole word and not a fragment of a longer one, so namespace
-// "user" claims userCache and user2 but neither users nor usercache. A name
-// that reproduces a word break inside a multi-word namespace has already
-// shown the prefix is there, which is why userIdcache carries userId even
-// though what follows is lowercase.
-func HasPrefix(name, ns string) bool {
-	if ns == "" {
-		return false
-	}
-	rest, ok := cutFold(name, ns)
-	if !ok {
-		return false
-	}
-	if rest == "" {
-		return true
-	}
-	r, _ := utf8.DecodeRuneInString(rest)
-	if unicode.IsUpper(r) || unicode.IsDigit(r) {
-		return true
-	}
-	return hasWordBreak(name[:len(name)-len(rest)])
-}
-
 // Qualify returns name rewritten to carry ns as a prefix, which is the rename
 // offered when a name does not carry its namespace anywhere (see Contains). A
 // name that already carries it is left alone, so the fix can never double a
@@ -236,17 +205,6 @@ func cutFold(name, prefix string) (rest string, ok bool) {
 	return name, true
 }
 
-// hasWordBreak reports whether s contains a capital anywhere but its first
-// rune, which in a lowerCamelCase identifier means it is more than one word.
-func hasWordBreak(s string) bool {
-	for i, r := range s {
-		if i > 0 && unicode.IsUpper(r) {
-			return true
-		}
-	}
-	return false
-}
-
 func isInitialism(s string) bool { return commonInitialisms[strings.ToUpper(s)] }
 func isKnownOS(s string) bool    { return knownOS[s] }
 func isKnownArch(s string) bool  { return knownArch[s] }
@@ -293,8 +251,8 @@ var knownArch = map[string]bool{
 // anything. With it, the cost is names that open with the namespace by accident
 // — mode is found in models — which is the narrower failure of the two.
 //
-// Matching is case-folded, as HasPrefix is: a namespace is an identity, and the
-// leading letter of a name is decided by whether it is exported.
+// Matching is case-folded: a namespace is an identity, and the leading letter
+// of a name is decided by whether it is exported, not by the namespace.
 func Contains(name, ns string) bool {
 	if ns == "" {
 		return false

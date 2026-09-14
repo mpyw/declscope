@@ -109,51 +109,6 @@ func TestCanPrefix(t *testing.T) {
 	}
 }
 
-func TestHasPrefix(t *testing.T) {
-	tests := []struct {
-		name, ns string
-		want     bool
-	}{
-		{"userCache", "user", true},
-		{"user", "user", true},
-		{"user2", "user", true},
-		{"users", "user", false},
-		{"userscache", "user", false},
-		{"usercache", "user", false},
-		{"cache", "user", false},
-		{"anything", "", false},
-
-		// Case is ignored, so the author need not guess which spelling of
-		// an initialism the namespace uses.
-		{"userIDCache", "userId", true},
-		{"userIdCache", "userID", true},
-		{"userID", "userId", true},
-		{"userid", "userID", true},
-		{"useridCache", "userID", true},
-		{"parseJsonTree", "parseJSON", true},
-
-		// A word break inside a multi-word namespace already confirms the
-		// prefix, so a lowercase continuation is a fragment after it rather
-		// than proof there was none.
-		{"userIdcache", "userId", true},
-		{"userIdcache", "userID", true},
-		{"userIDcache", "userId", true},
-
-		// But a single word followed by lowercase is just a longer word.
-		{"useridentity", "userID", false},
-		{"userids", "userID", false},
-
-		// Unrelated names.
-		{"orderIDCache", "userID", false},
-		{"user", "userID", false},
-	}
-	for _, tt := range tests {
-		if got := namespace.HasPrefix(tt.name, tt.ns); got != tt.want {
-			t.Errorf("HasPrefix(%q, %q) = %v, want %v", tt.name, tt.ns, got, tt.want)
-		}
-	}
-}
-
 func TestQualify(t *testing.T) {
 	tests := []struct {
 		name, ns, qualified string
