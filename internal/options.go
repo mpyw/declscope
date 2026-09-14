@@ -16,14 +16,14 @@ type Options struct {
 	Unexported scope.Scope
 
 	// Qualify says when a package-level declaration must carry its namespace
-	// as a prefix.
+	// somewhere in its name.
 	Qualify Mode
 
 	// NameExported widens the naming rule to exported declarations. Inside
 	// the package an exported name is read as bare as any other, so the package
 	// qualifier that explains an external use is absent exactly where the
-	// prefix is wanted. The violation is reported. The rename is never offered,
-	// since the uses outside the package cannot be seen.
+	// namespace mark is wanted. The violation is reported. The rename is never
+	// offered, since the uses outside the package cannot be seen.
 	NameExported bool
 
 	// Exclude holds glob patterns matched against file paths.
@@ -46,10 +46,8 @@ type Options struct {
 
 // DefaultOptions mirrors the rules stated in the README: every declaration in
 // the subject is private to its namespace until something widens it, and the
-// namespace prefix is an ownership prefix, required once a package has a second
-// namespace, that grants nothing by itself.
-//
-//declscope:ignore qualify // DefaultOptions is how Go spells a constructor
+// namespace in a name is an ownership mark, required once a package has a
+// second namespace, that grants nothing by itself.
 func DefaultOptions() Options {
 	return Options{
 		Unexported: scope.Private,

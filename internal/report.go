@@ -248,31 +248,35 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 	return f, true
 }
 
-// checkQualify requires a package-level declaration to carry its namespace as
-// a prefix.
+// checkQualify requires a package-level declaration to carry its namespace
+// somewhere in its name, and offers a prefix when it does not.
 //
-// The prefix grants nothing — reach is stated with a directive — so this is
-// purely an ownership prefix, making the owning unit legible at every use site
-// and in every stack trace and grep result.
+// The namespace grants nothing — reach is stated with a directive — so this is
+// purely an ownership mark, making the owning unit legible at every use site
+// and in every stack trace and grep result. It need not lead the name: Go puts
+// a type's category last (statementReducer) and spells a constructor NewTracer,
+// and demanding a prefix there doubled the word the name already carried.
+// namespace.Contains is the test.
 //
 // Whether it applies at all depends on rules.qualify, which defaults to
-// requiring the prefix only once a package has a second namespace to
-// distinguish. See Mode.
+// asking only once a package has a second namespace to distinguish. See Mode.
 func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) (reportFinding, bool) {
 	if !opts.Qualify.Applies(c.namespaces) || !t.named(opts) {
 		return reportFinding{}, false
 	}
 	// A namespace is always an identity, but not always a prefix: 2fa.go
 	// bounds its declarations like any other file, yet no identifier can
-	// start with a digit, so there is no prefix to ask for.
+	// start with a digit. Containment alone could be satisfied there, by
+	// spelling the namespace later in the name, but the fix could not be,
+	// so the rule stays out rather than report what it cannot remedy.
 	if !namespace.CanPrefix(t.file.ns) {
 		return reportFinding{}, false
 	}
 	name := t.obj.Name()
-	if namespace.HasPrefix(name, t.file.ns) {
+	if namespace.Contains(name, t.file.ns) {
 		return reportFinding{}, false
 	}
-	// main is a name the toolchain requires, so no prefix can be asked of it.
+	// main is a name the toolchain requires, so nothing can be asked of it.
 	if t.kind == kindFunc && name == "main" && pass.Pkg.Name() == "main" {
 		return reportFinding{}, false
 	}
@@ -281,7 +285,7 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 		rule: rule.Qualify,
 		decl: name,
 		pos:  t.ident.Pos(),
-		msg: fmt.Sprintf("%s %s does not carry the prefix of %s; rename it to %s",
+		msg: fmt.Sprintf("%s %s does not carry %s anywhere in its name; rename it to %s",
 			t.kind, name, reportDescribe(t.file.ns, t.file.path), namespace.Qualify(name, t.file.ns)),
 	}
 	if fix, ok := c.renameFix(pass, t, namespace.Qualify(name, t.file.ns),
@@ -361,9 +365,9 @@ func reportDescribeFile(f *fileInfo) string {
 // It reaches package-level declarations only: a member is already qualified by
 // its type at every use, so a prefix would only stutter. It reaches an exported
 // declaration when rules.naming.exported says so — inside the package an
-// exported name is read as bare as any other, which is the reading the prefix
-// exists for — and never reaches the core namespace, whose prefix is empty and
-// so has no prefix to require.
+// exported name is read as bare as any other, which is the reading the
+// namespace mark exists for — and never reaches the core namespace, whose
+// prefix is empty and so has nothing to require.
 func (t *target) named(opts Options) bool {
 	if !t.renameable || t.file.core || t.toolchainName() {
 		return false
@@ -372,13 +376,13 @@ func (t *target) named(opts Options) bool {
 }
 
 // toolchainName reports whether the toolchain finds this declaration by its
-// name, so that no prefix can be asked of it. `go test` collects a test by
+// name, so that no rename can be asked of it. `go test` collects a test by
 // name, and renaming TestLoad to userTestLoad leaves a function nothing runs.
 //
 // The match is looser than the toolchain's own, which also reads the signature
 // and requires that TestXxx's Xxx not begin with a lowercase letter. Erring
 // toward exempting is the safe direction here: exempting one name too many
-// costs a prefix nobody asked for, and exempting one too few is advice that
+// costs a rename nobody asked for, and exempting one too few is advice that
 // breaks the build.
 func (t *target) toolchainName() bool {
 	if t.kind != kindFunc || !strings.HasSuffix(t.file.path, "_test.go") {

@@ -14,11 +14,12 @@
 //
 // A namespace does two jobs, and they are deliberately kept apart. As an
 // identity it answers "is this reference inside the same namespace?", and
-// every file that has a stem has one. As a prefix it is the prefix that the
-// naming rules ask an unexported declaration to carry, and only a namespace
-// that can start an identifier qualifies; CanPrefix tells the two apart. 2fa.go
-// is a namespace that a test file can share, but no identifier begins with a
-// digit, so it can never be a prefix.
+// every file that has a stem has one. As a mark it is what the naming rule
+// asks a declaration's name to carry somewhere (Contains), offering a prefix
+// when it is absent (Qualify), and only a namespace that can start an
+// identifier qualifies for the fix; CanPrefix tells the two apart. 2fa.go is a
+// namespace that a test file can share, but no identifier begins with a digit,
+// so it can never be a prefix.
 package namespace
 
 import (
@@ -77,6 +78,9 @@ func CanPrefix(ns string) bool {
 }
 
 // HasPrefix reports whether an identifier carries ns as a namespace prefix.
+// It is stricter than Contains on both edges: the namespace must lead the
+// name and must end at a word boundary. The qualify rule gates on Contains;
+// this is the test for the specific shape the fix produces.
 //
 // The comparison ignores case, so that the author need not guess which
 // spelling of an initialism the namespace uses: userIDCache and userIdCache
@@ -104,8 +108,10 @@ func HasPrefix(name, ns string) bool {
 	return hasWordBreak(name[:len(name)-len(rest)])
 }
 
-// Qualify returns name rewritten to carry ns as its prefix, which is the
-// rename offered when a declaration is missing its prefix.
+// Qualify returns name rewritten to carry ns as a prefix, which is the rename
+// offered when a name does not carry its namespace anywhere (see Contains). A
+// name that already carries it is left alone, so the fix can never double a
+// word the name already has.
 //
 // The first word of name is capitalized the way Go spells it, so id becomes
 // userID and urlPath becomes userURLPath rather than userId and userUrlPath.
@@ -116,7 +122,7 @@ func HasPrefix(name, ns string) bool {
 // Load in user.go would be renamed to userLoad, deleting the package's API to
 // satisfy a linter. An exported name takes an exported prefix instead.
 func Qualify(name, ns string) string {
-	if !CanPrefix(ns) || HasPrefix(name, ns) {
+	if !CanPrefix(ns) || Contains(name, ns) {
 		return name
 	}
 	out := ns + capitalize(name)

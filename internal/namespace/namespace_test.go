@@ -176,6 +176,12 @@ func TestQualify(t *testing.T) {
 		{"userIDCache", "userId", "userIDCache"},
 		{"userIdCache", "userID", "userIdCache"},
 
+		// A name that carries the namespace inside is already qualified, so
+		// nothing is prepended. The rule would not have fired on it either;
+		// the guard keeps Qualify idempotent under the same test.
+		{"LoadConfig", "config", "LoadConfig"},
+		{"statementReducer", "reducer", "statementReducer"},
+
 		// A namespace that cannot be a prefix leaves the name unchanged.
 		{"helper", "2faAuth", "helper"},
 		{"helper", "Foo", "helper"},

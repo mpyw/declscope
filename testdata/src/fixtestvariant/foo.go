@@ -4,10 +4,10 @@ package fixtestvariant
 // foo_test.go, which only the test variant sees. Neither variant renames: the
 // test variant finds the name taken, and this one cannot see enough of the
 // package to prove anything, so it defers.
-var count = 10 // want `var count does not carry the prefix of namespace "foo"; rename it to fooCount`
+var count = 10 // want `var count does not carry namespace "foo" anywhere in its name; rename it to fooCount`
 
 // Free in both variants. Only the test variant, which sees every file, offers
 // the rename, and its edits cover this file too.
-var size = 1 // want `var size does not carry the prefix of namespace "foo"; rename it to fooSize`
+var size = 1 // want `var size does not carry namespace "foo" anywhere in its name; rename it to fooSize`
 
 func Exported() int { return count + size }
