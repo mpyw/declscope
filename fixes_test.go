@@ -47,12 +47,6 @@ func TestSuggestedFixCapture(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixcapture")
 }
 
-// TestSuggestedFixPredeclared checks that unqualify never renames into a
-// predeclared name, which would shadow the builtin for the whole package.
-func TestSuggestedFixPredeclared(t *testing.T) {
-	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixpredeclared")
-}
-
 // TestSuggestedFixSiblings checks that two fixes in one pass cannot rename
 // two declarations to the same name: the first claims it, the second is
 // reported without a fix.

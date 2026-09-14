@@ -9,11 +9,11 @@
 //	  unexported: private
 //
 //	rules:
-//	  qualify: ondemand    # always | never | ondemand (only once a package has two namespaces)
-//	  unqualify: false     # true | false: where the prefix is not required, forbid it
+//	  naming:
+//	    qualify: ondemand    # always | never | ondemand (only once a package has two namespaces)
 //
-// rules.qualify reads an internal.Mode; rules.unqualify and
-// rules.naming.exported are true/false.
+// rules.naming.qualify reads an internal.Mode; rules.naming.exported is
+// true/false.
 //
 // Unknown keys are an error, and the message names the key and the keys the
 // section does take.
@@ -44,7 +44,7 @@ var Names = []string{".declscope.yaml", ".declscope.yml"}
 // as the config file when none is configured explicitly.
 var BaselineNames = []string{".declscope-baseline.yaml", ".declscope-baseline.yml"}
 
-// The values each naming rule accepts.
+// The values rules.naming.qualify accepts.
 var qualifyModes = internal.ModeSet{internal.ModeAlways, internal.ModeNever, internal.ModeOnDemand}
 
 // boolSetting is a true/false key, with its own error naming the two values it
@@ -73,14 +73,11 @@ type rulesSection struct {
 	Naming namingSection `yaml:"naming"`
 }
 
-// namingSection holds the two mirror rules and the one thing they share.
-// exported belongs to the pair rather than to either: it decides which
-// declarations both rules reach, and turning it on widens qualify and
-// unqualify alike.
+// namingSection holds the naming rule and its reach. exported decides which
+// declarations the rule sees at all; qualify decides when it asks.
 type namingSection struct {
-	Qualify   string      `yaml:"qualify"`
-	Unqualify boolSetting `yaml:"unqualify"`
-	Exported  boolSetting `yaml:"exported"`
+	Qualify  string      `yaml:"qualify"`
+	Exported boolSetting `yaml:"exported"`
 }
 
 // File is the on-disk configuration. Every field is optional, and no setting
@@ -347,9 +344,6 @@ func (f *File) Apply(opts *internal.Options) error {
 			return fmt.Errorf("rules.naming.qualify: unknown mode %q (want %s)", f.Rules.Naming.Qualify, qualifyModes)
 		}
 		opts.Qualify = m
-	}
-	if f.Rules.Naming.Unqualify.set {
-		opts.Unqualify = f.Rules.Naming.Unqualify.value
 	}
 	if f.Rules.Naming.Exported.set {
 		opts.NameExported = f.Rules.Naming.Exported.value

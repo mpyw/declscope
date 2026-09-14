@@ -188,9 +188,6 @@ func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []repor
 	if f, ok := c.checkQualify(pass, opts, t); ok {
 		out = append(out, f)
 	}
-	if f, ok := c.checkUnqualify(pass, opts, t); ok {
-		out = append(out, f)
-	}
 	return out
 }
 
@@ -294,53 +291,6 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 	return f, true
 }
 
-// checkUnqualify is the mirror of checkQualify: where the prefix is not required,
-// it must not be there either.
-//
-// Enabling it asserts that in this codebase a namespace prefix always means
-// the prefix and never part of the concept, since nothing in the name can tell
-// userID-the-prefix from userID-the-word.
-func (c *collection) checkUnqualify(pass *analysis.Pass, opts Options, t *target) (reportFinding, bool) {
-	if !opts.Unqualify || !t.named(opts) || !namespace.CanPrefix(t.file.ns) {
-		return reportFinding{}, false
-	}
-	if opts.Qualify.Applies(c.namespaces) {
-		return reportFinding{}, false
-	}
-	name := t.obj.Name()
-	if !namespace.HasPrefix(name, t.file.ns) {
-		return reportFinding{}, false
-	}
-	// A name identical to the namespace carries no prefix to drop. The
-	// causality usually runs the other way there: user.go is named after the
-	// user it declares, not the other way about. qualify still accepts such a
-	// name, since the owning unit is legible from it, but there is nothing
-	// here for unqualify to strip. The prefix is matched ignoring case, so the
-	// exemption is too: userId in user_id.go is the namespace, spelled by
-	// someone who did not know how the linter would spell it.
-	if strings.EqualFold(name, t.file.ns) {
-		return reportFinding{}, false
-	}
-
-	// Not being able to spell the new name is a limit of the fix, not a reason
-	// to let the prefix stand: the violation is reported either way, and only
-	// the suggestion is withheld.
-	short, why := namespace.Unqualify(name, t.file.ns)
-	f := reportFinding{rule: rule.Unqualify, decl: name, pos: t.ident.Pos()}
-	if short == "" {
-		f.msg = fmt.Sprintf("%s %s carries the prefix of %s, which is not required here, but %s; rename it by hand",
-			t.kind, name, reportDescribe(t.file.ns, t.file.path), why)
-		return f, true
-	}
-
-	f.msg = fmt.Sprintf("%s %s carries the prefix of %s, which is not required here; rename it to %s",
-		t.kind, name, reportDescribe(t.file.ns, t.file.path), short)
-	if fix, ok := c.renameFix(pass, t, short, "drop the namespace prefix"); ok {
-		f.fixes = append(f.fixes, fix)
-	}
-	return f, true
-}
-
 // reportDirectiveFix inserts an explicit scope directive above the declaration.
 //
 // A directive only binds to a declaration when it sits on its own line above
@@ -406,14 +356,14 @@ func reportDescribeFile(f *fileInfo) string {
 	return reportDescribe(f.ns, f.path)
 }
 
-// named reports whether the naming rules reach a declaration at all.
+// named reports whether the naming rule reaches a declaration at all.
 //
-// They reach package-level declarations only: a member is already qualified by
-// its type at every use, so a prefix would only stutter. They reach an exported
+// It reaches package-level declarations only: a member is already qualified by
+// its type at every use, so a prefix would only stutter. It reaches an exported
 // declaration when rules.naming.exported says so — inside the package an
 // exported name is read as bare as any other, which is the reading the prefix
-// exists for — and never reach the core namespace, whose prefix is empty and so
-// has no prefix to require or to drop.
+// exists for — and never reaches the core namespace, whose prefix is empty and
+// so has no prefix to require.
 func (t *target) named(opts Options) bool {
 	if !t.renameable || t.file.core || t.toolchainName() {
 		return false
@@ -424,13 +374,6 @@ func (t *target) named(opts Options) bool {
 // toolchainName reports whether the toolchain finds this declaration by its
 // name, so that no prefix can be asked of it. `go test` collects a test by
 // name, and renaming TestLoad to userTestLoad leaves a function nothing runs.
-//
-// This is checked in named rather than beside the `func main` carve-out in
-// checkQualify because unqualify can fire on one of these: ExampleLoad in
-// example_test.go does carry the prefix of namespace "example", and dropping
-// it would leave a name `go doc` no longer pairs with anything. main cannot
-// reach unqualify, since a name identical to its namespace has no prefix to
-// drop.
 //
 // The match is looser than the toolchain's own, which also reads the signature
 // and requires that TestXxx's Xxx not begin with a lowercase letter. Erring

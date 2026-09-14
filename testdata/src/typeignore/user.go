@@ -19,7 +19,7 @@ type Open struct {
 	secret string
 }
 
-//declscope:ignore unqualify // want `unused //declscope:ignore unqualify on Closed`
+//declscope:ignore qualify // want `unused //declscope:ignore qualify on Closed`
 type Closed struct {
 	// The type's directive names a rule that never fires, so the field is
 	// still reported.

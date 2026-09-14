@@ -25,16 +25,17 @@ var (
 type User struct {
 	// Shared by both fields, needed by x alone.
 	x, y int //declscope:ignore boundary
-	// Silenced nothing for either.
-	p, q int //declscope:ignore unqualify // want `unused //declscope:ignore unqualify on User.p, User.q`
+	// Silenced nothing for either: the naming rule never reaches a member.
+	p, q int //declscope:ignore qualify // want `unused //declscope:ignore qualify on User.p, User.q`
 }
 
 // A spec's own ignore is judged as its own comment, apart from the block's:
-// the block's is used by userG, the spec's unqualify is not.
+// the block's is used by userG, the spec's qualify — needless on a name that
+// carries its namespace — is not.
 //
 //declscope:ignore boundary
 var (
 	userG = 7
-	//declscope:ignore unqualify // want `unused //declscope:ignore unqualify on userH`
+	//declscope:ignore qualify // want `unused //declscope:ignore qualify on userH`
 	userH = 8
 )

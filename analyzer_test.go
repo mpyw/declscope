@@ -78,18 +78,6 @@ func TestQualifyAlways(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "qualifyalways")
 }
 
-// TestUnqualify checks the mirror of the naming rule: where the prefix is not
-// required, it must not be present.
-func TestUnqualify(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unqualify")
-}
-
-// TestUnqualifyInert checks that unqualify says nothing wherever the prefix is
-// required, so the two rules can never contradict each other.
-func TestUnqualifyInert(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unqualifyinert")
-}
-
 // TestIgnoreScope checks that an ignore directive can name the rules it
 // silences, and that each directive is reported unused on its own.
 func TestIgnoreScope(t *testing.T) {
@@ -266,12 +254,4 @@ func TestPackageMain(t *testing.T) {
 // collects it by name.
 func TestToolchainNames(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "toolchainnames")
-}
-
-// TestToolchainNamesUnqualify checks the mirror rule, which is the only one a
-// toolchain name can otherwise reach: ExampleLoad in example_test.go carries
-// the prefix of namespace "example", and dropping it would spell Load, which
-// is taken, and would stop being an example.
-func TestToolchainNamesUnqualify(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "toolchainunqualify")
 }

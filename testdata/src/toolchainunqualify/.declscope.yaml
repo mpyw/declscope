@@ -1,7 +1,0 @@
-# qualify off and unqualify on, which is the only way the mirror rule can reach
-# a toolchain name: ExampleLoad does carry the prefix of namespace "example".
-rules:
-  naming:
-    qualify: never
-    unqualify: true
-    exported: true

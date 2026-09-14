@@ -22,7 +22,6 @@
 package namespace
 
 import (
-	"fmt"
 	"go/ast"
 	"go/token"
 	"path/filepath"
@@ -276,52 +275,6 @@ var knownArch = map[string]bool{
 	"mips64p32le": true, "mips8": true, "ppc": true, "ppc64": true,
 	"ppc64le": true, "riscv": true, "riscv64": true, "s390": true,
 	"s390x": true, "sparc": true, "sparc64": true, "wasm": true,
-}
-
-// Unqualify returns name with ns stripped from its front, which is the rename
-// offered when a namespace prefix is not wanted.
-//
-// The prefix is matched the way HasPrefix matches it, ignoring case. The
-// leading run of capitals left behind is lowered the way Go spells an
-// identifier that starts with an initialism, so userID yields id and
-// userURLPath yields urlPath rather than iD and uRLPath.
-//
-// When no rename can be derived, short is empty and why says so, for reporting
-// the violation without a fix: being unable to spell the new name is a limit
-// of the fix, not a reason to let the prefix stand.
-func Unqualify(name, ns string) (short, why string) {
-	if ns == "" {
-		return "", "the name does not begin with the namespace"
-	}
-	rest, ok := cutFold(name, ns)
-	if !ok {
-		return "", "the name does not begin with the namespace"
-	}
-	if rest == "" {
-		return "", "nothing would remain"
-	}
-
-	r, _ := utf8.DecodeRuneInString(rest)
-	if !unicode.IsUpper(r) && !unicode.IsDigit(r) {
-		// The prefix was confirmed by a word break inside the namespace, but
-		// what follows it does not start a word of its own, so there is no
-		// clean place to cut: userIdcache is a prefix and then a fragment.
-		return "", "what follows the prefix does not start a new word"
-	}
-	rest = lowerLeading(rest)
-	// Dropping the prefix must not change what the name is visible to either:
-	// UserID drops to ID, never to id.
-	if ast.IsExported(name) {
-		rest = capitalize(rest)
-	}
-
-	switch {
-	case token.IsKeyword(rest):
-		return "", fmt.Sprintf("%q is a keyword", rest)
-	case !token.IsIdentifier(rest):
-		return "", fmt.Sprintf("%q is not a valid identifier", rest)
-	}
-	return rest, ""
 }
 
 // Contains reports whether ns is written in name, beginning at a word boundary.

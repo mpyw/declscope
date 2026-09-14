@@ -4,11 +4,8 @@ import (
 	"strings"
 )
 
-// Mode says when the prefix is required: always, never, or only once a package
-// has a second namespace. Only rules.qualify reads one. rules.unqualify is a
-// boolean, because qualify already answers *when* a prefix applies and all the
-// other direction decides is whether it is enforced too — where the prefix is
-// required, unqualify is inert by construction and has nothing to select.
+// Mode says when a name must carry its namespace: always, never, or only once
+// a package has a second namespace. Only rules.qualify reads one.
 type Mode int
 
 const (

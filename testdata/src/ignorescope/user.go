@@ -11,13 +11,13 @@ func helper() int { return 1 } // want `func helper is private to namespace "use
 //declscope:ignore
 func helper2() int { return 2 }
 
-// Two directives, each judged on its own: the naming rule is silenced and so
-// the first is used, while unqualify is inert in a package that requires the
-// prefix, so the second is reported.
+// Two directives, each judged on its own: the crossing is silenced and so the
+// first is used, while qualify never fires on a name that carries its
+// namespace, so the second is reported.
 //
-//declscope:ignore qualify
-//declscope:ignore unqualify // want `unused //declscope:ignore unqualify on kept`
-func kept() int { return 3 } // want `func kept is private to namespace "user", but is used from namespace "order"`
+//declscope:ignore boundary
+//declscope:ignore qualify // want `unused //declscope:ignore qualify on userKept`
+func userKept() int { return 3 }
 
 // An unparseable directive silences nothing.
 //
@@ -29,11 +29,12 @@ func helper3() int { return 5 }
 
 // Ignores accumulate across a block and its specs rather than the spec's
 // replacing the block's: the bare ignore on the block keeps silencing boundary
-// for userBlockB, and only its own unqualify — inert here — is unused.
+// for userBlockB, and only its own qualify — needless on a prefixed name — is
+// unused.
 //
 //declscope:ignore
 var (
 	userBlockA = 6
-	//declscope:ignore unqualify // want `unused //declscope:ignore unqualify on userBlockB`
+	//declscope:ignore qualify // want `unused //declscope:ignore qualify on userBlockB`
 	userBlockB = 7
 )

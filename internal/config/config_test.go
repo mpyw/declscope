@@ -31,7 +31,6 @@ defaults:
 rules:
   naming:
     qualify: never
-    unqualify: true
     exported: true
 exclude:
   - "**/mock_*.go"
@@ -48,7 +47,7 @@ exclude:
 	if opts.Unexported != scope.PackageInternal {
 		t.Errorf("defaults not applied: %+v", opts)
 	}
-	if opts.Qualify != internal.ModeNever || !opts.Unqualify || !opts.NameExported {
+	if opts.Qualify != internal.ModeNever || !opts.NameExported {
 		t.Errorf("rules not applied: %+v", opts)
 	}
 	if len(opts.Exclude) != 1 || opts.Exclude[0] != "**/mock_*.go" {
@@ -59,7 +58,7 @@ exclude:
 // TestApplyKeepsDefaults checks that omitting a key keeps the built-in
 // default rather than resetting it to the zero value.
 func TestApplyKeepsDefaults(t *testing.T) {
-	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  naming:\n    unqualify: true\n")
+	path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  naming:\n    exported: true\n")
 	f, err := config.Load(path)
 	if err != nil {
 		t.Fatal(err)
@@ -75,8 +74,8 @@ func TestApplyKeepsDefaults(t *testing.T) {
 	if opts.Qualify != want.Qualify {
 		t.Errorf("unnamed rules should be untouched, got %+v", opts)
 	}
-	if !opts.Unqualify {
-		t.Error("unqualify should be enabled")
+	if !opts.NameExported {
+		t.Error("exported should be enabled")
 	}
 }
 
@@ -91,7 +90,11 @@ func TestLoadRejectsUnknownKey(t *testing.T) {
 	for _, tt := range []struct{ yaml, want string }{
 		{"nonsense: 1\n", `unknown key "nonsense" (this section takes defaults, rules, exclude, baseline)`},
 		{"rules:\n  unqualifyy: always\n", `unknown key "rules.unqualifyy" (this section takes naming)`},
-		{"rules:\n  naming:\n    unqualifyy: always\n", `unknown key "rules.naming.unqualifyy" (this section takes qualify, unqualify, exported)`},
+		{"rules:\n  naming:\n    unqualifyy: always\n", `unknown key "rules.naming.unqualifyy" (this section takes qualify, exported)`},
+		// The removed rule is refused through the same path as any typo, so a
+		// config written for the release that had it fails loudly rather than
+		// silently dropping the setting.
+		{"rules:\n  naming:\n    unqualify: true\n", `unknown key "rules.naming.unqualify" (this section takes qualify, exported)`},
 		{"defaults:\n  unexpected: private\n", `unknown key "defaults.unexpected" (this section takes unexported)`},
 	} {
 		path := write(t, t.TempDir(), ".declscope.yaml", tt.yaml)
@@ -220,8 +223,6 @@ func TestBoolSettings(t *testing.T) {
 		get  func(internal.Options) bool
 		want bool
 	}{
-		{"rules:\n  naming:\n    unqualify: true\n", func(o internal.Options) bool { return o.Unqualify }, true},
-		{"rules:\n  naming:\n    unqualify: false\n", func(o internal.Options) bool { return o.Unqualify }, false},
 		{"rules:\n  naming:\n    exported: true\n", func(o internal.Options) bool { return o.NameExported }, true},
 		{"rules:\n  naming:\n    exported: false\n", func(o internal.Options) bool { return o.NameExported }, false},
 	}
@@ -236,15 +237,12 @@ func TestBoolSettings(t *testing.T) {
 	}
 }
 
-// TestDefaultModes pins the defaults: the prefix is required only once a
-// package has a second namespace to distinguish, and is never forbidden.
+// TestDefaultModes pins the defaults: the namespace is required in a name
+// only once the package has a second namespace to distinguish.
 func TestDefaultModes(t *testing.T) {
 	opts := internal.DefaultOptions()
 	if opts.Qualify != internal.ModeOnDemand {
 		t.Errorf("default Qualify = %v, want ondemand", opts.Qualify)
-	}
-	if opts.Unqualify {
-		t.Error("default Unqualify should be off")
 	}
 	if opts.NameExported {
 		t.Error("default NameExported should be off")
@@ -278,10 +276,9 @@ func TestApplyRejectsUnknownMode(t *testing.T) {
 }
 
 // TestBoolSettingRejectsAWord checks that a boolean setting refuses a word,
-// naming what it takes. rules.unqualify is not a mode: qualify already answers
-// when a prefix applies, so there is no third value for this key to hold.
+// naming what it takes.
 func TestBoolSettingRejectsAWord(t *testing.T) {
-	for _, yaml := range []string{"rules:\n  naming:\n    unqualify: sometimes\n", "rules:\n  naming:\n    exported: ondemand\n"} {
+	for _, yaml := range []string{"rules:\n  naming:\n    exported: ondemand\n"} {
 		err := settingErr(t, yaml)
 		if err == nil {
 			t.Fatalf("%q: want an error", yaml)
@@ -345,7 +342,7 @@ func TestResolveForBaselineReturnsNamed(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "go.mod", "module example.com/m\n")
 	sub := filepath.Join(root, "sub")
-	write(t, sub, ".declscope.yaml", "baseline: sub-baseline.yaml\nrules:\n  naming:\n    unqualify: true\n")
+	write(t, sub, ".declscope.yaml", "baseline: sub-baseline.yaml\nrules:\n  naming:\n    exported: true\n")
 	write(t, sub, "sub-baseline.yaml", "not: [valid\n")
 	inner := filepath.Join(sub, "inner")
 	write(t, inner, "keep.go", "package inner\n")
@@ -360,7 +357,7 @@ func TestResolveForBaselineReturnsNamed(t *testing.T) {
 	if want := filepath.Join(sub, "sub-baseline.yaml"); named != want {
 		t.Errorf("named = %q, want %q", named, want)
 	}
-	if !opts.Unqualify {
+	if !opts.NameExported {
 		t.Error("the rest of the config should still apply")
 	}
 	if opts.Baseline != nil {

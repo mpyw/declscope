@@ -19,12 +19,7 @@ type Options struct {
 	// as a prefix.
 	Qualify Mode
 
-	// Unqualify is the mirror of Qualify: where the prefix is not required, it
-	// must not be present either. Together the two settle the spelling of
-	// every package-level name the rules reach, in both directions.
-	Unqualify bool
-
-	// NameExported widens both naming rules to exported declarations. Inside
+	// NameExported widens the naming rule to exported declarations. Inside
 	// the package an exported name is read as bare as any other, so the package
 	// qualifier that explains an external use is absent exactly where the
 	// prefix is wanted. The violation is reported. The rename is never offered,

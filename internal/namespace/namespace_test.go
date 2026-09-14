@@ -187,67 +187,6 @@ func TestQualify(t *testing.T) {
 	}
 }
 
-func TestUnqualify(t *testing.T) {
-	tests := []struct {
-		name, ns, want string
-	}{
-		{"userHelper", "user", "helper"},
-		// A namespace of several words, as user_repository.go yields.
-		{"userRepositoryCache", "userRepository", "cache"},
-
-		// An initialism left behind is spelled the way Go spells one, rather
-		// than by lowering only the first letter.
-		{"userID", "user", "id"},           // not iD
-		{"userURLPath", "user", "urlPath"}, // not uRLPath
-		{"userIO", "user", "io"},
-
-		// The prefix is matched the way HasPrefix matches it, ignoring case.
-		{"userIdCache", "userID", "cache"},
-		{"userIDCache", "userId", "cache"},
-	}
-	for _, tt := range tests {
-		got, why := namespace.Unqualify(tt.name, tt.ns)
-		if got != tt.want || why != "" {
-			t.Errorf("Unqualify(%q, %q) = %q, %q, want %q and no reason", tt.name, tt.ns, got, why, tt.want)
-		}
-	}
-}
-
-// TestUnqualifyDeclines checks that every refusal explains itself, since the
-// caller reports the violation regardless and puts the reason in the message.
-func TestUnqualifyDeclines(t *testing.T) {
-	tests := []struct{ name, ns string }{
-		// Reachable: there is a prefix, it is not wanted here, and no rename
-		// can be derived. These become "rename it by hand" diagnostics.
-		{"userType", "user"}, // would leave the keyword "type"
-		{"userFunc", "user"}, // would leave the keyword "func"
-		{"user2", "user"},    // would leave "2", which cannot start an identifier
-		// The prefix is confirmed by the word break inside the namespace, but
-		// what follows is a fragment, so there is no clean place to cut.
-		{"userIdcache", "userID"},
-		// Identical to the namespace in another spelling: checkUnqualify exempts
-		// it, and nothing would remain anyway.
-		{"userId", "userID"},
-
-		// Unreachable: checkUnqualify gates these out before calling, so they
-		// only pin that the function stays total rather than returning a
-		// nonsense rename for input it was not designed for.
-		{"user", "user"},   // identical to the namespace, so carries no prefix
-		{"users", "user"},  // not a word boundary, so never a prefix
-		{"helper", "user"}, // does not begin with the namespace
-		{"anything", ""},   // a file whose name yields no namespace
-	}
-	for _, tt := range tests {
-		got, why := namespace.Unqualify(tt.name, tt.ns)
-		if got != "" {
-			t.Errorf("Unqualify(%q, %q) = %q, want no rename", tt.name, tt.ns, got)
-		}
-		if why == "" {
-			t.Errorf("Unqualify(%q, %q) declined without explaining itself", tt.name, tt.ns)
-		}
-	}
-}
-
 func TestContainsCases(t *testing.T) {
 	tests := []struct {
 		name, ns string
