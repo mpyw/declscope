@@ -34,18 +34,29 @@ find . -name '.declscope.y*ml' -not -path './.git/*' \
 
 Finding none means the naming rule is off everywhere. Finding one is not the answer on its own, since a config that never sets `qualify` leaves the rule off too.
 
-### Ask before choosing it
+### Start at the default, and offer the rest
 
-**The configuration is the repository owner's decision, not yours.** Ask, and wait for an answer, before writing a config file or changing any code. The choice moves the amount of work by an order of magnitude, and the three settings are not one question.
+**The configuration is the repository owner's decision, not yours.** Ask, and wait for an answer, before writing a config file or changing any code.
 
-| Choice | What it means | Measured |
-| --- | --- | --- |
-| Leave naming off | `boundary` and `surplus` only. Adopting the encapsulation check and nothing else | Most repositories report a handful |
-| `qualify: ondemand` | Ask for the namespace once a package holds a second one | 89 in one repository with zero boundary violations |
-| plus `exported: true` | Reach exported declarations too, since inside the package they are read as bare as any other name | 1008 in a large one |
-| `qualify: always` | Ask in every package | Adds demands in single-unit packages, where a prefix distinguishes nothing |
+**The minimum is no config file at all.** `boundary` and `surplus` are on. Those two answer a question about the code, where the naming rule answers one about a convention. Most repositories report a handful. Adopting this much is a complete adoption.
 
-Put the numbers in front of the person deciding. Run declscope under each candidate and report the counts, rather than describing the settings.
+**If the goal is a tidier codebase, offer the naming rule on top.** It is a convention. It fires where nothing is wrong, and it costs real work:
+
+```yaml
+rules:
+  naming:
+    qualify: ondemand   # ask once a package holds a second namespace
+    exported: true      # reach exported names too, since inside the package they read as bare
+```
+
+| | Measured |
+| --- | --- |
+| Default, no config | A handful in most repositories |
+| `qualify: ondemand` | 89 in one repository whose boundary count was zero |
+| plus `exported: true` | 1008 in a large one |
+| `qualify: always` | More again, including single-unit packages where a prefix distinguishes nothing |
+
+Put the numbers in front of the person deciding, rather than describing the settings:
 
 ```bash
 for q in never ondemand always; do
