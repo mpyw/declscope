@@ -364,6 +364,33 @@ func (c *collection) stray() {
 	}
 }
 
+// unkeyedFields records the fields a composite literal writes without naming
+// them. Go allows either every element keyed or none, so a literal whose first
+// element carries no key writes the fields in declaration order.
+//
+// Walking identifiers alone misses this. impl{42} crosses the same boundary as
+// impl{count: 42} and reaches the same field, with nothing in the source for
+// the identifier walk to find.
+func (c *collection) unkeyedFields(pass *analysis.Pass, fi *fileInfo, lit *ast.CompositeLit) {
+	if len(lit.Elts) == 0 {
+		return
+	}
+	if _, keyed := lit.Elts[0].(*ast.KeyValueExpr); keyed {
+		return
+	}
+	st, ok := types.Unalias(pass.TypesInfo.TypeOf(lit)).Underlying().(*types.Struct)
+	if !ok || st.NumFields() != len(lit.Elts) {
+		return
+	}
+	for i, elt := range lit.Elts {
+		f := st.Field(i)
+		if _, tracked := c.byObj[f]; !tracked {
+			continue
+		}
+		c.refs[f] = append(c.refs[f], ref{node: elt, file: fi})
+	}
+}
+
 // collectRefs records every ident naming a tracked object, along with the file
 // it appears in.
 //
@@ -376,6 +403,10 @@ func (c *collection) stray() {
 func (c *collection) collectRefs(pass *analysis.Pass) {
 	for _, fi := range c.files {
 		ast.Inspect(fi.file, func(n ast.Node) bool {
+			if lit, ok := n.(*ast.CompositeLit); ok {
+				c.unkeyedFields(pass, fi, lit)
+				return true
+			}
 			ident, ok := n.(*ast.Ident)
 			if !ok {
 				return true
@@ -392,7 +423,7 @@ func (c *collection) collectRefs(pass *analysis.Pass) {
 				c.idents[tn] = append(c.idents[tn], ident)
 			}
 			if _, tracked := c.byObj[obj]; tracked {
-				c.refs[obj] = append(c.refs[obj], ref{ident: ident, file: fi})
+				c.refs[obj] = append(c.refs[obj], ref{node: ident, file: fi})
 			}
 			return true
 		})

@@ -225,8 +225,8 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 	}
 	for _, r := range offenders {
 		f.related = append(f.related, analysis.RelatedInformation{
-			Pos:     r.ident.Pos(),
-			End:     r.ident.End(),
+			Pos:     r.node.Pos(),
+			End:     r.node.End(),
 			Message: fmt.Sprintf("used here, in %s", reportDescribeFile(r.file)),
 		})
 	}
