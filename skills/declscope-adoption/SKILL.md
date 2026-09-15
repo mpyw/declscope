@@ -6,7 +6,7 @@ license: MIT
 
 # Adopting declscope
 
-Written against **declscope 0.3.3**. Check the version first, since one behaviour described here changed in 0.3.0.
+Written against **declscope 0.4.0**. Check the version first: `exclude` changed meaning in 0.4.0, and one behaviour described here changed in 0.3.0.
 
 ```bash
 declscope -V=full
@@ -179,6 +179,8 @@ cp -r repo /tmp/try-a   # and measure there
 ## Known gaps
 
 [#64](https://github.com/mpyw/declscope/issues/64) is open. Inflections are generated only in the lengthening direction, so a `storing.go` is never carried by `store*`. The vocabulary entry above covers it in one line.
+
+Changed in 0.4.0: an `exclude` pattern is read against the directory of the config file that states it, and anchors there when it holds a separator. `internal/tui/**` used to reach every `internal/tui` at any depth; it now reaches the one beside the config. A bare name and a leading `**/` are unaffected, and a `..` in a pattern is now an error. If a repository you are adopting already has an `exclude`, check it against the [README's table](https://github.com/mpyw/declscope#configuration) before trusting a count.
 
 Fixed in 0.3.0: a `doc.go` holding only a package comment used to count toward the namespace count and turn `ondemand` on. Nine packages in one repository reported for that reason alone. On 0.3.0 those reports are gone, and any `//declscope:core` written to work around it can come out.
 
