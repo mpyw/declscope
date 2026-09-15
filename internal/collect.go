@@ -13,10 +13,10 @@ import (
 	"github.com/mpyw/declscope/internal/rule"
 )
 
-// collectBook is collect.go's half of the collection, embedded there.
+// collectingBook is collect.go's half of the collection, embedded there.
 //
 //declscope:package // collection embeds it, and collection lives in the core
-type collectBook struct {
+type collectingBook struct {
 	// consumed is every comment group some declaration or file took its
 	// directives from; a directive outside them reached nothing.
 	//
@@ -39,7 +39,7 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		// Only this file's own half is built here. ignore.go and scopesite.go
 		// fill theirs on first use, the way rename.go already did, so the
 		// constructor never reaches into another stage's state.
-		collectBook: collectBook{consumed: make(map[*ast.CommentGroup]bool)},
+		collectingBook: collectingBook{consumed: make(map[*ast.CommentGroup]bool)},
 	}
 	cores := make(map[string]bool)
 	for _, f := range pass.Files {

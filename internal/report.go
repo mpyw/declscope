@@ -16,9 +16,9 @@ import (
 	"github.com/mpyw/declscope/internal/scope"
 )
 
-// reportFinding is a diagnostic that a target would produce, held back until
+// reportedFinding is a diagnostic that a target would produce, held back until
 // its ignore directives and the baseline have been consulted.
-type reportFinding struct {
+type reportedFinding struct {
 	rule    rule.Rule
 	decl    string
 	pos     token.Pos
@@ -149,7 +149,7 @@ func (f *fileInfo) nsName() string {
 }
 
 // key identifies the finding for the baseline, independently of position.
-func (f reportFinding) key(pass *analysis.Pass, t *target) baseline.Key {
+func (f reportedFinding) key(pass *analysis.Pass, t *target) baseline.Key {
 	return baseline.Key{
 		Package:   pass.Pkg.Path(),
 		Rule:      f.rule,
@@ -175,8 +175,8 @@ func (c *collection) keys(pass *analysis.Pass, opts Options) []baseline.Key {
 	return out
 }
 
-func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []reportFinding {
-	var out []reportFinding
+func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []reportedFinding {
+	var out []reportedFinding
 	// An exported declaration resolves to package scope unless a directive
 	// narrows it, so the one test below covers both: what is reachable from
 	// outside carries no boundary, and what an author narrowed does.
@@ -188,12 +188,18 @@ func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []repor
 	if f, ok := c.checkQualify(pass, opts, t); ok {
 		out = append(out, f)
 	}
+	// The judgment and the wording both live in widening.go; only the finding
+	// is assembled here, so that the ignore chain and the baseline treat the
+	// rule like any other.
+	if pos, msg, ok := c.checkWidening(pass, opts, t); ok {
+		out = append(out, reportedFinding{rule: rule.Widening, decl: t.name(), pos: pos, msg: msg})
+	}
 	return out
 }
 
 // checkBoundary reports a declaration that is private to its namespace but is
 // referenced from outside it.
-func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target) (reportFinding, bool) {
+func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target) (reportedFinding, bool) {
 	var offenders []ref
 	for _, r := range c.refs[t.obj] {
 		if r.file.key() != t.file.key() {
@@ -201,10 +207,10 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 		}
 	}
 	if len(offenders) == 0 {
-		return reportFinding{}, false
+		return reportedFinding{}, false
 	}
 
-	f := reportFinding{rule: rule.Boundary, decl: t.name(), pos: t.ident.Pos()}
+	f := reportedFinding{rule: rule.Boundary, decl: t.name(), pos: t.ident.Pos()}
 	// The message names the level that decided, not the level a reader might
 	// assume: a field takes its type's directive and any declaration takes its
 	// file's, and naming the declaration's own would point at a comment that is
@@ -212,22 +218,22 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 	switch t.boundAt {
 	case scopesiteLevelDecl:
 		f.msg = fmt.Sprintf("%s %s is declared %s by %s, but is used from %s",
-			t.kind, t.name(), t.scope, t.scope.Directive(), reportDescribeFile(offenders[0].file))
+			t.kind, t.name(), t.scope, t.scope.Directive(), fileInReport(offenders[0].file))
 	case scopesiteLevelContainer:
 		f.msg = fmt.Sprintf("%s %s is declared %s by %s on %s, but is used from %s",
-			t.kind, t.name(), t.scope, t.scope.Directive(), t.owner, reportDescribeFile(offenders[0].file))
+			t.kind, t.name(), t.scope, t.scope.Directive(), t.owner, fileInReport(offenders[0].file))
 	case scopesiteLevelFile:
 		f.msg = fmt.Sprintf("%s %s is declared %s by the file's %s, but is used from %s",
-			t.kind, t.name(), t.scope, t.scope.Directive(), reportDescribeFile(offenders[0].file))
+			t.kind, t.name(), t.scope, t.scope.Directive(), fileInReport(offenders[0].file))
 	default:
 		f.msg = fmt.Sprintf("%s %s is private to %s, but is used from %s",
-			t.kind, t.name(), reportDescribeFile(t.file), reportDescribeFile(offenders[0].file))
+			t.kind, t.name(), fileInReport(t.file), fileInReport(offenders[0].file))
 	}
 	for _, r := range offenders {
 		f.related = append(f.related, analysis.RelatedInformation{
 			Pos:     r.node.Pos(),
 			End:     r.node.End(),
-			Message: fmt.Sprintf("used here, in %s", reportDescribeFile(r.file)),
+			Message: fmt.Sprintf("used here, in %s", fileInReport(r.file)),
 		})
 	}
 
@@ -244,7 +250,7 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 	if t.boundAt != scopesiteLevelDefault {
 		return f, true
 	}
-	f.fixes = append(f.fixes, reportDirectiveFix(pass, t, scope.PackageInternal))
+	f.fixes = append(f.fixes, directiveFixInReport(pass, t, scope.PackageInternal))
 	return f, true
 }
 
@@ -260,9 +266,9 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 //
 // Whether it applies at all depends on rules.naming.qualify, which defaults
 // to never: the convention is opt-in. See Mode and DefaultOptions.
-func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) (reportFinding, bool) {
+func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) (reportedFinding, bool) {
 	if !opts.Qualify.Applies(c.namespaces) || !t.named(opts) {
-		return reportFinding{}, false
+		return reportedFinding{}, false
 	}
 	// A namespace is always an identity, but not always a prefix: 2fa.go
 	// bounds its declarations like any other file, yet no identifier can
@@ -270,26 +276,26 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 	// spelling the namespace later in the name, but the fix could not be,
 	// so the rule stays out rather than report what it cannot remedy.
 	if !namespace.CanPrefix(t.file.ns) {
-		return reportFinding{}, false
+		return reportedFinding{}, false
 	}
 	name := t.obj.Name()
 	if namespace.Contains(name, t.file.ns) {
-		return reportFinding{}, false
+		return reportedFinding{}, false
 	}
 	// A configured vocabulary word carries the namespace the way its own
 	// spelling would, under the same test: word boundary on the left, free
 	// right edge. It widens what counts as carrying, never what is asked.
 	for _, word := range opts.Vocabulary[t.file.ns] {
 		if namespace.Contains(name, word) {
-			return reportFinding{}, false
+			return reportedFinding{}, false
 		}
 	}
 	// main is a name the toolchain requires, so nothing can be asked of it.
 	if t.kind == kindFunc && name == "main" && pass.Pkg.Name() == "main" {
-		return reportFinding{}, false
+		return reportedFinding{}, false
 	}
 
-	f := reportFinding{
+	f := reportedFinding{
 		rule: rule.Qualify,
 		decl: name,
 		pos:  t.ident.Pos(),
@@ -298,7 +304,7 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 		// replaced, and push the author away from normalizeUserEmail and
 		// userEmailFrom, which settle the rule just as well.
 		msg: fmt.Sprintf("%s %s does not carry %s anywhere in its name; rename it to %s, or to another name that carries %q",
-			t.kind, name, reportDescribe(t.file.ns, t.file.path),
+			t.kind, name, namespaceInReport(t.file.ns, t.file.path),
 			namespace.Qualify(name, t.file.ns), t.file.ns),
 	}
 	if fix, ok := c.renameFix(pass, t, namespace.Qualify(name, t.file.ns),
@@ -308,15 +314,15 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 	return f, true
 }
 
-// reportDirectiveFix inserts an explicit scope directive above the declaration.
+// directiveFixInReport inserts an explicit scope directive above the declaration.
 //
 // A directive only binds to a declaration when it sits on its own line above
 // it, so a declaration that shares a line with something else — a field of a
 // single-line struct, for instance — first has to be broken onto a line of its
 // own. The formatter applied to the fixed file restores the indentation.
-func reportDirectiveFix(pass *analysis.Pass, t *target, s scope.Scope) analysis.SuggestedFix {
+func directiveFixInReport(pass *analysis.Pass, t *target, s scope.Scope) analysis.SuggestedFix {
 	var text string
-	if reportAtLineStart(pass, t.anchor) {
+	if atLineStartForReport(pass, t.anchor) {
 		col := pass.Fset.Position(t.anchor).Column
 		text = s.Directive() + "\n" + strings.Repeat("\t", max(col-1, 0))
 	} else {
@@ -332,10 +338,10 @@ func reportDirectiveFix(pass *analysis.Pass, t *target, s scope.Scope) analysis.
 	}
 }
 
-// reportAtLineStart reports whether pos is preceded on its line by nothing but
+// atLineStartForReport reports whether pos is preceded on its line by nothing but
 // whitespace. It fails safe: an unreadable file is treated as not starting a
 // line, which yields an extra line break rather than a misplaced directive.
-func reportAtLineStart(pass *analysis.Pass, pos token.Pos) bool {
+func atLineStartForReport(pass *analysis.Pass, pos token.Pos) bool {
 	position := pass.Fset.Position(pos)
 	if position.Column <= 1 {
 		return true
@@ -351,7 +357,7 @@ func reportAtLineStart(pass *analysis.Pass, pos token.Pos) bool {
 	return strings.TrimLeft(string(prefix), " \t") == ""
 }
 
-func reportDescribe(ns, path string) string {
+func namespaceInReport(ns, path string) string {
 	if ns != "" {
 		return fmt.Sprintf("namespace %q", ns)
 	}
@@ -361,16 +367,16 @@ func reportDescribe(ns, path string) string {
 	return "its namespace"
 }
 
-func reportDescribeFile(f *fileInfo) string {
+func fileInReport(f *fileInfo) string {
 	// The core namespace has no name, and the "file X.go" fallback in
-	// reportDescribe was written for a file with no stem at all. Letting the
+	// namespaceInReport was written for a file with no stem at all. Letting the
 	// core fall into it would say "private to file client.go" about a
 	// declaration every other core file may use — telling the reader something
 	// the analyzer does not believe.
 	if f.core {
 		return "the core namespace"
 	}
-	return reportDescribe(f.ns, f.path)
+	return namespaceInReport(f.ns, f.path)
 }
 
 // named reports whether the naming rule reaches a declaration at all.

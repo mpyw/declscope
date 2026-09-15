@@ -278,3 +278,78 @@ func TestPackageMain(t *testing.T) {
 func TestToolchainNames(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "toolchainnames")
 }
+
+// TestWidening checks the widening rule's reporting shapes: one report per
+// physical //declscope:package, listing every declaration that takes its
+// scope from it, at every level the directive can be written. The quiet cases
+// carry as much: an ignore silences it, and an exported name anywhere in the
+// comment's reach keeps the whole comment.
+func TestWidening(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "widening")
+}
+
+// TestWideningUsedOutside checks the first suppressor: a name spelled from
+// another namespace keeps its directive, one member's use keeps a shared
+// comment, a member that states its own scope stops carrying the type's, and
+// a composite literal without keys counts as the use it is.
+func TestWideningUsedOutside(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "wideningused")
+}
+
+// TestWideningSatisfies checks the interface suppressor: a method reached only
+// through a contract stays quiet, including through an anonymous struct, a
+// function-local type, an instantiated generic type, a promoted
+// pointer-receiver method, an anonymous interface in a type assertion, and a
+// constraint carrying a type term. A method in no contract is still reported.
+func TestWideningSatisfies(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "wideningsatisfies")
+}
+
+// TestWideningCarrier checks the carrier suppressor: an exported type — or an
+// exported alias, or an exported interface — carries an unexported method out
+// of the package, where an importer can complete a satisfaction the analysis
+// never sees. Only a method nothing exported carries is reported.
+func TestWideningCarrier(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "wideningcarrier")
+}
+
+// TestWideningLinkname checks the linkname suppressor: //go:linkname and
+// //export name a declaration as text, from code the analysis does not read.
+func TestWideningLinkname(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "wideninglinkname")
+}
+
+// TestWideningOpaqueSource checks the opaque-source suppressor: a package
+// holding a generated file has reference sites the analysis excludes, so the
+// rule switches off for the package rather than read the absence as evidence.
+// The silence is the assertion.
+func TestWideningOpaqueSource(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "wideningopaque")
+}
+
+// TestWideningSeesAllFiles checks that only a pass reading every file may
+// report: the ordinary variant of a package with in-package tests switches the
+// rule off, and the test variant sees the use. The silence in both variants is
+// the assertion.
+func TestWideningSeesAllFiles(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "wideningtests")
+}
+
+// TestWideningConversion checks that a struct conversion counts as reach: it
+// pairs every field by name and spells none of them, so a field whose
+// directive holds the conversion together must stay unreported.
+func TestWideningConversion(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "wideningconvert")
+}
+
+// TestWideningDefaultOff pins the built-in default: with no config, the rule
+// asks nothing.
+func TestWideningDefaultOff(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "wideningdefault")
+}
+
+// TestWideningBaseline checks that a recorded widening finding is suppressed
+// while a new one is still reported, through the same lookup as every rule.
+func TestWideningBaseline(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "wideningbaselined")
+}

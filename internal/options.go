@@ -26,6 +26,13 @@ type Options struct {
 	// with the right edge free — so it is a spelling, never a scope.
 	Vocabulary map[string][]string
 
+	// Widening turns on the widening rule, which reports a //declscope:package
+	// directive when no use from another namespace is visible to declscope.
+	// It is off by default: the rule concludes from an absence, and its advice
+	// is to delete a directive, so it asks to be opted into rather than to be
+	// trusted implicitly. It never has a fix for the same reason.
+	Widening bool
+
 	// NameExported widens the naming rule to exported declarations. Inside
 	// the package an exported name is read as bare as any other, so the package
 	// qualifier that explains an external use is absent exactly where the
@@ -74,7 +81,7 @@ func DefaultOptions() Options {
 func (o *Options) Compile() error {
 	o.excludeRE = o.excludeRE[:0]
 	for _, pattern := range o.Exclude {
-		re, err := optionsCompileGlob(pattern)
+		re, err := globFromOptions(pattern)
 		if err != nil {
 			return err
 		}
@@ -94,9 +101,9 @@ func (o Options) Excluded(path string) bool {
 	return false
 }
 
-// optionsCompileGlob translates a path glob into a regexp. ** matches across
+// globFromOptions translates a path glob into a regexp. ** matches across
 // separators, * and ? do not.
-func optionsCompileGlob(pattern string) (*regexp.Regexp, error) {
+func globFromOptions(pattern string) (*regexp.Regexp, error) {
 	var b strings.Builder
 	b.WriteString("(?:^|/)")
 	for i := 0; i < len(pattern); {

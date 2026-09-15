@@ -1,0 +1,4 @@
+# The widening rule is off by default; this package opts in to assert what it
+# reports.
+rules:
+  widening: true
