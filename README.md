@@ -200,7 +200,7 @@ rules:
     exported: false       # true | false
     vocabulary:
       mouse: [wheel]
-  widening: false         # true | false
+  allowSurplus: false    # true | false
 
 exclude:
   - "**/mock_*.go"
@@ -214,7 +214,7 @@ baseline: .declscope-baseline.yaml
 | `rules.naming.qualify` | `always`, `never`, `ondemand` | `never` | When a name must carry its namespace. See [the naming rule](#when-it-applies) |
 | `rules.naming.exported` | `true`, `false` | `false` | Whether the naming rule also reaches exported declarations. The rename is never offered there |
 | `rules.naming.vocabulary` | Namespace to a list of words | None | Extra words that carry a namespace. See [what carries a namespace](#what-carries-a-namespace) |
-| `rules.widening` | `true`, `false` | `false` | Whether to report a [`//declscope:package` with no visible outside use](#widening) |
+| `rules.allowSurplus` | `true`, `false` | `false` | Turns the [`surplus`](#surplus) rule off. The rule is on, so the key names what switching it does |
 | `exclude` | Glob patterns against the file path | None | Files that are neither checked nor read as reference sites |
 | `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` | The [baseline](#adopting-on-an-existing-codebase) to consult |
 
@@ -322,7 +322,7 @@ A malformed directive is reported at the comment.
 | `//declscope:package x` | `//declscope:package takes no argument` |
 | `//declscope:private` and `//declscope:package` together | `conflicting scope directives: ...` |
 | `//declscope:core` and `//declscope:namespace` together | `conflicting namespace directives: a core file's namespace is the core` |
-| `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, widening, directive)` |
+| `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, surplus, directive)` |
 | `//declscope:namespace` after the package clause | `declscope:namespace must appear before the package clause` |
 
 </details>
@@ -435,7 +435,7 @@ Containment means a [field](#members) inside its type, or a spec inside its `var
 > }
 > ```
 
-Widening is always **stated**. It comes from a directive, or from the `defaults` key.
+Surplus is always **stated**. It comes from a directive, or from the `defaults` key.
 
 A declaration's *name* plays no part in its scope. A prefix marks ownership and grants nothing, so you can add one for legibility without changing what the declaration reaches.
 
@@ -483,16 +483,16 @@ What a member lacks in Go is encapsulation. Every unexported field is visible to
 
 ## Rules
 
-A **rule** is one check. There are four. A rule's name is at once the diagnostic's category, its configuration key, its [baseline](#adopting-on-an-existing-codebase) key, and what [`//declscope:ignore`](#directives) targets.
+A **rule** is one check. There are four. A rule's name is the diagnostic's category, its [baseline](#adopting-on-an-existing-codebase) key, and what [`//declscope:ignore`](#directives) targets. It is also the configuration key, except where a key reads better named for what it switches: `rules.allowSurplus` turns off `surplus`.
 
 | Rule | Reports | Fix | Configurable |
 | --- | --- | --- | --- |
 | [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:package` | No |
 | [`qualify`](#the-naming-rule) | A name that does not carry its namespace | Rename to prefix it | `rules.naming.*` |
-| [`widening`](#widening) | A `//declscope:package` with no visible use from another namespace | None | `rules.widening` |
+| [`surplus`](#surplus) | A `//declscope:package` with no visible use from another namespace | None | `rules.allowSurplus` |
 | [`directive`](#unused-and-malformed-directives) | A directive that binds nothing, or is malformed | None | No |
 
-Reach enforcement has no switch. Naming discipline and the widening audit are off by default.
+Reach enforcement has no switch. Naming discipline is off by default, and the surplus audit is on.
 
 ### `boundary`
 
@@ -654,11 +654,11 @@ Go resolves a name from the inside out, so a new name that is free at package le
 
 A doubt withholds the fix, never the diagnostic.
 
-### `widening`
+### `surplus`
 
-**Off by default.** Turn it on with `rules.widening`.
+**On by default.** Turn it off with `rules.allowSurplus: true`.
 
-`widening` is the converse of `boundary`. It reports a `//declscope:package` directive when declscope sees no use of what it widens from another namespace. The scope is wider than any visible use justifies.
+`surplus` is the converse of `boundary`. It reports a `//declscope:package` directive when declscope sees no use of what it widens from another namespace. The scope is wider than any visible use justifies.
 
 ```go
 // user.go

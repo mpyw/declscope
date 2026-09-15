@@ -1,5 +1,7 @@
 # Focused on the directive rule: the naming rule would otherwise land on the
-# same lines and obscure what this package is for.
+# same lines and obscure what this package is for. The surplus rule is off for
+# the same reason, since it reports the block directive kept here on purpose.
 rules:
   naming:
     qualify: never
+  allowSurplus: true

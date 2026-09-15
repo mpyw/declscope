@@ -1,5 +1,7 @@
 # The naming rule is off by default, and this package asserts what it does
-# once a second namespace puts it in force.
+# once a second namespace puts it in force. The surplus rule is turned off so
+# that it does not land on the same directives and obscure the fix.
 rules:
   naming:
     qualify: ondemand
+  allowSurplus: true

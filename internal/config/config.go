@@ -13,11 +13,11 @@
 //	    qualify: ondemand    # always | never | ondemand (only once a package has two namespaces)
 //	    vocabulary:          # per-namespace words that carry the namespace
 //	      mouse: [wheel]
-//	  widening: true         # report //declscope:package with no visible outside use
+//	  allowSurplus: false   # keep //declscope:package with no visible outside use
 //
 // rules.naming.qualify reads an internal.Mode; rules.naming.exported is
 // true/false; rules.naming.vocabulary maps a namespace to the extra words
-// that satisfy the naming rule for it. rules.widening is true/false and
+// that satisfy the naming rule for it. rules.allowSurplus is true/false and
 // defaults to false.
 //
 // Unknown keys are an error, and the message names the key and the keys the
@@ -77,9 +77,9 @@ type defaultsSection struct {
 type rulesSection struct {
 	Naming namingSection `yaml:"naming"`
 
-	// Widening turns on the widening rule, which is off by default: it reports
-	// from an absence, so the codebase opts in rather than trusting it.
-	Widening boolSetting `yaml:"widening"`
+	// AllowSurplus turns the surplus rule off. The rule is on by default, so
+	// the key names what switching it does rather than what the rule is.
+	AllowSurplus boolSetting `yaml:"allowSurplus"`
 }
 
 // namingSection holds the naming rule and its reach. exported decides which
@@ -366,8 +366,8 @@ func (f *File) Apply(opts *internal.Options) error {
 	if len(f.Rules.Naming.Vocabulary) > 0 {
 		opts.Vocabulary = f.Rules.Naming.Vocabulary
 	}
-	if f.Rules.Widening.set {
-		opts.Widening = f.Rules.Widening.value
+	if f.Rules.AllowSurplus.set {
+		opts.AllowSurplus = f.Rules.AllowSurplus.value
 	}
 	if f.Exclude != nil {
 		opts.Exclude = f.Exclude

@@ -188,11 +188,11 @@ func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []repor
 	if f, ok := c.checkQualify(pass, opts, t); ok {
 		out = append(out, f)
 	}
-	// The judgment and the wording both live in widening.go; only the finding
+	// The judgment and the wording both live in surplus.go; only the finding
 	// is assembled here, so that the ignore chain and the baseline treat the
 	// rule like any other.
-	if pos, msg, ok := c.checkWidening(pass, opts, t); ok {
-		out = append(out, reportedFinding{rule: rule.Widening, decl: t.name(), pos: pos, msg: msg})
+	if pos, msg, ok := c.checkSurplus(pass, opts, t); ok {
+		out = append(out, reportedFinding{rule: rule.Surplus, decl: t.name(), pos: pos, msg: msg})
 	}
 	return out
 }
@@ -238,7 +238,7 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 	}
 
 	// When the author stated the scope ON THE DECLARATION, the conflict is
-	// between two explicit decisions and only they can resolve it: widening
+	// between two explicit decisions and only they can resolve it: surplus
 	// would have -fix silently overwrite the directive they wrote.
 	//
 	// A scope inherited from the containing type or from the file is a default,

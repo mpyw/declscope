@@ -112,7 +112,7 @@ spec DirectiveEffect {
     and not aPresent and not bPresent and bound
   }
   // Over enclosing directives: package on an exported declaration is inert with
-  // nothing outside it, and binds under an enclosing private — the widening
+  // nothing outside it, and binds under an enclosing private — the surplus
   // that an exportedness-only test would have called dead.
   reachable ExportedPackageIsInert {
     configured and hasTarget and targetExported and outerDir == NoDir

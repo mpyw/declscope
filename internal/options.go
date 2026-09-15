@@ -26,12 +26,19 @@ type Options struct {
 	// with the right edge free — so it is a spelling, never a scope.
 	Vocabulary map[string][]string
 
-	// Widening turns on the widening rule, which reports a //declscope:package
-	// directive when no use from another namespace is visible to declscope.
-	// It is off by default: the rule concludes from an absence, and its advice
-	// is to delete a directive, so it asks to be opted into rather than to be
-	// trusted implicitly. It never has a fix for the same reason.
-	Widening bool
+	// AllowSurplus turns the surplus rule off. The rule reports a
+	// //declscope:package directive when no use from another namespace is
+	// visible to declscope, and is on by default: a directive nobody needed is
+	// a thing the author would want told.
+	//
+	// The polarity is stated rather than inverted in the reader's head. A key
+	// named surplus would have read as "surplus: yes please", which is the
+	// opposite of what setting it to true would do.
+	//
+	// The rule never has a fix. It concludes from an absence, so every case it
+	// cannot see is one where the directive stays and the advice would be to
+	// delete it.
+	AllowSurplus bool
 
 	// NameExported widens the naming rule to exported declarations. Inside
 	// the package an exported name is read as bare as any other, so the package

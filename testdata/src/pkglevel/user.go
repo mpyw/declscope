@@ -4,7 +4,7 @@ package pkglevel
 // private to its namespace.
 func userHelper() int { return 1 } // want `func userHelper is private to namespace "user", but is used from namespace "order"`
 
-// Widening is always an explicit act.
+// Surplus is always an explicit act.
 //
 //declscope:package
 func userShared() int { return 2 }
