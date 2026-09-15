@@ -188,6 +188,12 @@ func (c *collection) check(pass *analysis.Pass, opts Options, t *target) []repor
 	if f, ok := c.checkQualify(pass, opts, t); ok {
 		out = append(out, f)
 	}
+	// The judgment and the wording both live in widening.go; only the finding
+	// is assembled here, so that the ignore chain and the baseline treat the
+	// rule like any other.
+	if pos, msg, ok := c.checkWidening(pass, opts, t); ok {
+		out = append(out, reportFinding{rule: rule.Widening, decl: t.name(), pos: pos, msg: msg})
+	}
 	return out
 }
 
