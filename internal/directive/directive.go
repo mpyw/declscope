@@ -367,8 +367,15 @@ func split(text string) (keyword, arg string, ok bool) {
 	return fields[0], strings.Join(fields[1:], " "), true
 }
 
+// isLowerIdent reports whether a namespace may be spelled this way.
+//
+// A keyword passes. A namespace is a file stem read as lowerCamelCase, not a
+// Go identifier, and import.go, map.go and range.go are all ordinary file
+// names; the namespaces they derive could not otherwise be spelled in a
+// directive at all. token.IsIdentifier refuses keywords, so it is asked only
+// about the shape of the word.
 func isLowerIdent(s string) bool {
-	if !token.IsIdentifier(s) {
+	if !token.IsIdentifier(s) && !token.IsKeyword(s) {
 		return false
 	}
 	return !ast.IsExported(s)

@@ -308,3 +308,19 @@ func TestParseFileIgnoresDeclarations(t *testing.T) {
 		t.Error("a namespace directive below the package clause should not apply to the file")
 	}
 }
+
+// TestParseFileNamespaceKeyword checks that a Go keyword is a namespace a
+// directive may spell. A namespace is a file stem read as lowerCamelCase, and
+// import.go is an ordinary file name; refusing the word would leave the
+// namespace it derives unspellable, which a file joining that namespace needs.
+func TestParseFileNamespaceKeyword(t *testing.T) {
+	for _, word := range []string{"import", "map", "range", "type"} {
+		f := directive.ParseFile(parse(t, "//declscope:namespace "+word+"\npackage repo\n"))
+		if len(f.Problems) != 0 {
+			t.Errorf("%s: %v", word, f.Problems)
+		}
+		if f.Namespace != word {
+			t.Errorf("namespace = %q, want %q", f.Namespace, word)
+		}
+	}
+}
