@@ -12,6 +12,41 @@ Written against **declscope 0.3.2**. Check the version first, since one behaviou
 declscope -V=full
 ```
 
+**Read [the README](https://github.com/mpyw/declscope#readme) before the first decision.** This skill covers what to do about the diagnostics. What each directive means, and what the config accepts, is there.
+
+## Check what is switched on
+
+Two of the three rules are off unless the repository asks for them. A count of zero may mean the code is clean, or it may mean nothing is being checked.
+
+| Setting | Default | |
+| --- | --- | --- |
+| `rules.naming.qualify` | `never` | The naming rule is **off** |
+| `rules.naming.exported` | `false` | Even when on, it skips exported declarations |
+| `rules.allowSurplus` | `false` | The surplus rule is **on** |
+| `boundary` | | Always on, with no switch |
+
+The config is looked up from each analyzed package's directory **upwards**, so a subtree can carry its own and a repository can have several. Find them all, and do not read the root alone:
+
+```bash
+find . -name '.declscope.y*ml' -not -path './.git/*' \
+  -exec sh -c 'echo "== $1"; cat "$1"' _ {} \;
+```
+
+Finding none means the naming rule is off everywhere. Finding one is not the answer on its own, since a config that never sets `qualify` leaves the rule off too.
+
+Adopting with the naming rule off is a real choice, and it is the shipped default because the rule fires where nothing is wrong. Decide it deliberately rather than by not noticing. These repositories use what declscope holds itself to:
+
+```yaml
+rules:
+  naming:
+    qualify: ondemand   # ask once the package has a second namespace
+    exported: true      # inside the package, an exported name is read as bare as any other
+```
+
+Every count in this skill assumes those two.
+
+## The two kinds of report
+
 declscope reports two things. **Read them separately.**
 
 | Rule | What it means |
