@@ -608,6 +608,15 @@ Where [`rules.naming.qualify`](#qualify) is `ondemand`, the namespace count it d
 > [!NOTE]
 > The left edge is anchored because the right one is not. Without the anchor, `key` would be found in `monkey`, and every short namespace would stop meaning anything. With it, the cost is a name that opens with the namespace by accident: `mode` is found in `models`. That is the narrower failure of the two.
 
+**Inflections.** Two English inflections change the namespace's own spelling, so the free right edge cannot reach them. Both are accepted:
+
+| Namespace | Also carried by |
+| --- | --- |
+| `store` | `storing` — the final `e` drops before `ing` |
+| `apply` | `applies`, `applied` — the final `y` turns to `i` |
+
+Only these whole forms are generated, and always from the namespace's side. The name is never stemmed: `story` and `storm` do not carry `store`. In a compound namespace (`userStore`), only the final word inflects.
+
 **Rename spelling.** The fix prefixes. Both halves are spelled the way Go spells an initialism, and exportedness is kept:
 
 | Case | Example | Never |

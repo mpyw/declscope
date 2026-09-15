@@ -169,6 +169,29 @@ func TestContainsCases(t *testing.T) {
 		{"NewAzureAppConfigParamStrategy", "azureAppconfigParam", true},
 		// 名前空間そのもの。
 		{"collect", "collect", true},
+		// 綴りが変わる活用形。名前空間の側から生成した完全形だけを受理する。
+		{"storing", "store", true},
+		{"storingWorker", "store", true},
+		{"NewStoring", "store", true},
+		{"parsing", "parse", true},
+		{"ignoringMap", "ignore", true},
+		{"applies", "apply", true},
+		{"appliedResults", "apply", true},
+		{"applying", "apply", true}, // apply がそのまま含まれる。生成形ではなく素の含有
+		// 複合語の名前空間では末尾の語だけが活用する。
+		{"userStoring", "userStore", true},
+		// 語幹化の誤受理。stor を右端自由で照合すると通ってしまう形で、
+		// 生成側方式ではすべて落ちる。
+		{"story", "store", false},
+		{"storm", "store", false},
+		{"stories", "store", false},
+		{"userStory", "userStore", false},
+		{"appliance", "apply", false},
+		// 母音の後の e / y は綴りが変わらないので何も生成しない。
+		{"freeing", "free", true}, // free + ing。素の含有で通る
+		{"freing", "free", false},
+		{"deploys", "deploy", true}, // deploy + s。素の含有で通る
+		{"deploies", "deploy", false},
 		// 左端が語境界でない。通ってはいけない。
 		{"monkey", "key", false},
 		{"UntagCommand", "tag", false},
