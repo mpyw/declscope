@@ -19,6 +19,13 @@ type Options struct {
 	// somewhere in its name.
 	Qualify Mode
 
+	// Vocabulary lists, per namespace, extra words that carry the namespace as
+	// its own spelling would: irregular inflections and domain synonyms that
+	// no generated form reaches (mouse: wheel, index: indices). A word is
+	// matched exactly the way the namespace is — starting at a word boundary,
+	// with the right edge free — so it is a spelling, never a scope.
+	Vocabulary map[string][]string
+
 	// NameExported widens the naming rule to exported declarations. Inside
 	// the package an exported name is read as bare as any other, so the package
 	// qualifier that explains an external use is absent exactly where the
@@ -45,13 +52,16 @@ type Options struct {
 }
 
 // DefaultOptions mirrors the rules stated in the README: every declaration in
-// the subject is private to its namespace until something widens it, and the
-// namespace in a name is an ownership mark, required once a package has a
-// second namespace, that grants nothing by itself.
+// the subject is private to its namespace until something widens it. The
+// naming rule is off by default — measured over the repositories this tool
+// was built against, packages with zero boundary violations still drew dozens
+// of naming ones, and whether a name reads well with its namespace in it
+// depends on the part of speech of the file name, which the tool cannot see.
+// A codebase that wants the convention states rules.naming.qualify itself.
 func DefaultOptions() Options {
 	return Options{
 		Unexported: scope.Private,
-		Qualify:    ModeOnDemand,
+		Qualify:    ModeNever,
 	}
 }
 

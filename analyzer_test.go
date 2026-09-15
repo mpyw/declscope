@@ -45,6 +45,29 @@ func TestSingleNamespace(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "singlens")
 }
 
+// TestQualifyInflections checks the two inflections whose spelling leaves the
+// namespace behind: a final e dropped before -ing (store → storing) and a
+// final y turned to i (apply → applied). Only forms generated from the
+// namespace are accepted, so a name that merely shares the stem (story) is
+// still reported.
+func TestQualifyInflections(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "qualifyinflect")
+}
+
+// TestQualifyVocabulary checks rules.naming.vocabulary: a word listed for a
+// namespace satisfies the naming rule under the same test as the namespace
+// itself — word boundary on the left, free right edge — and nothing more.
+func TestQualifyVocabulary(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "vocabulary")
+}
+
+// TestQualifyDefaultOff checks the built-in default: with no config, the
+// naming rule asks nothing even of a package with a second namespace, while
+// the boundary rule fires as it always did.
+func TestQualifyDefaultOff(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "qualifydefault")
+}
+
 // TestNamespaceDirectiveDetached checks that a namespace directive separated
 // from the package clause by a blank line still applies to the file.
 func TestNamespaceDirectiveDetached(t *testing.T) {

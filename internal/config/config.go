@@ -11,9 +11,12 @@
 //	rules:
 //	  naming:
 //	    qualify: ondemand    # always | never | ondemand (only once a package has two namespaces)
+//	    vocabulary:          # per-namespace words that carry the namespace
+//	      mouse: [wheel]
 //
 // rules.naming.qualify reads an internal.Mode; rules.naming.exported is
-// true/false.
+// true/false; rules.naming.vocabulary maps a namespace to the extra words
+// that satisfy the naming rule for it.
 //
 // Unknown keys are an error, and the message names the key and the keys the
 // section does take.
@@ -78,6 +81,12 @@ type rulesSection struct {
 type namingSection struct {
 	Qualify  string      `yaml:"qualify"`
 	Exported boolSetting `yaml:"exported"`
+
+	// Vocabulary maps a namespace to extra words that carry it. The words are
+	// spellings, matched exactly as the namespace is, and meant for the
+	// irregular few (mouse: wheel, index: indices) — a namespace needing a
+	// long list is naming something its file is not about.
+	Vocabulary map[string][]string `yaml:"vocabulary"`
 }
 
 // File is the on-disk configuration. Every field is optional, and no setting
@@ -347,6 +356,9 @@ func (f *File) Apply(opts *internal.Options) error {
 	}
 	if f.Rules.Naming.Exported.set {
 		opts.NameExported = f.Rules.Naming.Exported.value
+	}
+	if len(f.Rules.Naming.Vocabulary) > 0 {
+		opts.Vocabulary = f.Rules.Naming.Vocabulary
 	}
 	if f.Exclude != nil {
 		opts.Exclude = f.Exclude

@@ -258,8 +258,8 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 // and demanding a prefix there doubled the word the name already carried.
 // namespace.Contains is the test.
 //
-// Whether it applies at all depends on rules.qualify, which defaults to
-// asking only once a package has a second namespace to distinguish. See Mode.
+// Whether it applies at all depends on rules.naming.qualify, which defaults
+// to never: the convention is opt-in. See Mode and DefaultOptions.
 func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) (reportFinding, bool) {
 	if !opts.Qualify.Applies(c.namespaces) || !t.named(opts) {
 		return reportFinding{}, false
@@ -275,6 +275,14 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 	name := t.obj.Name()
 	if namespace.Contains(name, t.file.ns) {
 		return reportFinding{}, false
+	}
+	// A configured vocabulary word carries the namespace the way its own
+	// spelling would, under the same test: word boundary on the left, free
+	// right edge. It widens what counts as carrying, never what is asked.
+	for _, word := range opts.Vocabulary[t.file.ns] {
+		if namespace.Contains(name, word) {
+			return reportFinding{}, false
+		}
 	}
 	// main is a name the toolchain requires, so nothing can be asked of it.
 	if t.kind == kindFunc && name == "main" && pass.Pkg.Name() == "main" {

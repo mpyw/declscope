@@ -4,7 +4,8 @@
 # repository root would silently change what those tests assert.
 rules:
   naming:
-    # always | never | ondemand. The default is kept: under `always` every
+    # always | never | ondemand. The built-in default is never; declscope keeps
+    # the convention for itself at ondemand. Not `always`: under it every
     # unexported helper in a single-namespace package (internal/config,
     # internal/baseline, ...) would need a prefix that distinguishes nothing
     # there.

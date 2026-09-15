@@ -19,21 +19,30 @@ import (
 // handshake between them. Each case ends by running the analyzer, since a
 // baseline is only correct if its presence suppresses what it records.
 
-// twoFiles is a package with a boundary and a qualify violation on helper,
-// referenced from the ordinary and the test variant alike so that the two
-// hand over the same key twice.
+// twoFiles is a package with a boundary violation on helper, referenced from
+// the ordinary and the test variant alike so that the two hand over the same
+// key twice. Under qualifyOn — the naming rule is off by default — helper
+// draws a qualify violation as well.
 var twoFiles = map[string]string{
 	"user.go":       "package x\n\nfunc helper() int { return 1 }\n",
 	"order.go":      "package x\n\nfunc orderRun() int { return helper() }\n\nvar _ = orderRun\n",
 	"order_test.go": "package x\n\nimport \"testing\"\n\nfunc TestOrder(t *testing.T) { _ = helper() }\n",
 }
 
+// qualifyOn puts the naming rule in force, which the built-in default no
+// longer does. The baseline must record and suppress qualify entries too, so
+// every module here states it.
+const qualifyOn = "rules:\n  naming:\n    qualify: ondemand\n"
+
 func TestBaselinePerPackageTargets(t *testing.T) {
 	// A config in sub/ names its own baseline, and deep/ carries its own
 	// default-named one; each shadows the root for the packages under it.
 	root := t.TempDir()
 	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
-	writeTree(t, root, "sub/.declscope.yaml", "baseline: sub-baseline.yaml\n")
+	// Only the nearest config applies, so sub/ restates the naming rule the
+	// root turns on: layering is not a thing the lookup does.
+	writeTree(t, root, ".declscope.yaml", qualifyOn)
+	writeTree(t, root, "sub/.declscope.yaml", "baseline: sub-baseline.yaml\n"+qualifyOn)
 	writeTree(t, root, "deep/.declscope-baseline.yaml", "")
 	for _, pkg := range []string{"", "sub/inner", "deep/inner", "plain"} {
 		for name, body := range twoFiles {
@@ -75,6 +84,7 @@ func TestBaselinePerPackageTargets(t *testing.T) {
 func TestBaselineFromSubdirectory(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
+	writeTree(t, root, ".declscope.yaml", qualifyOn)
 	for _, pkg := range []string{"", "store/inner"} {
 		for name, body := range twoFiles {
 			writeTree(t, root, filepath.Join(pkg, name), body)
@@ -157,6 +167,7 @@ func TestBaselineRefusesUnreachableDefault(t *testing.T) {
 func TestBaselineRegeneratesCorruptFile(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
+	writeTree(t, root, ".declscope.yaml", qualifyOn)
 	for name, body := range twoFiles {
 		writeTree(t, root, name, body)
 	}
@@ -194,6 +205,7 @@ func TestBaselineRegeneratesCorruptFile(t *testing.T) {
 func TestBaselineReportsWrittenCount(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
+	writeTree(t, root, ".declscope.yaml", qualifyOn)
 	for name, body := range twoFiles {
 		writeTree(t, root, name, body)
 	}

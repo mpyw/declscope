@@ -31,7 +31,8 @@ type fixCase struct {
 
 var fixCases = []fixCase{
 	{
-		name: "boundary and qualify on the same declaration",
+		name:   "boundary and qualify on the same declaration",
+		config: "rules:\n  naming:\n    qualify: ondemand\n",
 		files: map[string]string{
 			"user.go":  "package x\n\nfunc helper() int { return 1 }\n",
 			"order.go": "package x\n\nfunc orderRun() int { return helper() }\n\nvar _ = orderRun\n",
@@ -52,14 +53,16 @@ var fixCases = []fixCase{
 		},
 	},
 	{
-		name: "grouped var and const blocks",
+		name:   "grouped var and const blocks",
+		config: "rules:\n  naming:\n    qualify: ondemand\n",
 		files: map[string]string{
 			"user.go":  "package x\n\nvar (\n\tseed  = 1\n\tother = 2\n)\n\nconst (\n\tlimit = 3\n)\n",
 			"order.go": "package x\n\nfunc orderRun() int { return seed + other + limit }\n\nvar _ = orderRun\n",
 		},
 	},
 	{
-		name: "rename target already taken",
+		name:   "rename target already taken",
+		config: "rules:\n  naming:\n    qualify: ondemand\n",
 		files: map[string]string{
 			"user.go":  "package x\n\nfunc taken() int { return 1 }\n\nfunc userTaken() int { return 2 }\n",
 			"order.go": "package x\n\nfunc orderRun() int { return taken() + userTaken() }\n\nvar _ = orderRun\n",
@@ -80,7 +83,8 @@ var fixCases = []fixCase{
 		},
 	},
 	{
-		name: "type embedded, and selected through the embedding, in its own namespace",
+		name:   "type embedded, and selected through the embedding, in its own namespace",
+		config: "rules:\n  naming:\n    qualify: ondemand\n",
 		files: map[string]string{
 			"user.go":  "package x\n\ntype count struct{ n int }\n\ntype User struct{ *count }\n\nfunc (u *User) Total() int { return u.count.n }\n",
 			"order.go": "package x\n\nfunc OrderRun() {}\n",
@@ -126,14 +130,16 @@ var fixCases = []fixCase{
 		},
 	},
 	{
-		name: "two qualify renames converging through a non-injective prefix",
+		name:   "two qualify renames converging through a non-injective prefix",
+		config: "rules:\n  naming:\n    qualify: ondemand\n",
 		files: map[string]string{
 			"a.go":   "package x\n\nfunc bX() int { return 1 }\n\nvar _ = bX\n",
 			"a_b.go": "package x\n\nfunc x() int { return 2 }\n\nvar _ = x\n",
 		},
 	},
 	{
-		name: "reference in a generated file",
+		name:   "reference in a generated file",
+		config: "rules:\n  naming:\n    qualify: ondemand\n",
 		files: map[string]string{
 			"user.go":   "package x\n\n//declscope:package\nfunc helper() int { return 1 }\n",
 			"order.go":  "package x\n\nfunc OrderRun() int { return helper() }\n",
@@ -142,7 +148,7 @@ var fixCases = []fixCase{
 	},
 	{
 		name:   "reference in an excluded file",
-		config: "exclude:\n  - \"**/ext.go\"\n",
+		config: "rules:\n  naming:\n    qualify: ondemand\nexclude:\n  - \"**/ext.go\"\n",
 		files: map[string]string{
 			"user.go":  "package x\n\n//declscope:package\nfunc helper() int { return 1 }\n",
 			"order.go": "package x\n\nfunc OrderRun() int { return helper() }\n",

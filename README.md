@@ -264,6 +264,8 @@ rules:
   naming:
     qualify: ondemand     # always | never | ondemand
     exported: false       # true | false
+    vocabulary:           # extra words that carry a namespace
+      mouse: [wheel]
 
 exclude:
   - "**/mock_*.go"
@@ -274,7 +276,8 @@ baseline: .declscope-baseline.yaml   # relative to this file; found automaticall
 | Key | Values | Default | Effect |
 | --- | --- | --- | --- |
 | `defaults.unexported` | `package`, `private` | `private` | Scope of a declaration or member that carries no scope directive of its own, inherits none from its type, and sits in no file that supplies one |
-| `rules.naming.qualify` | `always`, `never`, `ondemand` | `ondemand` | When a name must carry its namespace; see [`qualify`](#qualify) |
+| `rules.naming.qualify` | `always`, `never`, `ondemand` | `never` | When a name must carry its namespace; see [`qualify`](#qualify) |
+| `rules.naming.vocabulary` | A map of namespace to a list of words | None | Extra words that carry the namespace, matched the same way the namespace is; see [The naming rule](#the-naming-rule) |
 | `rules.naming.exported` | `true`, `false` | `false` | Whether the naming rule also reaches exported declarations. The violation is reported. The rename is never offered ([Withheld renames](#withheld-renames)). A package turning this on wants [`//declscope:core`](#the-core-namespace) on the files holding its API |
 | `exclude` | Glob patterns matched against the file path: `*` and `?` within a path segment, `**` across segments, anchored at any segment boundary | None | Files that are neither checked nor treated as reference sites |
 | `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` at or above the package, stopping at the module root | The baseline to consult |
@@ -608,6 +611,30 @@ Where [`rules.naming.qualify`](#qualify) is `ondemand`, the namespace count it d
 > [!NOTE]
 > The left edge is anchored because the right one is not. Without the anchor, `key` would be found in `monkey`, and every short namespace would stop meaning anything. With it, the cost is a name that opens with the namespace by accident: `mode` is found in `models`. That is the narrower failure of the two.
 
+**Inflections.** Two English inflections change the namespace's own spelling, so the free right edge cannot reach them. Both are accepted:
+
+| Namespace | Also carried by |
+| --- | --- |
+| `store` | `storing` — the final `e` drops before `ing` |
+| `apply` | `applies`, `applied` — the final `y` turns to `i` |
+
+Only these whole forms are generated, and always from the namespace's side. The name is never stemmed: `story` and `storm` do not carry `store`. In a compound namespace (`userStore`), only the final word inflects.
+
+**Vocabulary.** `rules.naming.vocabulary` lists extra words that carry a namespace:
+
+```yaml
+rules:
+  naming:
+    vocabulary:
+      mouse: [wheel]
+      index: [indices]
+```
+
+A listed word goes through the same test as the namespace itself: a word boundary on the left, a free right edge. So `wheelDelta` carries `mouse`, and `pinwheel` still does not.
+
+> [!WARNING]
+> The vocabulary is for the irregular few: an inflection nothing generates (`indices`), or a domain synonym in every name of the unit (`wheel`). A namespace that needs a long list is a sign of a design problem. The file declares things it is not about, and splitting the file says more than listing them.
+
 **Rename spelling.** The fix prefixes. Both halves are spelled the way Go spells an initialism, and exportedness is kept:
 
 | Case | Example | Never |
@@ -631,9 +658,9 @@ Where [`rules.naming.qualify`](#qualify) is `ondemand`, the namespace count it d
 
 | `rules.naming.qualify` | Effect |
 | --- | --- |
-| `ondemand` *(default)* | Required only once the package has a **second namespace**. In a package with one namespace there is no boundary for the name to mark. A namespace repeated in every name would distinguish nothing. |
+| `never` *(default)* | Off. The convention is opt-in: whether a name reads well with its namespace in it depends on the file name's part of speech, which no tool can see. |
+| `ondemand` | Required only once the package has a **second namespace**. In a package with one namespace there is no boundary for the name to mark. A namespace repeated in every name would distinguish nothing. |
 | `always` | Required in every package, so that a package gaining its second namespace is not a mass rename. |
-| `never` | Off. |
 
 ```
 func id does not carry namespace "user" anywhere in its name; rename it to userID

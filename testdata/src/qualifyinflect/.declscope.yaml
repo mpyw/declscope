@@ -1,0 +1,5 @@
+# The naming rule is off by default, and this package pins what the inflected
+# forms buy it — and what the stem of a namespace must never buy.
+rules:
+  naming:
+    qualify: ondemand

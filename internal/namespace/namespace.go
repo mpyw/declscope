@@ -251,19 +251,80 @@ var knownArch = map[string]bool{
 // anything. With it, the cost is names that open with the namespace by accident
 // — mode is found in models — which is the narrower failure of the two.
 //
+// The free right edge covers every derivation that keeps the namespace's own
+// spelling (renders, rendering, Parser), but not the two English inflections
+// that change it: a final e dropped before -ing (store → storing) and a final
+// y turned to i (apply → applies, applied). Those are accepted through forms
+// generated from the namespace — see inflections — never by stemming the name:
+// a stem of store loose in the name would also accept story and storm, so only
+// the whole generated forms count.
+//
 // Matching is case-folded: a namespace is an identity, and the leading letter
 // of a name is decided by whether it is exported, not by the namespace.
 func Contains(name, ns string) bool {
 	if ns == "" {
 		return false
 	}
+	if containsForm(name, ns) {
+		return true
+	}
+	for _, form := range inflections(ns) {
+		if containsForm(name, form) {
+			return true
+		}
+	}
+	return false
+}
+
+// containsForm is one spelling's share of Contains: the form must begin at a
+// word boundary of name, and may end anywhere.
+func containsForm(name, form string) bool {
 	for i := range name {
 		if !wordStart(name, i) {
 			continue
 		}
-		if _, ok := cutFold(name[i:], ns); ok {
+		if _, ok := cutFold(name[i:], form); ok {
 			return true
 		}
+	}
+	return false
+}
+
+// inflections returns the spellings of ns that English writes with a changed
+// stem, which the free right edge of Contains cannot reach:
+//
+//	store → storing    (the final e drops before -ing)
+//	apply → applies, applied    (the final y turns to i)
+//
+// Each is a complete form, never a bare stem: matching stor with a free right
+// edge would accept story and storm, and matching appli would accept appliance.
+// In a compound namespace only the final word inflects (azureAppconfigParam),
+// and the final word is where the tail letters sit, so inspecting the last two
+// runes is enough. A final e or y after a vowel does not change spelling
+// (freeing, deploys) and generates nothing.
+func inflections(ns string) []string {
+	last, lastSize := utf8.DecodeLastRuneInString(ns)
+	prev, _ := utf8.DecodeLastRuneInString(ns[:len(ns)-lastSize])
+	if prev == utf8.RuneError || !unicode.IsLetter(prev) || isVowel(prev) {
+		return nil
+	}
+	stem := ns[:len(ns)-lastSize]
+	switch unicode.ToLower(last) {
+	case 'e':
+		return []string{stem + "ing"}
+	case 'y':
+		return []string{stem + "ies", stem + "ied"}
+	}
+	return nil
+}
+
+// isVowel reports an English vowel letter, case-folded. y is deliberately not
+// one here: apply's y is what inflects, so for the letter before the tail the
+// question never arises in a real namespace.
+func isVowel(r rune) bool {
+	switch unicode.ToLower(r) {
+	case 'a', 'e', 'i', 'o', 'u':
+		return true
 	}
 	return false
 }
