@@ -18,6 +18,11 @@ const (
 	// Qualify: a package-level declaration whose name does not carry its
 	// namespace, which namespace.Qualify fixes by prefixing.
 	Qualify Rule = "qualify"
+	// Widening: a //declscope:package directive with no use from another
+	// namespace visible to declscope. It reports from an absence, so it has no
+	// fix — every remaining false positive would be an automatic edit deleting
+	// a load-bearing directive — and it is off by default.
+	Widening Rule = "widening"
 	// Directive: a directive that binds nothing, or that is malformed or
 	// misplaced. It has no fix and no configuration; it carries a name so that
 	// an ignore can silence one and a baseline can record one, which a report
@@ -26,7 +31,7 @@ const (
 )
 
 // All lists every rule, in the order they are reported.
-var All = []Rule{Boundary, Qualify, Directive}
+var All = []Rule{Boundary, Qualify, Widening, Directive}
 
 // Parse resolves a rule name.
 func Parse(name string) (Rule, bool) {

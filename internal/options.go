@@ -26,6 +26,13 @@ type Options struct {
 	// with the right edge free — so it is a spelling, never a scope.
 	Vocabulary map[string][]string
 
+	// Widening turns on the widening rule, which reports a //declscope:package
+	// directive when no use from another namespace is visible to declscope.
+	// It is off by default: the rule concludes from an absence, and its advice
+	// is to delete a directive, so it asks to be opted into rather than to be
+	// trusted implicitly. It never has a fix for the same reason.
+	Widening bool
+
 	// NameExported widens the naming rule to exported declarations. Inside
 	// the package an exported name is read as bare as any other, so the package
 	// qualifier that explains an external use is absent exactly where the
