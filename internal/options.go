@@ -45,13 +45,16 @@ type Options struct {
 }
 
 // DefaultOptions mirrors the rules stated in the README: every declaration in
-// the subject is private to its namespace until something widens it, and the
-// namespace in a name is an ownership mark, required once a package has a
-// second namespace, that grants nothing by itself.
+// the subject is private to its namespace until something widens it. The
+// naming rule is off by default — measured over the repositories this tool
+// was built against, packages with zero boundary violations still drew dozens
+// of naming ones, and whether a name reads well with its namespace in it
+// depends on the part of speech of the file name, which the tool cannot see.
+// A codebase that wants the convention states rules.naming.qualify itself.
 func DefaultOptions() Options {
 	return Options{
 		Unexported: scope.Private,
-		Qualify:    ModeOnDemand,
+		Qualify:    ModeNever,
 	}
 }
 

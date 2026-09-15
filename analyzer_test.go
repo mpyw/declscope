@@ -45,6 +45,13 @@ func TestSingleNamespace(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "singlens")
 }
 
+// TestQualifyDefaultOff checks the built-in default: with no config, the
+// naming rule asks nothing even of a package with a second namespace, while
+// the boundary rule fires as it always did.
+func TestQualifyDefaultOff(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "qualifydefault")
+}
+
 // TestNamespaceDirectiveDetached checks that a namespace directive separated
 // from the package clause by a blank line still applies to the file.
 func TestNamespaceDirectiveDetached(t *testing.T) {

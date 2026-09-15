@@ -57,7 +57,7 @@ spec NamingRules {
   }
 
   init {
-    configured = false  cfgQualify = OnDemand
+    configured = false  cfgQualify = Never
     cfgExportedNames = false  manyNs = false
     kind = Pkg  exported = false  canPrefix = true  isCore = false
     carry = Absent  fixed = false
@@ -160,8 +160,10 @@ spec NamingRules {
     configured and kind == Pkg and canPrefix and not isCore and not exported
     and cfgQualify == Never and carry == Absent and not qualifyFires()
   }
-  // The shipped default: ondemand with a second namespace. Without this the
-  // combination declscope actually runs under is never exercised.
+  // ondemand with a second namespace: the setting declscope holds itself to
+  // (.declscope-strict.yaml). The shipped default is Never — its silence is
+  // NeverSilent above — so this is the combination a codebase that opts in
+  // actually runs under, and without it that combination is never exercised.
   reachable OnDemandBitesWithSecondNamespace {
     configured and kind == Pkg and canPrefix and not isCore and not exported
     and cfgQualify == OnDemand and manyNs and carry == Absent and qualifyFires()

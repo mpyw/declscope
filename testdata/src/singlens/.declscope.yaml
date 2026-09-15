@@ -1,0 +1,6 @@
+# ondemand is stated so that the silence below is the rule's own: in a package
+# with one namespace it asks nothing, not because the rule is off (the default)
+# but because there is no boundary for a prefix to mark.
+rules:
+  naming:
+    qualify: ondemand

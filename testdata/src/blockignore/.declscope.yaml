@@ -1,0 +1,6 @@
+# The ignore accounting under test needs the naming rule in force: whether an
+# //declscope:ignore qualify is used or unused is decided by whether qualify
+# could have fired, and by default it never does.
+rules:
+  naming:
+    qualify: ondemand

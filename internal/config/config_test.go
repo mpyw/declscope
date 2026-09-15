@@ -237,12 +237,13 @@ func TestBoolSettings(t *testing.T) {
 	}
 }
 
-// TestDefaultModes pins the defaults: the namespace is required in a name
-// only once the package has a second namespace to distinguish.
+// TestDefaultModes pins the defaults: the naming rule is off until a config
+// asks for it, since its findings did not correlate with boundary violations
+// on the repositories measured.
 func TestDefaultModes(t *testing.T) {
 	opts := internal.DefaultOptions()
-	if opts.Qualify != internal.ModeOnDemand {
-		t.Errorf("default Qualify = %v, want ondemand", opts.Qualify)
+	if opts.Qualify != internal.ModeNever {
+		t.Errorf("default Qualify = %v, want never", opts.Qualify)
 	}
 	if opts.NameExported {
 		t.Error("default NameExported should be off")

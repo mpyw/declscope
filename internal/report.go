@@ -258,8 +258,8 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 // and demanding a prefix there doubled the word the name already carried.
 // namespace.Contains is the test.
 //
-// Whether it applies at all depends on rules.qualify, which defaults to
-// asking only once a package has a second namespace to distinguish. See Mode.
+// Whether it applies at all depends on rules.naming.qualify, which defaults
+// to never: the convention is opt-in. See Mode and DefaultOptions.
 func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) (reportFinding, bool) {
 	if !opts.Qualify.Applies(c.namespaces) || !t.named(opts) {
 		return reportFinding{}, false
