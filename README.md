@@ -709,6 +709,9 @@ The rule also switches off for a whole package when some reference site was neve
 
 ## Adopting on an existing codebase
 
+> [!TIP]
+> [`skills/declscope-adoption`](skills/declscope-adoption/SKILL.md) is a skill for an AI agent doing this work. It carries what each diagnostic shape means structurally, and the measurement traps that produce false confidence. Install it with `gh skill install mpyw/declscope`.
+
 A **baseline** records the violations a codebase already has. Turning declscope on then reports only what is new.
 
 ```console
