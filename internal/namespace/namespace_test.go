@@ -153,7 +153,7 @@ func TestContainsCases(t *testing.T) {
 		name, ns string
 		want     bool
 	}{
-		// 実測で「接頭辞を強いると語が二重になる」形。すべて通るべき。
+		// Names the prefix rule doubled a word in, measured on real code.
 		{"statementReducer", "reducer", true},
 		{"NewRegistry", "registry", true},
 		{"LoadConfig", "config", true},
@@ -161,15 +161,16 @@ func TestContainsCases(t *testing.T) {
 		{"hasDirective", "directive", true},
 		{"AWSScope", "scope", true},
 		{"BuildIgnoreMap", "ignore", true},
-		// 語の派生。右端が語の途中で終わる。
+		// Derived words. The match ends inside a word.
 		{"SpecifierParser", "parse", true},
 		{"CheckConflicts", "conflict", true},
 		{"APIParser", "parse", true},
-		// ファイル stem と識別子でトークン分割がずれる場合。
+		// The file stem and the identifier split into words differently.
 		{"NewAzureAppConfigParamStrategy", "azureAppconfigParam", true},
-		// 名前空間そのもの。
+		// The name is the namespace.
 		{"collect", "collect", true},
-		// 綴りが変わる活用形。名前空間の側から生成した完全形だけを受理する。
+		// Inflections that change the spelling. Only whole forms generated from
+		// the namespace are accepted.
 		{"storing", "store", true},
 		{"storingWorker", "store", true},
 		{"NewStoring", "store", true},
@@ -177,28 +178,28 @@ func TestContainsCases(t *testing.T) {
 		{"ignoringMap", "ignore", true},
 		{"applies", "apply", true},
 		{"appliedResults", "apply", true},
-		{"applying", "apply", true}, // apply がそのまま含まれる。生成形ではなく素の含有
-		// 複合語の名前空間では末尾の語だけが活用する。
+		{"applying", "apply", true}, // plain containment, not a generated form
+		// In a compound namespace, only the final word inflects.
 		{"userStoring", "userStore", true},
-		// 語幹化の誤受理。stor を右端自由で照合すると通ってしまう形で、
-		// 生成側方式ではすべて落ちる。
+		// What stemming would wrongly accept. Matching a bare stor with a free
+		// right edge lets these through. Generating from the namespace does not.
 		{"story", "store", false},
 		{"storm", "store", false},
 		{"stories", "store", false},
 		{"userStory", "userStore", false},
 		{"appliance", "apply", false},
-		// 母音の後の e / y は綴りが変わらないので何も生成しない。
-		{"freeing", "free", true}, // free + ing。素の含有で通る
+		// After a vowel, e and y keep their spelling, so nothing is generated.
+		{"freeing", "free", true}, // free + ing, carried by plain containment
 		{"freing", "free", false},
-		{"deploys", "deploy", true}, // deploy + s。素の含有で通る
+		{"deploys", "deploy", true}, // deploy + s, carried by plain containment
 		{"deploies", "deploy", false},
-		// 左端が語境界でない。通ってはいけない。
+		// The left edge is not a word boundary. These must not pass.
 		{"monkey", "key", false},
 		{"UntagCommand", "tag", false},
-		// 名前空間をまったく含まない。
+		// The namespace does not appear at all.
 		{"Wrap", "client", false},
 		{"nounSecret", "command", false},
-		// 左端固定の代償として受理されるもの。意図的。
+		// Accepted as the price of anchoring only the left edge. Intended.
 		{"models", "mode", true},
 	}
 	for _, tt := range tests {
