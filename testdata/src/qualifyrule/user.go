@@ -1,17 +1,17 @@
 package qualifyrule
 
 // Unexported package-level declarations must say which unit owns them.
-func helper() int { return 1 } // want `func helper does not carry namespace "user" anywhere in its name; rename it to userHelper`
+func helper() int { return 1 } // want `func helper does not carry namespace "user" anywhere in its name; rename it to userHelper, or to another name that carries "user"`
 
 // The right edge of the match is free, so a plural spells the namespace as
 // plainly as the singular would.
 func users() int { return 2 }
 
-var count int // want `var count does not carry namespace "user" anywhere in its name; rename it to userCount`
+var count int // want `var count does not carry namespace "user" anywhere in its name; rename it to userCount, or to another name that carries "user"`
 
-const limit = 3 // want `const limit does not carry namespace "user" anywhere in its name; rename it to userLimit`
+const limit = 3 // want `const limit does not carry namespace "user" anywhere in its name; rename it to userLimit, or to another name that carries "user"`
 
-type payload struct { // want `type payload does not carry namespace "user" anywhere in its name; rename it to userPayload`
+type payload struct { // want `type payload does not carry namespace "user" anywhere in its name; rename it to userPayload, or to another name that carries "user"`
 	// Members are exempt: they are already namespaced by the type that owns
 	// them, and a prefix here would be the stutter Go idiom avoids.
 	field int
