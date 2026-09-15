@@ -277,6 +277,13 @@ func Load(path string) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The path is kept absolute because the exclude patterns and the baseline
+	// are resolved against the directory holding it. A -config given relative
+	// to the working directory would otherwise name a directory that no
+	// reported file path is ever taken from.
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
 	f := File{path: path}
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	// Unknown keys are an error rather than a silent no-op: a typo in a rule
@@ -371,11 +378,29 @@ func (f *File) Apply(opts *internal.Options) error {
 	}
 	if f.Exclude != nil {
 		opts.Exclude = f.Exclude
+		opts.ExcludeBase = f.ExcludeBase()
 	}
 	if f.Baseline != "" {
 		opts.BaselinePath = f.BaselinePath()
 	}
 	return nil
+}
+
+// ExcludePatterns resolves each exclude glob against the config file's own
+// directory, the way BaselinePath resolves the baseline. A path written in a
+// file means a path from that file, and every other path key here already
+// works that way.
+//
+// Resolving here rather than at match time is what lets the pattern itself be
+// anchored: ** regains its meaning, since a pattern no longer matches at every
+// depth by construction.
+// ExcludeBase is the directory the exclude patterns are relative to: the one
+// holding this config file. Empty when the file did not come from disk.
+func (f *File) ExcludeBase() string {
+	if f.path == "" {
+		return ""
+	}
+	return filepath.Dir(f.path)
 }
 
 // BaselinePath resolves the configured baseline against the config file's own

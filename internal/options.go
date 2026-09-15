@@ -1,9 +1,6 @@
 package internal
 
 import (
-	"regexp"
-	"strings"
-
 	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/scope"
 )
@@ -47,8 +44,19 @@ type Options struct {
 	// offered, since the uses outside the package cannot be seen.
 	NameExported bool
 
-	// Exclude holds glob patterns matched against file paths.
+	// Exclude holds path globs, spelled the way the config file spells them.
+	// A pattern that names a path — anything holding a separator other than a
+	// leading ** — is anchored to ExcludeBase, so it speaks about the tree
+	// under the config file that states it and nothing else. A bare file name
+	// and a leading **/ float, matching at any depth, which is what both
+	// spellings mean in a .gitignore.
 	Exclude []string
+
+	// ExcludeBase is the directory the anchored patterns are relative to: the
+	// directory of the config file that states them. Empty leaves every
+	// pattern floating, which is all that can be done when no config file said
+	// where "here" is.
+	ExcludeBase string
 
 	// BaselinePath is the baseline file that applies, resolved relative to
 	// the config file that reportsName it or found by the default-reportsName lookup.
@@ -62,7 +70,7 @@ type Options struct {
 	// to parse cannot block its own regeneration.
 	Baseline *baseline.Set
 
-	excludeRE []*regexp.Regexp
+	excludeRE []excludeMatcher
 }
 
 // DefaultOptions mirrors the rules stated in the README: every declaration in
@@ -87,51 +95,18 @@ func DefaultOptions() Options {
 // fails to parse could never be regenerated.
 func (o *Options) Compile() error {
 	o.excludeRE = o.excludeRE[:0]
+	bases := excludeBases(o.ExcludeBase)
 	for _, pattern := range o.Exclude {
-		re, err := globFromOptions(pattern)
+		m, err := compileExclude(pattern, bases)
 		if err != nil {
 			return err
 		}
-		o.excludeRE = append(o.excludeRE, re)
+		o.excludeRE = append(o.excludeRE, m)
 	}
 	return nil
 }
 
 // Excluded reports whether a file is outside the scope of the analysis.
 func (o Options) Excluded(path string) bool {
-	slashed := strings.ReplaceAll(path, "\\", "/")
-	for _, re := range o.excludeRE {
-		if re.MatchString(slashed) {
-			return true
-		}
-	}
-	return false
-}
-
-// globFromOptions translates a path glob into a regexp. ** matches across
-// separators, * and ? do not.
-func globFromOptions(pattern string) (*regexp.Regexp, error) {
-	var b strings.Builder
-	b.WriteString("(?:^|/)")
-	for i := 0; i < len(pattern); {
-		switch {
-		case strings.HasPrefix(pattern[i:], "**/"):
-			b.WriteString("(?:.*/)?")
-			i += 3
-		case strings.HasPrefix(pattern[i:], "**"):
-			b.WriteString(".*")
-			i += 2
-		case pattern[i] == '*':
-			b.WriteString("[^/]*")
-			i++
-		case pattern[i] == '?':
-			b.WriteString("[^/]")
-			i++
-		default:
-			b.WriteString(regexp.QuoteMeta(pattern[i : i+1]))
-			i++
-		}
-	}
-	b.WriteString("$")
-	return regexp.Compile(b.String())
+	return excludeMatches(o.excludeRE, path)
 }

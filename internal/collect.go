@@ -43,7 +43,11 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 	}
 	cores := make(map[string]bool)
 	for _, f := range pass.Files {
-		path := pass.Fset.Position(f.Pos()).Filename
+		// PositionFor without adjustment names the file on disk. A //line
+		// directive renames the position to whatever produced the file, and
+		// both the namespace and the exclude patterns are about the file the
+		// repository holds, not the one a generator read.
+		path := pass.Fset.PositionFor(f.Pos(), false).Filename
 		if ast.IsGenerated(f) || opts.Excluded(path) {
 			continue
 		}

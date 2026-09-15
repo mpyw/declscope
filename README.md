@@ -215,7 +215,7 @@ baseline: .declscope-baseline.yaml
 | `rules.naming.exported` | `true`, `false` | `false` | Whether the naming rule also reaches exported declarations. The rename is never offered there |
 | `rules.naming.vocabulary` | Namespace to a list of words | None | Extra words that carry a namespace. See [what carries a namespace](#what-carries-a-namespace) |
 | `rules.allowSurplus` | `true`, `false` | `false` | Turns the [`surplus`](#surplus) rule off. The rule is on, so the key names what switching it does |
-| `exclude` | Glob patterns against the file path | None | Files that are neither checked nor read as reference sites |
+| `exclude` | Path globs, read against the config file's own directory | None | Files that are neither checked nor read as reference sites |
 | `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` | The [baseline](#adopting-on-an-existing-codebase) to consult |
 
 In a glob:
@@ -225,7 +225,20 @@ In a glob:
 | `*`, `?` | Within one path segment |
 | `**` | Across segments |
 
-The pattern is anchored at any segment boundary.
+An `exclude` pattern is read **against the directory of the config file that states it**, and whether it is anchored there follows the rules a `.gitignore` uses:
+
+| Pattern | Matches |
+| --- | --- |
+| `gen.go` | A file of that name at any depth. A bare name carries no place |
+| `/gen.go` | The one beside this config file. A leading `/` means "here", not the root of the filesystem |
+| `**/gen/**` | That directory at any depth |
+| `gen/**` | The one directory beside this config file, and no other |
+
+A pattern that already holds a separator is anchored whether or not it starts with one, so `/gen/**` and `gen/**` are the same rule. The leading `/` earns its keep on a bare name, which would otherwise float.
+
+So the same line means different things in different files: `internal/tui/**` in the config at the repository root reaches `internal/tui`, and in `internal/.declscope.yaml` it reaches `internal/internal/tui`. A pattern cannot leave its own directory — a `..` in one is an error rather than a rule that matches nothing.
+
+The directory of the config file is the origin rather than the module root, because a config governs only the packages that find it by walking up. A pattern anchored at the module root but written in a nested config could only name files that never consult that config, so it would match nothing by construction.
 
 > [!NOTE]
 > An **unknown key is an error**, not a silent no-op. A typo in a rule name cannot leave the rule at its default with no sign of it. The message names the key, and the keys its section does take. A value a key does not accept is an error in the same way.

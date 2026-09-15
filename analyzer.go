@@ -54,7 +54,9 @@ func options(pass *analysis.Pass) (internal.Options, error) {
 
 func packageDir(pass *analysis.Pass) string {
 	for _, f := range pass.Files {
-		if pos := pass.Fset.Position(f.Pos()); pos.Filename != "" {
+		// Unadjusted, for the same reason collect.go is: the config file is
+		// looked up beside the file on disk, not beside a //line target.
+		if pos := pass.Fset.PositionFor(f.Pos(), false); pos.Filename != "" {
 			return filepath.Dir(pos.Filename)
 		}
 	}
