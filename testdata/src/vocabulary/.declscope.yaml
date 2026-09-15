@@ -1,0 +1,10 @@
+# The vocabulary maps a namespace to the extra words that carry it: irregular
+# inflections and domain synonyms the generated forms cannot reach. The words
+# go through the same test as the namespace itself — word boundary on the
+# left, free right edge — which pinwheel below is the negative for.
+rules:
+  naming:
+    qualify: ondemand
+    vocabulary:
+      mouse: [wheel]
+      index: [indices]

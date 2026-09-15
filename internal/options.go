@@ -19,6 +19,13 @@ type Options struct {
 	// somewhere in its name.
 	Qualify Mode
 
+	// Vocabulary lists, per namespace, extra words that carry the namespace as
+	// its own spelling would: irregular inflections and domain synonyms that
+	// no generated form reaches (mouse: wheel, index: indices). A word is
+	// matched exactly the way the namespace is — starting at a word boundary,
+	// with the right edge free — so it is a spelling, never a scope.
+	Vocabulary map[string][]string
+
 	// NameExported widens the naming rule to exported declarations. Inside
 	// the package an exported name is read as bare as any other, so the package
 	// qualifier that explains an external use is absent exactly where the

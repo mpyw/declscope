@@ -32,6 +32,9 @@ rules:
   naming:
     qualify: never
     exported: true
+    vocabulary:
+      mouse: [wheel, cursor]
+      index: [indices]
 exclude:
   - "**/mock_*.go"
 `)
@@ -52,6 +55,10 @@ exclude:
 	}
 	if len(opts.Exclude) != 1 || opts.Exclude[0] != "**/mock_*.go" {
 		t.Errorf("exclude not applied: %v", opts.Exclude)
+	}
+	if len(opts.Vocabulary["mouse"]) != 2 || opts.Vocabulary["mouse"][0] != "wheel" ||
+		len(opts.Vocabulary["index"]) != 1 || opts.Vocabulary["index"][0] != "indices" {
+		t.Errorf("vocabulary not applied: %v", opts.Vocabulary)
 	}
 }
 
@@ -90,11 +97,11 @@ func TestLoadRejectsUnknownKey(t *testing.T) {
 	for _, tt := range []struct{ yaml, want string }{
 		{"nonsense: 1\n", `unknown key "nonsense" (this section takes defaults, rules, exclude, baseline)`},
 		{"rules:\n  unqualifyy: always\n", `unknown key "rules.unqualifyy" (this section takes naming)`},
-		{"rules:\n  naming:\n    unqualifyy: always\n", `unknown key "rules.naming.unqualifyy" (this section takes qualify, exported)`},
+		{"rules:\n  naming:\n    unqualifyy: always\n", `unknown key "rules.naming.unqualifyy" (this section takes qualify, exported, vocabulary)`},
 		// The removed rule is refused through the same path as any typo, so a
 		// config written for the release that had it fails loudly rather than
 		// silently dropping the setting.
-		{"rules:\n  naming:\n    unqualify: true\n", `unknown key "rules.naming.unqualify" (this section takes qualify, exported)`},
+		{"rules:\n  naming:\n    unqualify: true\n", `unknown key "rules.naming.unqualify" (this section takes qualify, exported, vocabulary)`},
 		{"defaults:\n  unexpected: private\n", `unknown key "defaults.unexpected" (this section takes unexported)`},
 	} {
 		path := write(t, t.TempDir(), ".declscope.yaml", tt.yaml)

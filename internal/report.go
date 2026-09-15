@@ -276,6 +276,14 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 	if namespace.Contains(name, t.file.ns) {
 		return reportFinding{}, false
 	}
+	// A configured vocabulary word carries the namespace the way its own
+	// spelling would, under the same test: word boundary on the left, free
+	// right edge. It widens what counts as carrying, never what is asked.
+	for _, word := range opts.Vocabulary[t.file.ns] {
+		if namespace.Contains(name, word) {
+			return reportFinding{}, false
+		}
+	}
 	// main is a name the toolchain requires, so nothing can be asked of it.
 	if t.kind == kindFunc && name == "main" && pass.Pkg.Name() == "main" {
 		return reportFinding{}, false

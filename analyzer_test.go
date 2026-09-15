@@ -54,6 +54,13 @@ func TestQualifyInflections(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "qualifyinflect")
 }
 
+// TestQualifyVocabulary checks rules.naming.vocabulary: a word listed for a
+// namespace satisfies the naming rule under the same test as the namespace
+// itself — word boundary on the left, free right edge — and nothing more.
+func TestQualifyVocabulary(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "vocabulary")
+}
+
 // TestQualifyDefaultOff checks the built-in default: with no config, the
 // naming rule asks nothing even of a package with a second namespace, while
 // the boundary rule fires as it always did.
