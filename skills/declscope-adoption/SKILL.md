@@ -25,9 +25,14 @@ Two of the three rules are off unless the repository asks for them. A count of z
 | `rules.allowSurplus` | `false` | The surplus rule is **on** |
 | `boundary` | | Always on, with no switch |
 
+The config is looked up from each analyzed package's directory **upwards**, so a subtree can carry its own and a repository can have several. Find them all, and do not read the root alone:
+
 ```bash
-cat .declscope.yaml 2>/dev/null || echo "no config: naming is off"
+find . -name '.declscope.y*ml' -not -path './.git/*' \
+  -exec sh -c 'echo "== $1"; cat "$1"' _ {} \;
 ```
+
+Finding none means the naming rule is off everywhere. Finding one is not the answer on its own, since a config that never sets `qualify` leaves the rule off too.
 
 Adopting with the naming rule off is a real choice, and it is the shipped default because the rule fires where nothing is wrong. Decide it deliberately rather than by not noticing. These repositories use what declscope holds itself to:
 
