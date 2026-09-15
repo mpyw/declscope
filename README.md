@@ -304,15 +304,16 @@ What a member lacks in Go is encapsulation. Every unexported field is visible to
 
 ## Rules
 
-A **rule** is one check. There are three. A rule's name is at once the diagnostic's category, its configuration key, its [baseline](#adopting-on-an-existing-codebase) key, and what [`//declscope:ignore`](#directives) targets.
+A **rule** is one check. There are four. A rule's name is at once the diagnostic's category, its configuration key, its [baseline](#adopting-on-an-existing-codebase) key, and what [`//declscope:ignore`](#directives) targets.
 
 | Rule | Reports | Fix | Configurable |
 | --- | --- | --- | --- |
 | [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:package` | No |
 | [`qualify`](#the-naming-rule) | A name that does not carry its namespace | Rename to prefix it | `rules.naming.*` |
+| [`widening`](#widening) | A `//declscope:package` with no visible use from another namespace | None | `rules.widening` |
 | [`directive`](#unused-and-malformed-directives) | A directive that binds nothing, or is malformed | None | No |
 
-Reach enforcement has no switch. Naming discipline is off by default.
+Reach enforcement has no switch. Naming discipline and the widening audit are off by default.
 
 ### `boundary`
 
@@ -472,6 +473,52 @@ The fix is withheld when any of these holds.
 
 A doubt withholds the fix, never the diagnostic.
 
+### `widening`
+
+**Off by default.** Turn it on with `rules.widening`.
+
+`widening` is the converse of `boundary`. It reports a `//declscope:package` directive when declscope sees no use of what it widens from another namespace. The scope is wider than any visible use justifies.
+
+```go
+// user.go
+package store
+
+//declscope:package
+func emailNormalize(email string) string { return email }
+```
+
+```console
+$ declscope ./...
+user.go:3:1: //declscope:package on emailNormalize: no use from another namespace is visible to declscope
+```
+
+One physical comment gets one report, however many declarations take their scope from it. The message lists them. A declaration that states its own scope does not depend on an outer directive, so it neither keeps that directive alive nor appears under it.
+
+> [!IMPORTANT]
+> The rule concludes from an **absence**, and its advice is to delete a directive. A directive can hold up something declscope cannot see, so the rule stays quiet on any doubt. There is no fix for the same reason.
+
+The whole comment stays quiet when any declaration it reaches may be needed.
+
+| Kept alive by | Why the rule cannot rule it out |
+| --- | --- |
+| A use from another namespace | The directive is doing its job |
+| An exported name in the comment's reach | Importers reach it, which one package never sees |
+| A method in an interface contract of the package | An interface value reaches the method without spelling it |
+| An unexported method carried by an exported type | An importer can embed the type and complete a satisfaction |
+| A struct conversion involving the field's type | The conversion pairs every field by name and spells none |
+| `//go:linkname` or `//export` naming the declaration | The directive names it as text |
+
+The rule also switches off for a whole package when some reference site was never read.
+
+| Switched off by | What was not read |
+| --- | --- |
+| A generated, excluded, cgo or assembly source | Those files are never read as reference sites |
+| A build-excluded file of the package | It may hold the one use |
+| In-package `_test.go` files this variant does not see | The test variant sees every file and decides |
+
+> [!NOTE]
+> Reach that spells no name and leaves no trace, such as reflection, is invisible here as everywhere. Adopt the rule where the package's reach is expressed in source.
+
 ## Directives
 
 A **directive** is a comment beginning `//declscope:`. The form `/*declscope: ... */` also works.
@@ -554,7 +601,7 @@ A malformed directive is reported at the comment.
 | `//declscope:package x` | `//declscope:package takes no argument` |
 | `//declscope:private` and `//declscope:package` together | `conflicting scope directives: ...` |
 | `//declscope:core` and `//declscope:namespace` together | `conflicting namespace directives: a core file's namespace is the core` |
-| `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, directive)` |
+| `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, widening, directive)` |
 | `//declscope:namespace` after the package clause | `declscope:namespace must appear before the package clause` |
 
 > [!IMPORTANT]
@@ -588,6 +635,7 @@ rules:
     exported: false       # true | false
     vocabulary:
       mouse: [wheel]
+  widening: false         # true | false
 
 exclude:
   - "**/mock_*.go"
@@ -601,6 +649,7 @@ baseline: .declscope-baseline.yaml
 | `rules.naming.qualify` | `always`, `never`, `ondemand` | `never` | When a name must carry its namespace. See [the naming rule](#when-it-applies) |
 | `rules.naming.exported` | `true`, `false` | `false` | Whether the naming rule also reaches exported declarations. The rename is never offered there |
 | `rules.naming.vocabulary` | Namespace to a list of words | None | Extra words that carry a namespace. See [what carries a namespace](#what-carries-a-namespace) |
+| `rules.widening` | `true`, `false` | `false` | Whether to report a [`//declscope:package` with no visible outside use](#widening) |
 | `exclude` | Glob patterns against the file path | None | Files that are neither checked nor read as reference sites |
 | `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` | The [baseline](#adopting-on-an-existing-codebase) to consult |
 
