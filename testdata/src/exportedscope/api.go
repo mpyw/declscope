@@ -19,7 +19,7 @@ func Seal() int { return 1 } // want `func Seal is declared private by //declsco
 // audience says so on the type, and the directive reaches the fields.
 //
 //declscope:private
-type entry struct { // want `type entry is declared private by //declscope:private, but is used from namespace "use"` `type entry does not carry namespace "api" anywhere in its name; rename it to apiEntry`
+type entry struct { // want `type entry is declared private by //declscope:private, but is used from namespace "use"` `type entry does not carry namespace "api" anywhere in its name; rename it to apiEntry, or to another name that carries "api"`
 	Key   string `json:"key"` // want `field entry.Key is declared private by //declscope:private on entry, but is used from namespace "use"`
 	Value []byte `json:"value"`
 }

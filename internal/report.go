@@ -225,8 +225,8 @@ func (c *collection) checkBoundary(pass *analysis.Pass, opts Options, t *target)
 	}
 	for _, r := range offenders {
 		f.related = append(f.related, analysis.RelatedInformation{
-			Pos:     r.ident.Pos(),
-			End:     r.ident.End(),
+			Pos:     r.node.Pos(),
+			End:     r.node.End(),
 			Message: fmt.Sprintf("used here, in %s", reportDescribeFile(r.file)),
 		})
 	}
@@ -293,8 +293,13 @@ func (c *collection) checkQualify(pass *analysis.Pass, opts Options, t *target) 
 		rule: rule.Qualify,
 		decl: name,
 		pos:  t.ident.Pos(),
-		msg: fmt.Sprintf("%s %s does not carry %s anywhere in its name; rename it to %s",
-			t.kind, name, reportDescribe(t.file.ns, t.file.path), namespace.Qualify(name, t.file.ns)),
+		// The rename is one answer, not the requirement. Naming only the
+		// prefixed form would restate the prefix rule that containment
+		// replaced, and push the author away from normalizeUserEmail and
+		// userEmailFrom, which settle the rule just as well.
+		msg: fmt.Sprintf("%s %s does not carry %s anywhere in its name; rename it to %s, or to another name that carries %q",
+			t.kind, name, reportDescribe(t.file.ns, t.file.path),
+			namespace.Qualify(name, t.file.ns), t.file.ns),
 	}
 	if fix, ok := c.renameFix(pass, t, namespace.Qualify(name, t.file.ns),
 		"prefix it with its namespace"); ok {

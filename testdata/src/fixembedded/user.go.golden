@@ -1,8 +1,8 @@
 package fixembedded
 
-type userCount struct{ n int } // want `type count does not carry namespace "user" anywhere in its name; rename it to userCount`
+type userCount struct{ n int } // want `type count does not carry namespace "user" anywhere in its name; rename it to userCount, or to another name that carries "user"`
 
-type userTotal struct{ sum int } // want `type total does not carry namespace "user" anywhere in its name; rename it to userTotal`
+type userTotal struct{ sum int } // want `type total does not carry namespace "user" anywhere in its name; rename it to userTotal, or to another name that carries "user"`
 
 // User embeds both. The embedding ident and every selection through it are
 // spelled with the type's name, so the rename has to rewrite all of them.

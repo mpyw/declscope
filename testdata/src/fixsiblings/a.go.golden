@@ -3,6 +3,6 @@ package fixsiblings
 // Prefixing is not injective across namespaces: bX in namespace "a" and x in
 // namespace "aB" both prefix to aBX. The first declaration in the pass claims
 // the name; the second is reported without a fix.
-func aBX() int { return 1 } // want `func bX does not carry namespace "a" anywhere in its name; rename it to aBX`
+func aBX() int { return 1 } // want `func bX does not carry namespace "a" anywhere in its name; rename it to aBX, or to another name that carries "a"`
 
 var _ = aBX

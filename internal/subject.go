@@ -158,9 +158,12 @@ func methodOwner(fn *types.Func) types.Object {
 }
 
 // ref is a use of a target from somewhere in the package.
+// ref is one use site. It holds a node rather than an identifier because a
+// composite literal with no keys writes a field without naming it, and that
+// use has to be reported at the element that writes it.
 type ref struct {
-	ident *ast.Ident
-	file  *fileInfo
+	node ast.Node
+	file *fileInfo
 }
 
 // collection is the working state of one pass. collect.go builds the index
