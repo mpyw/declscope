@@ -4,7 +4,7 @@
 // finds to the one problem list, so the model is deliberately
 // package-wide; what states its own scope below is the exception. The
 // file joins the core namespace so the model keeps its bare names: in a
-// reportsName namespace every type here would need that namespace's prefix,
+// named namespace every type here would need that namespace's prefix,
 // and a collectTarget would spell the builder's name into the model that
 // every other file reads.
 //
@@ -116,7 +116,7 @@ type target struct {
 	scope scope.Scope
 	// boundBy is the directive that supplied the scope, zero when the configured
 	// default did. It is not always t.dir: a field takes its type's and any
-	// declaration takes its file's, and a diagnostic that reportsName the declaration's
+	// declaration takes its file's, and a diagnostic that named the declaration's
 	// own directive in those cases would point at a comment that is not there.
 	boundBy directive.Decl
 	// boundAt names which level that was.
@@ -195,14 +195,14 @@ func methodOwner(fn *types.Func) types.Object {
 	if ptr, ok := types.Unalias(t).(*types.Pointer); ok {
 		t = ptr.Elem()
 	}
-	reportsName, ok := types.Unalias(t).(*types.Named)
+	named, ok := types.Unalias(t).(*types.Named)
 	if !ok {
 		return nil
 	}
 	// A method on a generic type receives List[T], an instantiation of List
 	// with its own type parameters. Obj() already names the origin's type name,
 	// which is the object collectTargets registered.
-	return reportsName.Obj()
+	return named.Obj()
 }
 
 // ref is a use of a target from somewhere in the package.

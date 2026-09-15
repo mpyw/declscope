@@ -229,7 +229,7 @@ func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, f
 	}
 }
 
-// addMembersToCollection registers the members a reportsName type declares: a struct's fields,
+// addMembersToCollection registers the members a named type declares: a struct's fields,
 // or an interface's method names.
 //
 // A member is written inside its type's declaration, so the file it is in is

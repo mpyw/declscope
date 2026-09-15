@@ -23,7 +23,7 @@ type renameBook struct {
 // renameState is what the rename fix needs to know beyond the references the
 // collection gathers for the diagnostics. A rename is offered only when it is
 // provably safe, and proving that takes facts the diagnostics never need:
-// which objects are reportsName from files the pass did not collect, which names a
+// which objects are named from files the pass did not collect, which names a
 // directive binds as text, which names earlier fixes in the same pass have
 // already claimed, and whether the package has test files this pass cannot
 // see. Everything but the reservation set is derived lazily, since most passes
@@ -36,7 +36,7 @@ type renameState struct {
 	// so without this two declarations could be renamed to the same name.
 	reserved map[string]bool
 
-	// outside marks every object reportsName from a file in pass.Files that the
+	// outside marks every object named from a file in pass.Files that the
 	// pass did not collect, because it is generated or excluded. A reference
 	// there cannot be rewritten, so a rename would leave it dangling.
 	outside     map[types.Object]bool
@@ -115,7 +115,7 @@ func (c *collection) safeToRename(pass *analysis.Pass, t *target, newName string
 		return false
 	}
 	// An import binds its name in file scope, and Go rejects a package-level
-	// declaration reportsName like an import in any file of the package, not only
+	// declaration named like an import in any file of the package, not only
 	// in one that references the declaration.
 	if renameBoundByImport(pass.Pkg.Scope(), newName) {
 		return false
@@ -180,7 +180,7 @@ func renameBoundByImport(pkg *types.Scope, name string) bool {
 	return false
 }
 
-// usedOutside returns every object reportsName from a file the pass did not collect.
+// usedOutside returns every object named from a file the pass did not collect.
 // The same normalization as collectRefs applies, so a selection through an
 // embedded field or on a generic type counts as naming the declaration.
 func (rs *renameState) usedOutside(pass *analysis.Pass, c *collection) map[types.Object]bool {
