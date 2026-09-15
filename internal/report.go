@@ -41,7 +41,7 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	})
 
 	for _, t := range c.targets {
-		for _, f := range c.checkForReport(pass, opts, t) {
+		for _, f := range c.findingsForReport(pass, opts, t) {
 			// Ignores are consulted before the baseline: a suppression the
 			// baseline would also have absorbed still counts as the directive
 			// doing its job.
@@ -116,7 +116,7 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	}
 }
 
-// nsNameInReport spells the namespace for the baseline, which is the one place it has
+// namespaceForReport spells the namespace for the baseline, which is the one place it has
 // to be written down rather than compared.
 //
 // A namespace derived from a file name is normalized to alphanumerics, and one
@@ -125,7 +125,7 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 // whose prefix is empty and whose files all share it, and free for the file
 // with no stem at all — which has no namespace either, and must not share a
 // key with every other such file.
-func (f *fileInfo) nsNameInReport() string {
+func (f *fileInfo) namespaceForReport() string {
 	if f.core {
 		return "(core)"
 	}
@@ -140,7 +140,7 @@ func (f reportedFinding) key(pass *analysis.Pass, t *target) baseline.Key {
 	return baseline.Key{
 		Package:   pass.Pkg.Path(),
 		Rule:      f.rule,
-		Namespace: t.file.nsNameInReport(),
+		Namespace: t.file.namespaceForReport(),
 		Decl:      f.decl,
 	}
 }
@@ -152,7 +152,7 @@ func (f reportedFinding) key(pass *analysis.Pass, t *target) baseline.Key {
 func (c *collection) keysForReport(pass *analysis.Pass, opts Options) []baseline.Key {
 	var out []baseline.Key
 	for _, t := range c.targets {
-		for _, f := range c.checkForReport(pass, opts, t) {
+		for _, f := range c.findingsForReport(pass, opts, t) {
 			if c.silencedByIgnore(t, f.rule) {
 				continue
 			}
@@ -162,17 +162,17 @@ func (c *collection) keysForReport(pass *analysis.Pass, opts Options) []baseline
 	return out
 }
 
-func (c *collection) checkForReport(pass *analysis.Pass, opts Options, t *target) []reportedFinding {
+func (c *collection) findingsForReport(pass *analysis.Pass, opts Options, t *target) []reportedFinding {
 	var out []reportedFinding
 	// An exported declaration resolves to package scope unless a directive
 	// narrows it, so the one test below covers both: what is reachable from
 	// outside carries no boundary, and what an author narrowed does.
 	if t.scope == scope.Private {
-		if f, ok := c.checkBoundaryForReport(pass, opts, t); ok {
+		if f, ok := c.boundaryFindingForReport(pass, opts, t); ok {
 			out = append(out, f)
 		}
 	}
-	if f, ok := c.checkQualifyForReport(pass, opts, t); ok {
+	if f, ok := c.qualifyFindingForReport(pass, opts, t); ok {
 		out = append(out, f)
 	}
 	// The judgment and the wording both live in surplus.go; only the finding
@@ -184,9 +184,9 @@ func (c *collection) checkForReport(pass *analysis.Pass, opts Options, t *target
 	return out
 }
 
-// checkBoundaryForReport reports a declaration that is private to its namespace but is
+// boundaryFindingForReport reports a declaration that is private to its namespace but is
 // referenced from outside it.
-func (c *collection) checkBoundaryForReport(pass *analysis.Pass, opts Options, t *target) (reportedFinding, bool) {
+func (c *collection) boundaryFindingForReport(pass *analysis.Pass, opts Options, t *target) (reportedFinding, bool) {
 	var offenders []ref
 	for _, r := range c.refs[t.obj] {
 		if r.file.key() != t.file.key() {
@@ -241,7 +241,7 @@ func (c *collection) checkBoundaryForReport(pass *analysis.Pass, opts Options, t
 	return f, true
 }
 
-// checkQualifyForReport requires a package-level declaration to carry its namespace
+// qualifyFindingForReport requires a package-level declaration to carry its namespace
 // somewhere in its name, and offers a prefix when it does not.
 //
 // The namespace grants nothing — reach is stated with a directive — so this is
@@ -253,8 +253,8 @@ func (c *collection) checkBoundaryForReport(pass *analysis.Pass, opts Options, t
 //
 // Whether it applies at all depends on rules.naming.qualify, which defaults
 // to never: the convention is opt-in. See Mode and DefaultOptions.
-func (c *collection) checkQualifyForReport(pass *analysis.Pass, opts Options, t *target) (reportedFinding, bool) {
-	if !opts.Qualify.Applies(c.namespaces) || !t.namedInReport(opts) {
+func (c *collection) qualifyFindingForReport(pass *analysis.Pass, opts Options, t *target) (reportedFinding, bool) {
+	if !opts.Qualify.Applies(c.namespaces) || !t.reportsName(opts) {
 		return reportedFinding{}, false
 	}
 	// A namespace is always an identity, but not always a prefix: 2fa.go
@@ -366,7 +366,7 @@ func fileInReport(f *fileInfo) string {
 	return namespaceInReport(f.ns, f.path)
 }
 
-// namedInReport reports whether the naming rule reaches a declaration at all.
+// reportsName reports whether the naming rule reaches a declaration at all.
 //
 // It reaches package-level declarations only: a member is already qualified by
 // its type at every use, so a prefix would only stutter. It reaches an exported
@@ -374,7 +374,7 @@ func fileInReport(f *fileInfo) string {
 // exported name is read as bare as any other, which is the reading the
 // namespace mark exists for — and never reaches the core namespace, whose
 // prefix is empty and so has nothing to require.
-// namedInReport reports whether the naming rule reaches this declaration.
+// reportsName reports whether the naming rule reaches this declaration.
 //
 // A member never carries a namespace: it is written inside its type and read
 // through it. A method with a receiver is read through the receiver too, which
@@ -382,8 +382,8 @@ func fileInReport(f *fileInfo) string {
 // while the two are the same unit. A method filed away from its type points the
 // reader at a namespace that does not hold it, so the rule reaches it and asks
 // for the namespace it is actually written in.
-func (t *target) namedInReport(opts Options) bool {
-	if t.file.core || t.toolchainNameInReport() {
+func (t *target) reportsName(opts Options) bool {
+	if t.file.core || t.reportsToolchainName() {
 		return false
 	}
 	switch {
@@ -399,7 +399,7 @@ func (t *target) namedInReport(opts Options) bool {
 	return !isExported(t.obj.Name()) || opts.NameExported
 }
 
-// toolchainNameInReport reports whether the toolchain finds this declaration by its
+// reportsToolchainName reports whether the toolchain finds this declaration by its
 // name, so that no rename can be asked of it. `go test` collects a test by
 // name, and renaming TestLoad to userTestLoad leaves a function nothing runs.
 //
@@ -408,7 +408,7 @@ func (t *target) namedInReport(opts Options) bool {
 // toward exempting is the safe direction here: exempting one name too many
 // costs a rename nobody asked for, and exempting one too few is advice that
 // breaks the build.
-func (t *target) toolchainNameInReport() bool {
+func (t *target) reportsToolchainName() bool {
 	if t.kind != kindFunc || !strings.HasSuffix(t.file.path, "_test.go") {
 		return false
 	}

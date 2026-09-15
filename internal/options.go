@@ -32,7 +32,7 @@ type Options struct {
 	// a thing the author would want told.
 	//
 	// The polarity is stated rather than inverted in the reader's head. A key
-	// namedInReport surplus would have read as "surplus: yes please", which is the
+	// reportsName surplus would have read as "surplus: yes please", which is the
 	// opposite of what setting it to true would do.
 	//
 	// The rule never has a fix. It concludes from an absence, so every case it
@@ -51,7 +51,7 @@ type Options struct {
 	Exclude []string
 
 	// BaselinePath is the baseline file that applies, resolved relative to
-	// the config file that namedInReport it or found by the default-namedInReport lookup.
+	// the config file that reportsName it or found by the default-reportsName lookup.
 	// Empty means no baseline.
 	BaselinePath string
 

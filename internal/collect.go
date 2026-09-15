@@ -116,7 +116,7 @@ func (c *collection) collectTargets(pass *analysis.Pass, opts Options) {
 			}
 		}
 	}
-	c.strayInCollection()
+	c.collectStrayIgnores()
 }
 
 func (c *collection) addFuncToCollection(pass *analysis.Pass, opts Options, fi *fileInfo, d *ast.FuncDecl) {
@@ -229,7 +229,7 @@ func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, f
 	}
 }
 
-// addMembersToCollection registers the members a namedInReport type declares: a struct's fields,
+// addMembersToCollection registers the members a reportsName type declares: a struct's fields,
 // or an interface's method names.
 //
 // A member is written inside its type's declaration, so the file it is in is
@@ -290,7 +290,8 @@ func (c *collection) addMembersToCollection(pass *analysis.Pass, opts Options, f
 	}
 }
 
-// add registers a target and names it on every ignore directive reaching it,
+// addToCollection registers a target and names it on every ignore directive
+// reaching it,
 // so that an unused one can be reported with the declarations it was written
 // for. Problems were recorded when the directives were parsed, once per
 // comment rather than once per target sharing it.
@@ -312,7 +313,7 @@ func (c *collection) addToCollection(t *target) {
 // registers every ignore, so that one attached to no checked declaration is
 // still reported unused; records every problem, so that a block's bogus
 // directive is reported once and not once per spec; and remembers the group as
-// consumed, so that strayInCollection can tell which directives reached nothing.
+// consumed, so that collectStrayIgnores can tell which directives reached nothing.
 //
 // A group already consumed is skipped rather than parsed twice, so a comment
 // that is reachable along two paths (a single-line spec's Comment is also the
@@ -349,11 +350,11 @@ func (c *collection) parseCollectedDecl(groups ...*ast.CommentGroup) directive.D
 	return d
 }
 
-// strayInCollection reports every directive written after the package clause that no
+// collectStrayIgnores reports every directive written after the package clause that no
 // declaration consumed. Anything parseCollectedDecl saw is accounted for, whether or
 // not it produced a target; what is left is a directive the author believes
 // is in force and is not.
-func (c *collection) strayInCollection() {
+func (c *collection) collectStrayIgnores() {
 	for _, fi := range c.files {
 		for _, g := range fi.file.Comments {
 			// Comments before the package clause are the file's, and

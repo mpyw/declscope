@@ -66,7 +66,7 @@ func (s *ignoreSite) namesDirective() bool {
 	return false
 }
 
-// site returns the accounting entry for ig, keyed by where it is written.
+// siteOfIgnore returns the accounting entry for ig, keyed by where it is written.
 //
 //declscope:package // the collector registers every directive it parses
 func (c *collection) siteOfIgnore(ig directive.Ignore) *ignoreSite {
