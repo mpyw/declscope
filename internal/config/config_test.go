@@ -53,8 +53,13 @@ exclude:
 	if opts.Qualify != internal.ModeNever || !opts.NameExported {
 		t.Errorf("rules not applied: %+v", opts)
 	}
+	// The pattern arrives as written, together with the directory it is to be
+	// read against, so that it means the same thing wherever the config moves.
 	if len(opts.Exclude) != 1 || opts.Exclude[0] != "**/mock_*.go" {
 		t.Errorf("exclude not applied: %v", opts.Exclude)
+	}
+	if opts.ExcludeBase != filepath.Dir(path) {
+		t.Errorf("exclude base = %q, want %q", opts.ExcludeBase, filepath.Dir(path))
 	}
 	if len(opts.Vocabulary["mouse"]) != 2 || opts.Vocabulary["mouse"][0] != "wheel" ||
 		len(opts.Vocabulary["index"]) != 1 || opts.Vocabulary["index"][0] != "indices" {
@@ -435,4 +440,37 @@ func TestDefaultBaseline(t *testing.T) {
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// TestLoadMakesPathAbsolute checks that a config named relative to the working
+// directory still anchors its exclude patterns. The patterns are read against
+// the config's own directory, and the paths they are matched to come from the
+// driver as absolute ones; a directory spelled "." would agree with none of
+// them, and would exclude nothing without reporting anything.
+func TestLoadMakesPathAbsolute(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".declscope.yaml")
+	if err := os.WriteFile(path, []byte("exclude: [\"vendor/**\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	f, err := config.Load(".declscope.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(f.ExcludeBase()) {
+		t.Fatalf("exclude base = %q, want an absolute directory", f.ExcludeBase())
+	}
+
+	opts := internal.DefaultOptions()
+	if err := f.Apply(&opts); err != nil {
+		t.Fatal(err)
+	}
+	if err := opts.Compile(); err != nil {
+		t.Fatal(err)
+	}
+	if !opts.Excluded(filepath.Join(dir, "vendor", "foo.go")) {
+		t.Error("a relatively named config should still anchor its patterns")
+	}
 }
