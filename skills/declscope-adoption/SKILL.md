@@ -6,7 +6,7 @@ license: MIT
 
 # Adopting declscope
 
-Written against **declscope 0.3.2**. Check the version first, since one behaviour described here changed in 0.3.0.
+Written against **declscope 0.3.3**. Check the version first, since one behaviour described here changed in 0.3.0.
 
 ```bash
 declscope -V=full
