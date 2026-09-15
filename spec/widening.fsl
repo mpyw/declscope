@@ -1,0 +1,139 @@
+// widening reports a //declscope:package that nothing outside the namespace
+// needed. Four such directives were found by hand while auditing this
+// repository, which is the argument for having the rule.
+//
+// The rule is unlike the others: it concludes from an absence. boundary needs a
+// use to find, and qualify reads a name. This one reports because it saw
+// nothing, so every way a declaration can be reached without being spelled is a
+// way for it to be wrong.
+//
+// Being wrong here is expensive. The advice is to delete a directive, and
+// deleting one that was holding something up breaks the build of a package the
+// analysis never saw. A tool that exists to keep boundaries would be handing
+// out the instructions to break one.
+//
+// So the model is built around one property. NeverReportsReachable says the
+// rule stays silent whenever the declaration is reachable at all, by any of the
+// paths below. Everything else here exists to make that property bite.
+//
+//   usedOutside     another namespace spells the name
+//   satisfies       a method participates in an interface contract in the package
+//   carrierExposed  an exported type carries an unexported method out of the
+//                   package, where an importer completes the satisfaction. No
+//                   go/analysis pass can see that, so the rule only detects the
+//                   shape and stays quiet
+//   linkname        //go:linkname or //export names it as text
+//   opaqueSource    the package holds generated files, cgo, or assembly, none
+//                   of which the analysis reads as reference sites
+//
+// seesAllFiles is separate. It is not a way to be reached but a statement about
+// this pass: with -test=false, or with a test variant this pass is not, some
+// file that may hold the use was never read. The rule switches off rather than
+// guess.
+//
+// There is no fix. Every remaining false positive would be an automatic edit
+// that deletes a load-bearing directive.
+spec Widening {
+  state {
+    configured: Bool, ruleOn: Bool,
+    widened: Bool, seesAllFiles: Bool,
+    usedOutside: Bool, satisfies: Bool, carrierExposed: Bool,
+    linkname: Bool, opaqueSource: Bool,
+    reported: Bool, stalled: Bool
+  }
+
+  init {
+    configured = false  ruleOn = false
+    widened = false  seesAllFiles = true
+    usedOutside = false  satisfies = false  carrierExposed = false
+    linkname = false  opaqueSource = false
+    reported = false  stalled = false
+  }
+
+  action configure(on: Bool, w: Bool, sa: Bool, uo: Bool,
+                   sat: Bool, ce: Bool, ln: Bool, op: Bool) {
+    requires not configured
+    configured = true  ruleOn = on  widened = w  seesAllFiles = sa
+    usedOutside = uo  satisfies = sat  carrierExposed = ce
+    linkname = ln  opaqueSource = op
+  }
+
+  // A pass that ran and reported nothing, which may repeat forever.
+  action pass() { requires configured  stalled = true }
+
+  // Every way the declaration is reached from outside its namespace, whether or
+  // not this pass can see it.
+  def reachable() = usedOutside or satisfies or carrierExposed
+                    or linkname or opaqueSource
+  def fires() = ruleOn and widened and seesAllFiles and not reachable()
+
+  fair action report() {
+    requires configured  requires fires()
+    reported = true
+  }
+
+  // The property the rule exists to keep. Deleting a directive on this advice
+  // must never break a build.
+  invariant NeverReportsReachable { reported => not reachable() }
+
+  invariant ReportImpliesConfigured { reported => configured }
+  invariant ReportImpliesWidened    { reported => widened }
+  invariant ReportImpliesRuleOn     { reported => ruleOn }
+  // A pass that did not read every file reports nothing, rather than reading
+  // the absence of a use as evidence.
+  invariant SilentWhenBlind         { reported => seesAllFiles }
+
+  trans ReportOnlyWhereItFires {
+    not old(reported) and reported => old(fires())
+  }
+
+  reachable CanFire { configured and fires() }
+  reachable Reported { reported }
+
+  // Each suppressor is witnessed on its own, with every other one off, so that
+  // none of them is dead weight satisfied by another.
+  reachable SilentOnUseOutside {
+    configured and ruleOn and widened and seesAllFiles
+    and usedOutside and not satisfies and not carrierExposed
+    and not linkname and not opaqueSource and not fires()
+  }
+  reachable SilentOnInterfaceSatisfaction {
+    configured and ruleOn and widened and seesAllFiles
+    and not usedOutside and satisfies and not carrierExposed
+    and not linkname and not opaqueSource and not fires()
+  }
+  reachable SilentOnExportedCarrier {
+    configured and ruleOn and widened and seesAllFiles
+    and not usedOutside and not satisfies and carrierExposed
+    and not linkname and not opaqueSource and not fires()
+  }
+  reachable SilentOnLinkname {
+    configured and ruleOn and widened and seesAllFiles
+    and not usedOutside and not satisfies and not carrierExposed
+    and linkname and not opaqueSource and not fires()
+  }
+  reachable SilentOnOpaqueSource {
+    configured and ruleOn and widened and seesAllFiles
+    and not usedOutside and not satisfies and not carrierExposed
+    and not linkname and opaqueSource and not fires()
+  }
+  reachable SilentWhenNotEveryFileIsRead {
+    configured and ruleOn and widened and not seesAllFiles
+    and not reachable() and not fires()
+  }
+  reachable SilentWhenOff {
+    configured and not ruleOn and widened and seesAllFiles
+    and not reachable() and not fires()
+  }
+  reachable SilentWithoutTheDirective {
+    configured and ruleOn and not widened and seesAllFiles
+    and not reachable() and not fires()
+  }
+
+  // The rule reporting nothing for a pass, which is what the leadsTo escapes.
+  reachable PendingReportSurvivesAPass { stalled and fires() and not reported }
+
+  leadsTo EventuallyReported {
+    configured and fires() ~> reported
+  }
+}
