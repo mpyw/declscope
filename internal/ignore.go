@@ -27,7 +27,7 @@ type ignoreBook struct {
 // ignoreSite is one physical ignore directive, however many declarations it
 // reaches. A directive on a block is copied into every spec by Decl.Merge and
 // one on `var a, b` is shared by both names, but it is still one comment, so it
-// is judged once: unused only if it silenced nothing for any of them. Judged
+// is judged once: unused only if it silencedByIgnore nothing for any of them. Judged
 // per target, it would be reported unused whenever any sibling did not need
 // it, and a wholly unused one would be reported once per sibling.
 //
@@ -66,10 +66,10 @@ func (s *ignoreSite) namesDirective() bool {
 	return false
 }
 
-// site returns the accounting entry for ig, keyed by where it is written.
+// siteOfIgnore returns the accounting entry for ig, keyed by where it is written.
 //
 //declscope:package // the collector registers every directive it parses
-func (c *collection) site(ig directive.Ignore) *ignoreSite {
+func (c *collection) siteOfIgnore(ig directive.Ignore) *ignoreSite {
 	if c.ignores == nil {
 		c.ignores = make(map[token.Pos]*ignoreSite)
 	}
@@ -81,7 +81,7 @@ func (c *collection) site(ig directive.Ignore) *ignoreSite {
 	return s
 }
 
-// silenced reports whether any ignore directive covering t silences r.
+// silencedByIgnore reports whether any ignore directive covering t silences r.
 //
 // A member inherits the directives written on the type that owns it, so the
 // chain runs declaration, then owning type, then file. Every level is
@@ -90,7 +90,7 @@ func (c *collection) site(ig directive.Ignore) *ignoreSite {
 // levels do not make each other look unused.
 //
 //declscope:package // report.go consults it before every finding
-func (c *collection) silenced(t *target, r rule.Rule) bool {
+func (c *collection) silencedByIgnore(t *target, r rule.Rule) bool {
 	hit := c.ignored(t.dir.Ignores, r)
 	// A member is written inside its type's declaration, so the type's ignores
 	// contain it the way its scope directive does. A method with a receiver is
@@ -105,7 +105,7 @@ func (c *collection) silenced(t *target, r rule.Rule) bool {
 	return c.ignored(t.file.ignores, r) || hit
 }
 
-// silencesFile reports whether the file stands r down for everything it holds,
+// ignoreSilencesFile reports whether the file stands r down for everything it holds,
 // and marks the ignore that did it used.
 //
 // The marking is what keeps an ignore written for a directive problem from
@@ -113,14 +113,14 @@ func (c *collection) silenced(t *target, r rule.Rule) bool {
 // any declaration, so the per-target accounting never sees it work.
 //
 //declscope:package // report.go consults it for problems, which no target holds
-func (c *collection) silencesFile(fi *fileInfo, r rule.Rule) bool {
+func (c *collection) ignoreSilencesFile(fi *fileInfo, r rule.Rule) bool {
 	if fi == nil {
 		return false
 	}
 	hit := false
 	for _, ig := range fi.ignores {
 		if ig.Covers(r) {
-			c.site(ig).used = true
+			c.siteOfIgnore(ig).used = true
 			hit = true
 		}
 	}
@@ -136,14 +136,14 @@ func (c *collection) ignored(ignores []directive.Ignore, r rule.Rule) bool {
 	hit := false
 	for _, ig := range ignores {
 		if ig.Covers(r) {
-			c.site(ig).used = true
+			c.siteOfIgnore(ig).used = true
 			hit = true
 		}
 	}
 	return hit
 }
 
-// reportUnusedIgnores reports every ignore directive that silenced nothing.
+// reportUnusedIgnores reports every ignore directive that silencedByIgnore nothing.
 //
 // Only a pass that sees every reference in the package can tell. The ordinary
 // variant of a package with in-package _test.go files does not see the
@@ -163,7 +163,7 @@ func (c *collection) reportUnusedIgnores(pass *analysis.Pass) {
 	sites := make([]*ignoreSite, 0, len(c.ignores))
 	for _, s := range c.ignores {
 		// An ignore written beside this one, on the same declaration, answers
-		// for it — the same way reportUnusedScopes consults the directive that
+		// for it — the same way reportUnusedScopeSites consults the directive that
 		// carries the scope. Judging it only at the file level would leave the
 		// declaration-level remedy producing a second report instead of none.
 		if !s.used && !s.namesDirective() {

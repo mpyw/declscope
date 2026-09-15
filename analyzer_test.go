@@ -16,6 +16,14 @@ func TestMembers(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "members")
 }
 
+// TestForeignMethod checks which methods the naming rule reaches. A method
+// filed away from its receiver's type is read through a receiver that names a
+// different unit, so the rule asks for the namespace the method is written in.
+// A local method and an interface method name are left alone.
+func TestForeignMethod(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "foreignmethod")
+}
+
 func TestDirectives(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "directives")
 }

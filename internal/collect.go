@@ -51,7 +51,7 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		fileDir := directive.ParseFile(f)
 		fi.ignores = fileDir.Ignores
 		for _, ig := range fileDir.Ignores {
-			c.site(ig).fileLevel = true
+			c.siteOfIgnore(ig).fileLevel = true
 		}
 		c.problems = append(c.problems, fileDir.Problems...)
 		for _, g := range f.Comments {
@@ -110,29 +110,29 @@ func (c *collection) collectTargets(pass *analysis.Pass, opts Options) {
 		for _, d := range fi.file.Decls {
 			switch d := d.(type) {
 			case *ast.FuncDecl:
-				c.addFunc(pass, opts, fi, d)
+				c.addFuncToCollection(pass, opts, fi, d)
 			case *ast.GenDecl:
-				c.addGenDecl(pass, opts, fi, d)
+				c.addGenDeclToCollection(pass, opts, fi, d)
 			}
 		}
 	}
-	c.stray()
+	c.collectStrayIgnores()
 }
 
-func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d *ast.FuncDecl) {
+func (c *collection) addFuncToCollection(pass *analysis.Pass, opts Options, fi *fileInfo, d *ast.FuncDecl) {
 	obj, ok := pass.TypesInfo.Defs[d.Name].(*types.Func)
 	if !ok || d.Name.Name == "_" {
 		return
 	}
-	dir := c.parseDecl(append([]*ast.CommentGroup{d.Doc}, fi.looseTrailing(pass.Fset, d)...)...)
+	dir := c.parseCollectedDecl(append([]*ast.CommentGroup{d.Doc}, fi.looseTrailingComments(pass.Fset, d)...)...)
 
 	if d.Recv == nil {
 		// init is not declared in package scope and can never be referenced.
 		if d.Name.Name == "init" {
 			return
 		}
-		sc, boundBy, boundAt := c.bind(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
-		c.add(&target{
+		sc, boundBy, boundAt := c.bindAtScopeSite(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
+		c.addToCollection(&target{
 			obj: obj, ident: d.Name, kind: kindFunc, file: fi, dir: dir, anchor: d.Pos(),
 			scope:      sc,
 			boundBy:    boundBy,
@@ -148,20 +148,22 @@ func (c *collection) addFunc(pass *analysis.Pass, opts Options, fi *fileInfo, d 
 	// receiver is still read, for the name a diagnostic prints.
 	ownerObj := methodOwner(obj)
 	owner := ""
+	var ownerFile *fileInfo
 	if ownerObj != nil {
 		owner = ownerObj.Name()
+		ownerFile = c.fileAt(pass, ownerObj.Pos())
 	}
-	sc, boundBy, boundAt := c.bind(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
-	c.add(&target{
+	sc, boundBy, boundAt := c.bindAtScopeSite(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
+	c.addToCollection(&target{
 		obj: obj, ident: d.Name, kind: kindMethod, file: fi,
-		owner: owner, ownerObj: ownerObj, dir: dir, anchor: d.Pos(),
+		owner: owner, ownerObj: ownerObj, ownerFile: ownerFile, dir: dir, anchor: d.Pos(),
 		scope:   sc,
 		boundBy: boundBy,
 		boundAt: boundAt,
 	})
 }
 
-func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo, d *ast.GenDecl) {
+func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, fi *fileInfo, d *ast.GenDecl) {
 	if d.Tok == token.IMPORT {
 		return
 	}
@@ -171,24 +173,24 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 	// after "(" or ")"; an unparenthesized declaration's lines are its single
 	// spec's, and are read below.
 	grouped := d.Lparen.IsValid()
-	outer := c.parseDecl(d.Doc)
+	outer := c.parseCollectedDecl(d.Doc)
 	if grouped && len(d.Specs) > 0 {
 		attached := append(commentsAttached(d.Specs[0]), commentsAttached(d.Specs[len(d.Specs)-1])...)
-		outer = outer.Merge(c.parseDecl(fi.looseTrailing(pass.Fset, d, attached...)...))
+		outer = outer.Merge(c.parseCollectedDecl(fi.looseTrailingComments(pass.Fset, d, attached...)...))
 	}
 
 	for _, spec := range d.Specs {
 		switch spec := spec.(type) {
 		case *ast.TypeSpec:
-			dir := outer.Merge(c.parseDecl(commentsForSpec(pass, fi, spec)...))
-			c.shadow(outer, dir)
+			dir := outer.Merge(c.parseCollectedDecl(commentsForSpec(pass, fi, spec)...))
+			c.shadowedAtScopeSite(outer, dir)
 			anchor := d.Pos()
 			if grouped {
 				anchor = spec.Pos()
 			}
 			if obj, ok := pass.TypesInfo.Defs[spec.Name]; ok && spec.Name.Name != "_" {
-				sc, boundBy, boundAt := c.bind(opts, spec.Name.Name, dir, directive.Decl{}, fi.scope)
-				c.add(&target{
+				sc, boundBy, boundAt := c.bindAtScopeSite(opts, spec.Name.Name, dir, directive.Decl{}, fi.scope)
+				c.addToCollection(&target{
 					obj: obj, ident: spec.Name, kind: kindType, file: fi, dir: dir, anchor: anchor,
 					scope:      sc,
 					boundBy:    boundBy,
@@ -196,11 +198,11 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 					renameable: true,
 				})
 			}
-			c.addMembers(pass, opts, fi, spec, pass.TypesInfo.Defs[spec.Name], dir)
+			c.addMembersToCollection(pass, opts, fi, spec, pass.TypesInfo.Defs[spec.Name], dir)
 
 		case *ast.ValueSpec:
-			dir := outer.Merge(c.parseDecl(commentsForSpec(pass, fi, spec)...))
-			c.shadow(outer, dir)
+			dir := outer.Merge(c.parseCollectedDecl(commentsForSpec(pass, fi, spec)...))
+			c.shadowedAtScopeSite(outer, dir)
 			anchor := d.Pos()
 			if grouped {
 				anchor = spec.Pos()
@@ -214,8 +216,8 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 				if !ok || name.Name == "_" {
 					continue
 				}
-				sc, boundBy, boundAt := c.bind(opts, name.Name, dir, directive.Decl{}, fi.scope)
-				c.add(&target{
+				sc, boundBy, boundAt := c.bindAtScopeSite(opts, name.Name, dir, directive.Decl{}, fi.scope)
+				c.addToCollection(&target{
 					obj: obj, ident: name, kind: k, file: fi, dir: dir, anchor: anchor,
 					scope:      sc,
 					boundBy:    boundBy,
@@ -227,7 +229,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 	}
 }
 
-// addMembers registers the members a named type declares: a struct's fields,
+// addMembersToCollection registers the members a reportsName type declares: a struct's fields,
 // or an interface's method names.
 //
 // A member is written inside its type's declaration, so the file it is in is
@@ -241,7 +243,7 @@ func (c *collection) addGenDecl(pass *analysis.Pass, opts Options, fi *fileInfo,
 // interface idiom asks for. Satisfying the interface is not a use of the name
 // — a method set is resolved, not written — so a type implementing it from
 // another namespace crosses nothing. Naming the method does cross.
-func (c *collection) addMembers(pass *analysis.Pass, opts Options, fi *fileInfo, spec *ast.TypeSpec, ownerObj types.Object, container directive.Decl) {
+func (c *collection) addMembersToCollection(pass *analysis.Pass, opts Options, fi *fileInfo, spec *ast.TypeSpec, ownerObj types.Object, container directive.Decl) {
 	var members []*ast.Field
 	var k kind
 	switch t := spec.Type.(type) {
@@ -262,7 +264,7 @@ func (c *collection) addMembers(pass *analysis.Pass, opts Options, fi *fileInfo,
 		// Parsed before the name check so that a directive on something
 		// unnamed is accounted for: it reaches no checked declaration and is
 		// reported unused, rather than dropped.
-		dir := c.parseDecl(m.Doc, m.Comment)
+		dir := c.parseCollectedDecl(m.Doc, m.Comment)
 		// An entry with no name is an embedded field, an embedded interface,
 		// or an element of a type constraint. None declares a name of its own,
 		// so there is nothing here to bound or to rename.
@@ -274,8 +276,8 @@ func (c *collection) addMembers(pass *analysis.Pass, opts Options, fi *fileInfo,
 			if !ok || name.Name == "_" {
 				continue
 			}
-			sc, boundBy, boundAt := c.bind(opts, name.Name, dir, container, fi.scope)
-			c.add(&target{
+			sc, boundBy, boundAt := c.bindAtScopeSite(opts, name.Name, dir, container, fi.scope)
+			c.addToCollection(&target{
 				obj: obj, ident: name, kind: k, file: fi,
 				contained: true,
 				owner:     spec.Name.Name, ownerObj: ownerObj, dir: dir,
@@ -288,15 +290,16 @@ func (c *collection) addMembers(pass *analysis.Pass, opts Options, fi *fileInfo,
 	}
 }
 
-// add registers a target and names it on every ignore directive reaching it,
+// addToCollection registers a target and names it on every ignore directive
+// reaching it,
 // so that an unused one can be reported with the declarations it was written
 // for. Problems were recorded when the directives were parsed, once per
 // comment rather than once per target sharing it.
-func (c *collection) add(t *target) {
+func (c *collection) addToCollection(t *target) {
 	c.targets = append(c.targets, t)
 	c.byObj[t.obj] = t
 	for _, ig := range t.dir.Ignores {
-		s := c.site(ig)
+		s := c.siteOfIgnore(ig)
 		s.decls = append(s.decls, t.name())
 	}
 	if t.dir.HasScope {
@@ -305,17 +308,17 @@ func (c *collection) add(t *target) {
 	}
 }
 
-// parseDecl parses declaration-level directives from the given comment groups
+// parseCollectedDecl parses declaration-level directives from the given comment groups
 // and does the bookkeeping that must happen once per physical comment: it
 // registers every ignore, so that one attached to no checked declaration is
 // still reported unused; records every problem, so that a block's bogus
 // directive is reported once and not once per spec; and remembers the group as
-// consumed, so that stray can tell which directives reached nothing.
+// consumed, so that collectStrayIgnores can tell which directives reached nothing.
 //
 // A group already consumed is skipped rather than parsed twice, so a comment
 // that is reachable along two paths (a single-line spec's Comment is also the
 // comment trailing its first line) yields one directive, not two.
-func (c *collection) parseDecl(groups ...*ast.CommentGroup) directive.Decl {
+func (c *collection) parseCollectedDecl(groups ...*ast.CommentGroup) directive.Decl {
 	fresh := make([]*ast.CommentGroup, 0, len(groups))
 	for _, g := range groups {
 		if g == nil || c.consumed[g] {
@@ -326,7 +329,7 @@ func (c *collection) parseDecl(groups ...*ast.CommentGroup) directive.Decl {
 	}
 	d := directive.ParseDecl(fresh...)
 	for _, ig := range d.Ignores {
-		c.site(ig).siblings = d.Ignores
+		c.siteOfIgnore(ig).siblings = d.Ignores
 	}
 	// A scope directive is registered here too, so that one written on something
 	// declscope does not check — init, _, an embedded field — is reported unused
@@ -347,11 +350,11 @@ func (c *collection) parseDecl(groups ...*ast.CommentGroup) directive.Decl {
 	return d
 }
 
-// stray reports every directive written after the package clause that no
-// declaration consumed. Anything parseDecl saw is accounted for, whether or
+// collectStrayIgnores reports every directive written after the package clause that no
+// declaration consumed. Anything parseCollectedDecl saw is accounted for, whether or
 // not it produced a target; what is left is a directive the author believes
 // is in force and is not.
-func (c *collection) stray() {
+func (c *collection) collectStrayIgnores() {
 	for _, fi := range c.files {
 		for _, g := range fi.file.Comments {
 			// Comments before the package clause are the file's, and
@@ -364,14 +367,14 @@ func (c *collection) stray() {
 	}
 }
 
-// unkeyedFields records the fields a composite literal writes without naming
+// collectUnkeyedFields records the fields a composite literal writes without naming
 // them. Go allows either every element keyed or none, so a literal whose first
 // element carries no key writes the fields in declaration order.
 //
 // Walking identifiers alone misses this. impl{42} crosses the same boundary as
 // impl{count: 42} and reaches the same field, with nothing in the source for
 // the identifier walk to find.
-func (c *collection) unkeyedFields(pass *analysis.Pass, fi *fileInfo, lit *ast.CompositeLit) {
+func (c *collection) collectUnkeyedFields(pass *analysis.Pass, fi *fileInfo, lit *ast.CompositeLit) {
 	if len(lit.Elts) == 0 {
 		return
 	}
@@ -404,7 +407,7 @@ func (c *collection) collectRefs(pass *analysis.Pass) {
 	for _, fi := range c.files {
 		ast.Inspect(fi.file, func(n ast.Node) bool {
 			if lit, ok := n.(*ast.CompositeLit); ok {
-				c.unkeyedFields(pass, fi, lit)
+				c.collectUnkeyedFields(pass, fi, lit)
 				return true
 			}
 			ident, ok := n.(*ast.Ident)

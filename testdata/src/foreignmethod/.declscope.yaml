@@ -1,0 +1,6 @@
+# The naming rule is off by default, and this package asserts which methods it
+# reaches once a second namespace puts it in force.
+rules:
+  naming:
+    qualify: ondemand
+  allowSurplus: true

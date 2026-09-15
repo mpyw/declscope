@@ -39,7 +39,7 @@ func Collect(pass *analysis.Pass, opts Options) []baseline.Key {
 	if c == nil {
 		return nil
 	}
-	return c.keys(pass, opts)
+	return c.keysForReport(pass, opts)
 }
 
 func build(pass *analysis.Pass, opts Options) *collection {
