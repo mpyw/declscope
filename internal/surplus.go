@@ -121,7 +121,7 @@ func (c *collection) computeSurplus(pass *analysis.Pass, opts Options) *surplusS
 		// The finding is keyed to the first declaration in source order, not in
 		// c.targets order: the analysis sorts the targets before reporting,
 		// but the baseline regeneration does not, and the two must agree on
-		// the name that keys the entry.
+		// the name that keysForReport the entry.
 		slices.SortFunc(group, func(a, b *target) int {
 			return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos())
 		})
@@ -179,7 +179,7 @@ func (c *collection) surplusSeesEveryFile(pass *analysis.Pass) bool {
 
 // surplusSeesUseOutside reports whether another namespace spells the name — the
 // same evidence the boundary rule reads, from the same index, so whatever a
-// composite literal without keys or a selection on a generic type counts for
+// composite literal without keysForReport or a selection on a generic type counts for
 // there counts here.
 func (c *collection) surplusSeesUseOutside(t *target) bool {
 	for _, r := range c.refs[t.obj] {

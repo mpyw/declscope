@@ -4,7 +4,7 @@
 // finds to the one problem list, so the model is deliberately
 // package-wide; what states its own scope below is the exception. The
 // file joins the core namespace so the model keeps its bare names: in a
-// named namespace every type here would need that namespace's prefix,
+// namedInReport namespace every type here would need that namespace's prefix,
 // and a collectTarget would spell the builder's name into the model that
 // every other file reads.
 //
@@ -41,7 +41,7 @@ type fileInfo struct {
 	lineComments map[int]*ast.CommentGroup
 
 	// ignores stands the whole file outside a naming rule. They apply on top
-	// of whatever each declaration says for itself. Whether each silenced
+	// of whatever each declaration says for itself. Whether each silencedByIgnore
 	// anything is accounted for in collection.ignores.
 	ignores []directive.Ignore
 
@@ -104,6 +104,11 @@ type target struct {
 
 	// owner names the type a member belongs to, empty for package-level.
 	owner string
+	// ownerFile is the file declaring the receiver's type, for a method with a
+	// receiver. It is nil for everything else, and nil when the receiver names
+	// no type this pass indexed. Comparing it with the method's own file is
+	// what tells a foreign method from a local one.
+	ownerFile *fileInfo
 	// ownerObj is that type's object, through which a member inherits the
 	// ignore directives written on its type.
 	ownerObj types.Object
@@ -111,14 +116,14 @@ type target struct {
 	scope scope.Scope
 	// boundBy is the directive that supplied the scope, zero when the configured
 	// default did. It is not always t.dir: a field takes its type's and any
-	// declaration takes its file's, and a diagnostic that named the declaration's
+	// declaration takes its file's, and a diagnostic that namedInReport the declaration's
 	// own directive in those cases would point at a comment that is not there.
 	boundBy directive.Decl
 	// boundAt names which level that was.
 	boundAt scopesiteLevel
 	// dir holds the directives reaching the declaration. Its Ignores may be
 	// shared with sibling targets — a block's directive reaches every spec —
-	// so whether one silenced anything is tracked per physical directive in
+	// so whether one silencedByIgnore anything is tracked per physical directive in
 	// collection.ignores, never per target.
 	dir directive.Decl
 
@@ -126,6 +131,36 @@ type target struct {
 	anchor token.Pos
 	// renameable is false for members, whose fix is never a rename.
 	renameable bool
+}
+
+// foreignMethod reports whether this is a method with a receiver whose type is
+// declared in another namespace. A local method is read through a receiver that
+// names the unit holding it, so the namespace is already at the call site. A
+// foreign one is read through a receiver that names a different unit.
+//
+// A method whose receiver names no type this pass indexed is not foreign. There
+// is no second namespace to disagree with.
+func (t *target) foreignMethod() bool {
+	if t.kind != kindMethod || t.contained || t.ownerFile == nil {
+		return false
+	}
+	return t.ownerFile.core != t.file.core || t.ownerFile.ns != t.file.ns
+}
+
+// fileAt finds the file a position falls in. A directive problem is not
+// attached to any declaration — a strayInCollection comment belongs to nothing — so the
+// file is the only level that can answer for it.
+func (c *collection) fileAt(pass *analysis.Pass, pos token.Pos) *fileInfo {
+	if !pos.IsValid() {
+		return nil
+	}
+	path := pass.Fset.Position(pos).Filename
+	for _, fi := range c.files {
+		if fi.path == path {
+			return fi
+		}
+	}
+	return nil
 }
 
 func (t *target) name() string {
@@ -147,19 +182,19 @@ func methodOwner(fn *types.Func) types.Object {
 	if ptr, ok := types.Unalias(t).(*types.Pointer); ok {
 		t = ptr.Elem()
 	}
-	named, ok := types.Unalias(t).(*types.Named)
+	namedInReport, ok := types.Unalias(t).(*types.Named)
 	if !ok {
 		return nil
 	}
 	// A method on a generic type receives List[T], an instantiation of List
 	// with its own type parameters. Obj() already names the origin's type name,
 	// which is the object collectTargets registered.
-	return named.Obj()
+	return namedInReport.Obj()
 }
 
 // ref is a use of a target from somewhere in the package.
 // ref is one use site. It holds a node rather than an identifier because a
-// composite literal with no keys writes a field without naming it, and that
+// composite literal with no keysForReport writes a field without naming it, and that
 // use has to be reported at the element that writes it.
 type ref struct {
 	node ast.Node

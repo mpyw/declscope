@@ -133,6 +133,13 @@ There is no declaration-site rule for a method grown on another namespace's type
 
 **Not being able to offer a rename is never a reason to stay silent.** An exported declaration is reported under `rules.naming.exported` even though no rename can ever be offered for it, and `checkQualify` reports even when its rename target is taken; keep new rules consistent with both.
 
+**The naming rule reaches a foreign method, and only a foreign method.** A method is read through its receiver, which names the type's unit. That answers the ownership question while the method sits beside its type, and misdirects once it does not. `target.foreignMethod` compares the method's file with `ownerFile`, the file declaring the receiver's named type, and `named` lets the rule through only when they differ. A member, an interface method name and a method beside its type stay exempt.
+
+This reverses the close of #59, which measured that foreign methods are almost always a type's methods filed by concern. That measurement was not disputed. The decision was that a receiver naming a unit which does not hold the method is a misdirection worth reporting, and the cost is real: 24 methods in this repository, 119 in suve. They were renamed rather than exempted, because a rule this repository does not hold itself to is one it should not ship.
+
+The renames went to natural word order rather than a prefix: `addFuncToCollection`, `silencedByIgnore`, `bindAtScopeSite`. `c.site` could not become `ignoreSite`, which is already a type, and `siteOfIgnore` reads better anyway. `fileAt` moved to subject.go instead, since collect.go now asks it too and the core needs no prefix.
+
+
 ## Directives
 
 | Directive | Level | Effect |

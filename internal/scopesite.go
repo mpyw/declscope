@@ -63,7 +63,7 @@ type scopeSite struct {
 	// scope instead. A block's directive that every spec overrides reaches no
 	// declaration, exactly as one written on an init function does, and the
 	// report has to separate the two: one line is redundant, the other is
-	// written somewhere it can never bind.
+	// written somewhere it can never bindAtScopeSite.
 	shadowed bool
 }
 
@@ -83,12 +83,12 @@ func (c *collection) scopeSite(d directive.Decl) *scopeSite {
 	return s
 }
 
-// shadow records that a nearer directive supplied the scope of something outer
+// shadowedAtScopeSite records that a nearer directive supplied the scope of something outer
 // reaches. Called where the two are merged, since after the merge only the
 // winner's position survives.
 //
 //declscope:package // the collector merges directives, so it reports these
-func (c *collection) shadow(outer, merged directive.Decl) {
+func (c *collection) shadowedAtScopeSite(outer, merged directive.Decl) {
 	if outer.HasScope && merged.HasScope && merged.ScopePos != outer.ScopePos {
 		c.scopeSite(outer).shadowed = true
 	}
@@ -110,7 +110,7 @@ const (
 	scopesiteLevelFile
 )
 
-// bind resolves a declaration's scope and records which directive supplied it.
+// bindAtScopeSite resolves a declaration's scope and records which directive supplied it.
 //
 // The second result is the directive that supplied the scope, zero when the
 // configured default did. A caller needs it to say which level decided, and to
@@ -118,7 +118,7 @@ const (
 // author's decision or merely state an exception to a default.
 //
 //declscope:package // the one scope resolution, shared with the collector
-func (c *collection) bind(opts Options, name string, dir, container, file directive.Decl) (scope.Scope, directive.Decl, scopesiteLevel) {
+func (c *collection) bindAtScopeSite(opts Options, name string, dir, container, file directive.Decl) (scope.Scope, directive.Decl, scopesiteLevel) {
 	levels := []directive.Decl{dir, container, file}
 	for i, d := range levels {
 		if !d.HasScope {
@@ -170,7 +170,7 @@ func isInertScopeSite(opts Options, name string, stated scope.Scope, rest []dire
 	return fixed && stated == outer
 }
 
-// reportUnusedScopes reports every scope directive that bound nothing.
+// reportUnusedScopeSites reports every scope directive that bound nothing.
 //
 // Unlike an unused ignore this needs no complete view of the package's
 // references: what a scope directive binds is decided by the declarations it
@@ -179,7 +179,7 @@ func isInertScopeSite(opts Options, name string, stated scope.Scope, rest []dire
 // file.
 //
 //declscope:package // report.go drains it after every finding has been seen
-func (c *collection) reportUnusedScopes(pass *analysis.Pass) {
+func (c *collection) reportUnusedScopeSites(pass *analysis.Pass) {
 	sites := make([]*scopeSite, 0, len(c.scopes))
 	for _, s := range c.scopes {
 		// A declaration-level ignore reaches this report through the directive

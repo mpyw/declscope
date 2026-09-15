@@ -454,20 +454,27 @@ A **method with a receiver** is not a member. It is an ordinary top-level declar
 | --- | --- | --- | --- |
 | Bounding namespace | Its file's | Its **type**'s file's | Its file's |
 | Contained by | Its `var`, `const` or `type` block | Its **type** | Nothing |
-| [Naming rule](#the-naming-rule) | Applies | Does not apply | Does not apply |
-
-That table says two things about a method, and the difference is deliberate. A method is bounded by its file, so `report.go` calling `c.silenced()` crosses a boundary. The naming rule leaves the same method alone.
+| [Naming rule](#the-naming-rule) | Applies | Does not apply | Only when filed away from its type |
 
 The two rules ask different questions.
 
 | Rule | Question |
 | --- | --- |
 | [`boundary`](#boundary) | May this file touch this declaration? |
-| [Naming](#the-naming-rule) | Reading this name **bare**, can the reader tell which file owns it? |
+| [Naming](#the-naming-rule) | Reading this name **bare**, can the reader tell which unit owns it? |
 
-A method is never read bare. Every use writes the receiver first, so `c.silenced()` hands the reader `c` to follow. A member is the same case: `u.save()` names `u` before it names `save`.
+A method is never read bare. Every use writes the receiver first, so `u.save()` hands the reader `u` to follow. A member is the same case.
 
-What the receiver names is the **type's** unit, not the file holding the method. Those differ when a type's methods are filed by concern, which is the usual reason to split them. The type's unit still owns the behaviour, so the receiver still answers the question.
+What the receiver names is the **type's** unit. While the method sits beside its type, that is the unit holding it, and the question is answered. A method filed in another namespace points the reader at a unit that does not hold it. The naming rule reaches that one, and asks for the namespace it is written in.
+
+```go
+// user.go    (namespace: user)
+type User struct{ name string }
+func (u *User) bump() string { return u.name }   // local: nothing asked
+
+// order.go   (namespace: order)
+func (u *User) leak() string { return u.name }   // foreign: asked to carry order
+```
 
 Splitting a type's methods across files is ordinary Go, and the namespace still records where each method lives.
 
@@ -563,7 +570,7 @@ It never applies to:
 
 | Declaration | Reason |
 | --- | --- |
-| A [member](#members) or a method | Already qualified by its type at every use |
+| A [member](#members), or a method written beside its type | Already qualified by that type at every use |
 | `func main` in package `main` | A name the toolchain requires |
 | `TestXxx`, `BenchmarkXxx`, `FuzzXxx`, `ExampleXxx` in a `_test.go` file | The same. `go test` finds them by name |
 | A declaration in a namespace that cannot start an identifier, as in `2fa.go` | The fix prefixes, and no identifier begins with a digit |
