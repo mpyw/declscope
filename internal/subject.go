@@ -188,7 +188,7 @@ type collection struct {
 	// The stage-owned halves. Each is declared in the file that owns it.
 	ignoreBook
 	scopesiteBook
-	collectBook
+	collectingBook
 	renameBook
 	wideningBook
 

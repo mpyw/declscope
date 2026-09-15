@@ -68,7 +68,7 @@ type wideningState struct {
 //declscope:package // report.go turns it into the finding it reports
 func (c *collection) checkWidening(pass *analysis.Pass, opts Options, t *target) (token.Pos, string, bool) {
 	if c.widening == nil {
-		c.widening = c.wideningCompute(pass, opts)
+		c.widening = c.computeWidening(pass, opts)
 	}
 	msg, ok := c.widening.findings[t]
 	if !ok {
@@ -77,7 +77,7 @@ func (c *collection) checkWidening(pass *analysis.Pass, opts Options, t *target)
 	return t.boundBy.ScopePos, msg, true
 }
 
-// wideningCompute judges every //declscope:package directive in the package.
+// computeWidening judges every //declscope:package directive in the package.
 //
 // A directive is judged per physical comment, never per declaration: a block's
 // directive reaches every spec and a type's reaches its fields, and the advice
@@ -85,9 +85,9 @@ func (c *collection) checkWidening(pass *analysis.Pass, opts Options, t *target)
 // scope from it is reached. A declaration that states its own scope does not
 // depend on an outer directive, so it neither keeps that directive alive nor
 // is reported under it.
-func (c *collection) wideningCompute(pass *analysis.Pass, opts Options) *wideningState {
+func (c *collection) computeWidening(pass *analysis.Pass, opts Options) *wideningState {
 	s := &wideningState{findings: make(map[*target]string)}
-	if !opts.Widening || !c.wideningSees(pass) {
+	if !opts.Widening || !c.wideningSeesEveryFile(pass) {
 		return s
 	}
 
@@ -109,7 +109,7 @@ func (c *collection) wideningCompute(pass *analysis.Pass, opts Options) *widenin
 			// An exported name is reached by every importer, which no
 			// single-package analysis can see, so it keeps its directive and
 			// everything sharing the comment.
-			if isExported(t.obj.Name()) || reached[t.obj] || linknamed[t.obj.Name()] || c.wideningUsedOutside(t) {
+			if isExported(t.obj.Name()) || reached[t.obj] || linknamed[t.obj.Name()] || c.wideningSeesUseOutside(t) {
 				fired = false
 				break
 			}
@@ -145,7 +145,7 @@ func wideningMessage(rep *target, group []*target) string {
 	return directive + " on " + strings.Join(names, ", ") + ": no use from another namespace is visible to declscope"
 }
 
-// wideningSees reports whether this pass reads every reference site the
+// wideningSeesEveryFile reports whether this pass reads every reference site the
 // package has. Where it does not, the rule switches off for the package: an
 // absence read from an incomplete view is not evidence.
 //
@@ -156,7 +156,7 @@ func wideningMessage(rep *target, group []*target) string {
 //     read as a reference site.
 //   - cgo and assembly reach declarations from sources the analysis never
 //     parses at all.
-func (c *collection) wideningSees(pass *analysis.Pass) bool {
+func (c *collection) wideningSeesEveryFile(pass *analysis.Pass) bool {
 	if u := c.unseen(pass); u.all || len(u.names) > 0 {
 		return false
 	}
@@ -176,11 +176,11 @@ func (c *collection) wideningSees(pass *analysis.Pass) bool {
 	return true
 }
 
-// wideningUsedOutside reports whether another namespace spells the name — the
+// wideningSeesUseOutside reports whether another namespace spells the name — the
 // same evidence the boundary rule reads, from the same index, so whatever a
 // composite literal without keys or a selection on a generic type counts for
 // there counts here.
-func (c *collection) wideningUsedOutside(t *target) bool {
+func (c *collection) wideningSeesUseOutside(t *target) bool {
 	for _, r := range c.refs[t.obj] {
 		if r.file.key() != t.file.key() {
 			return true

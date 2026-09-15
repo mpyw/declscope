@@ -59,7 +59,7 @@ func (c *collection) renames() *renameState {
 // renameFix rewrites every ident naming the target. All of them are inside the
 // package, so the edits stay within the pass.
 //
-// The fix is offered only when renameSafe can prove it changes nothing but
+// The fix is offered only when safeToRename can prove it changes nothing but
 // the spelling; the diagnostic is reported either way. Whatever it renames to
 // is reserved for the rest of the pass, since a later fix checking the same
 // pre-fix state would otherwise find the name still free.
@@ -73,7 +73,7 @@ func (c *collection) renameFix(pass *analysis.Pass, t *target, newName, message 
 	if len(idents) == 0 {
 		return analysis.SuggestedFix{}, false
 	}
-	if !c.renameSafe(pass, t, newName) {
+	if !c.safeToRename(pass, t, newName) {
 		return analysis.SuggestedFix{}, false
 	}
 	c.reserve(newName)
@@ -87,11 +87,11 @@ func (c *collection) renameFix(pass *analysis.Pass, t *target, newName, message 
 	}, true
 }
 
-// renameSafe reports whether renaming t to newName can be proven not to change
+// safeToRename reports whether renaming t to newName can be proven not to change
 // what the package computes, which is the only condition under which the fix
 // is offered. Every check is conservative: a doubt withholds the fix, never
 // the diagnostic.
-func (c *collection) renameSafe(pass *analysis.Pass, t *target, newName string) bool {
+func (c *collection) safeToRename(pass *analysis.Pass, t *target, newName string) bool {
 	rs := c.renames()
 
 	// An exported declaration has uses outside the package that this analysis

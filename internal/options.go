@@ -81,7 +81,7 @@ func DefaultOptions() Options {
 func (o *Options) Compile() error {
 	o.excludeRE = o.excludeRE[:0]
 	for _, pattern := range o.Exclude {
-		re, err := optionsCompileGlob(pattern)
+		re, err := globFromOptions(pattern)
 		if err != nil {
 			return err
 		}
@@ -101,9 +101,9 @@ func (o Options) Excluded(path string) bool {
 	return false
 }
 
-// optionsCompileGlob translates a path glob into a regexp. ** matches across
+// globFromOptions translates a path glob into a regexp. ** matches across
 // separators, * and ? do not.
-func optionsCompileGlob(pattern string) (*regexp.Regexp, error) {
+func globFromOptions(pattern string) (*regexp.Regexp, error) {
 	var b strings.Builder
 	b.WriteString("(?:^|/)")
 	for i := 0; i < len(pattern); {
