@@ -480,7 +480,23 @@ What `sort.go` may not do is reach into `User`'s **members**. That is the bounda
 > [!WARNING]
 > Operations on the **whole value** name no field: copying it, comparing it, zeroing it. They are outside what this can see. See [Limits of the analysis](#limits-of-the-analysis).
 
-The naming rule does not reach members or methods. Both are already qualified by their type at every use (`u.save()`). They collide with nothing, and a prefix would only stutter (`u.userSave()`).
+The naming rule does not reach members or methods.
+
+The table above says two things about the same method, and they are meant to differ. A method is bounded by its file, so `report.go` calling `c.silenced()` crosses a boundary and needs the widening. The naming rule leaves that same method alone, and does not ask for `ignoreSilenced`.
+
+That is because the two rules ask different questions:
+
+| Rule | Question |
+| --- | --- |
+| Boundary | May this file touch this declaration? |
+| Naming | Reading this name **bare**, can the reader tell which file owns it? |
+
+A method is never read bare. Every use writes the receiver first, so `c.silenced()` already hands the reader `c` to follow. The prefix exists for names that arrive with no qualifier at all, which is what Go's flat package scope produces and what a method never enters. Which file the method lives in is on record either way, in the `//declscope:package` its crossing requires.
+
+Members are the same case: `u.save()` names `u` before it names `save`.
+
+> [!NOTE]
+> Applying the rule to methods was measured on this repository, not argued about. Of its 45 methods, 32 are written away from their type, and the rule would demand 36 renames. `addFunc` in `collect.go` would become `c.collectAddFunc()`, and `parseDecl` would become `c.collectParseDecl()`: a verb prefixed to a verb, on a receiver that already said which value it is. Splitting a type's methods across files is ordinary Go, and no convention asks for `c.clientAuthRefresh()`.
 
 What a member lacks in Go is encapsulation. Every unexported field is visible to its whole package. The `private` scope supplies what is missing:
 
