@@ -1,0 +1,5 @@
+# The naming rule is off by default, and this package asserts what the namespace
+# count does once it is in force.
+rules:
+  naming:
+    qualify: ondemand

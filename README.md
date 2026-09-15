@@ -560,7 +560,7 @@ The mark grants nothing. Reach is stated by [scope](#scope-resolution) alone.
 | `rules.naming.qualify` | Effect |
 | --- | --- |
 | `never` *(default)* | Off |
-| `ondemand` | Required once the package has a **second namespace**. In a package with one namespace, a prefix repeated everywhere distinguishes nothing |
+| `ondemand` | Required once the package has a **second namespace**. In a package with one namespace, a prefix repeated everywhere distinguishes nothing. A file holding only a package clause and comments, as a `doc.go` usually does, is not counted |
 | `always` | Required in every package, so that gaining a second namespace is not a mass rename |
 
 It never applies to:

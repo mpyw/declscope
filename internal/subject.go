@@ -163,6 +163,19 @@ func (c *collection) fileAt(pass *analysis.Pass, pos token.Pos) *fileInfo {
 	return nil
 }
 
+// declaresSomething reports whether the file holds anything at all beyond its
+// package clause and comments. A doc.go carrying only a package comment does
+// not, and counting it would answer "does this package hold a second unit?"
+// with a file that holds none. The count decides when `ondemand` asks for the
+// namespace, so a package laid out as one implementation file plus doc.go
+// would be asked for a prefix that distinguishes nothing.
+//
+// An import is a declaration here, deliberately. A file whose only content is
+// `import _ "..."` registers a driver, and that is something the package does.
+func (f *fileInfo) declaresSomething() bool {
+	return len(f.file.Decls) > 0
+}
+
 func (t *target) name() string {
 	if t.owner != "" {
 		return t.owner + "." + t.obj.Name()

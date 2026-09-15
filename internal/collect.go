@@ -93,7 +93,7 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 	}
 	seen := make(map[string]bool)
 	for _, fi := range c.files {
-		if strings.HasSuffix(fi.path, "_test.go") {
+		if strings.HasSuffix(fi.path, "_test.go") || !fi.declaresSomething() {
 			continue
 		}
 		seen[fi.key()] = true
