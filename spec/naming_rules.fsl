@@ -169,7 +169,7 @@ spec NamingRules {
     and cfgQualify == OnDemand and manyNs and carry == Absent and qualifyFires()
   }
   // naming.exported and the ondemand namespace count are independent gates:
-  // widening to exported names does not change *when* the namespace is required.
+  // surplus to exported names does not change *when* the namespace is required.
   reachable ExportedNamesBiteUnderAlwaysSingleNamespace {
     configured and kind == Pkg and canPrefix and not isCore and exported
     and cfgExportedNames and cfgQualify == Always and not manyNs

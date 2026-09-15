@@ -190,7 +190,7 @@ type collection struct {
 	scopesiteBook
 	collectingBook
 	renameBook
-	wideningBook
+	surplusBook
 
 	// unseenScan is what the package directory holds that this pass does not
 	// see: in-package _test.go files under the non-test variant, and files the
@@ -278,7 +278,7 @@ type unseenFiles struct {
 	// all withholds every rename: an in-package test file this pass does not
 	// see, or something in the directory that could not be read or parsed.
 	//
-	//declscope:package // rename.go, ignore.go and widening.go defer wholesale on it
+	//declscope:package // rename.go, ignore.go and surplus.go defer wholesale on it
 	all bool
 
 	// names is every identifier written in an unseen file that was read. A
@@ -286,14 +286,14 @@ type unseenFiles struct {
 	// the excluded file would otherwise still spell the old name, or would
 	// find the new one declared twice.
 	//
-	//declscope:package // rename.go checks names against it; widening.go defers on any
+	//declscope:package // rename.go checks names against it; surplus.go defers on any
 	names map[string]bool
 }
 
 // unseen scans the package directory, once per pass. It lives here rather
 // than with the rename guard because three features ask it: the rename fix
-// (rename.go), the unused-ignore report (ignore.go) and the widening rule
-// (widening.go) all defer to the pass that sees every file.
+// (rename.go), the unused-ignore report (ignore.go) and the surplus rule
+// (surplus.go) all defer to the pass that sees every file.
 //
 // A _test.go file is parsed for its package clause alone: an external test
 // package (package x_test) declares into its own scope and can only name the

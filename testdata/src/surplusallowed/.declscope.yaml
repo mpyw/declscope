@@ -1,0 +1,4 @@
+# allowSurplus turns the rule off. The directive below is the one
+# surplusdefault reports.
+rules:
+  allowSurplus: true

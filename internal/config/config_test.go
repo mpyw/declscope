@@ -96,7 +96,7 @@ func TestLoadEmptyFile(t *testing.T) {
 func TestLoadRejectsUnknownKey(t *testing.T) {
 	for _, tt := range []struct{ yaml, want string }{
 		{"nonsense: 1\n", `unknown key "nonsense" (this section takes defaults, rules, exclude, baseline)`},
-		{"rules:\n  unqualifyy: always\n", `unknown key "rules.unqualifyy" (this section takes naming, widening)`},
+		{"rules:\n  unqualifyy: always\n", `unknown key "rules.unqualifyy" (this section takes naming, allowSurplus)`},
 		{"rules:\n  naming:\n    unqualifyy: always\n", `unknown key "rules.naming.unqualifyy" (this section takes qualify, exported, vocabulary)`},
 		// The removed rule is refused through the same path as any typo, so a
 		// config written for the release that had it fails loudly rather than
@@ -232,8 +232,8 @@ func TestBoolSettings(t *testing.T) {
 	}{
 		{"rules:\n  naming:\n    exported: true\n", func(o internal.Options) bool { return o.NameExported }, true},
 		{"rules:\n  naming:\n    exported: false\n", func(o internal.Options) bool { return o.NameExported }, false},
-		{"rules:\n  widening: true\n", func(o internal.Options) bool { return o.Widening }, true},
-		{"rules:\n  widening: false\n", func(o internal.Options) bool { return o.Widening }, false},
+		{"rules:\n  allowSurplus: true\n", func(o internal.Options) bool { return o.AllowSurplus }, true},
+		{"rules:\n  allowSurplus: false\n", func(o internal.Options) bool { return o.AllowSurplus }, false},
 	}
 	for _, tt := range tests {
 		opts, err := apply(t, tt.yaml)
@@ -257,8 +257,8 @@ func TestDefaultModes(t *testing.T) {
 	if opts.NameExported {
 		t.Error("default NameExported should be off")
 	}
-	if opts.Widening {
-		t.Error("default Widening should be off")
+	if opts.AllowSurplus {
+		t.Error("the surplus rule is on by default, so AllowSurplus starts false")
 	}
 }
 
@@ -293,7 +293,7 @@ func TestApplyRejectsUnknownMode(t *testing.T) {
 func TestBoolSettingRejectsAWord(t *testing.T) {
 	for _, yaml := range []string{
 		"rules:\n  naming:\n    exported: ondemand\n",
-		"rules:\n  widening: ondemand\n",
+		"rules:\n  allowSurplus: ondemand\n",
 	} {
 		err := settingErr(t, yaml)
 		if err == nil {

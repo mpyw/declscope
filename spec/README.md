@@ -39,8 +39,8 @@ the binary.
 | `rename_guarded.fsl` | The guard `renameSafe` applies — every scope Go resolves through — makes the rename sound, and dropping any one of the four checks breaks it | Every binding environment at the reference site |
 | `rename_reach.fsl` | Nothing the fix leaves unedited still writes the old name, and the new name is never left declared twice — over every reason a file of the package can sit outside what the fix edits | Generated and `exclude`d files, unseen in-package tests, and build-excluded files, against both names |
 | `rename_reach.fsl` | The build-excluded guard is no broader than it needs to be: a rename beside an excluded file that writes neither name is still offered | As above |
-| `widening.fsl` | `widening` never reports a declaration reachable by any path: a spelled use, an interface satisfaction, an exported carrier, a linkname, or an opaque source | Every combination of the rule switch, the directive, the five reach paths, and whether the pass read every file |
-| `widening.fsl` | A pass that did not read every file reports nothing, and each suppressor is witnessed alone, with every other one off | As above |
+| `surplus.fsl` | `surplus` never reports a declaration reachable by any path: a spelled use, an interface satisfaction, an exported carrier, a linkname, or an opaque source | Every combination of the rule switch, the directive, the five reach paths, and whether the pass read every file |
+| `surplus.fsl` | A pass that did not read every file reports nothing, and each suppressor is witnessed alone, with every other one off | As above |
 | `rename_sound.fsl` | **Fails** — models a guard that checks package scope only, and enumerates what a sound guard must check beyond it | As above |
 | `rename_siblings.fsl` | **Fails** — models fixes that check their target against the pre-fix names only, and shows two of them converging on one name | Every pair of rename targets |
 
@@ -104,12 +104,12 @@ fslc verify knobs.fsl            --depth 4
 fslc verify directive_effect.fsl --depth 4
 fslc verify rename_guarded.fsl   --depth 4
 fslc verify rename_reach.fsl     --depth 3
-fslc verify widening.fsl         --depth 2
+fslc verify surplus.fsl         --depth 2
 fslc verify rename_sound.fsl     --depth 2   # expected: violated
 fslc verify rename_siblings.fsl  --depth 3   # expected: violated
 ```
 
-`knobs.fsl`, `directive_effect.fsl` and `widening.fsl` configure once and then
+`knobs.fsl`, `directive_effect.fsl` and `surplus.fsl` configure once and then
 have only the actions that record a report, so their reachables are witnessed at
 step 1 or 2; the others add a fix action and witness at step 2. The deadlock warning a bounded
 run prints is the shape of the model, not a failure, and `rename_guarded.fsl`

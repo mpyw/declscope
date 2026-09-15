@@ -160,7 +160,7 @@ func outerScopeOfScopeSite(opts Options, name string, rest []directive.Decl) (sc
 //
 // Asking only "is the name exported" would be wrong in both directions. It
 // would call //declscope:package inert on an exported field whose type says
-// private — where it is the only thing widening the field back, so a codebase
+// private — where it is the only thing surplus the field back, so a codebase
 // could narrow an exported declaration and never widen it again without a
 // permanent false report. And it would miss a directive that restates an
 // enclosing one, which decides nothing for the same reason a redundant default
