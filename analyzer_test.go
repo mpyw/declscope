@@ -24,6 +24,18 @@ func TestForeignMethod(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "foreignmethod")
 }
 
+// TestEmptyFile checks that a file holding only a package clause and comments
+// does not add to the namespace count. A doc.go is the usual one.
+func TestEmptyFile(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "emptyfile")
+}
+
+// TestBlankImport checks the other side: a file whose only content is an import
+// declares something, because the import runs.
+func TestBlankImport(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "blankimport")
+}
+
 func TestDirectives(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "directives")
 }

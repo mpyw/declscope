@@ -560,7 +560,7 @@ The mark grants nothing. Reach is stated by [scope](#scope-resolution) alone.
 | `rules.naming.qualify` | Effect |
 | --- | --- |
 | `never` *(default)* | Off |
-| `ondemand` | Required once the package has a **second namespace**. In a package with one namespace, a prefix repeated everywhere distinguishes nothing |
+| `ondemand` | Required once the package has a **second namespace**. In a package with one namespace, a prefix repeated everywhere distinguishes nothing. A file holding only a package clause and comments, as a `doc.go` usually does, is not counted |
 | `always` | Required in every package, so that gaining a second namespace is not a mass rename |
 
 It never applies to:
@@ -708,6 +708,9 @@ The rule also switches off for a whole package when some reference site was neve
 > Reach that spells no name and leaves no trace, such as reflection, is invisible here as everywhere. Adopt the rule where the package's reach is expressed in source.
 
 ## Adopting on an existing codebase
+
+> [!TIP]
+> [`skills/declscope-adoption`](skills/declscope-adoption/SKILL.md) is a skill for an AI agent doing this work. It carries what each diagnostic shape means structurally, and the measurement traps that produce false confidence. Install it with `gh skill install mpyw/declscope`.
 
 A **baseline** records the violations a codebase already has. Turning declscope on then reports only what is new.
 
