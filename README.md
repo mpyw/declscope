@@ -12,8 +12,10 @@ declscope holds each declaration to the file that declares it. Another file may 
 Go advises few, large packages. Splitting a package to create a boundary has a price:
 
 - Import cycles, and interfaces written only to break them
-- Stutter, as in `user.UserRepository`
-- A directory tree that no longer matches the domain
+- **Every name the two halves share has to be exported.** You wanted a boundary between two files, and you published an API. Keeping the exposure down means an `internal/` at every boundary
+- **A wrong boundary costs more.** Moving a declaration between files is free. Moving it between packages breaks every importer
+
+`internal/` bounds who may import a package. The reach is the tree rooted at the parent of `internal`, not the whole module. It still adds no level below unexported. A shared name is still capitalized, and still reaches every file in that package.
 
 So most Go code is better off flat. The cost appears inside the package. Go has two levels of visibility, and the lower one covers the whole package:
 
@@ -32,73 +34,99 @@ declscope checks the convention instead. The boundary stays inside the flat pack
 
 ### What it reports
 
-One `store` package. `csv.go` builds a `User` and reaches into what `user.go` declares.
+One `database` package holds a repository per entity.
 
 ```go
-// user.go
-package store
+// user_repository.go
+package database
 
-import "strings"
+import (
+	"context"
+	"database/sql"
+	"strings"
 
-type User struct {
-	ID    int64
-	email string
+	"example.com/app/domain"
+)
+
+type UserRepository struct{ db *sql.DB }
+
+func (r *UserRepository) Find(ctx context.Context, id int64) (*domain.User, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT id, email FROM users WHERE id = ?`, id)
+	return scanUser(row)
 }
 
-func emailNormalize(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
-}
-```
-```go
-// csv.go
-package store
-
-import "strconv"
-
-func csvParse(rec []string) (*User, error) {
-	id, err := strconv.ParseInt(rec[0], 10, 64)
-	if err != nil {
+func scanUser(row *sql.Row) (*domain.User, error) {
+	var u domain.User
+	var email string
+	if err := row.Scan(&u.ID, &email); err != nil {
 		return nil, err
 	}
-	return &User{ID: id, email: emailNormalize(rec[1])}, nil
+	u.Email = normalizeEmail(email)
+	return &u, nil
+}
+
+func normalizeEmail(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
+}
+```
+```go
+// order_repository.go
+package database
+
+import (
+	"database/sql"
+
+	"example.com/app/domain"
+)
+
+type OrderRepository struct{ db *sql.DB }
+
+func scanOrder(rows *sql.Rows) (domain.Order, error) {
+	var o domain.Order
+	var email string
+	if err := rows.Scan(&o.ID, &email); err != nil {
+		return domain.Order{}, err
+	}
+	o.BuyerEmail = normalizeEmail(email)
+	return o, nil
 }
 ```
 
-The compiler accepts this. `email` is unexported so that only the normalizer writes it, and `csv.go` writes it directly.
+The two helpers do the same job. Only one of them can be called `scan`, so the package names them apart by hand. That mark says which repository owns which helper, and nothing holds anyone to it.
+
+`normalizeEmail` was written for `scanUser`. `scanOrder` calls it, and the compiler accepts that.
 
 ```console
 $ declscope ./...
-user.go:7:2:  field User.email is private to namespace "user", but is used from namespace "csv"
-user.go:10:6: func emailNormalize is private to namespace "user", but is used from namespace "csv"
+user_repository.go:28:6: func normalizeEmail is private to namespace "userRepository", but is used from namespace "orderRepository"
+order_repository.go:17:17:      used here, in namespace "orderRepository"
 ```
 
 A crossing has two answers.
 
 | Answer | How |
 | --- | --- |
-| Keep the boundary | Move the call inside the namespace. Here, put the parsing behind a constructor |
+| Keep the boundary | Move the call inside the namespace |
 | Share on purpose | Write `//declscope:package`, which `-fix` inserts |
 
-`-fix` takes the second answer and writes the decision down:
+Here the helper belongs to neither repository. The repair is a third file, and a stated scope.
 
 ```go
-// user.go
-type User struct {
-	ID int64
-	//declscope:package
-	email string
-}
+// email.go
+package database
+
+import "strings"
 
 //declscope:package
-func emailNormalize(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
+func normalizeEmail(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
 }
 ```
 
-The next file that reaches for an unshared declaration is reported the same way.
+The decision now sits in the source, where the next reader finds it.
 
 > [!TIP]
-> `-fix` always widens, because that is the repair a tool can apply. Where the boundary is worth keeping, move the call and leave the declaration alone.
+> `-fix` always widens, because that is the repair a tool can apply. It writes the directive where the declaration stands, and never moves a declaration to another file. Where the boundary is worth keeping, move the call and leave the declaration alone.
 
 ### Where declscope sits
 
@@ -271,7 +299,7 @@ A file-level directive goes above the package clause. `//declscope:namespace` mu
 ```go
 //declscope:package
 
-package store
+package database
 ```
 
 A directive on a block reaches every spec in it. A directive on one spec overrides the block's.
@@ -459,7 +487,7 @@ A **member** is a name written *inside* a type's declaration. There are two kind
 - a struct's **field**
 - an interface's **method name**
 
-A member has no file of its own. It is wherever its type is, so the type's directive reaches it. This is **containment, not inheritance**. There is no second file for it to disagree with.
+A declaration's namespace is the file it is **written in**. There is no exception to that. A member is written inside its type, so its namespace is the type's file's, and the type's directive reaches it. This is **containment, not inheritance**. There is no second file for it to disagree with.
 
 A **method with a receiver** is not a member. It is an ordinary top-level declaration that names a receiver. Its own file gives it its namespace.
 
@@ -474,22 +502,49 @@ The two rules ask different questions.
 | Rule | Question |
 | --- | --- |
 | [`boundary`](#boundary) | May this file touch this declaration? |
-| [Naming](#the-naming-rule) | Reading this name **bare**, can the reader tell which unit owns it? |
+| [Naming](#the-naming-rule) | Reading this name **on its own**, can the reader tell which unit owns it? |
 
-A method is never read bare. Every use writes the receiver first, so `u.save()` hands the reader `u` to follow. A member is the same case.
+A method is never read on its own. Every use writes the receiver first, so `u.save()` hands the reader `u` to follow. A member is the same case.
 
 What the receiver names is the **type's** unit. While the method sits beside its type, that is the unit holding it, and the question is answered. A method filed in another namespace points the reader at a unit that does not hold it. The naming rule reaches that one, and asks for the namespace it is written in.
 
-```go
-// user.go    (namespace: user)
-type User struct{ name string }
-func (u *User) bump() string { return u.name }   // local: nothing asked
+Splitting a type's methods across files is ordinary Go. A builder often declares its state in one file and its chainable methods in another.
 
-// order.go   (namespace: order)
-func (u *User) leak() string { return u.name }   // foreign: asked to carry order
+```go
+// statement.go   (namespace: statement)
+package database
+
+type Statement struct {
+	Table  string
+	wheres []string
+}
+```
+```go
+// query.go   (namespace: query)
+package database
+
+func (s *Statement) Where(cond string) *Statement {
+	s.wheres = append(s.wheres, cond)
+	return s
+}
 ```
 
-Splitting a type's methods across files is ordinary Go, and the namespace still records where each method lives.
+Writing `Where` in `query.go` is not itself a crossing. The field it reaches is one, and the report lands on `statement.go`.
+
+```console
+$ declscope ./...
+statement.go:5:2: field Statement.wheres is private to namespace "statement", but is used from namespace "query"
+query.go:4:4:   used here, in namespace "query"
+query.go:4:22:  used here, in namespace "query"
+```
+
+Under the naming rule, `Where` is asked to carry `query` as well.
+
+```console
+query.go:3:21: method Where does not carry namespace "query" anywhere in its name; rename it to QueryWhere, or to another name that carries "query"
+```
+
+Neither report asks for a rename here. The two files are one unit split in two, and `//declscope:namespace statement` on `query.go` settles both.
 
 > [!TIP]
 > An unexported interface method is the **sealed interface** idiom. Only this package can spell the name, so only this package can implement the interface. declscope gives it file granularity.
@@ -518,31 +573,25 @@ Reach enforcement has no switch. Naming discipline is off by default, and the su
 
 `boundary` reports a `private` declaration used from outside its namespace. It covers package-level declarations and [members](#members) alike. For a member, the boundary is the namespace of its type.
 
-```go
-// user.go
-func userCache() int { return 1 }
-```
-```go
-// order.go
-func orderRun() int { return userCache() } // reported
-```
-
-The message names where the scope came from.
+The [example above](#what-it-reports) is this rule, in its `defaults` case. The message names where the scope came from.
 
 | Where the scope came from | Message |
 | --- | --- |
-| `defaults` | `func userCache is private to namespace "user", but is used from namespace "order"` |
-| The declaration's own directive | `func userCache is declared private by //declscope:private, but is used from namespace "order"` |
-| Its type's directive | `field User.id is declared private by //declscope:private on User, but is used from namespace "order"` |
-| A file-level directive | `func userCache is declared private by the file's //declscope:private, but is used from namespace "order"` |
+| `defaults` | `func normalizeEmail is private to namespace "userRepository", but is used from namespace "orderRepository"` |
+| The declaration's own directive | `func normalizeEmail is declared private by //declscope:private, but is used from namespace "orderRepository"` |
+| Its type's directive | `field Statement.wheres is declared private by //declscope:private on Statement, but is used from namespace "query"` |
+| A file-level directive | `func normalizeEmail is declared private by the file's //declscope:private, but is used from namespace "orderRepository"` |
 
 Every crossing use site is attached to the diagnostic. Uses from inside the declaration's own namespace are not.
 
 The report lands on the **declaration**. A method written on another namespace's type is not itself a crossing, because it belongs to the file that wrote it. The fields it reaches for are reported where they are declared.
 
 ```go
-// order.go  (namespace: order)
-func (u *User) leak() int { return u.id } // u.id is reported, against user.go
+// query.go  (namespace: query)
+func (s *Statement) Where(cond string) *Statement {
+	s.wheres = append(s.wheres, cond) // reported, against statement.go
+	return s
+}
 ```
 
 > [!IMPORTANT]
@@ -557,9 +606,10 @@ func (u *User) leak() int { return u.id } // u.id is reported, against user.go
 The rule asks that a package-level declaration carry the namespace of its file somewhere in its name. The namespace in the name says which unit owns the declaration. That makes a cross-namespace use readable at the call site, and in a stack trace.
 
 ```go
-// order.go
-func orderRun() int {
-	return userShared() // the user unit's, and shared
+// order_repository.go
+func scanOrder(rows *sql.Rows) (domain.Order, error) {
+	// ...
+	o.BuyerEmail = normalizeEmail(email) // the email unit's, and shared
 }
 ```
 
@@ -640,6 +690,15 @@ The fix prefixes, keeping Go's spelling of an initialism and the original export
 
 The suggestion is one answer, not the only one. Any spelling that carries the namespace settles the rule.
 
+> [!NOTE]
+> Sometimes the namespace is what is wrong, not the name. A namespace comes from the file name, and a file name may hold words that name no unit.
+>
+> ```console
+> user_repository.go:18:6: func scanUser does not carry namespace "userRepository" anywhere in its name; rename it to userRepositoryScanUser, or to another name that carries "userRepository"
+> ```
+>
+> The unit here is `user`, not `userRepository`. Writing `//declscope:namespace user` on the file settles the rule and leaves every name alone.
+
 A rename never changes what a name is visible to. A rename that quietly unexported a declaration would delete the package's API to satisfy a linter.
 
 #### Withheld renames
@@ -681,16 +740,16 @@ A doubt withholds the fix, never the diagnostic.
 `surplus` is the converse of `boundary`. It reports a `//declscope:package` directive when declscope sees no use of what it widens from another namespace. The scope is wider than any visible use justifies.
 
 ```go
-// user.go
-package store
+// email.go
+package database
 
 //declscope:package
-func emailNormalize(email string) string { return email }
+func normalizeEmail(s string) string { return s }
 ```
 
 ```console
 $ declscope ./...
-user.go:3:1: //declscope:package on emailNormalize: no use from another namespace is visible to declscope
+email.go:3:1: //declscope:package on normalizeEmail: no use from another namespace is visible to declscope
 ```
 
 One physical comment gets one report, however many declarations take their scope from it. The message lists them. A declaration that states its own scope does not depend on an outer directive, so it neither keeps that directive alive nor appears under it.
@@ -735,18 +794,19 @@ The file is found by the same upward lookup as the config, so its presence is al
 
 ```yaml
 packages:
-  github.com/you/app/store:
+  github.com/you/app/database:
     boundary:
-      user:
-        - User.name
-        - helper
+      userRepository:
+        - normalizeEmail
+      statement:
+        - Statement.wheres
       (core):
-        - dial
+        - open
 ```
 
 | | Spelling |
 | --- | --- |
-| A package-level declaration | `helper`, under its file's namespace |
+| A package-level declaration | `normalizeEmail`, under its file's namespace |
 | A [member](#members) | `Type.member`, under the namespace of its **type**'s file |
 | The [core namespace](#the-core-namespace) | `(core)` |
 
