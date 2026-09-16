@@ -132,7 +132,7 @@ The decision now sits in the source, where the next reader finds it.
 
 Three linters draw boundaries in Go, at three scales.
 
-![A Go program drawn as nested frames. Between the api and store packages, depguard asks whether one package may import another; a green arrow runs from api to store and a red one back from store to api is crossed out. Inside store, between user.go and csv.go, declscope asks whether one file may reach another's declaration; a red arrow from csvParse to User.email is crossed out. At the edge of the program, deadcode asks whether anything is reachable at all; the mail package sits greyed out with no arrow entering it, captioned unreachable.](docs/boundaries.png)
+![A Go program drawn as nested frames. Between the api and database packages, depguard asks whether one package may import another. A green arrow runs from api to database, and a red one back from database to api is crossed out. Inside database, between user_repository.go and order_repository.go, declscope asks whether one file may reach another's declaration. A red arrow from scanOrder to normalizeEmail is crossed out. At the edge of the program, deadcode asks whether anything is reachable at all. The mail package sits greyed out with no arrow entering it, captioned unreachable.](docs/boundaries.png)
 
 | Linter | Scale | The question it answers |
 | --- | --- | --- |
