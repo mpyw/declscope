@@ -302,6 +302,30 @@ A file-level directive goes above the package clause. `//declscope:namespace` mu
 package database
 ```
 
+Three placements are accepted there. Go excludes a `//tool:name` comment from a doc comment, so none of them reaches the rendered documentation.
+
+| Placement | |
+| --- | --- |
+| A blank line between the directive and `package` | What this README writes |
+| The directive directly above `package` | Accepted |
+| At the bottom of the package doc comment, after a blank `//` line | Go's own convention for a directive in a doc comment |
+
+> [!WARNING]
+> Above the package clause, only the `//` form stays out of the documentation. Go excludes `//tool:name` from a doc comment, and it does not exclude `/*declscope: ... */`.
+>
+> ```go
+> /*declscope:namespace shared*/
+> package blk
+> ```
+> ```console
+> $ go doc .
+> package blk // import "example.com/blk"
+>
+> declscope:namespace shared
+> ```
+>
+> The directive still takes effect. It also becomes the package comment, and pkg.go.dev shows it. Use the `//` form on a file.
+
 A directive on a block reaches every spec in it. A directive on one spec overrides the block's.
 
 ```go
