@@ -233,6 +233,11 @@ type collection struct {
 	idents   map[types.Object][]*ast.Ident
 	problems []directive.Problem
 
+	// filterWarning is the one report a package gets about its configuration
+	// rather than its code. At most one: the question is whether the package
+	// could be read at all.
+	filterWarning *directive.Problem
+
 	// The stage-owned halves. Each is declared in the file that owns it.
 	ignoreBook
 	scopesiteBook

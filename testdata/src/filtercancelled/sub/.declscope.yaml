@@ -1,0 +1,5 @@
+# This only matches the files beside it, and the root's only removes them all,
+# so the package is read as empty and the config can never take effect.
+filter:
+  only:
+    - "*.go"

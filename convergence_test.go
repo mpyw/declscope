@@ -147,8 +147,8 @@ var fixCases = []fixCase{
 		},
 	},
 	{
-		name:   "reference in an excluded file",
-		config: "rules:\n  naming:\n    qualify: ondemand\nexclude:\n  - \"**/ext.go\"\n",
+		name:   "reference in an omitted file",
+		config: "rules:\n  naming:\n    qualify: ondemand\nfilter:\n  omit:\n    - \"**/ext.go\"\n",
 		files: map[string]string{
 			"user.go":  "package x\n\n//declscope:package\nfunc helper() int { return 1 }\n",
 			"order.go": "package x\n\nfunc OrderRun() int { return helper() }\n",

@@ -58,19 +58,23 @@ type Options struct {
 	// offered, since the uses outside the package cannot be seen.
 	NameExported bool
 
-	// Exclude holds path globs, spelled the way the config file spells them.
-	// A pattern that names a path — anything holding a separator other than a
-	// leading ** — is anchored to ExcludeBase, so it speaks about the tree
-	// under the config file that states it and nothing else. A bare file name
-	// and a leading **/ float, matching at any depth, which is what both
-	// spellings mean in a .gitignore.
-	Exclude []string
+	// Only narrows the analysis, one group per config file that stated it. A
+	// file is read when it matches at least one pattern in EVERY group, so the
+	// groups intersect and a nested config can narrow further but never widen.
+	// No groups is not "match nothing" but "no restriction", which is why a
+	// repository with no config is read whole.
+	//
+	// The groups are separate rather than one flat list because each config
+	// file anchors its own patterns: "gen/**" in the root and "gen/**" in a
+	// nested file name different directories, and flattening them would lose
+	// which is which.
+	Only [][]FilterPattern
 
-	// ExcludeBase is the directory the anchored patterns are relative to: the
-	// directory of the config file that states them. Empty leaves every
-	// pattern floating, which is all that can be done when no config file said
-	// where "here" is.
-	ExcludeBase string
+	// Omit takes files back out, and the chain unions rather than intersecting:
+	// a file matching any pattern from any level is not read. An omit written
+	// at the root therefore holds everywhere below it. Omit is the stronger of
+	// the two, and applies whether or not Only let the file through.
+	Omit []FilterPattern
 
 	// BaselinePath is the baseline file that applies, resolved relative to
 	// the config file that named it or found by the default-named lookup.
@@ -84,7 +88,8 @@ type Options struct {
 	// to parse cannot block its own regeneration.
 	Baseline *baseline.Set
 
-	excludeRE []excludeMatcher
+	onlyRE [][]filterMatcher
+	omitRE []filterMatcher
 }
 
 // DefaultOptions mirrors the rules stated in the README: every declaration in
@@ -101,26 +106,77 @@ func DefaultOptions() Options {
 	}
 }
 
-// Compile prepares the exclude patterns. It must be called before use.
+// Compile prepares the filter patterns. It must be called before use.
 //
 // It does not load the baseline. Loading is the resolver's decision, since the
 // same options serve both analysis, where the baseline suppresses, and
 // regeneration, where the existing file must be ignored — otherwise one that
 // fails to parse could never be regenerated.
 func (o *Options) Compile() error {
-	o.excludeRE = o.excludeRE[:0]
-	bases := excludeBases(o.ExcludeBase)
-	for _, pattern := range o.Exclude {
-		m, err := compileExclude(pattern, bases)
+	compile := func(patterns []FilterPattern) ([]filterMatcher, error) {
+		out := make([]filterMatcher, 0, len(patterns))
+		for _, p := range patterns {
+			m, err := compileFilter(p.Pattern, filterBases(p.Base))
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, m)
+		}
+		return out, nil
+	}
+	onlyRE := make([][]filterMatcher, 0, len(o.Only))
+	for _, group := range o.Only {
+		ms, err := compile(group)
 		if err != nil {
 			return err
 		}
-		o.excludeRE = append(o.excludeRE, m)
+		onlyRE = append(onlyRE, ms)
 	}
+	omitRE, err := compile(o.Omit)
+	if err != nil {
+		return err
+	}
+	o.onlyRE, o.omitRE = onlyRE, omitRE
 	return nil
 }
 
-// Excluded reports whether a file is outside the scope of the analysis.
-func (o Options) Excluded(path string) bool {
-	return excludeMatches(o.excludeRE, path)
+// Skips reports whether a file is outside the scope of the analysis.
+//
+// Within one level the two tests are applied in the order the config reads,
+// and the order is not a choice: both lists ask about one path, so narrowing
+// before subtracting and subtracting before narrowing name the same set.
+//
+// Across levels they compose differently. Every only group must admit the
+// file, and any omit pattern from any level rejects it, so a config file can
+// only ever shrink what is read.
+func (o Options) Skips(path string) bool {
+	for _, group := range o.onlyRE {
+		if !filterMatches(group, path) {
+			return true
+		}
+	}
+	return filterMatches(o.omitRE, path)
+}
+
+// NearestOnly reports the only group of the config file closest to the
+// package, and whether there is one. It is what tells a config whose only
+// matched nothing from one whose only was cancelled by a group above it.
+func (o Options) NearestOnly() (FilterPattern, bool) {
+	if len(o.Only) == 0 {
+		return FilterPattern{}, false
+	}
+	group := o.Only[len(o.Only)-1]
+	if len(group) == 0 {
+		return FilterPattern{}, false
+	}
+	return group[0], true
+}
+
+// NearestOnlyAdmits reports whether the nearest only group would read the file
+// on its own, with the groups above it and every omit set aside.
+func (o Options) NearestOnlyAdmits(path string) bool {
+	if len(o.onlyRE) == 0 {
+		return false
+	}
+	return filterMatches(o.onlyRE[len(o.onlyRE)-1], path)
 }

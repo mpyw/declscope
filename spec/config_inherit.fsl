@@ -1,0 +1,169 @@
+// A config file states some keys and leaves the rest alone. The keys it
+// states win for the packages below it; the keys it does not state come from
+// the file above, and from the built-in default when no file states them.
+//
+// This replaces a lookup that stopped at the first file it found, which meant
+// a nested config that set one key silently dropped every other key the root
+// had set. baseline already worked the way this spec describes — it has its
+// own upward search — so the change makes one key's behaviour the rule rather
+// than the exception.
+//
+// Three levels are the fewest that show the difference between "the nearest
+// file wins" and "the nearest file that states this key wins": with two, the
+// two readings agree. Outer is the repository root, Near is the file beside
+// the package, and Mid is a directory between them.
+//
+// Reach is not modelled here. only and omit are path sets rather than values,
+// they compose by union and intersection rather than by overriding, and
+// filter_chain.fsl is where that is proved.
+spec ConfigInherit {
+  // MODEL: qualify takes three values in the config and two here. The third
+  // adds another value to choose between and nothing to the question this
+  // spec asks, which is which level the value comes from.
+  enum Mode   { Never, Always }
+  // What one level says about a value key: nothing, or one of the values.
+  enum Stated { Unset, AsNever, AsAlways }
+  // What one level says about one namespace's vocabulary entry. Namespace a
+  // needs two words, so that the two levels can disagree; namespace b only
+  // has to be present or absent.
+  enum Word   { NoWord, Wx, Wy }
+  enum Flag   { Off, On }
+  // Which level supplied the value that took effect.
+  enum Level  { Builtin, Outer, Mid, Near }
+
+  state {
+    configured: Bool,
+    // rules.naming.qualify, stated or not at each of the three levels.
+    qOuter: Stated, qMid: Stated, qNear: Stated,
+    // rules.naming.vocabulary, two namespaces over two levels. Two namespaces
+    // are what separates "the maps merge" from "the nearer map replaces the
+    // other", and two levels are enough to see it.
+    aOuter: Word, aNear: Word,
+    bOuter: Flag, bNear: Flag,
+    // Recording the resolution keeps the chain load-bearing: an invariant over
+    // the defs alone would hold however resolve() was written.
+    resolved: Bool,
+    qValue: Mode, qFrom: Level,
+    aValue: Word, bValue: Flag
+  }
+
+  init {
+    configured = false
+    qOuter = Unset  qMid = Unset  qNear = Unset
+    aOuter = NoWord  aNear = NoWord
+    bOuter = Off  bNear = Off
+    resolved = false
+    qValue = Never  qFrom = Builtin
+    aValue = NoWord  bValue = Off
+  }
+
+  action configure(qo: Stated, qm: Stated, qn: Stated,
+                   ao: Word, an: Word, bo: Flag, bn: Flag) {
+    requires not configured
+    configured = true
+    qOuter = qo  qMid = qm  qNear = qn
+    aOuter = ao  aNear = an
+    bOuter = bo  bNear = bn
+  }
+
+  def valueOf(s: Stated) = if s == AsAlways then Always else Never
+
+  // The nearest level that states the key, and nothing nearer than that.
+  def qEff() =
+    if qNear != Unset then valueOf(qNear)
+    else if qMid != Unset then valueOf(qMid)
+    else if qOuter != Unset then valueOf(qOuter)
+    else Never
+
+  def qSource() =
+    if qNear != Unset then Near
+    else if qMid != Unset then Mid
+    else if qOuter != Unset then Outer
+    else Builtin
+
+  // A map merges per key. The nearer file wins the keys it states, and the
+  // keys it does not state keep the value from above. Replacing the whole map
+  // would make adding one word cost restating every other.
+  def aEff() = if aNear != NoWord then aNear else aOuter
+  def bEff() = if bNear != Off then bNear else bOuter
+
+  action resolve() {
+    requires configured
+    requires not resolved
+    resolved = true
+    qValue = qEff()
+    qFrom = qSource()
+    aValue = aEff()
+    bValue = bEff()
+  }
+
+  invariant ResolutionNeedsConfig { resolved => configured }
+
+  // --- a stated key wins over everything above it ---------------------------
+  invariant NearestStatedWins {
+    resolved and qNear != Unset => qValue == valueOf(qNear) and qFrom == Near
+  }
+  invariant MidWinsWhenNearIsSilent {
+    resolved and qNear == Unset and qMid != Unset
+      => qValue == valueOf(qMid) and qFrom == Mid
+  }
+  // The claim the old lookup got wrong: a key the two nearer files do not
+  // state still comes from the root, rather than being dropped because a
+  // nearer file existed at all.
+  invariant OuterSurvivesTwoSilentLevels {
+    resolved and qNear == Unset and qMid == Unset and qOuter != Unset
+      => qValue == valueOf(qOuter) and qFrom == Outer
+  }
+  invariant AllSilentTakesTheBuiltin {
+    resolved and qNear == Unset and qMid == Unset and qOuter == Unset
+      => qValue == Never and qFrom == Builtin
+  }
+
+  // Each level is witnessed supplying the value while the others differ, so a
+  // resolution that read only one of them would be caught.
+  reachable NearSupplies {
+    resolved and qFrom == Near and qNear == AsAlways
+    and qMid == AsNever and qOuter == AsNever and qValue == Always
+  }
+  reachable MidSupplies {
+    resolved and qFrom == Mid and qNear == Unset
+    and qMid == AsAlways and qOuter == AsNever and qValue == Always
+  }
+  reachable OuterSupplies {
+    resolved and qFrom == Outer and qNear == Unset and qMid == Unset
+    and qOuter == AsAlways and qValue == Always
+  }
+  reachable BuiltinSupplies {
+    resolved and qFrom == Builtin and qValue == Never
+  }
+  // A nearer file may relax as well as tighten. The README says a subtree can
+  // do either, and this is that sentence made checkable.
+  reachable NearerRelaxes {
+    resolved and qOuter == AsAlways and qNear == AsNever and qValue == Never
+  }
+
+  // --- the map merges rather than replacing ---------------------------------
+  // The one that matters: the root states a, the nested file states b, and
+  // both survive. A map that replaced would lose a.
+  reachable BothNamespacesSurvive {
+    resolved and aOuter == Wx and aNear == NoWord
+    and bOuter == Off and bNear == On
+    and aValue == Wx and bValue == On
+  }
+  // And on the one key they both state, the nearer file wins.
+  reachable NearerWinsTheSharedKey {
+    resolved and aOuter == Wx and aNear == Wy and aValue == Wy
+  }
+  invariant StatedNearOwnsItsKey {
+    resolved and aNear != NoWord => aValue == aNear
+  }
+  invariant UnstatedNearInheritsItsKey {
+    resolved and aNear == NoWord => aValue == aOuter
+  }
+  // Neither namespace can take the other's value, which a merge written over
+  // one shared slot would allow.
+  invariant NamespacesDoNotBleed {
+    resolved => (aValue == aNear or aValue == aOuter)
+                and (bValue == bNear or bValue == bOuter)
+  }
+}

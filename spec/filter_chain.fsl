@@ -1,0 +1,163 @@
+// filter composes down the chain of config files, and it composes differently
+// from every other key. only and omit are path sets rather than values, so a
+// nested file adds to them rather than replacing them:
+//
+//   only  intersects  — each level may narrow further, never widen
+//   omit  unions      — each level may subtract more, never put back
+//
+// Together those give one property worth having: a config file can only ever
+// shrink what the analysis reads. An omit written at the repository root holds
+// everywhere below it, and no nested file can quietly undo it. MonotoneDown is
+// that sentence.
+//
+// A .gitignore is not monotone, because ! lets a deeper file undo a shallower
+// one. filter has no negation, so union and intersection give monotonicity for
+// free rather than needing a rule to enforce it.
+//
+// Each level's patterns are anchored to that level's own directory, so "gen/**"
+// in the root and "gen/**" in a nested file name different directories. That is
+// why the two levels' match results are separate inputs here rather than one:
+// a file may match the outer pattern, the nearer one, both, or neither, and no
+// combination is ruled out by the spelling.
+//
+// Whether a pattern matches a path at all is filter.go's subject, and the set
+// algebra within one level is filter.fsl's. This spec is the chain.
+spec FilterChain {
+  state {
+    configured: Bool,
+    // Which lists each level states. An empty list places no restriction,
+    // which for only is a rule rather than a consequence (filter.fsl).
+    oOnlyEmpty: Bool, oOmitEmpty: Bool,
+    nOnlyEmpty: Bool, nOmitEmpty: Bool,
+    // Two files, because the warning below is about there being no file left.
+    // For each: does it match the outer level's only, the outer's omit, the
+    // nearer level's only, the nearer's omit.
+    f1oOnly: Bool, f1oOmit: Bool, f1nOnly: Bool, f1nOmit: Bool,
+    f2oOnly: Bool, f2oOmit: Bool, f2nOnly: Bool, f2nOmit: Bool,
+    // Recording the outcome keeps the guards load-bearing.
+    decided: Bool,
+    kept1: Bool, kept2: Bool,
+    warned: Bool
+  }
+
+  init {
+    configured = false
+    oOnlyEmpty = true  oOmitEmpty = true
+    nOnlyEmpty = true  nOmitEmpty = true
+    f1oOnly = false  f1oOmit = false  f1nOnly = false  f1nOmit = false
+    f2oOnly = false  f2oOmit = false  f2nOnly = false  f2nOmit = false
+    decided = false  kept1 = false  kept2 = false  warned = false
+  }
+
+  action configure(oe: Bool, xe: Bool, ne: Bool, me: Bool,
+                   a1: Bool, b1: Bool, c1: Bool, d1: Bool,
+                   a2: Bool, b2: Bool, c2: Bool, d2: Bool) {
+    requires not configured
+    // An empty list is matched by nothing. Without this the model would hold
+    // states no config can produce, and a property could pass on them alone.
+    requires oe => (not a1 and not a2)
+    requires xe => (not b1 and not b2)
+    requires ne => (not c1 and not c2)
+    requires me => (not d1 and not d2)
+    configured = true
+    oOnlyEmpty = oe  oOmitEmpty = xe  nOnlyEmpty = ne  nOmitEmpty = me
+    f1oOnly = a1  f1oOmit = b1  f1nOnly = c1  f1nOmit = d1
+    f2oOnly = a2  f2oOmit = b2  f2nOnly = c2  f2nOmit = d2
+  }
+
+  // One level's verdict on one file, which is filter.fsl's rule.
+  def outerKeeps1() = (oOnlyEmpty or f1oOnly) and not f1oOmit
+  def outerKeeps2() = (oOnlyEmpty or f2oOnly) and not f2oOmit
+
+  // The chain: only intersects, omit unions.
+  def chainPassesOnly1() = (oOnlyEmpty or f1oOnly) and (nOnlyEmpty or f1nOnly)
+  def chainPassesOnly2() = (oOnlyEmpty or f2oOnly) and (nOnlyEmpty or f2nOnly)
+  def chainOmits1() = f1oOmit or f1nOmit
+  def chainOmits2() = f2oOmit or f2nOmit
+  def chainKeeps1() = chainPassesOnly1() and not chainOmits1()
+  def chainKeeps2() = chainPassesOnly2() and not chainOmits2()
+
+  // What the nearest config's only would have read on its own, with the
+  // groups above it and every omit set aside.
+  def nearestOnlyAdmits() = not nOnlyEmpty and (f1nOnly or f2nOnly)
+
+  action decide() {
+    requires configured
+    requires not decided
+    decided = true
+    kept1 = chainKeeps1()
+    kept2 = chainKeeps2()
+    // A package with nothing to read is usually the point: a root only naming
+    // one subtree excludes every package outside it. What is worth saying is
+    // narrower. The nearest config states an only, the files it matches are
+    // all removed by an only above it, and so that config can never take
+    // effect. Nobody writes a filter for a subtree they meant to exclude.
+    warned = not chainKeeps1() and not chainKeeps2() and nearestOnlyAdmits()
+  }
+
+  invariant DecisionNeedsConfig { decided => configured }
+
+  // --- the property the whole design is for ---------------------------------
+  // A nested config cannot widen. Whatever the nearer file says, a file the
+  // outer level alone would have dropped stays dropped.
+  invariant MonotoneDown {
+    decided => (kept1 => outerKeeps1()) and (kept2 => outerKeeps2())
+  }
+  // Stated the two ways it can be broken, so that a repair to one is not
+  // mistaken for a repair to both.
+  invariant OuterOmitIsFinal   { decided and f1oOmit => not kept1 }
+  invariant OuterOnlyIsAnUpperBound {
+    decided and not oOnlyEmpty and not f1oOnly => not kept1
+  }
+
+  // --- and the nearer file still does its job -------------------------------
+  reachable NearerOmitSubtractsFurther {
+    decided and outerKeeps1() and f1nOmit and not kept1
+  }
+  reachable NearerOnlyNarrowsFurther {
+    decided and outerKeeps1() and not nOnlyEmpty and not f1nOnly and not kept1
+  }
+  reachable NearerStatingNothingChangesNothing {
+    decided and nOnlyEmpty and nOmitEmpty and outerKeeps1() and kept1
+  }
+  reachable BothLevelsAdmit {
+    decided and not oOnlyEmpty and f1oOnly and not nOnlyEmpty and f1nOnly and kept1
+  }
+
+  // --- the two levels are anchored separately -------------------------------
+  // The same line in two files names two directories, so matching one says
+  // nothing about the other. Both asymmetries are reachable.
+  reachable MatchesOuterPatternOnly {
+    decided and f1oOnly and not f1nOnly
+  }
+  reachable MatchesNearerPatternOnly {
+    decided and f1nOnly and not f1oOnly
+  }
+
+  // --- the warning ----------------------------------------------------------
+  // Intersecting two only lists that do not overlap leaves nothing to read.
+  invariant WarnedExactlyWhenTheNearestOnlyIsCancelled {
+    decided => (warned == (not kept1 and not kept2 and nearestOnlyAdmits()))
+  }
+  invariant ReadingSomethingNeverWarns { decided and (kept1 or kept2) => not warned }
+  reachable NearestOnlyCancelledByTheOneAbove {
+    decided and not oOnlyEmpty and not nOnlyEmpty
+    and f1nOnly and not f1oOnly
+    and f2nOnly and not f2oOnly
+    and warned
+  }
+  // The cases that must stay quiet, which is what keeps the report rare.
+  // A root only that excludes a subtree with no config of its own is the
+  // setting working, not a mistake.
+  reachable NothingReadAndNoNearestOnlyStaysQuiet {
+    decided and not oOnlyEmpty and nOnlyEmpty
+    and not f1oOnly and not f2oOnly
+    and not kept1 and not kept2 and not warned
+  }
+  // An omit that empties a package is equally deliberate.
+  reachable OmitEmptiedThePackageQuietly {
+    decided and oOnlyEmpty and nOnlyEmpty and not oOmitEmpty
+    and f1oOmit and f2oOmit and not warned
+  }
+  reachable ReadsSomethingAndDoesNotWarn { decided and kept1 and not warned }
+}

@@ -1,0 +1,4 @@
+# The root admits only keep/, and nothing under sub/ is in it.
+filter:
+  only:
+    - "keep/**"

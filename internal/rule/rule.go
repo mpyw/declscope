@@ -28,10 +28,15 @@ const (
 	// an ignore can silence one and a baseline can record one, which a report
 	// with no rule could never allow.
 	Directive Rule = "directive"
+	// Filter: a filter.only that cannot take effect, because an only above it
+	// in the chain of config files removes everything it matches. It is about
+	// the configuration rather than a declaration, so it carries no fix and no
+	// baseline entry, and a file-level ignore is what silences it.
+	Filter Rule = "filter"
 )
 
 // All lists every rule, in the order they are reported.
-var All = []Rule{Boundary, Qualify, Surplus, Directive}
+var All = []Rule{Boundary, Qualify, Surplus, Directive, Filter}
 
 // Parse resolves a rule name.
 func Parse(name string) (Rule, bool) {

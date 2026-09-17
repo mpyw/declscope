@@ -31,6 +31,14 @@ func TestAllowBoundary(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "allowboundary")
 }
 
+// TestFilterCancelled checks the one filter report. A config beside a package
+// states an only, the files it matches are all removed by an only above it,
+// and the package is read as empty. Nobody writes a filter for a subtree they
+// meant to exclude, so the tool says the config cannot take effect.
+func TestFilterCancelled(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "filtercancelled/sub")
+}
+
 // TestEmptyFile checks that a file holding only a package clause and comments
 // does not add to the namespace count. A doc.go is the usual one.
 func TestEmptyFile(t *testing.T) {
