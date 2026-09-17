@@ -184,7 +184,7 @@ cp -r repo /tmp/try-a   # and measure there
 
 [#64](https://github.com/mpyw/declscope/issues/64) is open. Inflections are generated only in the lengthening direction, so a `storing.go` is never carried by `store*`. The vocabulary entry above covers it in one line.
 
-Changed in 0.5.0: `exclude` is gone, replaced by `filter` with an `only` list and an `omit` list. `omit` is what `exclude` was. `only` is new and narrows instead of subtracting, and an empty one places no restriction. A stale `exclude:` is an unknown-key error rather than a silent no-op, so a repository still carrying one will not run at all until it is converted.
+Not in a release yet: `exclude` is gone, replaced by `filter` with an `only` list and an `omit` list. `omit` is what `exclude` was. `only` is new and narrows instead of subtracting, and an empty one places no restriction. A stale `exclude:` is an unknown-key error rather than a silent no-op, so a repository still carrying one will not run at all until it is converted.
 
 Config files do not compose. The nearest one owns every key, and the one above it is never read. A nested config that sets `filter` therefore drops the root's, which is not what a `.gitignore` would do. Read the config that actually governs the package you are measuring, not the one at the root.
 
