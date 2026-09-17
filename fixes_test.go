@@ -81,3 +81,11 @@ func TestSuggestedFixTestVariant(t *testing.T) {
 func TestSuggestedFixExcluded(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixexcluded")
 }
+
+// TestSuggestedFixMembers checks that two directive insertions in one pass
+// cannot converge. A directive inserted on a type reaches the type's members,
+// so a member whose type is widened in the same run is reported without a fix
+// of its own; a member whose type is not gets one.
+func TestSuggestedFixMembers(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixmembers")
+}

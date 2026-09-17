@@ -671,6 +671,11 @@ func (s *Statement) Where(cond string) *Statement {
 >
 > A `private` inherited from a type or a file does not withhold the fix. The inserted directive sits on the declaration, which outranks both.
 
+> [!NOTE]
+> A type and its members can cross together. `-fix` then writes one directive, on the type, and the members are reported without a fix.
+>
+> The type's directive already reaches its members. A second one on a member would bind nothing, and [`directive`](#unused-and-malformed-directives) would report what `-fix` had just written.
+
 #### Reach without a boundary
 
 `rules.allowBoundary: true` switches this rule off. What is left is the naming rule, for a repository that wants the ownership mark in a name without the scope behind it.

@@ -203,6 +203,12 @@ Every diagnostic carries **at most one** fix, which is what makes `-fix` unambig
 
 They can never conflict, because a rename does not change reach. (`x/tools`' `ApplyFixes` applies only the first fix of a diagnostic and logs `ignoring alternative fix` for the rest, so carrying alternatives is a liability.)
 
+**Two fixes in one run can still converge, and each way has a guard.** Every fix is decided against the pre-fix source and none of them can see the others. For renames that is `reserved` (below) and `spec/rename_siblings.fsl`. For directive insertions it is `subsumedByReport`: a directive written on a type reaches the type's members, so a member fixed in the same run was left carrying one that bound nothing, and the `directive` rule reported what `-fix` had just written. The wider insertion wins and the member's is dropped; **the member's diagnostic is not**, because the crossing is real until the type's directive lands. `spec/fix_members.fsl` proves it, and `testdata/src/fixmembers` pins that a member whose type does not cross still gets its own fix.
+
+The decision cannot be taken while reporting one target at a time, which is why `report` collects every surviving finding first. Ordering the targets instead would only decide which of the two fixes is written, never whether both are.
+
+There is no equivalent for a `var`/`const`/`type` block. A fix is anchored on the spec, never on the block, so two specs each get their own directive and each one binds.
+
 ### Why the rename fix withholds
 
 **A rename is offered only when it is provably safe** (`renameSafe` in `internal/rename.go`); the diagnostic is reported either way. A guard that checks only `pass.Pkg.Scope().Lookup(newName)` produces code that does not compile or, worse, compiles into a program computing something else: Go resolves a name from the inside out, so `var count` renamed to `fooCount` inside `func Add(fooCount int) int { return fooCount + count }` silently becomes `fooCount + fooCount`. A full renamer is rejected in favor of withholding; a withheld fix costs one manual edit, a wrong one is a bug the linter cannot see. `spec/rename_sound.fsl` and `spec/rename_siblings.fsl` model the resolution order and the sibling collision.
@@ -267,7 +273,7 @@ mise x -- ./test_all.sh   # tests, golangci-lint, dogfooding and the specs
 
 ### Formal specs
 
-`spec/*.fsl` are machine-checked models of the rules, the configuration space and the rename guard; `spec/README.md` lists what each proves and the exact `fslc` commands and depths. `spec/verify.sh` runs them — seven must be `proved` under induction, two must stay `violated` — and is wired into `test_all.sh` and a CI job. Documentation that nothing re-runs is documentation that drifts.
+`spec/*.fsl` are machine-checked models of the rules, the configuration space and the rename guard; `spec/README.md` lists what each proves and the exact `fslc` commands and depths. `spec/verify.sh` runs them — every spec named in its `proving` list must be `proved` under induction, and two must stay `violated` — and is wired into `test_all.sh` and a CI job. Documentation that nothing re-runs is documentation that drifts.
 
 > [!CAUTION]
 > `fslc verify` is a bounded model checker that holds the whole reachable state space in memory. A spec that models the full product in one action with many parameters needs gigabytes for the same claims the split specs prove in single-digit megabytes. Keep each spec to the variables its own properties read, keep the depths given in `spec/README.md`, and do not run `fslc verify` on a machine that cannot spare the memory.
