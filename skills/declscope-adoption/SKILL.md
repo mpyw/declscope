@@ -6,7 +6,7 @@ license: MIT
 
 # Adopting declscope
 
-Written against **declscope 0.5.0**, plus `filter`, which is not in a release yet. Check the version first, and read [Known gaps](#known-gaps) for what changed in which release.
+Written against **declscope 0.6.0**. Check the version first: this describes how that release behaves, not how an older one does.
 
 ```bash
 declscope -V=full
@@ -34,6 +34,12 @@ find . -name '.declscope.y*ml' -not -path './.git/*' \
 ```
 
 Finding none means the naming rule is off everywhere, and the other two are on. Finding one is not the answer on its own. A config that never sets `qualify` leaves that rule off, and one that sets `allowBoundary` leaves off the rule this tool exists for.
+
+**The files compose, so the nearest one does not tell you what applies.** Every file between the package and the module root is read, outermost first. A nearer file owns the keys it states and inherits the rest.
+
+`filter` is the exception to that: `only` intersects down the chain and `omit` unions, so a config file can only ever shrink what is read. A root `omit` holds everywhere below it, and no nested file undoes it.
+
+Each file's patterns are read against **its own** directory, and anchor there when they hold a separator. `gen/**` in the root and the same line in a nested file name different directories. A bare name and a leading `**/` float instead, and a `..` in a pattern is an error.
 
 ### Start at the default, and offer the rest
 
@@ -110,7 +116,7 @@ Boundary violations cluster. Measured across eight repositories, one structural 
 | One helper is used from several files | Shared on purpose | `//declscope:package // why` at the declaration |
 | A name reads badly with its namespace in it | Often the file name, not the declaration | Rename the file |
 
-That last row is worth its own note. In one repository, splitting `statements.go` into `query.go`, `exec.go` and `bind.go` cleared every entry **without renaming a single declaration**. The file name was the thing that was wrong.
+That last row is worth its own note. In one repository a single file held three concerns, and splitting it into three cleared every entry in that cluster **without renaming a single declaration**. The file name was the thing that was wrong.
 
 ## Naming
 
@@ -179,23 +185,13 @@ cp -r repo /tmp/try-a   # and measure there
 
 **A bulk rename reaches further than intended.** A `\bname\b` substitution across every `.go` file will hit `keys`, `named` and `check`. Those live in testdata and in unrelated packages too. Limit the paths, then read `git status` to see what actually changed.
 
-**A file created to satisfy a name is often a file too small to exist.** One rename produced a 23-line file holding `Build`. It returned a type declared in the file next to it, and `BuildProgram` in that file was the answer. Before adding a file, ask whether renaming the declaration would do.
+**A file created to satisfy a name is often a file too small to exist.** One rename produced a file of about twenty lines holding one constructor. It returned a type declared in the file beside it, and renaming the constructor where it already was turned out to be the answer. Before adding a file, ask whether renaming the declaration would do.
 
 **`//declscope:namespace` goes before the package clause.** Placed after it, the directive is silently inert and the diagnostics do not move. If a change makes no difference at all, check the placement first.
 
 ## Known gaps
 
 [#64](https://github.com/mpyw/declscope/issues/64) is open. Inflections are generated only in the lengthening direction, so a `storing.go` is never carried by `store*`. The vocabulary entry above covers it in one line.
-
-Not in a release yet: `exclude` is gone, replaced by `filter` with an `only` list and an `omit` list. `omit` is what `exclude` was. `only` is new and narrows instead of subtracting, and an empty one places no restriction. A stale `exclude:` is an unknown-key error rather than a silent no-op, so a repository still carrying one will not run at all until it is converted.
-
-Config files compose, outermost first. A nearer file owns the keys it states and inherits the rest, so reading the nearest one alone does not tell you what applies. Read every file between the package and the module root.
-
-`filter` composes differently from the rest: `only` intersects and `omit` unions, so a config file can only ever shrink what is read. A root `omit` holds everywhere below it, and no nested file undoes it.
-
-Changed in 0.4.0: a pattern is read against the directory of the config file that states it, and anchors there when it holds a separator. `internal/tui/**` used to reach every `internal/tui` at any depth; it now reaches the one beside the config. A bare name and a leading `**/` are unaffected, and a `..` in a pattern is an error.
-
-Fixed in 0.3.0: a `doc.go` holding only a package comment used to count toward the namespace count and turn `ondemand` on. Nine packages in one repository reported for that reason alone. On 0.3.0 those reports are gone, and any `//declscope:core` written to work around it can come out.
 
 ## Order of work
 
