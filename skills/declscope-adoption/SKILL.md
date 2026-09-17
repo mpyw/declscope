@@ -39,7 +39,7 @@ Finding none means the naming rule is off everywhere, and the other two are on. 
 
 `filter` is the exception to that: `only` intersects down the chain and `omit` unions, so a config file can only ever shrink what is read. A root `omit` holds everywhere below it, and no nested file undoes it.
 
-Each file's patterns are read against **its own** directory, and anchor there when they hold a separator. `internal/tui/**` in the root and the same line in a nested file name different directories. A bare name and a leading `**/` float instead, and a `..` in a pattern is an error.
+Each file's patterns are read against **its own** directory, and anchor there when they hold a separator. `gen/**` in the root and the same line in a nested file name different directories. A bare name and a leading `**/` float instead, and a `..` in a pattern is an error.
 
 ### Start at the default, and offer the rest
 
@@ -116,7 +116,7 @@ Boundary violations cluster. Measured across eight repositories, one structural 
 | One helper is used from several files | Shared on purpose | `//declscope:package // why` at the declaration |
 | A name reads badly with its namespace in it | Often the file name, not the declaration | Rename the file |
 
-That last row is worth its own note. In one repository, splitting `statements.go` into `query.go`, `exec.go` and `bind.go` cleared every entry **without renaming a single declaration**. The file name was the thing that was wrong.
+That last row is worth its own note. In one repository a single file held three concerns, and splitting it into three cleared every entry in that cluster **without renaming a single declaration**. The file name was the thing that was wrong.
 
 ## Naming
 
@@ -185,7 +185,7 @@ cp -r repo /tmp/try-a   # and measure there
 
 **A bulk rename reaches further than intended.** A `\bname\b` substitution across every `.go` file will hit `keys`, `named` and `check`. Those live in testdata and in unrelated packages too. Limit the paths, then read `git status` to see what actually changed.
 
-**A file created to satisfy a name is often a file too small to exist.** One rename produced a 23-line file holding `Build`. It returned a type declared in the file next to it, and `BuildProgram` in that file was the answer. Before adding a file, ask whether renaming the declaration would do.
+**A file created to satisfy a name is often a file too small to exist.** One rename produced a file of about twenty lines holding one constructor. It returned a type declared in the file beside it, and renaming the constructor where it already was turned out to be the answer. Before adding a file, ask whether renaming the declaration would do.
 
 **`//declscope:namespace` goes before the package clause.** Placed after it, the directive is silently inert and the diagnostics do not move. If a change makes no difference at all, check the placement first.
 
