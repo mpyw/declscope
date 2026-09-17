@@ -6,7 +6,7 @@ license: MIT
 
 # Adopting declscope
 
-Written against **declscope 0.5.0**, plus `filter`, which is not in a release yet. Check the version first, and read [Known gaps](#known-gaps) for what changed in which release.
+Written against **declscope 0.6.0**. Check the version first, and read [Known gaps](#known-gaps) for what changed in which release.
 
 ```bash
 declscope -V=full
@@ -187,9 +187,9 @@ cp -r repo /tmp/try-a   # and measure there
 
 [#64](https://github.com/mpyw/declscope/issues/64) is open. Inflections are generated only in the lengthening direction, so a `storing.go` is never carried by `store*`. The vocabulary entry above covers it in one line.
 
-Not in a release yet: `exclude` is gone, replaced by `filter` with an `only` list and an `omit` list. `omit` is what `exclude` was. `only` is new and narrows instead of subtracting, and an empty one places no restriction. A stale `exclude:` is an unknown-key error rather than a silent no-op, so a repository still carrying one will not run at all until it is converted.
+Changed in 0.6.0: `exclude` is gone, replaced by `filter` with an `only` list and an `omit` list. `omit` is what `exclude` was. `only` is new and narrows instead of subtracting, and an empty one places no restriction. A stale `exclude:` is an unknown-key error rather than a silent no-op, so a repository still carrying one will not run at all until it is converted.
 
-Config files compose, outermost first. A nearer file owns the keys it states and inherits the rest, so reading the nearest one alone does not tell you what applies. Read every file between the package and the module root.
+Also 0.6.0: config files compose, outermost first. A nearer file owns the keys it states and inherits the rest, so reading the nearest one alone does not tell you what applies. Read every file between the package and the module root.
 
 `filter` composes differently from the rest: `only` intersects and `omit` unions, so a config file can only ever shrink what is read. A root `omit` holds everywhere below it, and no nested file undoes it.
 
