@@ -167,7 +167,7 @@ func (c *collection) findingsForReport(pass *analysis.Pass, opts Options, t *tar
 	// An exported declaration resolves to package scope unless a directive
 	// narrows it, so the one test below covers both: what is reachable from
 	// outside carries no boundary, and what an author narrowed does.
-	if t.scope == scope.Private {
+	if !opts.AllowBoundary && t.scope == scope.Private {
 		if f, ok := c.boundaryFindingForReport(pass, opts, t); ok {
 			out = append(out, f)
 		}

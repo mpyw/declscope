@@ -101,7 +101,7 @@ func TestLoadEmptyFile(t *testing.T) {
 func TestLoadRejectsUnknownKey(t *testing.T) {
 	for _, tt := range []struct{ yaml, want string }{
 		{"nonsense: 1\n", `unknown key "nonsense" (this section takes defaults, rules, exclude, baseline)`},
-		{"rules:\n  unqualifyy: always\n", `unknown key "rules.unqualifyy" (this section takes naming, allowSurplus)`},
+		{"rules:\n  unqualifyy: always\n", `unknown key "rules.unqualifyy" (this section takes naming, allowBoundary, allowSurplus)`},
 		{"rules:\n  naming:\n    unqualifyy: always\n", `unknown key "rules.naming.unqualifyy" (this section takes qualify, exported, vocabulary)`},
 		// The removed rule is refused through the same path as any typo, so a
 		// config written for the release that had it fails loudly rather than
@@ -237,6 +237,8 @@ func TestBoolSettings(t *testing.T) {
 	}{
 		{"rules:\n  naming:\n    exported: true\n", func(o internal.Options) bool { return o.NameExported }, true},
 		{"rules:\n  naming:\n    exported: false\n", func(o internal.Options) bool { return o.NameExported }, false},
+		{"rules:\n  allowBoundary: true\n", func(o internal.Options) bool { return o.AllowBoundary }, true},
+		{"rules:\n  allowBoundary: false\n", func(o internal.Options) bool { return o.AllowBoundary }, false},
 		{"rules:\n  allowSurplus: true\n", func(o internal.Options) bool { return o.AllowSurplus }, true},
 		{"rules:\n  allowSurplus: false\n", func(o internal.Options) bool { return o.AllowSurplus }, false},
 	}
@@ -261,6 +263,9 @@ func TestDefaultModes(t *testing.T) {
 	}
 	if opts.NameExported {
 		t.Error("default NameExported should be off")
+	}
+	if opts.AllowBoundary {
+		t.Error("the boundary rule has no switch to reach for, so AllowBoundary starts false")
 	}
 	if opts.AllowSurplus {
 		t.Error("the surplus rule is on by default, so AllowSurplus starts false")
@@ -298,6 +303,7 @@ func TestApplyRejectsUnknownMode(t *testing.T) {
 func TestBoolSettingRejectsAWord(t *testing.T) {
 	for _, yaml := range []string{
 		"rules:\n  naming:\n    exported: ondemand\n",
+		"rules:\n  allowBoundary: ondemand\n",
 		"rules:\n  allowSurplus: ondemand\n",
 	} {
 		err := settingErr(t, yaml)

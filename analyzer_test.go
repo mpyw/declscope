@@ -24,6 +24,13 @@ func TestForeignMethod(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "foreignmethod")
 }
 
+// TestAllowBoundary checks that rules.allowBoundary leaves the naming rule
+// running on its own. A reach that would be reported is not, and a name that
+// does not carry its namespace still is.
+func TestAllowBoundary(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "allowboundary")
+}
+
 // TestEmptyFile checks that a file holding only a package clause and comments
 // does not add to the namespace count. A doc.go is the usual one.
 func TestEmptyFile(t *testing.T) {

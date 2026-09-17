@@ -228,6 +228,7 @@ rules:
     exported: false       # true | false
     vocabulary:
       mouse: [wheel]
+  allowBoundary: false   # true | false
   allowSurplus: false    # true | false
 
 exclude:
@@ -242,6 +243,7 @@ baseline: .declscope-baseline.yaml
 | `rules.naming.qualify` | `always`, `never`, `ondemand` | `never` | When a name must carry its namespace. See [the naming rule](#when-it-applies) |
 | `rules.naming.exported` | `true`, `false` | `false` | Whether the naming rule also reaches exported declarations. The rename is never offered there |
 | `rules.naming.vocabulary` | Namespace to a list of words | None | Extra words that carry a namespace. See [what carries a namespace](#what-carries-a-namespace) |
+| `rules.allowBoundary` | `true`, `false` | `false` | Turns the [`boundary`](#boundary) rule off, leaving only the naming rule. See [reach without a boundary](#reach-without-a-boundary) |
 | `rules.allowSurplus` | `true`, `false` | `false` | Turns the [`surplus`](#surplus) rule off. The rule is on, so the key names what switching it does |
 | `exclude` | Path globs, read against the config file's own directory | None | Files that are neither checked nor read as reference sites |
 | `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` | The [baseline](#adopting-on-an-existing-codebase) to consult |
@@ -586,12 +588,12 @@ A **rule** is one check. There are four. A rule's name is the diagnostic's categ
 
 | Rule | Reports | Fix | Configurable |
 | --- | --- | --- | --- |
-| [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:package` | No |
+| [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:package` | `rules.allowBoundary` |
 | [`qualify`](#the-naming-rule) | A name that does not carry its namespace | Rename to prefix it | `rules.naming.*` |
 | [`surplus`](#surplus) | A `//declscope:package` with no visible use from another namespace | None | `rules.allowSurplus` |
 | [`directive`](#unused-and-malformed-directives) | A directive that binds nothing, or is malformed | None | No |
 
-Reach enforcement has no switch. Naming discipline is off by default, and the surplus audit is on.
+Reach enforcement is on, naming discipline is off, and the surplus audit is on. Each is one key away from the other setting.
 
 ### `boundary`
 
@@ -622,6 +624,23 @@ func (s *Statement) Where(cond string) *Statement {
 > A declaration that states its **own** scope is reported **without a fix**. The directive and the use site are both deliberate, and `-fix` must not overwrite what the author wrote.
 >
 > A `private` inherited from a type or a file does not withhold the fix. The inserted directive sits on the declaration, which outranks both.
+
+#### Reach without a boundary
+
+`rules.allowBoundary: true` switches this rule off. What is left is the naming rule, for a repository that wants the ownership mark in a name without the scope behind it.
+
+```yaml
+rules:
+  naming:
+    qualify: ondemand
+  allowBoundary: true
+  allowSurplus: true
+```
+
+Set `allowSurplus` alongside it. `surplus` audits `//declscope:package`, and that directive stops meaning anything once nothing checks reach, so the audit would report directives that no longer have a job.
+
+> [!TIP]
+> This is not how to adopt declscope gradually. A [baseline](#adopting-on-an-existing-codebase) records what a codebase already has and still reports what is new. A switch reports nothing, and a repository that means to turn it on later never finds out how much it would cost.
 
 ### The naming rule
 

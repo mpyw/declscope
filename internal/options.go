@@ -23,6 +23,20 @@ type Options struct {
 	// with the right edge free — so it is a spelling, never a scope.
 	Vocabulary map[string][]string
 
+	// AllowBoundary turns the boundary rule off. The rule reports a private
+	// declaration used from outside its namespace, and is the one this tool
+	// exists for, so switching it off leaves only the naming rule.
+	//
+	// It is here for the repository that wants the ownership mark in a name
+	// without the scope behind it. Reach stays unchecked, //declscope:package
+	// stops meaning anything, and surplus keeps auditing directives that no
+	// longer do a job -- set allowSurplus alongside it.
+	//
+	// This is not the way to adopt declscope gradually. A baseline records
+	// what a codebase already has and still reports what is new, which a
+	// switch cannot do.
+	AllowBoundary bool
+
 	// AllowSurplus turns the surplus rule off. The rule reports a
 	// //declscope:package directive when no use from another namespace is
 	// visible to declscope, and is on by default: a directive nobody needed is

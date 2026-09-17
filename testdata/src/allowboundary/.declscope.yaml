@@ -1,0 +1,8 @@
+# The boundary rule is off, so reach goes unchecked and the naming rule is all
+# that is left. surplus goes with it: a //declscope:package directive means
+# nothing once nothing enforces reach.
+rules:
+  naming:
+    qualify: ondemand
+  allowBoundary: true
+  allowSurplus: true
