@@ -6,7 +6,7 @@ license: MIT
 
 # Adopting declscope
 
-Written against **declscope 0.4.1**, plus `rules.allowBoundary`, which is not in a release yet. Check the version first: `exclude` changed meaning in 0.4.0, and one behaviour described here changed in 0.3.0.
+Written against **declscope 0.5.0**. Check the version first, and read [Known gaps](#known-gaps) for what changed in which release.
 
 ```bash
 declscope -V=full
