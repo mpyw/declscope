@@ -6,7 +6,7 @@ license: MIT
 
 # Adopting declscope
 
-Written against **declscope 0.4.0**. Check the version first: `exclude` changed meaning in 0.4.0, and one behaviour described here changed in 0.3.0.
+Written against **declscope 0.4.1**, plus `rules.allowBoundary`, which is not in a release yet. Check the version first: `exclude` changed meaning in 0.4.0, and one behaviour described here changed in 0.3.0.
 
 ```bash
 declscope -V=full
@@ -23,7 +23,7 @@ Two of the three rules are off unless the repository asks for them. A count of z
 | `rules.naming.qualify` | `never` | The naming rule is **off** |
 | `rules.naming.exported` | `false` | Even when on, it skips exported declarations |
 | `rules.allowSurplus` | `false` | The surplus rule is **on** |
-| `boundary` | | Always on, with no switch |
+| `rules.allowBoundary` | `false` | The boundary rule is **on**. Set, it leaves only the naming rule |
 
 The config is looked up from each analyzed package's directory **upwards**, so a subtree can carry its own and a repository can have several. Find them all, and do not read the root alone:
 
@@ -32,7 +32,7 @@ find . -name '.declscope.y*ml' -not -path './.git/*' \
   -exec sh -c 'echo "== $1"; cat "$1"' _ {} \;
 ```
 
-Finding none means the naming rule is off everywhere. Finding one is not the answer on its own, since a config that never sets `qualify` leaves the rule off too.
+Finding none means the naming rule is off everywhere, and the other two are on. Finding one is not the answer on its own. A config that never sets `qualify` leaves that rule off, and one that sets `allowBoundary` leaves off the rule this tool exists for.
 
 ### Start at the default, and offer the rest
 
@@ -134,6 +134,8 @@ rules:
 
 ## Do not turn the check off
 
+**Never set `rules.allowBoundary` to reach zero.** It silences the rule this tool exists for, and every count after it is meaningless. It is the repository owner's choice, for a repository that wants the ownership mark in a name without the scope behind it. It is never a step in an adoption. A baseline is one, because it records what the code already has and still reports what is new. Ask before writing it, the same as any other config change, and never propose it as a way past a diagnostic you could not resolve.
+
 `//declscope:core` exempts a file from the naming rule and merges it into one namespace. Marking every file in a package core means declscope checks nothing there.
 
 **Count it.** A package where every file is core needs a reason you can state in one sentence. There should be few of them.
@@ -163,6 +165,8 @@ These cost real time. Each was measured, not guessed.
 ```bash
 go build ./... && declscope ./...   # never read the count without this
 ```
+
+**A zero from `boundary` may be the switch, not the code.** `rules.allowBoundary: true` silences the rule entirely, and the run looks like a clean repository. Read every config before reporting a count, the same way you would for `qualify`.
 
 **A dirty working tree poisons a comparison.** Measuring option A, then option B without reverting, measures A and B together. `git stash` leaves untracked files behind, so a new file from the previous attempt stays. Copy the tree instead:
 
