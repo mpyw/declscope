@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -42,15 +43,33 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		collectingBook: collectingBook{consumed: make(map[*ast.CommentGroup]bool)},
 	}
 	cores := make(map[string]bool)
+	// A filter that leaves a package with nothing to read is usually the
+	// point: a root only naming one subtree excludes every package outside
+	// it, and an omit naming a directory empties it. Neither is worth saying.
+	//
+	// One shape is worth saying. When the config beside the package states an
+	// only, and the files it matches are all removed by an only above it, that
+	// config can never take effect. Nobody writes a filter for a subtree they
+	// meant to exclude, so it is a mistake rather than a choice.
+	var considered, cancelled int
+	var kept []*ast.File
 	for _, f := range pass.Files {
 		// PositionFor without adjustment names the file on disk. A //line
 		// directive renames the position to whatever produced the file, and
 		// both the namespace and the exclude patterns are about the file the
 		// repository holds, not the one a generator read.
 		path := pass.Fset.PositionFor(f.Pos(), false).Filename
-		if ast.IsGenerated(f) || opts.Skips(path) {
+		if ast.IsGenerated(f) {
 			continue
 		}
+		considered++
+		if opts.Skips(path) {
+			if opts.NearestOnlyAdmits(path) {
+				cancelled++
+			}
+			continue
+		}
+		kept = append(kept, f)
 		fi := &fileInfo{file: f, path: path, lineComments: make(map[int]*ast.CommentGroup)}
 		fileDir := directive.ParseFile(f)
 		fi.ignores = fileDir.Ignores
@@ -103,6 +122,19 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		seen[fi.key()] = true
 	}
 	c.namespaces = len(seen)
+	// Nothing was read, and the config beside the package is the reason it
+	// could not be: its only matched files that an only above it removed.
+	if len(kept) == 0 && cancelled > 0 && considered > 0 {
+		if p, ok := opts.NearestOnly(); ok && len(pass.Files) > 0 {
+			c.filterWarning = &directive.Problem{
+				Pos: pass.Files[0].Package,
+				Msg: fmt.Sprintf(
+					"filter.only stated in %s matches %d file(s) here, but an only above it removes them all, so this package is read as empty",
+					p.Base, cancelled),
+			}
+		}
+	}
+
 	return c
 }
 

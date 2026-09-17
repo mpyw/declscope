@@ -26,26 +26,23 @@ import (
 
 // Run performs the analysis for one package.
 func Run(pass *analysis.Pass, opts Options) (any, error) {
-	if c := build(pass, opts); c != nil {
-		c.report(pass, opts)
-	}
+	build(pass, opts).report(pass, opts)
 	return nil, nil
 }
 
 // Collect returns every violation in the package, ignoring any configured
 // baseline. It is the entry point used to regenerate a baseline.
 func Collect(pass *analysis.Pass, opts Options) []baseline.Key {
-	c := build(pass, opts)
-	if c == nil {
-		return nil
-	}
-	return c.keysForReport(pass, opts)
+	return build(pass, opts).keysForReport(pass, opts)
 }
 
+// build always returns a collection, empty or not. A package the filter left
+// with nothing to read still has one thing to say — that the filter is why —
+// and returning nil for it would drop the report along with the work.
 func build(pass *analysis.Pass, opts Options) *collection {
 	c := collectFiles(pass, opts)
 	if len(c.files) == 0 {
-		return nil
+		return c
 	}
 	c.collectTargets(pass, opts)
 	c.collectRefs(pass)

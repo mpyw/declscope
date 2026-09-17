@@ -34,6 +34,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -168,23 +169,63 @@ func ResolveForBaseline(dir, explicit string) (opts internal.Options, configPath
 func resolve(dir, explicit string) (internal.Options, string, error) {
 	opts := internal.DefaultOptions()
 
-	path := explicit
-	if path == "" {
-		path = Find(dir)
+	// An explicit -config names one file and asks for it, so no chain is
+	// built: the caller said which rules to use.
+	chain := []string{explicit}
+	if explicit == "" {
+		chain = FindChain(dir)
 	}
-	if path != "" {
-		f, err := Load(path)
+	path := ""
+	if len(chain) > 0 {
+		path = chain[len(chain)-1]
+	}
+	// Outermost first, so a nearer file overrides the keys it states and
+	// leaves the rest as the file above set them.
+	for _, p := range chain {
+		if p == "" {
+			continue
+		}
+		f, err := Load(p)
 		if err != nil {
-			return opts, path, err
+			return opts, p, err
 		}
 		if err := f.Apply(&opts); err != nil {
-			return opts, path, fmt.Errorf("%s: %w", path, err)
+			return opts, p, fmt.Errorf("%s: %w", p, err)
 		}
 	}
 	if err := opts.Compile(); err != nil {
 		return opts, path, err
 	}
 	return opts, path, nil
+}
+
+// FindChain walks up from dir and returns every config file it passes,
+// outermost first. The nearest file is last, so applying the slice in order
+// leaves the nearest one's stated keys on top.
+//
+// The search stops at a module root, exactly as Find does. Config files do
+// compose, so a file above the module would reach into it, which is the one
+// thing the module boundary is there to prevent.
+func FindChain(dir string) []string {
+	var found []string
+	for dir != "" {
+		for _, name := range Names {
+			if path := filepath.Join(dir, name); isFile(path) {
+				found = append(found, path)
+				break
+			}
+		}
+		if isFile(filepath.Join(dir, "go.mod")) {
+			break
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	slices.Reverse(found)
+	return found
 }
 
 // Find walks up from dir looking for a config file and returns its path, or
@@ -385,8 +426,17 @@ func (f *File) Apply(opts *internal.Options) error {
 	if f.Rules.Naming.Exported.set {
 		opts.NameExported = f.Rules.Naming.Exported.value
 	}
+	// The map merges per namespace rather than replacing: adding one word in a
+	// nested config should not cost restating every other.
 	if len(f.Rules.Naming.Vocabulary) > 0 {
-		opts.Vocabulary = f.Rules.Naming.Vocabulary
+		merged := make(map[string][]string, len(opts.Vocabulary)+len(f.Rules.Naming.Vocabulary))
+		for ns, words := range opts.Vocabulary {
+			merged[ns] = words
+		}
+		for ns, words := range f.Rules.Naming.Vocabulary {
+			merged[ns] = words
+		}
+		opts.Vocabulary = merged
 	}
 	if f.Rules.AllowBoundary.set {
 		opts.AllowBoundary = f.Rules.AllowBoundary.value
@@ -394,15 +444,30 @@ func (f *File) Apply(opts *internal.Options) error {
 	if f.Rules.AllowSurplus.set {
 		opts.AllowSurplus = f.Rules.AllowSurplus.value
 	}
-	if f.Filter.Only != nil || f.Filter.Omit != nil {
-		opts.Only = f.Filter.Only
-		opts.Omit = f.Filter.Omit
-		opts.FilterBase = f.FilterBase()
+	// only intersects and omit unions, so each stating file adds to what is
+	// already there rather than replacing it. A config file can narrow what is
+	// read and never widen it.
+	base := f.FilterBase()
+	if len(f.Filter.Only) > 0 {
+		opts.Only = append(opts.Only, patternsIn(f.Filter.Only, base))
+	}
+	if len(f.Filter.Omit) > 0 {
+		opts.Omit = append(opts.Omit, patternsIn(f.Filter.Omit, base)...)
 	}
 	if f.Baseline != "" {
 		opts.BaselinePath = f.BaselinePath()
 	}
 	return nil
+}
+
+// patternsIn pairs each pattern with the directory it was written in, which
+// is what lets one chain hold patterns anchored at several depths.
+func patternsIn(patterns []string, base string) []internal.FilterPattern {
+	out := make([]internal.FilterPattern, 0, len(patterns))
+	for _, p := range patterns {
+		out = append(out, internal.FilterPattern{Pattern: p, Base: base})
+	}
+	return out
 }
 
 // FilterBase is the directory the filter patterns are relative to: the one

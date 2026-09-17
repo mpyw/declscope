@@ -6,20 +6,34 @@ import (
 	"testing"
 )
 
+// patternsAt pairs patterns with the directory a config file would have
+// written them in, which is what the chain carries.
+func patternsAt(base string, patterns ...string) []FilterPattern {
+	out := make([]FilterPattern, 0, len(patterns))
+	for _, pattern := range patterns {
+		out = append(out, FilterPattern{Pattern: pattern, Base: base})
+	}
+	return out
+}
+
+// onlyAt is the single group one config file's only list produces.
+func onlyAt(base string, patterns ...string) [][]FilterPattern {
+	return [][]FilterPattern{patternsAt(base, patterns...)}
+}
+
 // TestFilterAnchoring pins which patterns speak about one place and which
 // speak about any depth. The split follows .gitignore: a pattern holding a
 // separator is anchored to the directory of the config file that states it,
 // unless the separator is part of a leading **.
 func TestFilterAnchoring(t *testing.T) {
 	opts := DefaultOptions()
-	opts.FilterBase = "/repo"
-	opts.Omit = []string{
+	opts.Omit = patternsAt("/repo",
 		"**/mock_*.go", // any depth, anywhere
 		"gen.go",       // any depth: a bare name carries no place
 		"vendor/**",    // the one beside the config
 		"/tools/**",    // the same, spelled the way .gitignore anchors
 		"a/b/*.go",     // one named place, one level deep
-	}
+	)
 	if err := opts.Compile(); err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +79,7 @@ func TestFilterAnchoring(t *testing.T) {
 // nothing at all, so every pattern floats instead.
 func TestFilterWithoutBase(t *testing.T) {
 	opts := DefaultOptions()
-	opts.Omit = []string{"vendor/**"}
+	opts.Omit = patternsAt("", "vendor/**")
 	if err := opts.Compile(); err != nil {
 		t.Fatal(err)
 	}
@@ -100,8 +114,7 @@ func TestFilterThroughSymlink(t *testing.T) {
 
 	for _, base := range []string{real, link} {
 		opts := DefaultOptions()
-		opts.FilterBase = base
-		opts.Omit = []string{"vendor/**"}
+		opts.Omit = patternsAt(base, "vendor/**")
 		if err := opts.Compile(); err != nil {
 			t.Fatal(err)
 		}
@@ -119,8 +132,7 @@ func TestFilterThroughSymlink(t *testing.T) {
 // rather than compiling into a character class.
 func TestFilterEscapesRegexpMetacharacters(t *testing.T) {
 	opts := DefaultOptions()
-	opts.FilterBase = "/repo"
-	opts.Omit = []string{"sub/gen[1].go"}
+	opts.Omit = patternsAt("/repo", "sub/gen[1].go")
 	if err := opts.Compile(); err != nil {
 		t.Fatal(err)
 	}
@@ -141,8 +153,7 @@ func TestFilterOnlyNarrows(t *testing.T) {
 		t.Error("no only list should place no restriction")
 	}
 
-	opts.FilterBase = "/repo"
-	opts.Only = []string{"internal/**"}
+	opts.Only = onlyAt("/repo", "internal/**")
 	if err := opts.Compile(); err != nil {
 		t.Fatal(err)
 	}
@@ -162,9 +173,8 @@ func TestFilterOnlyNarrows(t *testing.T) {
 // pattern matching is enough, in either list.
 func TestFilterMatchesAnyPattern(t *testing.T) {
 	opts := DefaultOptions()
-	opts.FilterBase = "/repo"
-	opts.Only = []string{"internal/**", "cmd/**"}
-	opts.Omit = []string{"**/mock_*.go", "**/*_gen.go"}
+	opts.Only = onlyAt("/repo", "internal/**", "cmd/**")
+	opts.Omit = patternsAt("/repo", "**/mock_*.go", "**/*_gen.go")
 	if err := opts.Compile(); err != nil {
 		t.Fatal(err)
 	}
@@ -193,9 +203,8 @@ func TestFilterMatchesAnyPattern(t *testing.T) {
 // same set. This pins the set, not an order.
 func TestFilterOmitBitesInsideOnly(t *testing.T) {
 	opts := DefaultOptions()
-	opts.FilterBase = "/repo"
-	opts.Only = []string{"internal/**"}
-	opts.Omit = []string{"internal/legacy/**"}
+	opts.Only = onlyAt("/repo", "internal/**")
+	opts.Omit = patternsAt("/repo", "internal/legacy/**")
 	if err := opts.Compile(); err != nil {
 		t.Fatal(err)
 	}

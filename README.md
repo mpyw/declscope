@@ -214,8 +214,8 @@ Every diagnostic carries **at most one** fix, so `-fix` never has to choose.
 Configuration is optional, and this is all of it.
 
 - Read from `.declscope.yaml` or `.declscope.yml`.
-- Looked up from the analyzed package's directory **upwards**, stopping at the module root. A subtree can relax or tighten the rules on its own.
-- [`-config`](#flags) names a file explicitly and skips the lookup.
+- Read from every `.declscope.yaml` between the analyzed package and the module root, **outermost first**. A nearer file owns the keys it states and inherits the rest, so a subtree can relax or tighten one rule without restating the others.
+- [`-config`](#flags) names one file and builds no chain.
 - An empty file is a valid config that changes nothing.
 
 ```yaml
@@ -257,6 +257,34 @@ In a glob:
 | --- | --- |
 | `*`, `?` | Within one path segment |
 | `**` | Across segments |
+
+### How two config files compose
+
+A nearer file does not replace the one above it. Each key composes on its own.
+
+| Key | Down the chain |
+| --- | --- |
+| `defaults.*`, `rules.*` except `vocabulary`, `baseline` | The nearest file that states the key wins. A key no file states takes the built-in default |
+| `rules.naming.vocabulary` | Merged per namespace. The nearer file wins the namespaces it states and leaves the others alone |
+| `filter.only` | **Intersected.** A file is read when it matches every stating file's list |
+| `filter.omit` | **Unioned.** A file matching any level's list is not read |
+
+> [!IMPORTANT]
+> The two `filter` keys compose so that **a config file can only ever shrink what is read.** An `omit` written at the root holds everywhere below it. No nested file can undo it.
+>
+> A `.gitignore` is not like this, because `!` lets a deeper file put a path back. `filter` has no negation, so the two set operations give that property without a rule to enforce it.
+
+Each file's patterns are read against **its own** directory, so `gen/**` in the root and `gen/**` in a nested file name different directories and both hold.
+
+### The filter rule
+
+One report comes from the configuration rather than from the code. Say a config file states `only`. The files it matches are all removed by an `only` above it, and the package is read as empty. That `only` can never take effect:
+
+```console
+sub/a.go:1:1: filter.only stated in /repo/sub matches 1 file(s) here, but an only above it removes them all, so this package is read as empty
+```
+
+A package that reads nothing is usually the point, so the report is this narrow. A root `only` naming one subtree excludes every package outside it, and an `omit` naming a directory empties it. Neither says anything.
 
 `filter` decides which files are read at all. A file matches a list when it matches **any** pattern in it.
 
@@ -406,7 +434,7 @@ A malformed directive is reported at the comment.
 | `//declscope:package x` | `//declscope:package takes no argument` |
 | `//declscope:private` and `//declscope:package` together | `conflicting scope directives: ...` |
 | `//declscope:core` and `//declscope:namespace` together | `conflicting namespace directives: a core file's namespace is the core` |
-| `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, surplus, directive)` |
+| `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, surplus, directive, filter)` |
 | `//declscope:namespace` after the package clause | `declscope:namespace must appear before the package clause` |
 
 </details>
@@ -609,6 +637,7 @@ A **rule** is one check. There are four. A rule's name is the diagnostic's categ
 | [`qualify`](#the-naming-rule) | A name that does not carry its namespace | Rename to prefix it | `rules.naming.*` |
 | [`surplus`](#surplus) | A `//declscope:package` with no visible use from another namespace | None | `rules.allowSurplus` |
 | [`directive`](#unused-and-malformed-directives) | A directive that binds nothing, or is malformed | None | No |
+| [`filter`](#the-filter-rule) | A `filter.only` that an `only` above it cancels | None | No |
 
 Reach enforcement is on, naming discipline is off, and the surplus audit is on. Each is one key away from the other setting.
 

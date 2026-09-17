@@ -24,6 +24,7 @@ Two of the three rules are off unless the repository asks for them. A count of z
 | `rules.naming.exported` | `false` | Even when on, it skips exported declarations |
 | `rules.allowSurplus` | `false` | The surplus rule is **on** |
 | `rules.allowBoundary` | `false` | The boundary rule is **on**. Set, it leaves only the naming rule |
+| `filter.only` | None | When set anywhere in the chain, files outside it are never read |
 
 The config is looked up from each analyzed package's directory **upwards**, so a subtree can carry its own and a repository can have several. Find them all, and do not read the root alone:
 
@@ -166,6 +167,8 @@ These cost real time. Each was measured, not guessed.
 go build ./... && declscope ./...   # never read the count without this
 ```
 
+**A zero may be the filter, not the code.** A `filter.only` anywhere in the chain can leave a package with nothing to read. A package nothing was read from reports nothing. `declscope` says so only when a nested `only` was cancelled by one above it, so the quiet cases stay quiet. Count the files the analysis actually saw before trusting a zero.
+
 **A zero from `boundary` may be the switch, not the code.** `rules.allowBoundary: true` silences the rule entirely, and the run looks like a clean repository. Read every config before reporting a count, the same way you would for `qualify`.
 
 **A dirty working tree poisons a comparison.** Measuring option A, then option B without reverting, measures A and B together. `git stash` leaves untracked files behind, so a new file from the previous attempt stays. Copy the tree instead:
@@ -186,7 +189,9 @@ cp -r repo /tmp/try-a   # and measure there
 
 Not in a release yet: `exclude` is gone, replaced by `filter` with an `only` list and an `omit` list. `omit` is what `exclude` was. `only` is new and narrows instead of subtracting, and an empty one places no restriction. A stale `exclude:` is an unknown-key error rather than a silent no-op, so a repository still carrying one will not run at all until it is converted.
 
-Config files do not compose. The nearest one owns every key, and the one above it is never read. A nested config that sets `filter` therefore drops the root's, which is not what a `.gitignore` would do. Read the config that actually governs the package you are measuring, not the one at the root.
+Config files compose, outermost first. A nearer file owns the keys it states and inherits the rest, so reading the nearest one alone does not tell you what applies. Read every file between the package and the module root.
+
+`filter` composes differently from the rest: `only` intersects and `omit` unions, so a config file can only ever shrink what is read. A root `omit` holds everywhere below it, and no nested file undoes it.
 
 Changed in 0.4.0: a pattern is read against the directory of the config file that states it, and anchors there when it holds a separator. `internal/tui/**` used to reach every `internal/tui` at any depth; it now reaches the one beside the config. A bare name and a leading `**/` are unaffected, and a `..` in a pattern is an error.
 

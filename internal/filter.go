@@ -189,3 +189,15 @@ func (m filterMatcher) match(path string) bool {
 	}
 	return false
 }
+
+// FilterPattern is a pattern together with the directory it was written in.
+// The two travel as a pair because a chain of config files states patterns at
+// several depths, and each anchors to its own: "gen/**" in the root and
+// "gen/**" in a nested file name different directories.
+//
+// Base is empty for a pattern from options no config file produced, which
+// leaves it floating, since there is no directory to call "here".
+type FilterPattern struct {
+	Pattern string
+	Base    string
+}

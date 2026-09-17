@@ -114,6 +114,13 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 			Message:  p.Msg,
 		})
 	}
+	if w := c.filterWarning; w != nil {
+		pass.Report(analysis.Diagnostic{
+			Pos:      w.Pos,
+			Category: string(rule.Filter),
+			Message:  w.Msg,
+		})
+	}
 }
 
 // namespaceForReport spells the namespace for the baseline, which is the one place it has
