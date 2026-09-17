@@ -35,6 +35,8 @@ the binary.
 | `filter_chain.fsl` | The filter report fires exactly when the nearest `only` is cancelled by one above it, and stays quiet where a package reads nothing on purpose | As above |
 | `boundary_fix.fsl` | Inserting `//declscope:package` always removes the boundary crossing, and is withheld wherever any level already stated a scope | Every combination of `defaults.unexported`, kind, exportedness, reference shape, and the declaration, block, type and file directives |
 | `boundary_fix.fsl` | The fix is offered only where a crossing exists, and never overwrites the declaration's own directive | As above |
+| `fix_members.fsl` | Two directive insertions in one run never converge: no directive `-fix` writes binds nothing, and whichever of the two it writes settles the crossing | Every combination of `defaults.unexported`, the exportedness and reference shape of a type and one of its members, and the declaration, type and file directives |
+| `fix_members.fsl` | The narrower fix is subsumed, not disabled: a member whose type does not cross still carries its own directive | As above |
 | `knobs.fsl` | `defaults.unexported` and every directive level demonstrably change an outcome, for each kind of declaration | As above |
 | `knobs.fsl` | The containing type's directive reaches its members and nothing else, witnessed by a package-level declaration and a method with a receiver that still fire | As above |
 | `knobs.fsl` | An exported declaration carries no boundary by default, for every kind | As above |
@@ -89,6 +91,12 @@ excluded by a `_GOOS` suffix or a `//go:build` line was in none of the guard's
 rows, so `-fix` rewrote the configuration it could see and left the other one
 calling a name that no longer existed.
 
+Convergence is not the renames' alone. The directive fix converges its own way,
+and `fix_members.fsl` proves the guard for it: a directive written on a type
+reaches the type's members, so a member fixed in the same run was left carrying
+a directive that bound nothing. That one is in the proved list rather than here,
+because the implementation holds the guard.
+
 ## Running them
 
 `fslc verify` is a bounded model checker: it holds the whole reachable state space
@@ -99,7 +107,7 @@ step and needs gigabytes for the same claims these prove in single-digit
 megabytes.
 
 ```console
-./spec/verify.sh     # what CI runs: eleven proved, two violated
+./spec/verify.sh     # what CI runs: twelve proved, two violated
 ```
 
 Or one at a time:
@@ -112,6 +120,7 @@ fslc verify config_inherit.fsl   --depth 2
 fslc verify filter.fsl           --depth 2
 fslc verify filter_chain.fsl     --depth 2
 fslc verify boundary_fix.fsl     --depth 4
+fslc verify fix_members.fsl      --depth 4
 fslc verify knobs.fsl            --depth 4
 fslc verify directive_effect.fsl --depth 4
 fslc verify rename_guarded.fsl   --depth 4
@@ -128,7 +137,7 @@ run prints is the shape of the model, not a failure, and `rename_guarded.fsl`
 also reports a vacuous antecedent — which is the guard working, and is stated as
 `NothingResolvedNewName` rather than left as a warning.
 
-The eleven that pass are `proved` under `--engine induction`, which is what
+The twelve that pass are `proved` under `--engine induction`, which is what
 `verify.sh` and CI assert. Bounded verification alone would let an invariant be
 true to a depth without being inductive, and reading the exit code alone would
 let a spec that stopped parsing pass as "violated, as intended" — `fslc` exits
@@ -170,6 +179,8 @@ is a semantics that contradicts the documented one; each was run:
 | Any one of the four scope checks in `renameSafe` is dropped | `violated` |
 | The build-excluded file is not consulted, so a rename disturbs a name only another configuration writes | `violated` |
 | An unseen in-package test file does not withhold the rename | `violated` |
+| Both directive insertions fire, so a member is fixed under a type fixed in the same run | `violated` (`InsertedMemberDirectiveBinds`) |
+| The narrower insertion wins, so the type's fix is dropped instead of the member's | `reachable_failed` (`OnlyTheWiderFixIsWritten`) |
 | `rules.allowBoundary` is wired into `surplus` as well | `reachable_failed` (`SurplusFiresWhileBoundaryAllowed`) |
 | `rules.allowBoundary` is wired into `qualify` as well | `reachable_failed` (`QualifyFiresWhileBoundaryAllowed`) |
 | The `allowBoundary` gate is dropped from the boundary report | `violated` (`BoundarySilencedWhenAllowed`) |

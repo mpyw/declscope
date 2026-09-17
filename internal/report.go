@@ -3,6 +3,7 @@ package internal
 import (
 	"fmt"
 	"go/token"
+	"go/types"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -27,6 +28,46 @@ type reportedFinding struct {
 	fixes   []analysis.SuggestedFix
 }
 
+// pendingReport is one target's surviving findings, held until every target
+// has been judged. A fix is decided against the pre-fix source, so what one
+// fix is about to write can only be known once they all exist.
+type pendingReport struct {
+	t        *target
+	findings []reportedFinding
+}
+
+// widensReport reports whether this finding's fix widens the declaration to
+// package scope, and with it every member the declaration contains. Only a
+// type contains members, and only an inserted directive widens: a rename
+// changes no reach at all.
+func (f reportedFinding) widensReport(t *target) bool {
+	return f.rule == rule.Boundary && len(f.fixes) > 0 && t.kind == kindType && !t.contained
+}
+
+// subsumedByReport reports whether the fix a member's finding carries is
+// already going to be written by the fix on its type, in the same run.
+//
+// Every fix is decided against the pre-fix source and none of them can see the
+// others, so two can converge — the shape spec/rename_siblings.fsl already
+// models for renames. A directive inserted on a type reaches the type's
+// members, which leaves a directive inserted on a member in the same run
+// binding nothing: the directive rule then reports what -fix just wrote, and a
+// second -fix does not clear it, because that rule carries no fix. The wider
+// insertion wins and the narrower one is dropped.
+//
+// Only the fix is dropped, never the diagnostic. The member really is reached
+// from another namespace, and it says so whether or not the author applies the
+// fix offered on its type.
+//
+// The member's own directive can only be reached here when the configured
+// default supplied its scope — anything stated on the member, on its type or
+// in its file withholds the fix already — and in that case nothing stated the
+// type's scope either, so the type carries the insertion whenever it crosses
+// at all.
+func subsumedByReport(t *target, f reportedFinding, widened map[types.Object]bool) bool {
+	return f.rule == rule.Boundary && t.contained && t.ownerObj != nil && widened[t.ownerObj]
+}
+
 // report renders every diagnostic of the pass.
 //
 //declscope:package // the analyzer's reporting entry, driven from analyzer.go
@@ -40,7 +81,14 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 		return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos())
 	})
 
+	// Every surviving finding is collected before any of them is reported,
+	// because one fix can subsume another and no fix can see the edits of the
+	// others. widensReport marks what one is about to widen; subsumedByReport
+	// spells out why.
+	pending := make([]pendingReport, 0, len(c.targets))
+	widened := make(map[types.Object]bool)
 	for _, t := range c.targets {
+		p := pendingReport{t: t}
 		for _, f := range c.findingsForReport(pass, opts, t) {
 			// Ignores are consulted before the baseline: a suppression the
 			// baseline would also have absorbed still counts as the directive
@@ -50,6 +98,21 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 			}
 			if opts.Baseline.Has(f.key(pass, t)) {
 				continue
+			}
+			if f.widensReport(t) {
+				widened[t.obj] = true
+			}
+			p.findings = append(p.findings, f)
+		}
+		if len(p.findings) > 0 {
+			pending = append(pending, p)
+		}
+	}
+
+	for _, p := range pending {
+		for _, f := range p.findings {
+			if subsumedByReport(p.t, f, widened) {
+				f.fixes = nil
 			}
 			pass.Report(analysis.Diagnostic{
 				Pos:            f.pos,

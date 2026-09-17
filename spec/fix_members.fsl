@@ -1,0 +1,234 @@
+// Two directive insertions in one run must not converge.
+//
+// Every fix in a run is generated from the same pre-fix state, so no fix sees
+// what another is about to write — the shape rename_siblings.fsl already holds
+// for renames. The insertions have their own way of converging: a directive
+// written on a type reaches the type's members, so a member fixed in the same
+// run is left carrying a directive that binds nothing, and the `directive` rule
+// reports what -fix has just written. That rule carries no fix, so a second
+// -fix does not clear it.
+//
+// The guard is that the wider insertion subsumes the narrower one: the member's
+// fix is dropped whenever the type is about to carry a directive of its own.
+// The member's diagnostic is not — the crossing is real until the type's
+// directive lands — which is why nothing here says the member stops being
+// reported.
+//
+// The authored directives are never assigned. They are the pre-fix source every
+// guard reads, and what a fix wrote is recorded beside them in typeFixed and
+// memberFixed; the "after" defs put the two together. Writing the insertion
+// into typeDir instead would let each fix read the other's edit, which is the
+// one thing -fix cannot do.
+//
+// ASSUME-1: one type and one of its members are enough — this convergence needs
+//   exactly a container and something it contains (modelling assumption)
+spec FixMembers {
+  enum Scope { Package, Private }
+  enum Dir   { NoDir, DirPackage, DirPrivate }
+  enum Refs  { NoRefs, SameNs, CrossNs }
+
+  state {
+    configured: Bool, cfgUnexported: Scope,
+    typeExported: Bool, memberExported: Bool,
+    // What the author wrote. A fix never assigns these.
+    typeDir: Dir, memberDir: Dir, fileDir: Dir,
+    typeRefs: Refs, memberRefs: Refs,
+    // What this run inserted.
+    typeFixed: Bool, memberFixed: Bool,
+    // A pass that reported and did not fix — -fix off, or the fix withheld. It
+    // is what lets a run go on with a crossing pending, which is what makes
+    // `fair` on the two fix actions a claim rather than decoration.
+    stalled: Bool
+  }
+  init {
+    configured = false  cfgUnexported = Private
+    typeExported = false  memberExported = false
+    typeDir = NoDir  memberDir = NoDir  fileDir = NoDir
+    typeRefs = NoRefs  memberRefs = NoRefs
+    typeFixed = false  memberFixed = false  stalled = false
+  }
+  action configure(u: Scope, tx: Bool, mx: Bool,
+                   td: Dir, md: Dir, fd: Dir, tr: Refs, mr: Refs) {
+    requires not configured
+    configured = true  cfgUnexported = u
+    typeExported = tx  memberExported = mx
+    typeDir = td  memberDir = md  fileDir = fd
+    typeRefs = tr  memberRefs = mr
+  }
+
+  // Exportedness decides the default and nothing else, as everywhere else.
+  def defaultScope(x: Bool) = if x then Package else cfgUnexported
+  def fileOrDefault(x: Bool) =
+    if fileDir == DirPackage then Package
+    else if fileDir == DirPrivate then Private
+    else defaultScope(x)
+
+  // --- the pre-fix source, which every guard reads -------------------------
+  def typeScope() =
+    if typeDir == DirPackage then Package
+    else if typeDir == DirPrivate then Private
+    else fileOrDefault(typeExported)
+  // The member's chain has the containing type in it, which is the whole
+  // reason the two fixes can converge.
+  def memberScope() =
+    if memberDir == DirPackage then Package
+    else if memberDir == DirPrivate then Private
+    else if typeDir == DirPackage then Package
+    else if typeDir == DirPrivate then Private
+    else fileOrDefault(memberExported)
+
+  def typeCrosses()   = typeScope() == Private and typeRefs == CrossNs
+  def memberCrosses() = memberScope() == Private and memberRefs == CrossNs
+
+  // Whichever level stated the scope, if any. A fix is withheld for all of
+  // them, which is boundary_fix.fsl's subject and is restated here only so
+  // that the two fixes are guarded the way the implementation guards them.
+  def typeStated()   = if typeDir != NoDir then typeDir else fileDir
+  def memberStated() =
+    if memberDir != NoDir then memberDir
+    else if typeDir != NoDir then typeDir
+    else fileDir
+
+  action reportOnly() { requires configured  stalled = true }
+
+  fair action fixType() {
+    requires configured  requires not typeFixed
+    requires typeCrosses()  requires typeStated() == NoDir
+    typeFixed = true
+  }
+
+  fair action fixMember() {
+    requires configured  requires not memberFixed
+    requires memberCrosses()  requires memberStated() == NoDir
+    // The guard this spec exists for. Deleting this line is the defect: both
+    // fixes then fire, and the member is left carrying an inert directive.
+    requires not (typeCrosses() and typeStated() == NoDir)
+    memberFixed = true
+  }
+
+  // --- what the source says once the run has finished ----------------------
+  def typeDirAfter()   = if typeFixed   then DirPackage else typeDir
+  def memberDirAfter() = if memberFixed then DirPackage else memberDir
+
+  // The scope the member takes from the levels outside its own directive, and
+  // whether that scope is the same under every configuration — it is not when
+  // defaults.unexported decides it. This is directive_effect.fsl's binding
+  // test, over the source the run leaves behind rather than the one it read.
+  def memberOuterFixed() =
+    typeDirAfter() != NoDir or fileDir != NoDir or memberExported
+  def memberOuterScope() =
+    if typeDirAfter() == DirPackage then Package
+    else if typeDirAfter() == DirPrivate then Private
+    else fileOrDefault(memberExported)
+  def memberInert() =
+    memberOuterFixed()
+    and (if memberDirAfter() == DirPackage then Package else Private) == memberOuterScope()
+
+  def typeOuterFixed() = fileDir != NoDir or typeExported
+  def typeOuterScope() = fileOrDefault(typeExported)
+  def typeInert() =
+    typeOuterFixed()
+    and (if typeDirAfter() == DirPackage then Package else Private) == typeOuterScope()
+
+  // --- what the run leaves ---------------------------------------------------
+  def memberScopeAfter() =
+    if memberDirAfter() == DirPackage then Package
+    else if memberDirAfter() == DirPrivate then Private
+    else if typeDirAfter() == DirPackage then Package
+    else if typeDirAfter() == DirPrivate then Private
+    else fileOrDefault(memberExported)
+  def typeScopeAfter() =
+    if typeDirAfter() == DirPackage then Package
+    else if typeDirAfter() == DirPrivate then Private
+    else fileOrDefault(typeExported)
+  def memberCrossesAfter() = memberScopeAfter() == Private and memberRefs == CrossNs
+  def typeCrossesAfter()   = typeScopeAfter() == Private and typeRefs == CrossNs
+
+  invariant FixImpliesConfigured { (typeFixed or memberFixed) => configured }
+
+  // Auxiliary: no fix assigns the authored directives, so each guard still
+  // holds of the state it fired in. Without these, induction would have to
+  // consider a run that inserted a directive where nothing crossed, and the
+  // claims below are not true of one.
+  invariant TypeFixRecordsItsGuard {
+    typeFixed => typeCrosses() and typeStated() == NoDir
+  }
+  invariant MemberFixRecordsItsGuard {
+    memberFixed =>
+      memberCrosses() and memberStated() == NoDir
+      and not (typeCrosses() and typeStated() == NoDir)
+  }
+
+  // The claim: no directive this run inserted binds nothing. Expanded rather
+  // than routed through memberInert, so that mutating the binding test moves
+  // only one side of the implication and the invariant can actually fail.
+  invariant InsertedMemberDirectiveBinds {
+    memberFixed =>
+      not (memberOuterFixed() and Package == memberOuterScope())
+  }
+  invariant InsertedTypeDirectiveBinds {
+    typeFixed => not (typeOuterFixed() and Package == typeOuterScope())
+  }
+
+  // And the fixes still do their job: what each one writes settles the
+  // crossing it was written for.
+  invariant TypeFixSettles   { typeFixed   => not typeCrossesAfter() }
+  invariant MemberFixSettles { memberFixed => not memberCrossesAfter() }
+
+  // The guards are load-bearing: without these a spurious insertion, or one
+  // written over the author's own directive, would go unnoticed.
+  trans FixTypeOnlyWhereNeeded {
+    not old(typeFixed) and typeFixed => old(typeCrosses())
+  }
+  trans FixMemberOnlyWhereNeeded {
+    not old(memberFixed) and memberFixed => old(memberCrosses())
+  }
+  trans FixNeverClobbersDirective {
+    (not old(typeFixed) and typeFixed => old(typeStated()) == NoDir)
+    and (not old(memberFixed) and memberFixed => old(memberStated()) == NoDir)
+  }
+
+  // The convergence itself, which is the state the guard has to survive: both
+  // cross, neither states a scope, and only the wider directive is written.
+  reachable BothCross {
+    configured and typeCrosses() and memberCrosses()
+    and typeStated() == NoDir and memberStated() == NoDir
+  }
+  // memberCrosses reads the authored source, which no fix assigns, so it still
+  // says what the member did before the run: it crossed, nothing was written on
+  // it, and the type's directive settled it.
+  reachable OnlyTheWiderFixIsWritten {
+    typeFixed and not memberFixed
+    and memberCrosses() and memberStated() == NoDir
+    and not memberCrossesAfter()
+  }
+
+  // The narrower fix is not disabled, only subsumed: where the type does not
+  // cross, the member carries its own directive and it binds.
+  reachable MemberFixedWhereTypeDoesNotCross {
+    memberFixed and not typeFixed and not typeCrosses()
+    and memberRefs == CrossNs and not memberCrossesAfter()
+  }
+  // A member whose type states its own scope is withheld already, by the rule
+  // boundary_fix.fsl proves. Pinned here so that the subsumption guard is not
+  // the only thing keeping the member quiet.
+  reachable MemberWithheldUnderTypeDirective {
+    configured and typeDir == DirPrivate and memberDir == NoDir
+    and memberCrosses() and not memberFixed and stalled
+  }
+
+  // The stall itself. Without it nothing reads `stalled` and the assignment
+  // recording it could be deleted with no verdict moving.
+  reachable CrossingSurvivesAPassWithoutFix {
+    stalled and memberCrosses() and memberStated() == NoDir
+  }
+
+  // Whichever of the two fixes applies, the member stops crossing: the type's
+  // directive reaches it when the type is fixed, and its own does otherwise.
+  leadsTo MemberEventuallySettled {
+    configured and memberCrosses() and memberStated() == NoDir ~> not memberCrossesAfter()
+  }
+  leadsTo TypeEventuallySettled {
+    configured and typeCrosses() and typeStated() == NoDir ~> not typeCrossesAfter()
+  }
+}

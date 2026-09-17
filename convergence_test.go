@@ -61,6 +61,16 @@ var fixCases = []fixCase{
 		},
 	},
 	{
+		// Two directive insertions converging: the one on the type reaches the
+		// field, so a second one on the field would bind nothing, and the
+		// directive rule would report what -fix had just written.
+		name: "type and member crossing together",
+		files: map[string]string{
+			"user.go":  "package x\n\ntype entry struct {\n\tkey string\n}\n",
+			"order.go": "package x\n\nfunc Order() string {\n\te := entry{key: \"x\"}\n\treturn e.key\n}\n",
+		},
+	},
+	{
 		name:   "rename target already taken",
 		config: "rules:\n  naming:\n    qualify: ondemand\n",
 		files: map[string]string{
