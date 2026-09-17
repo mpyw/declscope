@@ -67,8 +67,10 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/ymm-oss/fsl/main/install.sh | bash -s -- --no-skill
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      # Seven specs must be proved; two must stay violated, since they hold the
-      # counterexamples for designs that are unsound.
+      # Most specs must be proved; two must stay violated, since they hold the
+      # counterexamples for designs that are unsound. verify.sh holds the
+      # lists, and fails when a spec is in neither, so the count does not need
+      # restating here every time one is added.
       - name: Verify the specs
         run: ./spec/verify.sh
 
