@@ -25,6 +25,8 @@ the binary.
 | `naming_rules.fsl` | No rename is ever applied to an exported declaration | As above |
 | `naming_rules.fsl` | Each naming key bites, and each silence is witnessed with every other reason for silence pinned | As above |
 | `naming_rules.fsl` | The core namespace is outside the rule, whatever is configured | As above |
+| `allow_boundary.fsl` | `rules.allowBoundary` silences `boundary` and nothing else. `qualify` and `surplus` still fire with it on, and `allowSurplus` still gates only `surplus` | Every combination of the two switches, the resolved scope, the reference shape, the naming mode and its inputs, and the two surplus inputs |
+| `allow_boundary.fsl` | Each of the three rules keeps its own guards, witnessed by the report each one records rather than by a restatement of its definition | As above |
 | `boundary_fix.fsl` | Inserting `//declscope:package` always removes the boundary crossing, and is withheld wherever any level already stated a scope | Every combination of `defaults.unexported`, kind, exportedness, reference shape, and the declaration, block, type and file directives |
 | `boundary_fix.fsl` | The fix is offered only where a crossing exists, and never overwrites the declaration's own directive | As above |
 | `knobs.fsl` | `defaults.unexported` and every directive level demonstrably change an outcome, for each kind of declaration | As above |
@@ -91,7 +93,7 @@ step and needs gigabytes for the same claims these prove in single-digit
 megabytes.
 
 ```console
-./spec/verify.sh     # what CI runs: seven proved, two violated
+./spec/verify.sh     # what CI runs: eight proved, two violated
 ```
 
 Or one at a time:
@@ -99,6 +101,7 @@ Or one at a time:
 ```console
 fslc check  naming_rules.fsl
 fslc verify naming_rules.fsl      --depth 5
+fslc verify allow_boundary.fsl   --depth 2
 fslc verify boundary_fix.fsl     --depth 4
 fslc verify knobs.fsl            --depth 4
 fslc verify directive_effect.fsl --depth 4
@@ -116,7 +119,7 @@ run prints is the shape of the model, not a failure, and `rename_guarded.fsl`
 also reports a vacuous antecedent — which is the guard working, and is stated as
 `NothingResolvedNewName` rather than left as a warning.
 
-The seven that pass are `proved` under `--engine induction`, which is what
+The eight that pass are `proved` under `--engine induction`, which is what
 `verify.sh` and CI assert. Bounded verification alone would let an invariant be
 true to a depth without being inductive, and reading the exit code alone would
 let a spec that stopped parsing pass as "violated, as intended" — `fslc` exits
@@ -158,6 +161,9 @@ is a semantics that contradicts the documented one; each was run:
 | Any one of the four scope checks in `renameSafe` is dropped | `violated` |
 | The build-excluded file is not consulted, so a rename disturbs a name only another configuration writes | `violated` |
 | An unseen in-package test file does not withhold the rename | `violated` |
+| `rules.allowBoundary` is wired into `surplus` as well | `reachable_failed` (`SurplusFiresWhileBoundaryAllowed`) |
+| `rules.allowBoundary` is wired into `qualify` as well | `reachable_failed` (`QualifyFiresWhileBoundaryAllowed`) |
+| The `allowBoundary` gate is dropped from the boundary report | `violated` (`BoundarySilencedWhenAllowed`) |
 
 Three habits keep those controls sharp. **Record the report.** A spec whose only
 action assigns the whole state at once cannot carry an invariant that any state

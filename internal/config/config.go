@@ -13,12 +13,13 @@
 //	    qualify: ondemand    # always | never | ondemand (only once a package has two namespaces)
 //	    vocabulary:          # per-namespace words that carry the namespace
 //	      mouse: [wheel]
+//	  allowBoundary: false  # stop checking reach, leaving only the naming rule
 //	  allowSurplus: false   # keep //declscope:package with no visible outside use
 //
 // rules.naming.qualify reads an internal.Mode; rules.naming.exported is
 // true/false; rules.naming.vocabulary maps a namespace to the extra words
-// that satisfy the naming rule for it. rules.allowSurplus is true/false and
-// defaults to false.
+// that satisfy the naming rule for it. rules.allowBoundary and
+// rules.allowSurplus are true/false and default to false.
 //
 // Unknown keys are an error, and the message names the key and the keys the
 // section does take.
@@ -76,6 +77,10 @@ type defaultsSection struct {
 
 type rulesSection struct {
 	Naming namingSection `yaml:"naming"`
+
+	// AllowBoundary turns the boundary rule off, leaving only the naming
+	// rule. The key names what switching it does, as allowSurplus does.
+	AllowBoundary boolSetting `yaml:"allowBoundary"`
 
 	// AllowSurplus turns the surplus rule off. The rule is on by default, so
 	// the key names what switching it does rather than what the rule is.
@@ -372,6 +377,9 @@ func (f *File) Apply(opts *internal.Options) error {
 	}
 	if len(f.Rules.Naming.Vocabulary) > 0 {
 		opts.Vocabulary = f.Rules.Naming.Vocabulary
+	}
+	if f.Rules.AllowBoundary.set {
+		opts.AllowBoundary = f.Rules.AllowBoundary.value
 	}
 	if f.Rules.AllowSurplus.set {
 		opts.AllowSurplus = f.Rules.AllowSurplus.value

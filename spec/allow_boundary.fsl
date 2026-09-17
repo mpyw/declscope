@@ -1,0 +1,141 @@
+// rules.allowBoundary switches the boundary rule off and touches nothing else.
+//
+// The key exists for a repository that wants the ownership mark in a name
+// without the scope behind it. What makes it acceptable is the "nothing else":
+// a key that silenced a rule its name does not mention would be the shape this
+// project set out to avoid, and the shape a later change is most likely to
+// introduce by being helpful.
+//
+// Turning boundary off does leave surplus auditing //declscope:package
+// directives that no longer do a job, and the README says to set both. That is
+// advice to a reader, not a coupling in the code. SurplusFiresWhileAllowed
+// below is what fails if someone makes it one.
+//
+// Scope resolution is knobs.fsl's subject and is not repeated here: this spec
+// takes the resolved scope as an input, because allowBoundary is a gate on the
+// report and not a participant in the resolution.
+spec AllowBoundary {
+  enum Scope { Package, Private }
+  enum Refs  { NoRefs, SameNs, CrossNs }
+  // The naming rule's three modes. OnDemand asks only once a package holds a
+  // second namespace, which is why the count is an input below.
+  enum Mode  { Never, OnDemand, Always }
+
+  state {
+    configured: Bool,
+    // The two switches.
+    allowBoundary: Bool,
+    allowSurplus: Bool,
+    // What each rule reads.
+    scope: Scope, refs: Refs,
+    qualify: Mode, carries: Bool, twoNamespaces: Bool,
+    hasPackageDir: Bool, sawEveryFile: Bool,
+    // Recording each report keeps the guards load-bearing. An invariant over
+    // the defs alone would be a tautology, and deleting a guard would not
+    // break it.
+    boundaryReported: Bool,
+    qualifyReported: Bool,
+    surplusReported: Bool
+  }
+
+  init {
+    configured = false
+    allowBoundary = false  allowSurplus = false
+    scope = Private  refs = NoRefs
+    qualify = Never  carries = false  twoNamespaces = false
+    hasPackageDir = false  sawEveryFile = false
+    boundaryReported = false  qualifyReported = false  surplusReported = false
+  }
+
+  action configure(ab: Bool, as_: Bool, sc: Scope, r: Refs,
+                   q: Mode, c: Bool, two: Bool, pd: Bool, saw: Bool) {
+    requires not configured
+    configured = true
+    allowBoundary = ab  allowSurplus = as_
+    scope = sc  refs = r
+    qualify = q  carries = c  twoNamespaces = two
+    hasPackageDir = pd  sawEveryFile = saw
+  }
+
+  // The naming rule applies always, never, or once a second namespace exists.
+  def qualifyApplies() =
+    if qualify == Always then true
+    else if qualify == OnDemand then twoNamespaces
+    else false
+
+  // --- the three gates, as internal/report.go and internal/surplus.go have
+  // them. allowBoundary appears in exactly one of them. -----------------------
+  action reportBoundary() {
+    requires configured
+    requires not allowBoundary
+    requires scope == Private
+    requires refs == CrossNs
+    boundaryReported = true
+  }
+
+  action reportQualify() {
+    requires configured
+    requires qualifyApplies()
+    requires not carries
+    qualifyReported = true
+  }
+
+  action reportSurplus() {
+    requires configured
+    requires not allowSurplus
+    requires sawEveryFile
+    requires hasPackageDir
+    requires refs != CrossNs
+    surplusReported = true
+  }
+
+  // --- the switch bites, in both directions ---------------------------------
+  invariant BoundarySilencedWhenAllowed { boundaryReported => not allowBoundary }
+  reachable BoundaryFiresWhenNotAllowed {
+    not allowBoundary and scope == Private and refs == CrossNs and boundaryReported
+  }
+  // The same configuration, with the switch on, stays quiet. Without this the
+  // invariant above would hold for a rule that never fired at all.
+  reachable BoundarySilentOnTheSameConfiguration {
+    allowBoundary and scope == Private and refs == CrossNs and not boundaryReported
+  }
+
+  // --- and touches nothing else ---------------------------------------------
+  // Each of these fails the moment allowBoundary is added to another rule's
+  // guard, which is the change this spec is here to catch.
+  reachable QualifyFiresWhileBoundaryAllowed {
+    allowBoundary and qualifyApplies() and not carries and qualifyReported
+  }
+  reachable SurplusFiresWhileBoundaryAllowed {
+    allowBoundary and sawEveryFile and hasPackageDir and refs != CrossNs
+    and surplusReported
+  }
+  // Both at once, with boundary off: the state the README describes for a
+  // repository that takes the naming rule and nothing else.
+  reachable NamingRuleAloneStillReports {
+    allowBoundary and not boundaryReported and qualifyReported
+  }
+
+  // --- allowSurplus stays the other switch ----------------------------------
+  // It gates surplus and not boundary, so the two keys are independent in both
+  // directions rather than one implying the other.
+  invariant SurplusSilencedWhenAllowed { surplusReported => not allowSurplus }
+  reachable BoundaryFiresWhileSurplusAllowed {
+    allowSurplus and not allowBoundary and scope == Private and refs == CrossNs
+    and boundaryReported
+  }
+
+  // --- the reports keep their own guards ------------------------------------
+  // Dropping any one of these from the actions above breaks the matching
+  // invariant, which is what makes the guards rather than the defs the subject.
+  invariant BoundaryNeedsPrivate   { boundaryReported => scope == Private }
+  invariant BoundaryNeedsCrossNs   { boundaryReported => refs == CrossNs }
+  invariant QualifyNeedsApplies    { qualifyReported => qualifyApplies() }
+  invariant QualifyNeedsBareName   { qualifyReported => not carries }
+  invariant SurplusNeedsEveryFile  { surplusReported => sawEveryFile }
+  invariant SurplusNeedsDirective  { surplusReported => hasPackageDir }
+  invariant SurplusNeedsNoCrossUse { surplusReported => refs != CrossNs }
+  invariant ReportsImplyConfigured {
+    boundaryReported or qualifyReported or surplusReported => configured
+  }
+}
