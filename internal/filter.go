@@ -7,32 +7,32 @@ import (
 	"strings"
 )
 
-// An exclude pattern answers "which files on disk", so every question this
+// A filter pattern answers "which files on disk", so every question this
 // file asks is about paths rather than about names. The config file that
 // states a pattern is what "here" means for it, and the file being analysed
 // arrives spelled however the driver spelled it — through a symlink or
 // through what the symlink points at. Both facts live here so that Options
 // only has to ask whether a path is in or out.
 
-// excludeMatcher decides one pattern. An anchored matcher holds the
+// filterMatcher decides one pattern. An anchored matcher holds the
 // directories its pattern is relative to and matches against the path taken
 // from one of them; a floating matcher has no bases and matches the path as
 // given, at any depth.
 //
 //declscope:package
-type excludeMatcher struct {
+type filterMatcher struct {
 	re    *regexp.Regexp
 	bases []string
 }
 
-// excludeBases returns the spellings of dir that a reported path may use.
+// filterBases returns the spellings of dir that a reported path may use.
 // EvalSymlinks gives the second one: a driver handed /tmp on macOS reports
 // paths under /tmp while a config discovered by walking up may be named
 // /private/tmp, and a pattern anchored to one spelling must still recognise
 // the other. Anchoring on text alone would silently exclude nothing.
 //
 //declscope:package
-func excludeBases(dir string) []string {
+func filterBases(dir string) []string {
 	if dir == "" {
 		return nil
 	}
@@ -47,7 +47,8 @@ func excludeBases(dir string) []string {
 	return bases
 }
 
-// compileExclude translates one pattern into a matcher. ** matches across
+// compileFilter translates one pattern into a matcher. only and omit share
+// it: a pattern means the same thing whichever list holds it. ** matches across
 // separators, * and ? do not.
 //
 // Whether the pattern anchors follows .gitignore, because that is the file
@@ -65,7 +66,7 @@ func excludeBases(dir string) []string {
 // path, against every spelling the directory has.
 //
 //declscope:package
-func compileExclude(pattern string, bases []string) (excludeMatcher, error) {
+func compileFilter(pattern string, bases []string) (filterMatcher, error) {
 	p := filepath.ToSlash(pattern)
 	for strings.HasPrefix(p, "./") {
 		// "./vendor" is one of the ways a person writes "the vendor beside
@@ -78,7 +79,7 @@ func compileExclude(pattern string, bases []string) (excludeMatcher, error) {
 			// A pattern is matched against a path taken from the config
 			// directory, which never contains a "..". Accepting one would
 			// mean accepting a pattern that can never match anything.
-			return excludeMatcher{}, fmt.Errorf("exclude %q: a pattern cannot leave the directory of the config file that states it", pattern)
+			return filterMatcher{}, fmt.Errorf("exclude %q: a pattern cannot leave the directory of the config file that states it", pattern)
 		}
 	}
 	floats := strings.HasPrefix(p, "**/") || !strings.Contains(strings.TrimSuffix(p, "/"), "/")
@@ -125,15 +126,15 @@ func compileExclude(pattern string, bases []string) (excludeMatcher, error) {
 
 	re, err := regexp.Compile(b.String())
 	if err != nil {
-		return excludeMatcher{}, err
+		return filterMatcher{}, err
 	}
 	if floats {
-		return excludeMatcher{re: re}, nil
+		return filterMatcher{re: re}, nil
 	}
-	return excludeMatcher{re: re, bases: bases}, nil
+	return filterMatcher{re: re, bases: bases}, nil
 }
 
-// excludeMatches reports whether any matcher covers path.
+// filterMatches reports whether any matcher covers path.
 //
 // A path that no anchored matcher recognises is tried again with its symlinks
 // resolved. The driver reports whichever spelling it was given, and an
@@ -143,7 +144,7 @@ func compileExclude(pattern string, bases []string) (excludeMatcher, error) {
 // without one costs nothing.
 //
 //declscope:package
-func excludeMatches(ms []excludeMatcher, path string) bool {
+func filterMatches(ms []filterMatcher, path string) bool {
 	resolved, tried := "", false
 	for _, m := range ms {
 		if m.match(path) {
@@ -166,7 +167,7 @@ func excludeMatches(ms []excludeMatcher, path string) bool {
 }
 
 // match reports whether the pattern covers path.
-func (m excludeMatcher) match(path string) bool {
+func (m filterMatcher) match(path string) bool {
 	if len(m.bases) == 0 {
 		return m.re.MatchString(filepath.ToSlash(path))
 	}

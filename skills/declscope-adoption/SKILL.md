@@ -6,7 +6,7 @@ license: MIT
 
 # Adopting declscope
 
-Written against **declscope 0.4.1**, plus `rules.allowBoundary`, which is not in a release yet. Check the version first: `exclude` changed meaning in 0.4.0, and one behaviour described here changed in 0.3.0.
+Written against **declscope 0.5.0**. Check the version first: `exclude` became `filter` and `rules.allowBoundary` arrived in 0.5.0, `exclude` changed meaning in 0.4.0, and one behaviour described here changed in 0.3.0.
 
 ```bash
 declscope -V=full
@@ -184,7 +184,11 @@ cp -r repo /tmp/try-a   # and measure there
 
 [#64](https://github.com/mpyw/declscope/issues/64) is open. Inflections are generated only in the lengthening direction, so a `storing.go` is never carried by `store*`. The vocabulary entry above covers it in one line.
 
-Changed in 0.4.0: an `exclude` pattern is read against the directory of the config file that states it, and anchors there when it holds a separator. `internal/tui/**` used to reach every `internal/tui` at any depth; it now reaches the one beside the config. A bare name and a leading `**/` are unaffected, and a `..` in a pattern is now an error. If a repository you are adopting already has an `exclude`, check it against the [README's table](https://github.com/mpyw/declscope#configuration) before trusting a count.
+Changed in 0.5.0: `exclude` is gone, replaced by `filter` with an `only` list and an `omit` list. `omit` is what `exclude` was. `only` is new and narrows instead of subtracting, and an empty one places no restriction. A stale `exclude:` is an unknown-key error rather than a silent no-op, so a repository still carrying one will not run at all until it is converted.
+
+Config files do not compose. The nearest one owns every key, and the one above it is never read. A nested config that sets `filter` therefore drops the root's, which is not what a `.gitignore` would do. Read the config that actually governs the package you are measuring, not the one at the root.
+
+Changed in 0.4.0: a pattern is read against the directory of the config file that states it, and anchors there when it holds a separator. `internal/tui/**` used to reach every `internal/tui` at any depth; it now reaches the one beside the config. A bare name and a leading `**/` are unaffected, and a `..` in a pattern is an error.
 
 Fixed in 0.3.0: a `doc.go` holding only a package comment used to count toward the namespace count and turn `ondemand` on. Nine packages in one repository reported for that reason alone. On 0.3.0 those reports are gone, and any `//declscope:core` written to work around it can come out.
 

@@ -35,8 +35,11 @@ rules:
     vocabulary:
       mouse: [wheel, cursor]
       index: [indices]
-exclude:
-  - "**/mock_*.go"
+filter:
+  only:
+    - "internal/**"
+  omit:
+    - "**/mock_*.go"
 `)
 	f, err := config.Load(path)
 	if err != nil {
@@ -55,11 +58,14 @@ exclude:
 	}
 	// The pattern arrives as written, together with the directory it is to be
 	// read against, so that it means the same thing wherever the config moves.
-	if len(opts.Exclude) != 1 || opts.Exclude[0] != "**/mock_*.go" {
-		t.Errorf("exclude not applied: %v", opts.Exclude)
+	if len(opts.Only) != 1 || opts.Only[0] != "internal/**" {
+		t.Errorf("filter.only not applied: %v", opts.Only)
 	}
-	if opts.ExcludeBase != filepath.Dir(path) {
-		t.Errorf("exclude base = %q, want %q", opts.ExcludeBase, filepath.Dir(path))
+	if len(opts.Omit) != 1 || opts.Omit[0] != "**/mock_*.go" {
+		t.Errorf("filter.omit not applied: %v", opts.Omit)
+	}
+	if opts.FilterBase != filepath.Dir(path) {
+		t.Errorf("filter base = %q, want %q", opts.FilterBase, filepath.Dir(path))
 	}
 	if len(opts.Vocabulary["mouse"]) != 2 || opts.Vocabulary["mouse"][0] != "wheel" ||
 		len(opts.Vocabulary["index"]) != 1 || opts.Vocabulary["index"][0] != "indices" {
@@ -100,7 +106,7 @@ func TestLoadEmptyFile(t *testing.T) {
 
 func TestLoadRejectsUnknownKey(t *testing.T) {
 	for _, tt := range []struct{ yaml, want string }{
-		{"nonsense: 1\n", `unknown key "nonsense" (this section takes defaults, rules, exclude, baseline)`},
+		{"nonsense: 1\n", `unknown key "nonsense" (this section takes defaults, rules, filter, baseline)`},
 		{"rules:\n  unqualifyy: always\n", `unknown key "rules.unqualifyy" (this section takes naming, allowBoundary, allowSurplus)`},
 		{"rules:\n  naming:\n    unqualifyy: always\n", `unknown key "rules.naming.unqualifyy" (this section takes qualify, exported, vocabulary)`},
 		// The removed rule is refused through the same path as any typo, so a
@@ -449,14 +455,14 @@ func fileExists(path string) bool {
 }
 
 // TestLoadMakesPathAbsolute checks that a config named relative to the working
-// directory still anchors its exclude patterns. The patterns are read against
+// directory still anchors its filter patterns. The patterns are read against
 // the config's own directory, and the paths they are matched to come from the
 // driver as absolute ones; a directory spelled "." would agree with none of
-// them, and would exclude nothing without reporting anything.
+// them, and would skip nothing without reporting anything.
 func TestLoadMakesPathAbsolute(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".declscope.yaml")
-	if err := os.WriteFile(path, []byte("exclude: [\"vendor/**\"]\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("filter:\n  omit: [\"vendor/**\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(dir)
@@ -465,8 +471,8 @@ func TestLoadMakesPathAbsolute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !filepath.IsAbs(f.ExcludeBase()) {
-		t.Fatalf("exclude base = %q, want an absolute directory", f.ExcludeBase())
+	if !filepath.IsAbs(f.FilterBase()) {
+		t.Fatalf("filter base = %q, want an absolute directory", f.FilterBase())
 	}
 
 	opts := internal.DefaultOptions()
@@ -476,7 +482,82 @@ func TestLoadMakesPathAbsolute(t *testing.T) {
 	if err := opts.Compile(); err != nil {
 		t.Fatal(err)
 	}
-	if !opts.Excluded(filepath.Join(dir, "vendor", "foo.go")) {
+	if !opts.Skips(filepath.Join(dir, "vendor", "foo.go")) {
 		t.Error("a relatively named config should still anchor its patterns")
+	}
+}
+
+// TestNestedConfigReplacesTheOneAbove pins how two config files compose, which
+// is that they do not. The lookup walks up and stops at the first file, so the
+// nearest one owns every key and the one above it is not consulted at all.
+//
+// This is not what a .gitignore does, and the difference is worth a test
+// rather than a sentence: a reader who expects the two filters to accumulate
+// would find the root's omit silently gone.
+func TestNestedConfigReplacesTheOneAbove(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "go.mod", "module example.com/m\n")
+	write(t, root, ".declscope.yaml",
+		"rules:\n  naming:\n    qualify: always\nfilter:\n  omit:\n    - \"**/root_only.go\"\n")
+	sub := filepath.Join(root, "sub")
+	write(t, sub, ".declscope.yaml", "filter:\n  omit:\n    - \"**/sub_only.go\"\n")
+
+	path := config.Find(sub)
+	if path != filepath.Join(sub, ".declscope.yaml") {
+		t.Fatalf("Find(%q) = %q, want the nested file", sub, path)
+	}
+	f, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := internal.DefaultOptions()
+	if err := f.Apply(&opts); err != nil {
+		t.Fatal(err)
+	}
+	if err := opts.Compile(); err != nil {
+		t.Fatal(err)
+	}
+
+	// The nested file owns the filter outright.
+	if len(opts.Omit) != 1 || opts.Omit[0] != "**/sub_only.go" {
+		t.Errorf("omit = %v, want only the nested pattern", opts.Omit)
+	}
+	if opts.Skips(filepath.Join(sub, "root_only.go")) {
+		t.Error("the root's omit should not reach a package the nested config governs")
+	}
+	// And every other key with it: the root asked for the naming rule, and the
+	// nested file did not.
+	if opts.Qualify != internal.ModeNever {
+		t.Errorf("qualify = %v, want the default, since the nested config did not ask", opts.Qualify)
+	}
+}
+
+// TestNestedConfigAnchorsToItsOwnDirectory checks the other half: an anchored
+// pattern in a nested config is read against that config's directory, not the
+// module root. The same line therefore names a different place in each file,
+// which is the rule a .gitignore follows and the one this borrows.
+func TestNestedConfigAnchorsToItsOwnDirectory(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "go.mod", "module example.com/m\n")
+	sub := filepath.Join(root, "sub")
+	write(t, sub, ".declscope.yaml", "filter:\n  omit:\n    - \"gen/**\"\n")
+
+	f, err := config.Load(config.Find(sub))
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := internal.DefaultOptions()
+	if err := f.Apply(&opts); err != nil {
+		t.Fatal(err)
+	}
+	if err := opts.Compile(); err != nil {
+		t.Fatal(err)
+	}
+
+	if !opts.Skips(filepath.Join(sub, "gen", "a.go")) {
+		t.Error("gen/** should name the directory beside the config that states it")
+	}
+	if opts.Skips(filepath.Join(root, "gen", "a.go")) {
+		t.Error("gen/** in a nested config should not reach the module root")
 	}
 }

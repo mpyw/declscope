@@ -58,19 +58,27 @@ type Options struct {
 	// offered, since the uses outside the package cannot be seen.
 	NameExported bool
 
-	// Exclude holds path globs, spelled the way the config file spells them.
+	// Only narrows the analysis to the files matching any of its patterns.
+	// Empty is not "match nothing" but "no restriction", which is why a
+	// repository with no config is read whole.
+	//
 	// A pattern that names a path — anything holding a separator other than a
-	// leading ** — is anchored to ExcludeBase, so it speaks about the tree
+	// leading ** — is anchored to FilterBase, so it speaks about the tree
 	// under the config file that states it and nothing else. A bare file name
 	// and a leading **/ float, matching at any depth, which is what both
 	// spellings mean in a .gitignore.
-	Exclude []string
+	Only []string
 
-	// ExcludeBase is the directory the anchored patterns are relative to: the
+	// Omit takes files back out. A file matching any of its patterns is not
+	// read, whether or not Only let it through, so omit is the stronger of the
+	// two. Patterns are spelled and anchored exactly as Only's are.
+	Omit []string
+
+	// FilterBase is the directory the anchored patterns are relative to: the
 	// directory of the config file that states them. Empty leaves every
 	// pattern floating, which is all that can be done when no config file said
 	// where "here" is.
-	ExcludeBase string
+	FilterBase string
 
 	// BaselinePath is the baseline file that applies, resolved relative to
 	// the config file that named it or found by the default-named lookup.
@@ -84,7 +92,8 @@ type Options struct {
 	// to parse cannot block its own regeneration.
 	Baseline *baseline.Set
 
-	excludeRE []excludeMatcher
+	onlyRE []filterMatcher
+	omitRE []filterMatcher
 }
 
 // DefaultOptions mirrors the rules stated in the README: every declaration in
@@ -101,26 +110,45 @@ func DefaultOptions() Options {
 	}
 }
 
-// Compile prepares the exclude patterns. It must be called before use.
+// Compile prepares the filter patterns. It must be called before use.
 //
 // It does not load the baseline. Loading is the resolver's decision, since the
 // same options serve both analysis, where the baseline suppresses, and
 // regeneration, where the existing file must be ignored — otherwise one that
 // fails to parse could never be regenerated.
 func (o *Options) Compile() error {
-	o.excludeRE = o.excludeRE[:0]
-	bases := excludeBases(o.ExcludeBase)
-	for _, pattern := range o.Exclude {
-		m, err := compileExclude(pattern, bases)
-		if err != nil {
-			return err
+	bases := filterBases(o.FilterBase)
+	compile := func(patterns []string, into []filterMatcher) ([]filterMatcher, error) {
+		into = into[:0]
+		for _, pattern := range patterns {
+			m, err := compileFilter(pattern, bases)
+			if err != nil {
+				return nil, err
+			}
+			into = append(into, m)
 		}
-		o.excludeRE = append(o.excludeRE, m)
+		return into, nil
 	}
+	onlyRE, err := compile(o.Only, o.onlyRE)
+	if err != nil {
+		return err
+	}
+	omitRE, err := compile(o.Omit, o.omitRE)
+	if err != nil {
+		return err
+	}
+	o.onlyRE, o.omitRE = onlyRE, omitRE
 	return nil
 }
 
-// Excluded reports whether a file is outside the scope of the analysis.
-func (o Options) Excluded(path string) bool {
-	return excludeMatches(o.excludeRE, path)
+// Skips reports whether a file is outside the scope of the analysis.
+//
+// The two tests are applied in the order the config reads, and the order is
+// not a choice: both lists ask about one path, so narrowing before subtracting
+// and subtracting before narrowing name the same set.
+func (o Options) Skips(path string) bool {
+	if len(o.onlyRE) > 0 && !filterMatches(o.onlyRE, path) {
+		return true
+	}
+	return filterMatches(o.omitRE, path)
 }

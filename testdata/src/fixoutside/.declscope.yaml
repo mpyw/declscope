@@ -1,5 +1,6 @@
 rules:
   naming:
     qualify: always
-exclude:
-  - "**/ext.go"
+filter:
+  omit:
+    - "**/ext.go"

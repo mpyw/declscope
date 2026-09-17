@@ -75,6 +75,14 @@ type defaultsSection struct {
 	Unexported string `yaml:"unexported"`
 }
 
+// filterSection is the two pattern lists. A file matches a list when it
+// matches any pattern in it, and an empty only list places no restriction
+// rather than matching nothing.
+type filterSection struct {
+	Only []string `yaml:"only"`
+	Omit []string `yaml:"omit"`
+}
+
 type rulesSection struct {
 	Naming namingSection `yaml:"naming"`
 
@@ -108,7 +116,9 @@ type File struct {
 	Defaults defaultsSection `yaml:"defaults"`
 	Rules    rulesSection    `yaml:"rules"`
 
-	Exclude []string `yaml:"exclude"`
+	// Filter narrows and subtracts. only alone keeps nothing outside it, omit
+	// alone takes files out of everything, and both together narrow first.
+	Filter filterSection `yaml:"filter"`
 
 	// Baseline is a path relative to this config file.
 	Baseline string `yaml:"baseline"`
@@ -384,9 +394,10 @@ func (f *File) Apply(opts *internal.Options) error {
 	if f.Rules.AllowSurplus.set {
 		opts.AllowSurplus = f.Rules.AllowSurplus.value
 	}
-	if f.Exclude != nil {
-		opts.Exclude = f.Exclude
-		opts.ExcludeBase = f.ExcludeBase()
+	if f.Filter.Only != nil || f.Filter.Omit != nil {
+		opts.Only = f.Filter.Only
+		opts.Omit = f.Filter.Omit
+		opts.FilterBase = f.FilterBase()
 	}
 	if f.Baseline != "" {
 		opts.BaselinePath = f.BaselinePath()
@@ -394,17 +405,17 @@ func (f *File) Apply(opts *internal.Options) error {
 	return nil
 }
 
-// ExcludePatterns resolves each exclude glob against the config file's own
-// directory, the way BaselinePath resolves the baseline. A path written in a
-// file means a path from that file, and every other path key here already
-// works that way.
+// FilterBase is the directory the filter patterns are relative to: the one
+// holding this config file, the way BaselinePath resolves the baseline. A
+// path written in a file means a path from that file, and every other path
+// key here already works that way.
 //
 // Resolving here rather than at match time is what lets the pattern itself be
 // anchored: ** regains its meaning, since a pattern no longer matches at every
 // depth by construction.
-// ExcludeBase is the directory the exclude patterns are relative to: the one
-// holding this config file. Empty when the file did not come from disk.
-func (f *File) ExcludeBase() string {
+//
+// Empty when the file did not come from disk.
+func (f *File) FilterBase() string {
 	if f.path == "" {
 		return ""
 	}
