@@ -1,0 +1,161 @@
+// filter decides which files the analysis reads. It replaces exclude, which
+// could only subtract.
+//
+//   filter:
+//     only: [ ... ]   # nothing outside these
+//     omit: [ ... ]   # and not these
+//
+// Each list holds patterns, and a file matches a list when it matches ANY
+// pattern in it. An empty only list is not "match nothing": it is "no
+// restriction", which is the whole reason a file with neither list set is
+// still read.
+//
+// Three patterns are enough. The claims here are about which list a pattern
+// sits in and whether the file matches it, not about how many patterns there
+// are, and "any of them" needs more than one to mean anything. Whether a
+// pattern matches a path at all is exclude.go's subject and not modelled: this
+// spec takes the match as an input.
+//
+// Order is the question a reader asks first, and the answer is that there is
+// none to get wrong. "only, then subtract omit" and "omit from everything,
+// then keep only" name the same set, because both lists are membership tests
+// on one file. OrderDoesNotMatter below is that statement, made checkable.
+spec Filter {
+  state {
+    configured: Bool,
+    // The only list: which of the three patterns it holds.
+    o0: Bool, o1: Bool, o2: Bool,
+    // The omit list, over the same three patterns.
+    x0: Bool, x1: Bool, x2: Bool,
+    // Which of the three this file matches.
+    m0: Bool, m1: Bool, m2: Bool,
+    // Recording the decision is what makes the guards below load-bearing.
+    // An invariant written over the defs alone would hold however the actions
+    // were guarded, and deleting a guard would not break it.
+    decided: Bool,
+    admitted: Bool
+  }
+
+  init {
+    configured = false
+    o0 = false  o1 = false  o2 = false
+    x0 = false  x1 = false  x2 = false
+    m0 = false  m1 = false  m2 = false
+    decided = false  admitted = false
+  }
+
+  action configure(a0: Bool, a1: Bool, a2: Bool,
+                   b0: Bool, b1: Bool, b2: Bool,
+                   c0: Bool, c1: Bool, c2: Bool) {
+    requires not configured
+    configured = true
+    o0 = a0  o1 = a1  o2 = a2
+    x0 = b0  x1 = b1  x2 = b2
+    m0 = c0  m1 = c1  m2 = c2
+  }
+
+  // An empty only list places no restriction. This is the one asymmetry worth
+  // stating: an empty omit list subtracts nothing, which falls out of "any",
+  // but an empty only list admitting everything does not.
+  def onlyEmpty() = not o0 and not o1 and not o2
+  def omitEmpty() = not x0 and not x1 and not x2
+
+  // Any, in both lists.
+  def onlyHit() = (o0 and m0) or (o1 and m1) or (o2 and m2)
+  def omitHit() = (x0 and m0) or (x1 and m1) or (x2 and m2)
+
+  def passesOnly() = onlyEmpty() or onlyHit()
+  def keeps()      = passesOnly() and not omitHit()
+
+  // --- the two tests, as the implementation applies them --------------------
+  // Two guards on one action rather than one expression, so that dropping
+  // either one is a change an invariant can see.
+  action admit() {
+    requires configured
+    requires not decided
+    requires passesOnly()
+    requires not omitHit()
+    decided = true
+    admitted = true
+  }
+  action rejectByOnly() {
+    requires configured
+    requires not decided
+    requires not onlyEmpty()
+    requires not onlyHit()
+    decided = true
+    admitted = false
+  }
+  action rejectByOmit() {
+    requires configured
+    requires not decided
+    requires omitHit()
+    decided = true
+    admitted = false
+  }
+
+  invariant DecisionMatchesTheRule { decided => (admitted == keeps()) }
+  invariant AdmittedPassedOnly     { decided and admitted => passesOnly() }
+  invariant AdmittedEscapedOmit    { decided and admitted => not omitHit() }
+  invariant DecisionNeedsConfig    { decided => configured }
+
+  // Order is not a degree of freedom. Subtracting omit from the only set and
+  // keeping the only set out of what omit left are the same set.
+  invariant OrderDoesNotMatter {
+    decided => (admitted == (passesOnly() and not omitHit()))
+  }
+
+  // --- neither list: everything is read -------------------------------------
+  reachable NoListsAdmitsAFileMatchingNothing {
+    decided and admitted and onlyEmpty() and omitEmpty()
+    and not m0 and not m1 and not m2
+  }
+
+  // --- only alone narrows ---------------------------------------------------
+  reachable OnlyAloneAdmitsAMatch {
+    decided and admitted and omitEmpty() and o1 and m1
+  }
+  reachable OnlyAloneRejectsANonMatch {
+    decided and not admitted and omitEmpty()
+    and o0 and not m0 and not m1 and not m2
+  }
+  // Any of them is enough: the file matches the second pattern and not the
+  // first, and is still in.
+  reachable OnlyMatchesAnyOfSeveral {
+    decided and admitted and omitEmpty()
+    and o0 and o1 and not m0 and m1
+  }
+  // A listed pattern the file does not match decides nothing on its own.
+  reachable UnmatchedOnlyPatternDoesNotAdmit {
+    decided and not admitted and omitEmpty() and o0 and o1 and not m0 and not m1
+  }
+
+  // --- omit alone subtracts, which is what exclude used to do ---------------
+  reachable OmitAloneRejectsAMatch {
+    decided and not admitted and onlyEmpty() and x2 and m2
+  }
+  reachable OmitAloneAdmitsANonMatch {
+    decided and admitted and onlyEmpty() and x0 and not m0
+  }
+  reachable OmitMatchesAnyOfSeveral {
+    decided and not admitted and onlyEmpty()
+    and x0 and x1 and not m0 and m1
+  }
+
+  // --- both lists: omit still bites inside only, and only still narrows -----
+  // The pair is what stops one list from swallowing the other. Drop either
+  // test from admit() and one of these stops being reachable.
+  reachable OmitStillBitesInsideOnly {
+    decided and not admitted and o0 and m0 and x0
+  }
+  reachable OnlyStillNarrowsAlongsideOmit {
+    decided and not admitted and o0 and x1
+    and not m0 and not m1 and m2
+  }
+  reachable BothListsAdmitWhatSurvivesBoth {
+    decided and admitted and o0 and m0 and x1 and not m1
+  }
+
+  // --- omit is the stronger of the two --------------------------------------
+  invariant OmitAlwaysWins { decided and omitHit() => not admitted }
+}

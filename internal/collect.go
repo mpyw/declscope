@@ -48,7 +48,7 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		// both the namespace and the exclude patterns are about the file the
 		// repository holds, not the one a generator read.
 		path := pass.Fset.PositionFor(f.Pos(), false).Filename
-		if ast.IsGenerated(f) || opts.Excluded(path) {
+		if ast.IsGenerated(f) || opts.Skips(path) {
 			continue
 		}
 		fi := &fileInfo{file: f, path: path, lineComments: make(map[int]*ast.CommentGroup)}

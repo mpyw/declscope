@@ -231,8 +231,10 @@ rules:
   allowBoundary: false   # true | false
   allowSurplus: false    # true | false
 
-exclude:
-  - "**/mock_*.go"
+filter:
+  only: []              # nothing outside these, when set
+  omit:
+    - "**/mock_*.go"    # and not these
 
 baseline: .declscope-baseline.yaml
 ```
@@ -245,7 +247,8 @@ baseline: .declscope-baseline.yaml
 | `rules.naming.vocabulary` | Namespace to a list of words | None | Extra words that carry a namespace. See [what carries a namespace](#what-carries-a-namespace) |
 | `rules.allowBoundary` | `true`, `false` | `false` | Turns the [`boundary`](#boundary) rule off, leaving only the naming rule. See [reach without a boundary](#reach-without-a-boundary) |
 | `rules.allowSurplus` | `true`, `false` | `false` | Turns the [`surplus`](#surplus) rule off. The rule is on, so the key names what switching it does |
-| `exclude` | Path globs, read against the config file's own directory | None | Files that are neither checked nor read as reference sites |
+| `filter.only` | Path globs, read against the config file's own directory | None | When set, no file outside them is read. Empty places no restriction |
+| `filter.omit` | The same globs | None | Files taken back out, whether or not `only` let them through |
 | `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` | The [baseline](#adopting-on-an-existing-codebase) to consult |
 
 In a glob:
@@ -255,7 +258,21 @@ In a glob:
 | `*`, `?` | Within one path segment |
 | `**` | Across segments |
 
-An `exclude` pattern is read **against the directory of the config file that states it**, and whether it is anchored there follows the rules a `.gitignore` uses:
+`filter` decides which files are read at all. A file matches a list when it matches **any** pattern in it.
+
+| Written | Read |
+| --- | --- |
+| Neither | Every file |
+| `only` alone | Nothing outside the patterns |
+| `omit` alone | Everything except the patterns |
+| Both | `only` first, then `omit` taken out of what it left |
+
+An empty `only` places no restriction rather than matching nothing, which is why a repository with no config is read whole. `omit` is the stronger of the two: a file it names is not read even when `only` admitted it.
+
+> [!NOTE]
+> The order in "only first, then omit" is for the reader. Both lists ask about one path, so narrowing before subtracting and subtracting before narrowing name the same set.
+
+A filter pattern is read **against the directory of the config file that states it**, and whether it is anchored there follows the rules a `.gitignore` uses:
 
 | Pattern | Matches |
 | --- | --- |
@@ -767,7 +784,7 @@ Go resolves a name from the inside out, so a new name that is free at package le
 
 | Reason | When |
 | --- | --- |
-| The rename could not be completed | The declaration is exported, a use sits in a generated, `exclude`d or build-excluded file, or a `//go:linkname` or `//export` names it as text |
+| The rename could not be completed | The declaration is exported, a use sits in a generated, filtered-out or build-excluded file, or a `//go:linkname` or `//export` names it as text |
 | The new name is taken | It is already declared in the package, predeclared like `len`, imported by some file, or claimed by another fix in the same run |
 | The new name would resolve elsewhere | At some use it is bound by a local, parameter, result or type parameter |
 | This pass does not read every file | The package has `_test.go` files this variant cannot see. The test variant sees them all and decides for both |
@@ -815,7 +832,7 @@ The rule also switches off for a whole package when some reference site was neve
 
 | Switched off by | What was not read |
 | --- | --- |
-| A generated, excluded, cgo or assembly source | Those files are never read as reference sites |
+| A generated, filtered-out, cgo or assembly source | Those files are never read as reference sites |
 | A build-excluded file of the package | It may hold the one use |
 | In-package `_test.go` files this variant does not see | The test variant sees every file and decides |
 

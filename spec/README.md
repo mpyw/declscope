@@ -27,6 +27,8 @@ the binary.
 | `naming_rules.fsl` | The core namespace is outside the rule, whatever is configured | As above |
 | `allow_boundary.fsl` | `rules.allowBoundary` silences `boundary` and nothing else. `qualify` and `surplus` still fire with it on, and `allowSurplus` still gates only `surplus` | Every combination of the two switches, the resolved scope, the reference shape, the naming mode and its inputs, and the two surplus inputs |
 | `allow_boundary.fsl` | Each of the three rules keeps its own guards, witnessed by the report each one records rather than by a restatement of its definition | As above |
+| `filter.fsl` | `filter.only` narrows and `filter.omit` subtracts. Either list admits or rejects on any one of its patterns, an empty `only` places no restriction, and `omit` still bites inside `only` | Every combination of which of three patterns each list holds and which of them the file matches |
+| `filter.fsl` | The order of the two lists is not observable: narrowing then subtracting and subtracting then narrowing name the same set | As above |
 | `boundary_fix.fsl` | Inserting `//declscope:package` always removes the boundary crossing, and is withheld wherever any level already stated a scope | Every combination of `defaults.unexported`, kind, exportedness, reference shape, and the declaration, block, type and file directives |
 | `boundary_fix.fsl` | The fix is offered only where a crossing exists, and never overwrites the declaration's own directive | As above |
 | `knobs.fsl` | `defaults.unexported` and every directive level demonstrably change an outcome, for each kind of declaration | As above |
@@ -93,7 +95,7 @@ step and needs gigabytes for the same claims these prove in single-digit
 megabytes.
 
 ```console
-./spec/verify.sh     # what CI runs: eight proved, two violated
+./spec/verify.sh     # what CI runs: nine proved, two violated
 ```
 
 Or one at a time:
@@ -102,6 +104,7 @@ Or one at a time:
 fslc check  naming_rules.fsl
 fslc verify naming_rules.fsl      --depth 5
 fslc verify allow_boundary.fsl   --depth 2
+fslc verify filter.fsl           --depth 2
 fslc verify boundary_fix.fsl     --depth 4
 fslc verify knobs.fsl            --depth 4
 fslc verify directive_effect.fsl --depth 4
@@ -119,7 +122,7 @@ run prints is the shape of the model, not a failure, and `rename_guarded.fsl`
 also reports a vacuous antecedent — which is the guard working, and is stated as
 `NothingResolvedNewName` rather than left as a warning.
 
-The eight that pass are `proved` under `--engine induction`, which is what
+The nine that pass are `proved` under `--engine induction`, which is what
 `verify.sh` and CI assert. Bounded verification alone would let an invariant be
 true to a depth without being inductive, and reading the exit code alone would
 let a spec that stopped parsing pass as "violated, as intended" — `fslc` exits
@@ -164,6 +167,9 @@ is a semantics that contradicts the documented one; each was run:
 | `rules.allowBoundary` is wired into `surplus` as well | `reachable_failed` (`SurplusFiresWhileBoundaryAllowed`) |
 | `rules.allowBoundary` is wired into `qualify` as well | `reachable_failed` (`QualifyFiresWhileBoundaryAllowed`) |
 | The `allowBoundary` gate is dropped from the boundary report | `violated` (`BoundarySilencedWhenAllowed`) |
+| An empty `filter.only` matches nothing rather than placing no restriction | `reachable_failed` (`NoListsAdmitsAFileMatchingNothing`) |
+| `filter.omit` is ignored once `filter.only` is set | `violated` (`DecisionMatchesTheRule`) |
+| `filter.only` is ignored once `filter.omit` is set | `violated` (`DecisionMatchesTheRule`) |
 
 Three habits keep those controls sharp. **Record the report.** A spec whose only
 action assigns the whole state at once cannot carry an invariant that any state
