@@ -204,10 +204,13 @@ tar xzf "declscope_${VERSION}_darwin_arm64.tar.gz"
 | `-test` | `true` | Analyze `*_test.go` files as well |
 | `-fix` | `false` | Apply suggested fixes |
 | `-diff` | `false` | With `-fix`, print a diff instead of writing files |
+| `-V=full` | | Print the version and exit |
 
 `-test`, `-fix` and `-diff` come from `go/analysis`. `declscope -help` lists the rest.
 
 Every diagnostic carries **at most one** fix, so `-fix` never has to choose.
+
+A released binary reports its release. A build from a checkout has none to report, so it answers `devel`.
 
 ## Configuration
 

@@ -22,5 +22,8 @@ func main() {
 		baselineRun(os.Args[2:])
 		return
 	}
+	// Before the driver: it registers a -V of its own only when nothing else
+	// has, and the one it registers answers every binary with "devel".
+	registerVersionFlag()
 	singlechecker.Main(declscope.Analyzer)
 }

@@ -88,7 +88,7 @@ internal/
   directive/              //declscope:... comment parsing
   config/                 YAML loading and lookup
   baseline/               baseline file format, lookup and regeneration
-cmd/declscope/            singlechecker entry point, plus the `baseline` subcommand
+cmd/declscope/            singlechecker entry point, the `baseline` subcommand, and -V
 ```
 
 Each file of `internal/` is its own namespace, taken from its stem. `analyzer.go` and `subject.go` join the **core** instead: the model they hold is read by every stage, and in a named namespace each type would have to carry that namespace's prefix, so the builder's name would be spelled into the model every other file reads.
@@ -106,7 +106,7 @@ collect.go never writes another stage's state. `//declscope:package` on a
 constructor would have worked too, but the lazy form is what rename.go already
 did.
 
-`subject.go` carries a file-level `//declscope:package` because the shared model is shared on purpose. Everything else that crosses a namespace says so one declaration at a time, and those directives are the record of what each stage hands to another. `cmd/declscope/baseline.go` is its own namespace for the same reason; only `main.go` is `main`.
+`subject.go` carries a file-level `//declscope:package` because the shared model is shared on purpose. Everything else that crosses a namespace says so one declaration at a time, and those directives are the record of what each stage hands to another. `cmd/declscope/baseline.go` and `version.go` are each their own namespace for the same reason; only `main.go` is `main`.
 
 > [!IMPORTANT]
 > Keep those directives when adding files to either unit. Without them the naming rule asks every declaration to carry a `baseline`/`analyzer` prefix, which is the tool reporting a boundary that is not really there.
@@ -284,3 +284,4 @@ mise x -- ./test_all.sh   # tests, golangci-lint, dogfooding and the specs
 - `go.mod` pins `toolchain go1.27.0` while keeping the `go` directive at 1.25.0, because golangci-lint refuses to load a module whose `go` directive is newer than the Go it was built with.
   The pin governs builds made inside this module, including the release build. It does not reach `go install pkg@version` or `go run pkg@version`, which ignore a dependency module's `toolchain` directive and treat its `go` directive as a lower bound only, so those commands build declscope with the user's own `go` release.
 - Distribution is via GitHub Releases (goreleaser) with **mise as the recommended install path**; `go install` / `go tool` / `go vet -vettool` also work.
+- `-V=full` is answered by `cmd/declscope/version.go`, not by `x/tools`, whose `addVersionFlag` hardcodes `devel` and is skipped when a `-V` is already registered. Releases stamp `-X main.version` from `.goreleaser.yaml`; `go install pkg@v` reaches no linker flag, so `debug.ReadBuildInfo` is the fallback. Keep the printed line in the shape the go command's tool-ID protocol reads: `<progname> version <version> ... buildID=<id>`, with the buildID last so a `devel` binary still identifies itself.

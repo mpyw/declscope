@@ -269,6 +269,8 @@ func runIn(t *testing.T, bin, dir string, args ...string) (string, int) {
 // bin is the linter under test, built once per process: every test here
 // drives the same binary, and a build per test multiplies the memory that a
 // full `go test ./...` peaks at.
+//
+//declscope:package // TestMain builds it for every test in the package, version_test.go included
 var bin string
 
 func TestMain(m *testing.M) {

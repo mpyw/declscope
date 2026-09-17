@@ -22,7 +22,10 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w
+      # -V=full has to answer with the release, not with x/tools' hardcoded
+      # "devel": it is the flag a reader runs to check which declscope they
+      # have, and the go command reads the same line to identify the vettool.
+      - -s -w -X main.version={{ .Version }}
 
 archives:
   - id: default
