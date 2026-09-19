@@ -17,49 +17,49 @@ import (
 // saturation or a mutual crossing means; the tables carry the facts and the
 // skill carries the reading.
 func (p Package) WriteText(w io.Writer) error {
-	tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
+	out := newSink(tabwriter.NewWriter(w, 0, 0, 3, ' ', 0))
 
-	fmt.Fprintf(tw, "Package\t%s\n", p.Path)
+	out.printf("Package\t%s\n", p.Path)
 	if len(p.Config) > 0 {
-		fmt.Fprintf(tw, "Config\t%s\n", strings.Join(p.Config, " + "))
+		out.printf("Config\t%s\n", strings.Join(p.Config, " + "))
 	}
 	if p.AllCore {
 		// Not a note in passing: the two rules this command reports have
 		// nothing to check here, and a table of zeros would say the opposite.
-		fmt.Fprint(tw, "Note\tevery file is in the core namespace, so nothing crosses and no name is asked for one\n")
+		out.print("Note\tevery file is in the core namespace, so nothing crosses and no name is asked for one\n")
 	}
-	fmt.Fprintln(tw)
+	out.print("\n")
 
 	asked := p.Findings[rule.Qualify].Asked
-	writeTextNamespaces(tw, p, asked)
-	writeTextCrossings(tw, p)
-	writeTextReach(tw, p)
-	writeTextQualify(tw, p, asked)
+	writeTextNamespaces(out, p, asked)
+	writeTextCrossings(out, p)
+	writeTextReach(out, p)
+	writeTextQualify(out, p, asked)
 
-	return tw.Flush()
+	return out.flush()
 }
 
-func writeTextNamespaces(w io.Writer, p Package, asked bool) {
-	fmt.Fprint(w, "Namespaces\tfiles\tdeclarations\tqualify targets\n")
+func writeTextNamespaces(out *sink, p Package, asked bool) {
+	out.print("Namespaces\tfiles\tdeclarations\tqualify targets\n")
 	for _, ns := range p.Namespaces {
-		fmt.Fprintf(w, "  %s\t%s\t%d\t%s\n",
+		out.printf("  %s\t%s\t%d\t%s\n",
 			ns.Name, strings.Join(ns.Files, ", "), ns.Declarations,
 			cellCount(ns.QualifyTargets, asked && !ns.Core))
 	}
-	fmt.Fprintln(w)
+	out.print("\n")
 }
 
-func writeTextCrossings(w io.Writer, p Package) {
+func writeTextCrossings(out *sink, p Package) {
 	crossings := p.Crossings()
-	fmt.Fprint(w, "Crossings\tmutual\tdeclared\tbaselined\treported\treached\tuses\n")
+	out.print("Crossings\tmutual\tdeclared\tbaselined\treported\treached\tuses\n")
 	if len(crossings) == 0 {
-		fmt.Fprint(w, "  none\t\t\t\t\t\t\n")
+		out.print("  none\t\t\t\t\t\t\n")
 	}
 	var ignored, unchecked int
 	for _, c := range crossings {
 		ignored += c.Ignored
 		unchecked += c.Unchecked
-		fmt.Fprintf(w, "  %s → %s\t%s\t%d\t%d\t%d\t%d of %d\t%d\n",
+		out.printf("  %s → %s\t%s\t%d\t%d\t%d\t%d of %d\t%d\n",
 			c.From, c.To, cellYes(c.Mutual),
 			c.Declared, c.Baselined, c.Reported,
 			c.Reached, c.Declarations, c.Uses)
@@ -82,41 +82,41 @@ func writeTextCrossings(w io.Writer, p Package) {
 	if len(notes) > 0 {
 		// No tabs: a line inside the block would set the width of the first
 		// column, and this one is a sentence.
-		fmt.Fprintf(w, "  (%s)\n", strings.Join(notes, "; "))
+		out.printf("  (%s)\n", strings.Join(notes, "; "))
 	}
-	fmt.Fprintln(w)
+	out.print("\n")
 }
 
-func writeTextReach(w io.Writer, p Package) {
+func writeTextReach(out *sink, p Package) {
 	reached := p.MostReached(10)
 	if len(reached) == 0 {
 		return
 	}
-	fmt.Fprint(w, "Most-reached declarations\tnamespace\treached from\tstate\n")
+	out.print("Most-reached declarations\tnamespace\treached from\tstate\n")
 	for _, r := range reached {
-		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n",
+		out.printf("  %s\t%s\t%s\t%s\n",
 			r.Declaration, r.Namespace, cellPlural(r.From, "namespace", "namespaces"), r.State)
 	}
-	fmt.Fprintln(w)
+	out.print("\n")
 }
 
-func writeTextQualify(w io.Writer, p Package, asked bool) {
+func writeTextQualify(out *sink, p Package, asked bool) {
 	if !asked {
 		// The rule was not in force. Printing the ratios anyway would answer
 		// a question nobody put, and printing zeros would answer it wrongly.
-		fmt.Fprint(w, "Qualify\tnot asked: rules.naming.qualify does not apply to this package\n\n")
+		out.print("Qualify\tnot asked: rules.naming.qualify does not apply to this package\n\n")
 		return
 	}
-	fmt.Fprint(w, "Qualify\texempt\tbaselined\treported\tsaturation\n")
+	out.print("Qualify\texempt\tbaselined\treported\tsaturation\n")
 	for _, q := range p.QualifyRows() {
 		if q.Core || q.Targets == 0 {
 			// Asked nothing, rather than asked and satisfied. A row of zeros
 			// would say the second.
-			fmt.Fprintf(w, "  %s\t%d\t-\t-\t-\n", q.Namespace, q.Exempt)
+			out.printf("  %s\t%d\t-\t-\t-\n", q.Namespace, q.Exempt)
 			continue
 		}
-		fmt.Fprintf(w, "  %s\t%d\t%d\t%d\t%d of %d\n",
+		out.printf("  %s\t%d\t%d\t%d\t%d of %d\n",
 			q.Namespace, q.Exempt, q.Baselined, q.Reported, q.Saturation(), q.Targets)
 	}
-	fmt.Fprintln(w)
+	out.print("\n")
 }

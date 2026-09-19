@@ -19,27 +19,27 @@ import (
 // WriteSummaryText renders a whole run: what was checked, what was found, and
 // which package to open first.
 func (s Summary) WriteSummaryText(w io.Writer) error {
-	tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
+	out := newSink(tabwriter.NewWriter(w, 0, 0, 3, ' ', 0))
 
-	writeSummaryTextChecks(tw, s.Checks)
-	writeSummaryTextFindings(tw, s.Totals)
-	writeSummaryTextBoundary(tw, s.Rows)
-	writeSummaryTextQualify(tw, s.Rows)
+	writeSummaryTextChecks(out, s.Checks)
+	writeSummaryTextFindings(out, s.Totals)
+	writeSummaryTextBoundary(out, s.Rows)
+	writeSummaryTextQualify(out, s.Rows)
 
-	return tw.Flush()
+	return out.flush()
 }
 
 // writeSummaryTextChecks prints the state of the checks before any count,
 // because a count means nothing until the reader knows the rule was in force,
 // the code compiled, and what a baseline is absorbing.
-func writeSummaryTextChecks(w io.Writer, checks Checks) {
-	fmt.Fprint(w, "Checks in force\t\t\n")
+func writeSummaryTextChecks(out *sink, checks Checks) {
+	out.print("Checks in force\t\t\n")
 	for _, c := range checks.Configs {
 		chain := "built-in defaults"
 		if len(c.Chain) > 0 {
 			chain = strings.Join(c.Chain, " + ")
 		}
-		fmt.Fprintf(w, "  config\t%s\t%s\n", chain, cellPackages(c.Packages))
+		out.printf("  config\t%s\t%s\n", chain, cellPackages(c.Packages))
 	}
 	if len(checks.Configs) > 0 {
 		// Every config in one run switches the same rules on or off for the
@@ -50,20 +50,20 @@ func writeSummaryTextChecks(w io.Writer, checks Checks) {
 			if c.Exported {
 				qualify += ", exported"
 			}
-			fmt.Fprintf(w, "  rules\tboundary %s, qualify %s, surplus %s\t%s\n",
+			out.printf("  rules\tboundary %s, qualify %s, surplus %s\t%s\n",
 				cellOnOff(c.Boundary), qualify, cellOnOff(c.Surplus),
 				cellPackages(c.Packages))
 		}
 	}
 	for _, b := range checks.Baselines {
-		fmt.Fprintf(w, "  baseline\t%s\t%s\n", b.Path, cellPlural(b.Entries, "entry", "entries"))
+		out.printf("  baseline\t%s\t%s\n", b.Path, cellPlural(b.Entries, "entry", "entries"))
 	}
-	fmt.Fprintf(w, "  type check\t%s\t\n", cellTypeCheck(checks.TypeCheck))
-	fmt.Fprintln(w)
+	out.printf("  type check\t%s\t\n", cellTypeCheck(checks.TypeCheck))
+	out.print("\n")
 }
 
-func writeSummaryTextFindings(w io.Writer, totals map[rule.Rule]Count) {
-	fmt.Fprint(w, "Findings\tfound\tignored\tbaselined\treported\n")
+func writeSummaryTextFindings(out *sink, totals map[rule.Rule]Count) {
+	out.print("Findings\tfound\tignored\tbaselined\treported\n")
 	var sum Count
 	for _, r := range rule.All {
 		count, ok := totals[r]
@@ -73,10 +73,10 @@ func writeSummaryTextFindings(w io.Writer, totals map[rule.Rule]Count) {
 		if !count.Asked {
 			// Switched off everywhere it could have applied. Four zeros would
 			// read as a clean run rather than as a question nobody put.
-			fmt.Fprintf(w, "  %s\t-\t-\t-\t-\n", r)
+			out.printf("  %s\t-\t-\t-\t-\n", r)
 			continue
 		}
-		fmt.Fprintf(w, "  %s\t%d\t%d\t%s\t%d\n",
+		out.printf("  %s\t%d\t%d\t%s\t%d\n",
 			r, count.Found, count.Ignored,
 			cellKeyable(count.Baselined, count.Keyable), count.Reported)
 		sum.Found += count.Found
@@ -84,12 +84,12 @@ func writeSummaryTextFindings(w io.Writer, totals map[rule.Rule]Count) {
 		sum.Baselined += count.Baselined
 		sum.Reported += count.Reported
 	}
-	fmt.Fprintf(w, "  total\t%d\t%d\t%d\t%d\n", sum.Found, sum.Ignored, sum.Baselined, sum.Reported)
-	fmt.Fprintln(w)
+	out.printf("  total\t%d\t%d\t%d\t%d\n", sum.Found, sum.Ignored, sum.Baselined, sum.Reported)
+	out.print("\n")
 }
 
-func writeSummaryTextBoundary(w io.Writer, rows []SummaryRow) {
-	fmt.Fprint(w, "Packages — boundary\treported\tbaselined\tdeclared\tlargest crossing\n")
+func writeSummaryTextBoundary(out *sink, rows []SummaryRow) {
+	out.print("Packages — boundary\treported\tbaselined\tdeclared\tlargest crossing\n")
 	for _, r := range rows {
 		name := r.Package
 		if r.AllCore {
@@ -101,25 +101,25 @@ func writeSummaryTextBoundary(w io.Writer, rows []SummaryRow) {
 				r.Largest.From, r.Largest.To,
 				cellPlural(r.Largest.Reached, "declaration", "declarations"))
 		}
-		fmt.Fprintf(w, "  %s\t%d\t%d\t%d\t%s\n",
+		out.printf("  %s\t%d\t%d\t%d\t%s\n",
 			name, r.BoundaryReported, r.BoundaryBaselined, r.BoundaryDeclared, largest)
 	}
-	fmt.Fprintln(w)
+	out.print("\n")
 }
 
-func writeSummaryTextQualify(w io.Writer, rows []SummaryRow) {
-	fmt.Fprint(w, "Packages — qualify\treported\tbaselined\texempt\tworst namespace\n")
+func writeSummaryTextQualify(out *sink, rows []SummaryRow) {
+	out.print("Packages — qualify\treported\tbaselined\texempt\tworst namespace\n")
 	for _, r := range rows {
 		if !r.QualifyAsked {
-			fmt.Fprintf(w, "  %s\t-\t-\t-\t-\n", r.Package)
+			out.printf("  %s\t-\t-\t-\t-\n", r.Package)
 			continue
 		}
 		worst := "-"
 		if r.HasWorst {
 			worst = fmt.Sprintf("%s %d of %d", r.Worst.Namespace, r.Worst.Saturation(), r.Worst.Targets)
 		}
-		fmt.Fprintf(w, "  %s\t%d\t%d\t%d\t%s\n",
+		out.printf("  %s\t%d\t%d\t%d\t%s\n",
 			r.Package, r.QualifyReported, r.QualifyBaselined, r.QualifyExempt, worst)
 	}
-	fmt.Fprintln(w)
+	out.print("\n")
 }

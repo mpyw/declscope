@@ -210,7 +210,10 @@ func (s Summary) WriteSummaryJSON(w io.Writer) error {
 		})
 	}
 	for _, b := range s.Checks.Baselines {
-		out.Checks.Baselines = append(out.Checks.Baselines, jsonBaseline{Path: b.Path, Entries: b.Entries})
+		// The conversion holds only while the two shapes agree: give the model
+		// a field the JSON does not carry, and this stops compiling, which is
+		// where the explicit mapping goes back in.
+		out.Checks.Baselines = append(out.Checks.Baselines, jsonBaseline(b))
 	}
 	for _, r := range rule.All {
 		count, ok := s.Totals[r]

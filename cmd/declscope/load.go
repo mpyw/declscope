@@ -68,7 +68,7 @@ func loadIsAnalyzable(pkg *packages.Package) bool {
 	if len(pkg.Syntax) == 0 || pkg.TypesInfo == nil || pkg.Types == nil {
 		return false
 	}
-	return !(pkg.Name == "main" && strings.HasSuffix(pkg.PkgPath, ".test"))
+	return pkg.Name != "main" || !strings.HasSuffix(pkg.PkgPath, ".test")
 }
 
 // loadWidestVariants keeps one package per import path: the variant that sees
