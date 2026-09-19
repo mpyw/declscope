@@ -208,6 +208,15 @@ tar xzf "declscope_${VERSION}_darwin_arm64.tar.gz"
 
 `-test`, `-fix` and `-diff` come from `go/analysis`. `declscope -help` lists the rest.
 
+### Subcommands
+
+| Command | What it does |
+| --- | --- |
+| `declscope survey [packages]` | [Report what was checked and what it found](#measuring-what-is-there), one row per package |
+| `declscope inspect <package>` | [Report the shape of one package](#measuring-what-is-there): its namespaces and the crossings between them |
+| `declscope baseline [packages]` | [Record the violations a codebase already has](#adopting-on-an-existing-codebase) |
+| `declscope skill install` | Install the adoption skill for an AI agent |
+
 Every diagnostic carries **at most one** fix, so `-fix` never has to choose.
 
 A released binary reports its release. A build from a checkout has none to report, so it answers `devel`.
@@ -876,6 +885,62 @@ The rule also switches off for a whole package when some reference site was neve
 > [!NOTE]
 > Reach that spells no name and leaves no trace, such as reflection, is invisible here as everywhere. Adopt the rule where the package's reach is expressed in source.
 
+## Measuring what is there
+
+Two subcommands report what the analyzer found, folded into the two questions adopting it raises. Neither decides anything: the exit status is zero whatever the counts say, and gating is what the analyzer and a baseline are for.
+
+| Command | Unit | Answers |
+| --- | --- | --- |
+| `declscope survey [packages]` | package | **Which package do I open first?** |
+| `declscope inspect <package>` | namespace, crossing | **What shape is this package in?** |
+
+```console
+$ declscope survey ./internal/...
+Checks in force
+  config          .declscope-strict.yaml                                12 packages
+  rules           boundary on, qualify ondemand, exported, surplus on   12 packages
+  baseline        .declscope-baseline.yaml                              12 entries
+  type check      12 packages ok, 0 failed
+
+Findings      found   ignored   baselined   reported
+  boundary    35      0         30          5
+  qualify     119     2         88          29
+  ...
+
+Packages — boundary          reported   baselined   declared   largest crossing
+  …/internal/cmd             3          8           5          completion → flags (9 declarations)
+  …/internal/store           0          30          0          index → store (5 declarations)
+```
+
+**The state of the checks comes before any count**, because a count means nothing without it. A zero from a rule that was switched off, from a package that did not compile, or from a baseline that absorbed everything reads exactly like a zero from clean code. A rule that was not asked prints `-`, never `0`, and a package that does not type-check stops the run rather than contributing a zero — pass `-allow-errors` to measure the rest anyway.
+
+The row worth reading is the second one: nothing reported, everything deferred, nothing decided. Under the analyzer alone it looks clean.
+
+```console
+$ declscope inspect ./internal/cmd
+Crossings              mutual   declared   baselined   reported   reached   uses
+  completion → flags   yes      3          8           1          12 of 19   31
+  flags → completion   yes      2          0           0          2 of 7     4
+
+Qualify        exempt   baselined   reported   saturation
+  completion   0        8           4          12 of 24
+  flags        0        0           9          9 of 16
+```
+
+One row per directed edge, so a mutual pair is two rows and the count in each direction survives. `reached` is how many of the reached namespace's declarations this edge touches: `12 of 19` says the second namespace holds the working parts of the first. `saturation` says how much of a namespace the naming rule is unsatisfied by — near the top, what is wrong is usually the namespace name rather than the declarations.
+
+### Formats
+
+| `-format` | For |
+| --- | --- |
+| `text` *(default)* | Reading in a terminal |
+| `json` | An agent, and anything scripted |
+| `markdown` | Pasting into an issue, a pull request or a README. `inspect` adds a Mermaid diagram of the crossings |
+
+The JSON keeps `edges` and `names` flat, one row each: every table above is a fold of those two arrays, so a consumer can fold them its own way. Markdown is a rendering and never a different data set.
+
+Neither command asks the analyzer's questions a second way. They walk the same findings through the same entry point and add only the outcome — reported, deferred by a baseline, silenced by a directive, or never asked — which is what keeps a survey from drifting into a second analyzer with its own opinion.
+
 ## Adopting on an existing codebase
 
 > [!TIP]
@@ -984,6 +1049,15 @@ Two properties distinguish this from a written convention.
 | --- | --- |
 | The diagnostic names the namespace crossed | The agent is told why the use is wrong, and the repair is mechanical |
 | A directive is a durable record of intent | The next agent inherits the decision instead of re-deriving it |
+
+For the work of introducing it, give the agent `-format=json` rather than the diagnostics:
+
+```bash
+declscope survey -format=json ./...             # what is in force, and which package to open
+declscope inspect -format=json ./internal/cmd   # its namespaces, crossings and names, flat
+```
+
+That keeps an agent from counting message fragments, which the wording of a diagnostic is not an interface for, and it refuses rather than reporting a zero from a package that did not compile.
 
 ## Limits
 

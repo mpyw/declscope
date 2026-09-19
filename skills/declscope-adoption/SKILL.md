@@ -29,6 +29,12 @@ Two of the three rules are off unless the repository asks for them. A count of z
 The config is looked up from each analyzed package's directory **upwards**, so a subtree can carry its own and a repository can have several. Find them all, and do not read the root alone:
 
 ```bash
+declscope survey ./...   # Checks in force: one row per config chain, with what it switched on
+```
+
+That answers it directly. To read the files themselves:
+
+```bash
 find . -name '.declscope.y*ml' -not -path './.git/*' \
   -exec sh -c 'echo "== $1"; cat "$1"' _ {} \;
 ```
@@ -87,22 +93,42 @@ Boundary first. It is the one that points at structure.
 
 ## Measure before deciding
 
-A count is not a work list. Group it first.
-
-A baseline suppresses everything it holds, so move it aside before measuring. Otherwise every command below reports zero and the codebase looks clean.
+A count is not a work list. Group it first — with two commands, not with `grep`.
 
 ```bash
-mv .declscope-baseline.yaml /tmp/bl.bak     # put it back, or delete it, when done
-
-declscope ./... 2>&1 | grep -c "is private to\|is declared private"   # boundary
-declscope ./... 2>&1 | grep -c "does not carry"                       # naming
-declscope ./... 2>&1 | grep "is private" \
-  | sed -E 's/.*namespace "([^"]+)".*/\1/' | sort | uniq -c | sort -rn
+declscope survey -format=json ./...           # which package to open first
+declscope inspect -format=json <that package> # what shape it is in
 ```
+
+**`survey` refuses to print a count it cannot stand behind.** It stops on a package that does not type-check, and it reports what was in force before anything else: which config governed which packages, whether each rule was on, and how many entries a baseline holds. A rule that was not asked prints `-`, never `0`.
+
+That removes three steps this skill used to require. Do **not** move the baseline aside to measure: `survey` reports `baselined` as its own column, so what is suppressed and what is left are visible at once. Do not count message fragments either; the wording of a diagnostic is not an interface, and the JSON is.
+
+| What you need | Where it is |
+| --- | --- |
+| Is anything even being checked | `checks.configs[].rules`, `checks.typeCheck` |
+| Which package to open | `packages[]`, already sorted; the first row is the heaviest |
+| Is this deferred or decided | `boundary.baselined` against `boundary.declared` |
+| Where the structure is | `inspect`'s `edges[]`, flat, one row per declaration and reaching namespace |
+| Where a name is wrong | `inspect`'s `names[]`, with `fixable` saying whether `-fix` would rename it |
+
+**A package with nothing reported, much baselined and nothing declared has never been decided about.** It reads as clean under the analyzer alone, which is why `declared` is a column.
 
 Boundary violations cluster. Measured across eight repositories, one structural decision cleared between 10 and 100 entries every time. In one repository 34 of 35 sat in a single namespace.
 
-**Start where the count is concentrated, not where it is large.**
+**Start where the count is concentrated, not where it is large.** That is what the row order gives you.
+
+### Reading a saturation
+
+`inspect` reports, per namespace, how many of the declarations the naming rule examines there fail it. The ratio says which thing is wrong, and the answer is rarely the rename the diagnostic suggests.
+
+| Saturation | What is wrong | The answer |
+| --- | --- | --- |
+| Nearly all of them | The **namespace name** | `//declscope:namespace`, or rename the file |
+| Around half | One file holding several concerns | Split the file |
+| One or two | Those declarations | Rename them |
+
+A baselined finding counts toward it: the baseline defers a decision rather than settling it, so regenerating one moves this number without a line of code changing.
 
 ## What each shape means
 
@@ -167,10 +193,11 @@ If the goal is zero, delete the file rather than regenerating it. An empty basel
 
 These cost real time. Each was measured, not guessed.
 
-**A failed build reports zero diagnostics.** It looks exactly like success. Check `go build ./...` before reading any count.
+**A failed build reports zero diagnostics.** It looks exactly like success. `declscope survey` refuses instead of printing such a count, naming the packages that did not compile, so measure through it:
 
 ```bash
-go build ./... && declscope ./...   # never read the count without this
+declscope survey ./...              # refuses on a package that does not type-check
+go build ./... && declscope ./...   # never read a bare count without this
 ```
 
 **A zero may be the filter, not the code.** A `filter.only` anywhere in the chain can leave a package with nothing to read. A package nothing was read from reports nothing. `declscope` says so only when a nested `only` was cancelled by one above it, so the quiet cases stay quiet. Count the files the analysis actually saw before trusting a zero.
@@ -195,9 +222,9 @@ cp -r repo /tmp/try-a   # and measure there
 
 ## Order of work
 
-1. Group the diagnostics by rule and namespace
+1. `declscope survey ./...`, and read Checks in force before any count
 2. Clear `boundary` by moving the boundary, not by widening everything
-3. Re-measure. Naming often falls with it, since merging two namespaces into one takes `ondemand` out of force
+3. Re-measure with `survey`. Naming often falls with it, since merging two namespaces into one takes `ondemand` out of force
 4. Fix the file names that do not match their contents
 5. Rename what is left, in natural word order
 6. Delete the baseline
