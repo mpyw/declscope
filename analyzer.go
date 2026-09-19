@@ -26,33 +26,33 @@ func newAnalyzer() *analysis.Analyzer {
 		Name: "declscope",
 		Doc:  "enforces private and package-internal pseudo scopes for package-level declarations, methods and struct fields",
 		URL:  "https://github.com/mpyw/declscope",
-		Run:  run,
+		Run:  analyzerRun,
 	}
 	a.Flags.String("config", "", "path to a declscope YAML config file (default: nearest .declscope.yaml)")
 	return a
 }
 
-func run(pass *analysis.Pass) (any, error) {
-	opts, err := options(pass)
+func analyzerRun(pass *analysis.Pass) (any, error) {
+	opts, err := analyzerOptions(pass)
 	if err != nil {
 		return nil, err
 	}
 	return internal.Run(pass, opts)
 }
 
-// options resolves configuration for the package being analyzed. Config is
+// analyzerOptions resolves configuration for the package being analyzed. Config is
 // looked up from the package's own directory upwards, so a subtree can relax
 // or tighten the rules without affecting the rest of the module.
 //
 // The error is returned as is: the driver prefixes it with the analyzer's
 // name when printing, so a "declscope: " prefix added here would appear twice.
-func options(pass *analysis.Pass) (internal.Options, error) {
+func analyzerOptions(pass *analysis.Pass) (internal.Options, error) {
 	explicit := pass.Analyzer.Flags.Lookup("config").Value.String()
-	opts, _, err := config.Resolve(packageDir(pass), explicit)
+	opts, _, err := config.Resolve(analyzerPackageDir(pass), explicit)
 	return opts, err
 }
 
-func packageDir(pass *analysis.Pass) string {
+func analyzerPackageDir(pass *analysis.Pass) string {
 	for _, f := range pass.Files {
 		// Unadjusted, for the same reason collect.go is: the config file is
 		// looked up beside the file on disk, not beside a //line target.
