@@ -12,6 +12,7 @@ import (
 
 	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/directive"
+	"github.com/mpyw/declscope/internal/measure"
 	"github.com/mpyw/declscope/internal/namespace"
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
@@ -195,6 +196,7 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 // whose prefix is empty and whose files all share it, and free for the file
 // with no stem at all — which has no namespace either, and must not share a
 // key with every other such file.
+//declscope:package // the survey spells every namespace with it too
 func (f *fileInfo) namespaceForReport() string {
 	if f.core {
 		return "(core)"
@@ -228,6 +230,43 @@ func (c *collection) keysForReport(pass *analysis.Pass, opts Options) []baseline
 			}
 			out = append(out, f.key(pass, t))
 		}
+	}
+	return out
+}
+
+// surveyedFindingsForReport returns one target's findings together with what
+// became of each: silenced by a directive, absorbed by the baseline, or
+// reported.
+//
+// It is the only entry the survey uses, so that the survey never asks "is this
+// a violation" a second way — a second answer would drift from this one, and
+// the difference would read as a bug in one of them rather than as two
+// different questions. Routing through here is also what keeps the order of
+// the two suppressions the same: an ignore is consulted before the baseline,
+// so a suppression the baseline would also have absorbed still counts as the
+// directive doing its job.
+//
+//declscope:package // the survey's entry, driven from survey.go
+func (c *collection) surveyedFindingsForReport(pass *analysis.Pass, opts Options, t *target) []measure.Finding {
+	findings := c.findingsForReport(pass, opts, t)
+	out := make([]measure.Finding, 0, len(findings))
+	for _, f := range findings {
+		state := measure.EdgeReported
+		switch {
+		case c.silencedByIgnore(t, f.rule):
+			state = measure.EdgeIgnored
+		case opts.Baseline.Has(f.key(pass, t)):
+			state = measure.EdgeBaselined
+		}
+		out = append(out, measure.Finding{
+			Rule:        f.rule,
+			Declaration: f.decl,
+			State:       state,
+			// The fix the analyzer decided on, not a rerun of the decision:
+			// renameFix reserves the name it claims, so asking again would
+			// answer about a package that already contains this fix.
+			Fixable: len(f.fixes) > 0,
+		})
 	}
 	return out
 }
@@ -452,6 +491,7 @@ func fileInReport(f *fileInfo) string {
 // while the two are the same unit. A method filed away from its type points the
 // reader at a namespace that does not hold it, so the rule reaches it and asks
 // for the namespace it is actually written in.
+//declscope:package // the survey divides by it, and must divide by this one
 func (t *target) reportsName(opts Options) bool {
 	if t.file.core || t.reportsToolchainName() {
 		return false

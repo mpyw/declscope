@@ -22,6 +22,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/mpyw/declscope/internal/baseline"
+	"github.com/mpyw/declscope/internal/measure"
 )
 
 // Run performs the analysis for one package.
@@ -34,6 +35,16 @@ func Run(pass *analysis.Pass, opts Options) (any, error) {
 // baseline. It is the entry point used to regenerate a baseline.
 func Collect(pass *analysis.Pass, opts Options) []baseline.Key {
 	return build(pass, opts).keysForReport(pass, opts)
+}
+
+// Survey returns the measured shape of the package: its namespaces, the
+// crossings between them, what became of each, and the tally behind each rule.
+// It is the entry point used by declscope survey and declscope inspect.
+//
+// Unlike Collect it reads the baseline rather than ignoring it, because what
+// the baseline is absorbing is one of the things being reported.
+func Survey(pass *analysis.Pass, opts Options) measure.Package {
+	return build(pass, opts).surveyed(pass, opts)
 }
 
 // build always returns a collection, empty or not. A package the filter left
