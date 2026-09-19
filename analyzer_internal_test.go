@@ -24,7 +24,7 @@ func TestOptionsErrorCarriesNoAnalyzerPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := options(&analysis.Pass{Analyzer: a})
+	_, err := analyzerOptions(&analysis.Pass{Analyzer: a})
 	if err == nil {
 		t.Fatal("want an error for a malformed config, got none")
 	}

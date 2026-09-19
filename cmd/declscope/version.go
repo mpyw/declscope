@@ -80,6 +80,8 @@ func printVersion() {
 //
 // The leading v is dropped so that the two sources read alike: goreleaser
 // spells a tag without it, and the module system keeps it.
+//
+//declscope:package // skills.go stamps an installed skill with the same release
 func versionString() string {
 	if version != "" {
 		return strings.TrimPrefix(version, "v")

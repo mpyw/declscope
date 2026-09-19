@@ -879,7 +879,23 @@ The rule also switches off for a whole package when some reference site was neve
 ## Adopting on an existing codebase
 
 > [!TIP]
-> [`skills/declscope-adoption`](skills/declscope-adoption/SKILL.md) is a skill for an AI agent doing this work. It carries what each diagnostic shape means structurally, and the measurement traps that produce false confidence. Install it with `gh skill install mpyw/declscope`.
+> [`skills/declscope-adoption`](skills/declscope-adoption/SKILL.md) is a skill for an AI agent doing this work. It carries what each diagnostic shape means structurally, and the measurement traps that produce false confidence.
+>
+> The binary carries it, so the tool installs it:
+>
+> ```console
+> declscope skill install            # the agents already set up in this project
+> declscope skill install --agent claude-code --scope user
+> declscope skill list               # where it is, and whether it is current
+> ```
+>
+> Alternatively, without the binary:
+>
+> ```console
+> gh skill install mpyw/declscope declscope-adoption --agent claude-code
+> ```
+>
+> Both write to the same directories. The first goes through [`go-skill-embed`](https://github.com/mpyw/go-skill-embed), which takes them from `gh skill install`.
 
 A **baseline** records the violations a codebase already has. Turning declscope on then reports only what is new.
 
