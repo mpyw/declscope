@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
@@ -68,6 +69,44 @@ func loadIsAnalyzable(pkg *packages.Package) bool {
 		return false
 	}
 	return !(pkg.Name == "main" && strings.HasSuffix(pkg.PkgPath, ".test"))
+}
+
+// loadWidestVariants keeps one package per import path: the variant that sees
+// the most files.
+//
+// Loading with tests yields up to three packages for one directory, and two of
+// them carry the same import path — the package, and the package plus its
+// in-package test files. Measuring both would count every finding twice, and
+// the one to keep is the wider: a declaration reached only from a test is
+// reached all the same, and the variant that cannot see the test file cannot
+// see that.
+//
+// An external test package keeps its own row. Its import path ends in _test
+// because it is a different package, with its own namespaces and its own
+// scope, and folding it into its subject would mix two packages' counts.
+//
+//declscope:package // survey measures one row per package, not per variant
+func loadWidestVariants(pkgs []*packages.Package) []*packages.Package {
+	widest := map[string]*packages.Package{}
+	var paths []string
+	for _, pkg := range pkgs {
+		if !loadIsAnalyzable(pkg) {
+			continue
+		}
+		seen, ok := widest[pkg.PkgPath]
+		if !ok {
+			paths = append(paths, pkg.PkgPath)
+		}
+		if !ok || len(pkg.Syntax) > len(seen.Syntax) {
+			widest[pkg.PkgPath] = pkg
+		}
+	}
+	slices.Sort(paths)
+	out := make([]*packages.Package, 0, len(paths))
+	for _, path := range paths {
+		out = append(out, widest[path])
+	}
+	return out
 }
 
 // loadedPackageDir is the directory a package's config and baseline are looked

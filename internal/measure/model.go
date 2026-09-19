@@ -227,6 +227,63 @@ type Package struct {
 	AllCore bool
 }
 
+// Checks is the state of the checks themselves, assembled by the caller that
+// resolved them rather than by the analysis: which config files governed which
+// packages, what each of them switched on, what a baseline is absorbing, and
+// whether the code compiled at all.
+//
+// It is reported before any count, because a count means nothing until the
+// reader knows the rule was in force. A zero from a rule that was switched
+// off, from a package that did not build, or from a baseline that absorbed
+// everything reads exactly like a zero from clean code.
+type Checks struct {
+	Configs   []ConfigUse
+	Baselines []BaselineUse
+	TypeCheck TypeCheck
+}
+
+// ConfigUse is one set of rules and the packages it governed.
+//
+// The key is the chain of files, not the resolved options: config files
+// compose key by key, so naming only the nearest one is lossy, and the
+// resolved options hold compiled patterns and a pointer, which cannot be
+// compared.
+type ConfigUse struct {
+	// Chain is the config files that applied, outermost first. Empty means
+	// the built-in defaults governed these packages.
+	Chain []string
+
+	// Packages is how many packages this chain governed.
+	Packages int
+
+	Boundary bool
+	Surplus  bool
+
+	// Qualify is the mode as the config spells it: always, ondemand, never.
+	Qualify string
+
+	// Exported says whether the naming rule reached exported declarations.
+	Exported bool
+}
+
+// BaselineUse is one baseline file and what it holds.
+type BaselineUse struct {
+	Path string
+
+	// Entries is how many violations the file records.
+	Entries int
+}
+
+// TypeCheck is whether the packages compiled.
+type TypeCheck struct {
+	Packages int
+
+	// Failed names the packages that did not type-check, with the first error
+	// of each. A package that does not compile yields no findings, which is
+	// indistinguishable from a package with nothing wrong.
+	Failed []string
+}
+
 // Sort puts every slice in the one order the renderers and the goldens rely
 // on. It is called by the producer; a caller that builds a Package by hand
 // calls it too.

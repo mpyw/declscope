@@ -5,6 +5,7 @@
 //
 //	declscope [flags] [packages]           analyze
 //	declscope baseline [flags] [packages]  record current violations
+//	declscope survey [flags] [packages]    report what was checked and found
 //	declscope inspect [flags] <package>    report the shape of one package
 //	declscope skill install                install the adoption skill
 package main
@@ -27,6 +28,9 @@ func main() {
 			return
 		case "inspect":
 			inspectRun(os.Args[2:])
+			return
+		case "survey":
+			surveyRun(os.Args[2:])
 			return
 		}
 	}
