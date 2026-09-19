@@ -196,6 +196,7 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 // whose prefix is empty and whose files all share it, and free for the file
 // with no stem at all — which has no namespace either, and must not share a
 // key with every other such file.
+//
 //declscope:package // the survey spells every namespace with it too
 func (f *fileInfo) namespaceForReport() string {
 	if f.core {
@@ -491,6 +492,7 @@ func fileInReport(f *fileInfo) string {
 // while the two are the same unit. A method filed away from its type points the
 // reader at a namespace that does not hold it, so the rule reaches it and asks
 // for the namespace it is actually written in.
+//
 //declscope:package // the survey divides by it, and must divide by this one
 func (t *target) reportsName(opts Options) bool {
 	if t.file.core || t.reportsToolchainName() {

@@ -5,6 +5,7 @@
 //
 //	declscope [flags] [packages]           analyze
 //	declscope baseline [flags] [packages]  record current violations
+//	declscope inspect [flags] <package>    report the shape of one package
 //	declscope skill install                install the adoption skill
 package main
 
@@ -19,9 +20,15 @@ import (
 func main() {
 	// Both subcommands are matched before singlechecker sees the arguments,
 	// since singlechecker treats every non-flag argument as a package pattern.
-	if len(os.Args) > 1 && os.Args[1] == "baseline" {
-		baselineRun(os.Args[2:])
-		return
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "baseline":
+			baselineRun(os.Args[2:])
+			return
+		case "inspect":
+			inspectRun(os.Args[2:])
+			return
+		}
 	}
 	skills.Intercept()
 	// Before the driver: it registers a -V of its own only when nothing else

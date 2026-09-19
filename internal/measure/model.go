@@ -14,10 +14,10 @@
 //
 // The file joins the core namespace for the reason subject.go does: every
 // renderer reads this model, and in a named namespace each type would have to
-// spell that namespace into its own name. It states no scope of its own yet:
-// while this is the package's only file there is no second namespace for a
-// //declscope:package to widen anything for, and a directive that decides
-// nothing is one this tool reports.
+// spell that namespace into its own name. It states no scope: everything here
+// is exported, which already resolves to package scope, so a
+// //declscope:package would decide nothing. The core is about the naming rule,
+// which asks nothing of a namespace that has no name.
 //
 //declscope:core
 
@@ -203,6 +203,11 @@ type Count struct {
 type Package struct {
 	// Path is the import path.
 	Path string
+
+	// Config is the chain of config files that governed the analysis,
+	// outermost first. The producer leaves it empty: which files were
+	// consulted is known to the caller that resolved them, not to the pass.
+	Config []string
 
 	// Namespaces are sorted by name, the core first.
 	Namespaces []Namespace
