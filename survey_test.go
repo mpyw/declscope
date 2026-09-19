@@ -26,9 +26,9 @@ import (
 // survey exists to remove. The claim here is per variant, which is where the
 // survey and the analyzer see the same package.
 //
-// The surplus, directive and filter rules are covered by the totals rather
-// than by a package of their own: what matters is that no rule is counted in
-// one place and not the other.
+// Every rule in rule.All is compared, including the two that carry no baseline
+// key and are settled in a second pass. What matters is that no rule is counted
+// in one place and not in the other.
 func TestSurveyAgreesWithTheAnalyzer(t *testing.T) {
 	// Packages chosen for coverage of the states, not for size: a plain
 	// boundary crossing, members taking their type's namespace, a package
@@ -42,6 +42,12 @@ func TestSurveyAgreesWithTheAnalyzer(t *testing.T) {
 		"qualifyrule",
 		"allowboundary",
 		"corens",
+		// Directive problems are settled in a second pass, after every other
+		// finding: a misplaced directive, a block-level ignore judged once for
+		// every spec it reaches, and an ignore only the test variant needs.
+		"directives",
+		"blockignore",
+		"braceignore",
 	} {
 		t.Run(pkg, func(t *testing.T) {
 			for _, res := range analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, pkg) {
@@ -59,7 +65,7 @@ func TestSurveyAgreesWithTheAnalyzer(t *testing.T) {
 				}
 
 				surveyed := internal.Survey(res.Pass, opts)
-				for _, r := range []rule.Rule{rule.Boundary, rule.Qualify, rule.Surplus} {
+				for _, r := range rule.All {
 					count := surveyed.Findings[r]
 					if count.Reported != reported[r] {
 						t.Errorf("%s: %s reported %d, the analyzer reported %d",

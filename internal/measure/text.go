@@ -80,7 +80,9 @@ func writeTextCrossings(w io.Writer, p Package) {
 		notes = append(notes, fmt.Sprintf("%d open, package-scoped by default rather than by decision", open))
 	}
 	if len(notes) > 0 {
-		fmt.Fprintf(w, "  (%s)\t\t\t\t\t\t\n", strings.Join(notes, "; "))
+		// No tabs: a line inside the block would set the width of the first
+		// column, and this one is a sentence.
+		fmt.Fprintf(w, "  (%s)\n", strings.Join(notes, "; "))
 	}
 	fmt.Fprintln(w)
 }

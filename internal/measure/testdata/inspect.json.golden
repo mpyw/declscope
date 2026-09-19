@@ -1,0 +1,108 @@
+{
+  "package": "example.com/x/internal/cmd",
+  "config": [
+    ".declscope.yaml"
+  ],
+  "allCore": false,
+  "namespaces": [
+    {
+      "namespace": "(core)",
+      "files": [
+        "cmd.go"
+      ],
+      "core": true,
+      "declarations": 4,
+      "qualifyTargets": 0
+    },
+    {
+      "namespace": "completion",
+      "files": [
+        "completion.go",
+        "comp_zsh.go"
+      ],
+      "core": false,
+      "declarations": 6,
+      "qualifyTargets": 4
+    },
+    {
+      "namespace": "flags",
+      "files": [
+        "flags.go"
+      ],
+      "core": false,
+      "declarations": 5,
+      "qualifyTargets": 2
+    }
+  ],
+  "edges": [
+    {
+      "from": "completion",
+      "to": "flags",
+      "declaration": "writeFlag",
+      "kind": "func",
+      "uses": 3,
+      "state": "reported"
+    },
+    {
+      "from": "completion",
+      "to": "flags",
+      "declaration": "Flags.parsed",
+      "kind": "field",
+      "uses": 2,
+      "state": "baselined"
+    },
+    {
+      "from": "flags",
+      "to": "completion",
+      "declaration": "compName",
+      "kind": "func",
+      "uses": 1,
+      "state": "declared"
+    },
+    {
+      "from": "(core)",
+      "to": "flags",
+      "declaration": "flagSet",
+      "kind": "var",
+      "uses": 4,
+      "state": "ignored"
+    },
+    {
+      "from": "completion",
+      "to": "(core)",
+      "declaration": "Run",
+      "kind": "func",
+      "uses": 9,
+      "state": "open"
+    }
+  ],
+  "names": [
+    {
+      "namespace": "flags",
+      "file": "flags.go",
+      "declaration": "parseAll",
+      "kind": "func",
+      "exported": false,
+      "state": "reported",
+      "fixable": true
+    },
+    {
+      "namespace": "flags",
+      "file": "flags.go",
+      "declaration": "Reset",
+      "kind": "func",
+      "exported": true,
+      "state": "reported",
+      "fixable": false
+    },
+    {
+      "namespace": "completion",
+      "file": "comp_zsh.go",
+      "declaration": "zshHeader",
+      "kind": "func",
+      "exported": false,
+      "state": "baselined",
+      "fixable": false
+    }
+  ]
+}

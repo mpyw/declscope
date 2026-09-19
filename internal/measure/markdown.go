@@ -58,7 +58,8 @@ func writeMarkdownCrossings(w io.Writer, p Package) {
 			c.Reached, c.Declarations, c.Uses)
 	}
 	if open := p.OpenCrossings(); open > 0 {
-		fmt.Fprintf(w, "\n%d further crossings are open: package-scoped by default rather than by decision, so they are left out of the table and of the diagram.\n", open)
+		fmt.Fprintf(w, "\n%s further: open, package-scoped by default rather than by decision, so left out of the table and of the diagram.\n",
+			cellPlural(open, "crossing is", "crossings are"))
 	}
 	writeMarkdownMermaid(w, crossings)
 }

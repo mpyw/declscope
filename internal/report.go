@@ -272,6 +272,53 @@ func (c *collection) surveyedFindingsForReport(pass *analysis.Pass, opts Options
 	return out
 }
 
+// surveyedProblemsForReport tallies the two rules that carry no baseline key:
+// the directive rule, whose findings are settled in a second pass once every
+// other finding has been seen, and the filter rule, which reports at most once
+// per package.
+//
+// It runs the same two stages report runs, in the same order, for the same
+// reason: an ignore written for a directive problem silences something
+// attached to no declaration, so it has to be consulted before the unused
+// ignores are judged, or the author is told to delete the comment doing the
+// job.
+//
+//declscope:package // the survey's second entry, driven from survey.go
+func (c *collection) surveyedProblemsForReport(pass *analysis.Pass) (measure.Count, measure.Count) {
+	count := measure.Count{Asked: true}
+
+	c.reportUnusedScopeSites(pass)
+	count.Found = len(c.problems)
+	c.problems = c.silencedProblemsForReport(pass)
+
+	kept := len(c.problems)
+	c.reportUnusedIgnores(pass)
+	count.Found += len(c.problems) - kept
+	c.problems = c.silencedProblemsForReport(pass)
+
+	count.Reported = len(c.problems)
+	count.Ignored = count.Found - count.Reported
+
+	filtered := measure.Count{Asked: true}
+	if c.filterWarning != nil {
+		filtered.Found, filtered.Reported = 1, 1
+	}
+	return count, filtered
+}
+
+// silencedProblemsForReport drops the problems a file-level ignore stands
+// down, marking the directive that did it used.
+func (c *collection) silencedProblemsForReport(pass *analysis.Pass) []directive.Problem {
+	kept := c.problems[:0]
+	for _, p := range c.problems {
+		if c.ignoreSilencesFile(c.fileAt(pass, p.Pos), rule.Directive) {
+			continue
+		}
+		kept = append(kept, p)
+	}
+	return kept
+}
+
 func (c *collection) findingsForReport(pass *analysis.Pass, opts Options, t *target) []reportedFinding {
 	var out []reportedFinding
 	// An exported declaration resolves to package scope unless a directive

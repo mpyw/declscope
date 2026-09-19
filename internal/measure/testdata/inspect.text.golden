@@ -1,0 +1,25 @@
+Package   example.com/x/internal/cmd
+Config    .declscope.yaml
+
+Namespaces     files                        declarations   qualify targets
+  (core)       cmd.go                       4              -
+  completion   completion.go, comp_zsh.go   6              4
+  flags        flags.go                     5              2
+
+Crossings              mutual   declared   baselined   reported   reached   uses
+  completion → flags   yes      0          1           1          2 of 5    5
+  (core) → flags                0          0           0          1 of 5    4
+  flags → completion   yes      1          0           0          1 of 6    1
+  (1 silenced by a directive; 1 open, package-scoped by default rather than by decision)
+
+Most-reached declarations   namespace    reached from   state
+  flagSet                   flags        1 namespace    ignored
+  writeFlag                 flags        1 namespace    reported
+  Flags.parsed              flags        1 namespace    baselined
+  compName                  completion   1 namespace    declared
+
+Qualify        exempt   baselined   reported   saturation
+  (core)       0        -           -          -
+  completion   0        1           0          1 of 4
+  flags        0        0           2          2 of 2
+
