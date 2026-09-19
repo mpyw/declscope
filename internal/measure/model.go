@@ -284,10 +284,18 @@ type TypeCheck struct {
 	Failed []string
 }
 
-// Sort puts every slice in the one order the renderers and the goldens rely
-// on. It is called by the producer; a caller that builds a Package by hand
-// calls it too.
-func (p *Package) Sort() {
+// Sorted returns the package with every slice in the one order the renderers
+// and the goldens rely on.
+//
+// It returns a copy rather than sorting in place. Every other method on
+// Package takes a value receiver, and one that took a pointer would be the
+// odd one out twice over: mixing receiver kinds on a type, and reordering
+// slices its caller still holds.
+func (p Package) Sorted() Package {
+	p.Namespaces = slices.Clone(p.Namespaces)
+	p.Edges = slices.Clone(p.Edges)
+	p.Names = slices.Clone(p.Names)
+
 	slices.SortFunc(p.Namespaces, func(a, b Namespace) int {
 		if a.Core != b.Core {
 			// The core answers for the package's own subject, so it reads
@@ -312,4 +320,5 @@ func (p *Package) Sort() {
 			cmp.Compare(a.Declaration, b.Declaration),
 		)
 	})
+	return p
 }

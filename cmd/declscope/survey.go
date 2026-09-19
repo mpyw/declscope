@@ -35,6 +35,7 @@ func surveyRun(args []string) {
 	fs := flag.NewFlagSet("declscope survey", flag.ExitOnError)
 	configPath := fs.String("config", "", "path to a declscope YAML config file")
 	allowErrors := fs.Bool("allow-errors", false, "measure anyway when some packages do not type-check")
+	format := fs.String("format", string(measure.FormatText), "output format: text, json or markdown")
 	fs.Usage = func() {
 		_, _ = io.WriteString(fs.Output(), surveyUsage)
 		fs.PrintDefaults()
@@ -45,6 +46,10 @@ func surveyRun(args []string) {
 	patterns := fs.Args()
 	if len(patterns) == 0 {
 		patterns = []string{"./..."}
+	}
+	chosen, err := measure.ParseFormat(*format)
+	if err != nil {
+		surveyFail(err)
 	}
 
 	pkgs, err := loadPackages(patterns)
@@ -65,7 +70,7 @@ func surveyRun(args []string) {
 	if err != nil {
 		surveyFail(err)
 	}
-	if err := summary.WriteSummaryText(os.Stdout); err != nil {
+	if err := summary.WriteSummaryFormat(os.Stdout, chosen); err != nil {
 		surveyFail(err)
 	}
 }

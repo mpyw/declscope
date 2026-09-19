@@ -3,7 +3,6 @@ package measure
 import (
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
@@ -43,13 +42,9 @@ func (p Package) WriteText(w io.Writer) error {
 func writeTextNamespaces(w io.Writer, p Package, asked bool) {
 	fmt.Fprint(w, "Namespaces\tfiles\tdeclarations\tqualify targets\n")
 	for _, ns := range p.Namespaces {
-		files := make([]string, 0, len(ns.Files))
-		for _, f := range ns.Files {
-			files = append(files, filepath.Base(f))
-		}
 		fmt.Fprintf(w, "  %s\t%s\t%d\t%s\n",
-			ns.Name, strings.Join(files, ", "), ns.Declarations,
-			textCount(ns.QualifyTargets, asked && !ns.Core))
+			ns.Name, strings.Join(ns.Files, ", "), ns.Declarations,
+			cellCount(ns.QualifyTargets, asked && !ns.Core))
 	}
 	fmt.Fprintln(w)
 }
@@ -65,7 +60,7 @@ func writeTextCrossings(w io.Writer, p Package) {
 		ignored += c.Ignored
 		unchecked += c.Unchecked
 		fmt.Fprintf(w, "  %s → %s\t%s\t%d\t%d\t%d\t%d of %d\t%d\n",
-			c.From, c.To, textYes(c.Mutual),
+			c.From, c.To, cellYes(c.Mutual),
 			c.Declared, c.Baselined, c.Reported,
 			c.Reached, c.Declarations, c.Uses)
 	}
@@ -98,7 +93,7 @@ func writeTextReach(w io.Writer, p Package) {
 	fmt.Fprint(w, "Most-reached declarations\tnamespace\treached from\tstate\n")
 	for _, r := range reached {
 		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\n",
-			r.Declaration, r.Namespace, textPlural(r.From, "namespace"), r.State)
+			r.Declaration, r.Namespace, cellPlural(r.From, "namespace", "namespaces"), r.State)
 	}
 	fmt.Fprintln(w)
 }
@@ -122,27 +117,4 @@ func writeTextQualify(w io.Writer, p Package, asked bool) {
 			q.Namespace, q.Exempt, q.Baselined, q.Reported, q.Saturation(), q.Targets)
 	}
 	fmt.Fprintln(w)
-}
-
-// textCount prints a number, or a dash where the question was not asked. The
-// two are different answers and a zero can only say one of them.
-func textCount(n int, asked bool) string {
-	if !asked {
-		return "-"
-	}
-	return fmt.Sprint(n)
-}
-
-func textYes(b bool) string {
-	if b {
-		return "yes"
-	}
-	return ""
-}
-
-func textPlural(n int, noun string) string {
-	if n == 1 {
-		return fmt.Sprintf("%d %s", n, noun)
-	}
-	return fmt.Sprintf("%d %ss", n, noun)
 }

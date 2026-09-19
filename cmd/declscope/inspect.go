@@ -14,6 +14,7 @@ import (
 	"github.com/mpyw/declscope"
 	"github.com/mpyw/declscope/internal"
 	"github.com/mpyw/declscope/internal/config"
+	"github.com/mpyw/declscope/internal/measure"
 )
 
 const inspectUsage = `Usage: declscope inspect [flags] <package>
@@ -33,6 +34,7 @@ would answer a question nobody asked.
 func inspectRun(args []string) {
 	fs := flag.NewFlagSet("declscope inspect", flag.ExitOnError)
 	configPath := fs.String("config", "", "path to a declscope YAML config file")
+	format := fs.String("format", string(measure.FormatText), "output format: text, json or markdown")
 	fs.Usage = func() {
 		_, _ = io.WriteString(fs.Output(), inspectUsage)
 		fs.PrintDefaults()
@@ -44,6 +46,10 @@ func inspectRun(args []string) {
 	if len(patterns) == 0 {
 		fs.Usage()
 		os.Exit(2)
+	}
+	chosen, err := measure.ParseFormat(*format)
+	if err != nil {
+		inspectFail(err)
 	}
 
 	pkgs, err := loadPackages(patterns)
@@ -78,7 +84,7 @@ func inspectRun(args []string) {
 	if configFile != "" {
 		surveyed.Config = []string{configFile}
 	}
-	if err := surveyed.WriteText(os.Stdout); err != nil {
+	if err := surveyed.WriteFormat(os.Stdout, chosen); err != nil {
 		inspectFail(err)
 	}
 }

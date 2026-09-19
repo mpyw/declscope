@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"path/filepath"
 	"slices"
 
 	"golang.org/x/tools/go/analysis"
@@ -52,8 +53,7 @@ func (c *collection) surveyed(pass *analysis.Pass, opts Options) measure.Package
 	}
 
 	out.Namespaces, out.AllCore = namespacesForSurvey(c, opts)
-	out.Sort()
-	return out
+	return out.Sorted()
 }
 
 // edgesForSurvey turns one declaration's references from other namespaces into
@@ -118,7 +118,7 @@ func stateOfUnreportedSurveyedEdge(t *target) measure.EdgeState {
 func nameFindingForSurvey(t *target, f measure.Finding) measure.NameFinding {
 	return measure.NameFinding{
 		Namespace:   t.file.namespaceForReport(),
-		File:        t.file.path,
+		File:        filepath.Base(t.file.path),
 		Declaration: f.Declaration,
 		Kind:        string(t.kind),
 		Exported:    isExported(t.obj.Name()),
@@ -154,7 +154,10 @@ func namespacesForSurvey(c *collection, opts Options) ([]measure.Namespace, bool
 			byKey[fi.key()] = ns
 			order = append(order, fi.key())
 		}
-		ns.Files = append(ns.Files, fi.path)
+		// The base name, not the path: every file of a package sits in one
+		// directory, so the stem identifies it, and the report stays the same
+		// whoever runs it and from wherever.
+		ns.Files = append(ns.Files, filepath.Base(fi.path))
 	}
 	for _, t := range c.targets {
 		ns, ok := byKey[t.file.key()]

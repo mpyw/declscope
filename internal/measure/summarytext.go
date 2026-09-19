@@ -39,7 +39,7 @@ func writeSummaryTextChecks(w io.Writer, checks Checks) {
 		if len(c.Chain) > 0 {
 			chain = strings.Join(c.Chain, " + ")
 		}
-		fmt.Fprintf(w, "  config\t%s\t%s\n", chain, summaryTextPackages(c.Packages))
+		fmt.Fprintf(w, "  config\t%s\t%s\n", chain, cellPackages(c.Packages))
 	}
 	if len(checks.Configs) > 0 {
 		// Every config in one run switches the same rules on or off for the
@@ -51,14 +51,14 @@ func writeSummaryTextChecks(w io.Writer, checks Checks) {
 				qualify += ", exported"
 			}
 			fmt.Fprintf(w, "  rules\tboundary %s, qualify %s, surplus %s\t%s\n",
-				summaryTextOnOff(c.Boundary), qualify, summaryTextOnOff(c.Surplus),
-				summaryTextPackages(c.Packages))
+				cellOnOff(c.Boundary), qualify, cellOnOff(c.Surplus),
+				cellPackages(c.Packages))
 		}
 	}
 	for _, b := range checks.Baselines {
-		fmt.Fprintf(w, "  baseline\t%s\t%s\n", b.Path, summaryTextPlural(b.Entries, "entry", "entries"))
+		fmt.Fprintf(w, "  baseline\t%s\t%s\n", b.Path, cellPlural(b.Entries, "entry", "entries"))
 	}
-	fmt.Fprintf(w, "  type check\t%s\t\n", summaryTextTypeCheck(checks.TypeCheck))
+	fmt.Fprintf(w, "  type check\t%s\t\n", cellTypeCheck(checks.TypeCheck))
 	fmt.Fprintln(w)
 }
 
@@ -78,7 +78,7 @@ func writeSummaryTextFindings(w io.Writer, totals map[rule.Rule]Count) {
 		}
 		fmt.Fprintf(w, "  %s\t%d\t%d\t%s\t%d\n",
 			r, count.Found, count.Ignored,
-			summaryTextKeyable(count.Baselined, count.Keyable), count.Reported)
+			cellKeyable(count.Baselined, count.Keyable), count.Reported)
 		sum.Found += count.Found
 		sum.Ignored += count.Ignored
 		sum.Baselined += count.Baselined
@@ -99,7 +99,7 @@ func writeSummaryTextBoundary(w io.Writer, rows []SummaryRow) {
 		if r.HasLargest {
 			largest = fmt.Sprintf("%s → %s (%s)",
 				r.Largest.From, r.Largest.To,
-				summaryTextPlural(r.Largest.Reached, "declaration", "declarations"))
+				cellPlural(r.Largest.Reached, "declaration", "declarations"))
 		}
 		fmt.Fprintf(w, "  %s\t%d\t%d\t%d\t%s\n",
 			name, r.BoundaryReported, r.BoundaryBaselined, r.BoundaryDeclared, largest)
@@ -122,36 +122,4 @@ func writeSummaryTextQualify(w io.Writer, rows []SummaryRow) {
 			r.Package, r.QualifyReported, r.QualifyBaselined, r.QualifyExempt, worst)
 	}
 	fmt.Fprintln(w)
-}
-
-// summaryTextKeyable prints a dash where no baseline could ever suppress the
-// rule, which is the directive rule and the filter rule. A zero there would
-// read as "suppressible, and none suppressed".
-func summaryTextKeyable(n int, keyable bool) string {
-	if !keyable {
-		return "-"
-	}
-	return fmt.Sprint(n)
-}
-
-func summaryTextTypeCheck(t TypeCheck) string {
-	return fmt.Sprintf("%s ok, %d failed", summaryTextPackages(t.Packages-len(t.Failed)), len(t.Failed))
-}
-
-func summaryTextOnOff(on bool) string {
-	if on {
-		return "on"
-	}
-	return "off"
-}
-
-func summaryTextPackages(n int) string {
-	return summaryTextPlural(n, "package", "packages")
-}
-
-func summaryTextPlural(n int, one, many string) string {
-	if n == 1 {
-		return fmt.Sprintf("%d %s", n, one)
-	}
-	return fmt.Sprintf("%d %s", n, many)
 }
