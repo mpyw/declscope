@@ -8,13 +8,8 @@ import (
 	"github.com/mpyw/declscope/internal/rule"
 )
 
-// writeMarkdown renders one package for pasting somewhere: an issue, a pull
-// request, a README, an article.
-//
-// It carries the same numbers as the text form and adds the diagram, which is
-// what the format is for. A picture of a package's crossings belongs where
-// pictures render, and nowhere else: in a terminal it would be a second way of
-// saying what the table already says.
+// writeMarkdown renders one package as padded Markdown: readable in a terminal
+// and ready to paste into an issue, a pull request or a README.
 //
 //declscope:package // format.go dispatches to it
 func (p Package) writeMarkdown(w io.Writer) error {
@@ -51,7 +46,13 @@ func (p Package) writeMarkdown(w io.Writer) error {
 func writeMarkdownCrossings(out *sink, p Package, asked bool) {
 	crossings := p.Crossings()
 	if len(crossings) == 0 {
-		out.print("## Crossings\n\nNothing crosses a namespace in this package.\n\n")
+		open := p.DeclarationsCrossing(EdgeOpen)
+		if open == 0 {
+			out.print("## Crossings\n\nNothing crosses a namespace in this package.\n\n")
+		} else {
+			out.printf("## Crossings\n\nOpen crossings only: %s package-scoped by default rather than by decision, so there is nothing to put in the table or diagram.\n\n",
+				cellPlural(open, "declaration is", "declarations are"))
+		}
 		return
 	}
 	rows := [][]string{{"crossing", "mutual", "declared", "baselined", "reported", "clears", "reached", "uses"}}
@@ -223,6 +224,10 @@ func (s Summary) writeMarkdown(w io.Writer) error {
 		if r.HasLargest {
 			largest = fmt.Sprintf("%s → %s (%s)", r.Largest.From, r.Largest.To,
 				cellPlural(r.Largest.Reached, "declaration", "declarations"))
+		}
+		if !r.BoundaryAsked {
+			boundary = append(boundary, []string{name, "-", "-", "-", largest})
+			continue
 		}
 		boundary = append(boundary, []string{
 			name, fmt.Sprint(r.BoundaryReported), fmt.Sprint(r.BoundaryBaselined),

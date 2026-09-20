@@ -138,6 +138,27 @@ func TestMostReachedHonoursItsLimit(t *testing.T) {
 	}
 }
 
+// TestMarkdownNamesOpenOnlyCrossings checks that filtering open crossings out
+// of the decision table does not turn them into "nothing crosses".
+func TestMarkdownNamesOpenOnlyCrossings(t *testing.T) {
+	pkg := Package{
+		Path:       "example.com/open",
+		Namespaces: []Namespace{{Name: "a", Declarations: 1}, {Name: "b", Declarations: 1}},
+		Edges:      []Edge{{From: "a", To: "b", Declaration: "Exported", State: EdgeOpen}},
+		Findings:   map[rule.Rule]Count{rule.Boundary: {Asked: true, Keyable: true}},
+	}
+	var out bytes.Buffer
+	if err := pkg.writeMarkdown(&out); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(out.Bytes(), []byte("Nothing crosses")) {
+		t.Errorf("an open crossing was reported as no crossing:\n%s", out.String())
+	}
+	if !bytes.Contains(out.Bytes(), []byte("Open crossings only: 1 declaration is")) {
+		t.Errorf("the open crossing is not explained:\n%s", out.String())
+	}
+}
+
 // TestSortedIsDeterministic pins the order the renderers and the goldens rely
 // on, and that it is taken on a copy.
 func TestSortedIsDeterministic(t *testing.T) {

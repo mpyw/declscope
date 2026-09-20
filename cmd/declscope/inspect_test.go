@@ -46,3 +46,40 @@ func TestInspectRefusesMoreThanOnePackage(t *testing.T) {
 		}
 	}
 }
+
+// TestInspectDoesNotMistakeARealTestSuffixForAnExternalTest checks that an
+// ordinary package named q_test is not discarded merely because q is present.
+func TestInspectDoesNotMistakeARealTestSuffixForAnExternalTest(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, "q/q.go", "package q\n\nfunc Run() int { return 1 }\n")
+	writeTree(t, dir, "q_test/q.go", "package q_test\n\nfunc Run() int { return 1 }\n")
+
+	out, code := runIn(t, bin, dir, "inspect", "./...")
+	if code == 0 {
+		t.Fatalf("inspect discarded the real q_test package\n%s", out)
+	}
+	for _, want := range []string{"matches 2 packages", "example.com/declscopetest/q", "example.com/declscopetest/q_test"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the refusal does not name %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestInspectIgnoresErrorsInTheSkippedExternalTestPackage checks that inspect
+// can still report q when q_test, which it deliberately does not report, fails
+// to type-check.
+func TestInspectIgnoresErrorsInTheSkippedExternalTestPackage(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, "q/q.go", "package q\n\nfunc Run() int { return 1 }\n")
+	writeTree(t, dir, "q/q_test.go", "package q_test\n\nfunc broken() { undefinedThing() }\n")
+
+	out, code := runIn(t, bin, dir, "inspect", "./q")
+	if code != 0 {
+		t.Fatalf("inspect was blocked by the external package it skips: exit %d\n%s", code, out)
+	}
+	if !strings.Contains(out, "# example.com/declscopetest/q\n") {
+		t.Errorf("inspect did not report the requested package:\n%s", out)
+	}
+}

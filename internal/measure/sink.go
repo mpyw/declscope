@@ -1,7 +1,6 @@
-// sink.go is the writer every renderer prints through. A report is a few
-// dozen writes, and a renderer that checked each one would say nothing else;
-// one that checked none would return nil however the write went, which is what
-// this replaced.
+// sink.go is the writer the Markdown renderer prints through. A report is a
+// few dozen writes, and checking each one would say nothing else; checking none
+// would return nil however the write went, which is what this replaced.
 //
 // The file is shared on purpose, so it says so once.
 //

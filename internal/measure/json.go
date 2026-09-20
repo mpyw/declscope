@@ -24,7 +24,7 @@ type jsonPackage struct {
 
 	// Findings carries the same asked flag the tables print a dash for.
 	// Without it a consumer reads qualifyTargets as a live number where the
-	// text form says the rule was never in force — a zero from a switched-off
+	// Markdown says the rule was never in force — a zero from a switched-off
 	// rule reading exactly like a zero from clean code, in the format the
 	// adoption skill tells an agent to use.
 	Findings map[string]jsonCount `json:"findings"`
@@ -200,9 +200,10 @@ type jsonSummaryPackage struct {
 }
 
 type jsonBoundaryState struct {
-	Reported  int `json:"reported"`
-	Baselined int `json:"baselined"`
-	Declared  int `json:"declared"`
+	Asked     bool `json:"asked"`
+	Reported  int  `json:"reported"`
+	Baselined int  `json:"baselined"`
+	Declared  int  `json:"declared"`
 }
 
 type jsonQualifyState struct {
@@ -270,6 +271,7 @@ func (s Summary) writeJSON(w io.Writer) error {
 			CoreFiles:  row.CoreFiles,
 			AllCore:    row.AllCore,
 			Boundary: jsonBoundaryState{
+				Asked:     row.BoundaryAsked,
 				Reported:  row.BoundaryReported,
 				Baselined: row.BoundaryBaselined,
 				Declared:  row.BoundaryDeclared,

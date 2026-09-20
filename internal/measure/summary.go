@@ -39,6 +39,7 @@ type SummaryRow struct {
 	AllCore bool
 
 	// Boundary and Qualify are the states of that rule's findings.
+	BoundaryAsked     bool
 	BoundaryReported  int
 	BoundaryBaselined int
 	BoundaryDeclared  int
@@ -112,6 +113,7 @@ func summaryRowOf(p Package) SummaryRow {
 		Namespaces: len(p.Namespaces),
 		AllCore:    p.AllCore,
 
+		BoundaryAsked:     p.Findings[rule.Boundary].Asked,
 		BoundaryReported:  p.Findings[rule.Boundary].Reported,
 		BoundaryBaselined: p.Findings[rule.Boundary].Baselined,
 

@@ -70,6 +70,31 @@ func TestSurveyCountsAPackageOnce(t *testing.T) {
 	}
 }
 
+// TestSurveyKeepsARealMainPackageEndingInDotTest checks that the synthetic test
+// executable is identified from go/packages metadata, not from an import-path
+// suffix that a real package may also have.
+func TestSurveyKeepsARealMainPackageEndingInDotTest(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, "cmd.test/main.go", "package main\n\nfunc main() {}\n")
+
+	out, code := runIn(t, bin, dir, "survey", "-test=false", "-format=json", "./...")
+	if code != 0 {
+		t.Fatalf("survey exited %d\n%s", code, out)
+	}
+	var got struct {
+		Packages []struct {
+			Package string `json:"package"`
+		} `json:"packages"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if len(got.Packages) != 1 || got.Packages[0].Package != "example.com/declscopetest/cmd.test" {
+		t.Errorf("the real .test package was discarded as a synthetic test main: %+v", got.Packages)
+	}
+}
+
 // TestSurveyRefusesAPatternItCannotLoad checks that a pattern naming nothing
 // is refused rather than answered with zeros. A package that could not be
 // loaded has no syntax at all, so measuring only what is analyzable would drop

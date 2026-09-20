@@ -74,6 +74,7 @@
       "coreFiles": 1,
       "allCore": false,
       "boundary": {
+        "asked": true,
         "reported": 2,
         "baselined": 2,
         "declared": 1
@@ -102,6 +103,7 @@
       "coreFiles": 0,
       "allCore": false,
       "boundary": {
+        "asked": true,
         "reported": 0,
         "baselined": 0,
         "declared": 0
@@ -119,6 +121,7 @@
       "coreFiles": 2,
       "allCore": true,
       "boundary": {
+        "asked": true,
         "reported": 0,
         "baselined": 0,
         "declared": 0

@@ -1,8 +1,6 @@
-// cell.go holds the cell formatters every renderer needs. They belong to none
-// of the three: a dash that means "not asked" has to mean that in a terminal,
-// in an issue and in a table pasted into a README, and a renderer that spelled
-// its own would be free to disagree with the others about what a missing
-// answer looks like.
+// cell.go holds the shared Markdown cell formatters. A dash that means "not
+// asked" has to mean that in every table, and a table that spelled its own
+// would be free to disagree about what a missing answer looks like.
 //
 // The file is shared on purpose, so it says so once rather than declaration by
 // declaration.

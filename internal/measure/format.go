@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// Format is how a report is rendered. One flag with three values rather than a
-// -json boolean beside a -markdown one: the three are one choice, and a
+// Format is how a report is rendered. One flag rather than a -json boolean
+// beside a -markdown one: the formats are one choice, and a
 // rejected value can then be answered with the values the flag accepts, the
 // way a rejected rules.naming.qualify is.
 type Format string

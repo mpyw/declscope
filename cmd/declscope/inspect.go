@@ -55,7 +55,7 @@ func inspectRun(args []string) {
 	if err != nil {
 		inspectFail(err)
 	}
-	if failed := loadErrors(pkgs); len(failed) > 0 {
+	if failed := loadErrorsForInspect(pkgs); len(failed) > 0 {
 		// A package that does not type-check yields no findings, which reads
 		// exactly like a package with nothing wrong. Refusing is the only
 		// answer that cannot be misread.
@@ -104,8 +104,9 @@ func inspectOnePackage(pkgs []*packages.Package) (*packages.Package, error) {
 
 	var paths []string
 	for path := range byPath {
-		if subject := strings.TrimSuffix(path, "_test"); subject != path {
-			if _, ok := byPath[subject]; ok {
+		pkg := byPath[path]
+		if loadIsExternalTest(pkg) {
+			if _, ok := byPath[pkg.ForTest]; ok {
 				continue
 			}
 		}

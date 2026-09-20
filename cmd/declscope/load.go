@@ -33,7 +33,7 @@ func loadPackages(patterns []string, tests bool) ([]*packages.Package, error) {
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles |
 			packages.NeedImports | packages.NeedDeps | packages.NeedTypes |
-			packages.NeedSyntax | packages.NeedTypesInfo,
+			packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedForTest,
 		Tests: tests,
 	}
 	pkgs, err := packages.Load(cfg, patterns...)
@@ -62,7 +62,7 @@ func loadErrors(pkgs []*packages.Package) []string {
 	seen := map[string]bool{}
 	var failed []string
 	for _, pkg := range pkgs {
-		if len(pkg.Errors) == 0 || seen[pkg.PkgPath] {
+		if loadIsTestMain(pkg) || len(pkg.Errors) == 0 || seen[pkg.PkgPath] {
 			continue
 		}
 		seen[pkg.PkgPath] = true
@@ -70,6 +70,26 @@ func loadErrors(pkgs []*packages.Package) []string {
 	}
 	slices.Sort(failed)
 	return failed
+}
+
+// loadErrorsForInspect leaves out an external test package when the package it
+// tests is also present. inspect reports that subject package, not the separate
+// scope declared by package foo_test, so an error in the skipped package must
+// not prevent the requested package from being measured.
+//
+//declscope:package // inspect applies the loader's package-selection rules
+func loadErrorsForInspect(pkgs []*packages.Package) []string {
+	subjects := map[string]bool{}
+	for _, pkg := range loadWidestVariants(pkgs) {
+		if !loadIsExternalTest(pkg) {
+			subjects[pkg.PkgPath] = true
+		}
+	}
+
+	filtered := slices.DeleteFunc(slices.Clone(pkgs), func(pkg *packages.Package) bool {
+		return loadIsExternalTest(pkg) && subjects[pkg.ForTest]
+	})
+	return loadErrors(filtered)
 }
 
 // loadIsAnalyzable reports whether a loaded package is one to analyze at all.
@@ -83,7 +103,41 @@ func loadIsAnalyzable(pkg *packages.Package) bool {
 	if len(pkg.Syntax) == 0 || pkg.TypesInfo == nil || pkg.Types == nil {
 		return false
 	}
-	return pkg.Name != "main" || !strings.HasSuffix(pkg.PkgPath, ".test")
+	return !loadIsTestMain(pkg)
+}
+
+// loadIsTestMain identifies the synthetic executable built to run a package's
+// tests. Depending on the go command's response, its file is either the
+// generated _testmain.go or a build-cache archive; a real package is loaded
+// from .go files even when its import path happens to end in ".test".
+func loadIsTestMain(pkg *packages.Package) bool {
+	if pkg.Name != "main" || !strings.HasSuffix(pkg.PkgPath, ".test") {
+		return false
+	}
+	paths := append(slices.Clone(pkg.GoFiles), pkg.CompiledGoFiles...)
+	for _, path := range paths {
+		if filepath.Base(path) == "_testmain.go" {
+			return true
+		}
+	}
+	for _, path := range paths {
+		// A real package is loaded from Go source. With the go command's
+		// driver, the synthetic executable instead points at its build-cache
+		// archive (a path ending in -d), even when NeedSyntax is requested.
+		if filepath.Ext(path) == ".go" {
+			return false
+		}
+	}
+	return len(paths) > 0
+}
+
+// loadIsExternalTest identifies package foo_test as loaded for package foo.
+// ForTest is the build system's answer; trimming an import-path suffix would
+// also discard an ordinary package that is genuinely named foo_test.
+//
+//declscope:package // inspect excludes this separate scope when its subject is present
+func loadIsExternalTest(pkg *packages.Package) bool {
+	return pkg.ForTest != "" && pkg.PkgPath != pkg.ForTest && !loadIsTestMain(pkg)
 }
 
 // loadWidestVariants keeps one package per import path: the variant that sees
