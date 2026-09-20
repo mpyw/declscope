@@ -2,8 +2,6 @@
 // than a second half of text.go because the two answer different questions —
 // which package to open, and what shape one package is in — and a reader
 // looking for one should not have to read past the other.
-//
-//declscope:namespace summarytext
 
 package measure
 
