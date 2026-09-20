@@ -79,7 +79,7 @@ func edgesForSurvey(c *collection, t *target, crossed measure.FindingState) []me
 	}
 	state := edgeStateForSurvey(crossed)
 	if crossed == "" {
-		state = stateOfUnreportedSurveyedEdge(c, t)
+		state = stateOfUnreportedSurveyedEdge(t)
 	}
 	out := make([]measure.Edge, 0, len(uses))
 	for from, n := range uses {
@@ -102,18 +102,19 @@ func edgesForSurvey(c *collection, t *target, crossed measure.FindingState) []me
 // not. Not "bound by a directive", since //declscope:private is one of those
 // too. Not "unexported", since a declaration widened by defaults.unexported
 // reaches package scope with nothing written down about it, which is the same
-// absence of a decision as an exported name. And not "a directive names this
-// scope": the analyzer only counts a directive as deciding when the scope it
-// names is one the declaration could not have had anyway, which is what keeps
-// a file-level //declscope:package above twenty exported names from reading
-// as twenty decisions.
-func stateOfUnreportedSurveyedEdge(c *collection, t *target) measure.EdgeState {
+// absence of a decision as an exported name. And not "the directive that
+// supplied the scope was used": that is a question about the directive, and
+// this is a question about the declaration. One file-level
+// //declscope:package can decide for an unexported name and decide nothing
+// for the exported one beside it, and target.decided is that per-declaration
+// answer, taken where the scope was resolved.
+func stateOfUnreportedSurveyedEdge(t *target) measure.EdgeState {
 	switch {
 	case t.scope == scope.Private:
 		// Private, crossed, and nothing reported: the rule was not asked.
 		// Nothing about this crossing has been decided.
 		return measure.EdgeUnchecked
-	case t.boundBy.Scope == scope.PackageInternal && c.decidedAtScopeSite(t.boundBy):
+	case t.decided && t.boundBy.Scope == scope.PackageInternal:
 		return measure.EdgeDeclared
 	default:
 		return measure.EdgeOpen

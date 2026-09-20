@@ -54,8 +54,7 @@ func surveyRun(args []string) {
 	if err != nil {
 		surveyFail(err)
 	}
-	analyzable := loadWidestVariants(pkgs)
-	failed := loadErrors(analyzable)
+	failed := loadErrors(pkgs)
 	if len(failed) > 0 && !*allowErrors {
 		// A package that does not type-check produces no findings, and that
 		// is indistinguishable from a package with nothing wrong. The skill
@@ -65,7 +64,7 @@ func surveyRun(args []string) {
 			strings.Join(failed, "\n  ")))
 	}
 
-	summary, err := surveyPackages(analyzable, *configPath, failed)
+	summary, err := surveyPackages(loadWidestVariants(pkgs), *configPath, failed)
 	if err != nil {
 		surveyFail(err)
 	}

@@ -48,15 +48,24 @@ func loadPackages(patterns []string) ([]*packages.Package, error) {
 // leave the reader to notice, and it has to name the packages, which
 // packages.PrintErrors only prints and counts.
 //
+// It reads every loaded package, not only the analyzable ones: a pattern
+// naming a directory that does not exist yields a package with no syntax at
+// all, and dropping it would answer "0 packages ok, 0 failed" to a question
+// nothing could be measured for. One entry per import path, since the two
+// variants of a package report the same error twice.
+//
 //declscope:package // survey refuses on it, and says which packages failed
 func loadErrors(pkgs []*packages.Package) []string {
+	seen := map[string]bool{}
 	var failed []string
 	for _, pkg := range pkgs {
-		if len(pkg.Errors) == 0 {
+		if len(pkg.Errors) == 0 || seen[pkg.PkgPath] {
 			continue
 		}
+		seen[pkg.PkgPath] = true
 		failed = append(failed, fmt.Sprintf("%s: %s", pkg.PkgPath, pkg.Errors[0]))
 	}
+	slices.Sort(failed)
 	return failed
 }
 

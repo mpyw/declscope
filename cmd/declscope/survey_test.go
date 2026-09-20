@@ -17,15 +17,17 @@ import (
 // works from one analysis.Pass that the harness hands it.
 
 // TestSurveyCountsAPackageOnce checks that the two variants of a package are
-// measured as one. The crossing is reached from an in-package test file, so
-// the variant that sees it and the variant that does not disagree, and the
-// wider one is the answer.
+// measured as one, and that the one measured is the wider.
+//
+// The test file is its own namespace and reaches a declaration of another, so
+// the two variants genuinely disagree: without it the package holds one
+// crossing, with it two. Measuring both variants would report three.
 func TestSurveyCountsAPackageOnce(t *testing.T) {
 	dir := t.TempDir()
 	writeTree(t, dir, "go.mod", testModule)
-	writeTree(t, dir, "p/user.go", "package p\n\nfunc userHelper() int { return 1 }\n")
+	writeTree(t, dir, "p/user.go", "package p\n\nfunc userHelper() int { return 1 }\n\nfunc userName() string { return \"u\" }\n")
 	writeTree(t, dir, "p/order.go", "package p\n\nfunc orderTotal() int { return userHelper() }\n")
-	writeTree(t, dir, "p/user_test.go", "package p\n\nimport \"testing\"\n\nfunc TestUserHelper(t *testing.T) { _ = userHelper() }\n")
+	writeTree(t, dir, "p/cart_test.go", "package p\n\nimport \"testing\"\n\nfunc TestCart(t *testing.T) { _ = userName() }\n")
 
 	out, code := runIn(t, bin, dir, "survey", "-format=json", "./...")
 	if code != 0 {
@@ -60,8 +62,66 @@ func TestSurveyCountsAPackageOnce(t *testing.T) {
 	if n := len(got.Packages); n != 1 {
 		t.Errorf("%d package rows, want 1: %+v", n, got.Packages)
 	}
-	if n := got.Totals["boundary"].Reported; n != 1 {
-		t.Errorf("boundary reported %d, want 1 — a crossing counted once, not once per variant", n)
+	if n := got.Totals["boundary"].Reported; n != 2 {
+		t.Errorf("boundary reported %d, want 2: the two crossings of the wider variant, each counted once", n)
+	}
+	if n := len(got.Checks.TypeCheck.Failed); n != 0 {
+		t.Errorf("type check reported %d failures on a module that compiles", n)
+	}
+}
+
+// TestSurveyRefusesAPatternItCannotLoad checks that a pattern naming nothing
+// is refused rather than answered with zeros. A package that could not be
+// loaded has no syntax at all, so measuring only what is analyzable would drop
+// it from the report along with the reason.
+func TestSurveyRefusesAPatternItCannotLoad(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+
+	out, code := runIn(t, bin, dir, "survey", "./nope")
+	if code == 0 {
+		t.Fatalf("survey answered for a pattern it could not load\n%s", out)
+	}
+	if !strings.Contains(out, "./nope") {
+		t.Errorf("the refusal does not name the pattern:\n%s", out)
+	}
+}
+
+// TestSurveyCountsADecisionPerDeclaration checks the state a package row calls
+// declared. One file-level //declscope:package can settle the scope of an
+// unexported declaration and settle nothing for the exported one beside it,
+// which already had package scope whatever the config said. Counting the
+// directive rather than the declarations under it made a file of exported
+// names read as a file of decisions.
+func TestSurveyCountsADecisionPerDeclaration(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, "p/util.go", "//declscope:package\n\npackage p\n\nfunc utilHelper() int { return 1 }\n\nfunc UtilExported() int { return 2 }\n")
+	writeTree(t, dir, "p/order.go", "package p\n\nfunc orderTotal() int { return utilHelper() + UtilExported() }\n")
+
+	out, code := runIn(t, bin, dir, "inspect", "-format=json", "./p")
+	if code != 0 {
+		t.Fatalf("inspect exited %d\n%s", code, out)
+	}
+	var got struct {
+		Edges []struct {
+			Declaration string `json:"declaration"`
+			State       string `json:"state"`
+		} `json:"edges"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+
+	want := map[string]string{"utilHelper": "declared", "UtilExported": "open"}
+	for _, e := range got.Edges {
+		if w, ok := want[e.Declaration]; ok && e.State != w {
+			t.Errorf("%s crosses as %q, want %q", e.Declaration, e.State, w)
+		}
+		delete(want, e.Declaration)
+	}
+	for decl := range want {
+		t.Errorf("no crossing reported for %s", decl)
 	}
 }
 

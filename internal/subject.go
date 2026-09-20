@@ -121,6 +121,14 @@ type target struct {
 	boundBy directive.Decl
 	// boundAt names which level that was.
 	boundAt scopesiteLevel
+	// decided records whether that directive settled anything for THIS
+	// declaration: a scope it could not have had under any configuration.
+	// An exported name resolves to package scope whatever the config says, so
+	// a file-level //declscope:package above it decides nothing, however many
+	// of its neighbours the same directive does decide for. The accounting
+	// behind the unused-directive report is per directive and cannot answer
+	// this: one unexported declaration in reach marks the whole site used.
+	decided bool
 	// dir holds the directives reaching the declaration. Its Ignores may be
 	// shared with sibling targets — a block's directive reaches every spec —
 	// so whether one silencedByIgnore anything is tracked per physical directive in

@@ -56,5 +56,5 @@ func TestSinkFlushesTheWriterItWraps(t *testing.T) {
 
 type sinkTestFlusher struct{ flushed *bool }
 
-func (f *sinkTestFlusher) Write(p []byte) (int, error) { return len(p), nil }
-func (f *sinkTestFlusher) Flush() error                { *f.flushed = true; return nil }
+func (*sinkTestFlusher) Write(p []byte) (int, error) { return len(p), nil }
+func (f *sinkTestFlusher) Flush() error              { *f.flushed = true; return nil }
