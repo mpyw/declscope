@@ -292,6 +292,11 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// testModule is the go.mod every temporary module here is built around.
+//
+//declscope:package // every subcommand's tests lay out a module with it
+const testModule = "module example.com/declscopetest\n\ngo 1.25\n"
+
 //declscope:package // every subcommand's tests lay out a module with it
 func writeTree(t *testing.T, root, name, body string) {
 	t.Helper()
