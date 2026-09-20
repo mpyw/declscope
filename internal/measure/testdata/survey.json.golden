@@ -92,8 +92,25 @@
       "largest": {
         "from": "completion",
         "to": "flags",
-        "reached": 2,
-        "uses": 5
+        "reached": 3,
+        "uses": 6
+      }
+    },
+    {
+      "package": "example.com/x/internal/generated",
+      "namespaces": 0,
+      "coreFiles": 0,
+      "allCore": false,
+      "boundary": {
+        "reported": 0,
+        "baselined": 0,
+        "declared": 0
+      },
+      "qualify": {
+        "asked": false,
+        "reported": 0,
+        "baselined": 0,
+        "exempt": 0
       }
     },
     {

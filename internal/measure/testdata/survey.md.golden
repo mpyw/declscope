@@ -21,12 +21,14 @@
 
 | package | reported | baselined | declared | largest crossing |
 |---|---:|---:|---:|---|
-| `example.com/x/internal/cmd` | 2 | 2 | 1 | completion → flags (2 declarations) |
-| `example.com/x/internal/legacy` (all core) | 0 | 0 | 0 | - |
+| `example.com/x/internal/cmd` | 2 | 2 | 1 | completion → flags (3 declarations) |
+| `example.com/x/internal/generated` [nothing read] | 0 | 0 | 0 | - |
+| `example.com/x/internal/legacy` [all core] | 0 | 0 | 0 | - |
 
 ## Packages — qualify
 
 | package | reported | baselined | exempt | worst namespace |
 |---|---:|---:|---:|---|
 | `example.com/x/internal/cmd` | 2 | 1 | 1 | flags 2 of 2 |
+| `example.com/x/internal/generated` | - | - | - | - |
 | `example.com/x/internal/legacy` | - | - | - | - |

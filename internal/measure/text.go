@@ -11,7 +11,7 @@ import (
 
 // text.go renders both reports for a terminal, as json.go and markdown.go
 // render both: one file per format, so that a change to how a dash or a ratio
-// is spelled lands in one place. It also keeps the method a plain WriteText on
+// is spelled lands in one place. It also keeps the method a plain writeText on
 // each type, where a file per type and format would have spelled the type into
 // the name of every method on it.
 
@@ -133,7 +133,7 @@ func writeTextQualify(out *sink, p Package, asked bool) {
 	out.print("\n")
 }
 
-// WriteSummaryText renders a whole run: what was checked, what was found, and
+// writeText renders a whole run: what was checked, what was found, and
 // which package to open first.
 //
 //declscope:package // format.go dispatches to it

@@ -89,7 +89,9 @@ func SummaryOf(pkgs []Package, checks Checks) Summary {
 			// for. Where it applies is a per-package question, which the rows
 			// below answer.
 			total.Asked = total.Asked || count.Asked
-			total.Keyable = count.Keyable
+			// A property of the rule, not of the package, so the fold must
+			// not let the last package seen decide it.
+			total.Keyable = total.Keyable || count.Keyable
 			out.Totals[r] = total
 		}
 		out.Rows = append(out.Rows, summaryRowOf(p))

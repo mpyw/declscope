@@ -199,8 +199,11 @@ func (s Summary) writeMarkdown(w io.Writer) error {
 	out.print("| package | reported | baselined | declared | largest crossing |\n|---|---:|---:|---:|---|\n")
 	for _, r := range s.Rows {
 		name := "`" + r.Package + "`"
-		if r.AllCore {
-			name += " (all core)"
+		switch {
+		case r.Namespaces == 0:
+			name += " [nothing read]"
+		case r.AllCore:
+			name += " [all core]"
 		}
 		largest := "-"
 		if r.HasLargest {

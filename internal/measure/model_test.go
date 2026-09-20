@@ -28,7 +28,11 @@ func fixturePackage() Package {
 			// would hide it behind the precedence.
 			{From: "(core)", To: "completion", Declaration: "compBuf", Kind: "var", Uses: 2, State: EdgeBaselined},
 			{From: "flags", To: "completion", Declaration: "compName", Kind: "func", Uses: 1, State: EdgeDeclared},
+			// Reached from two namespaces, so the note below the table can be
+			// told apart from one counting edges: one declaration silenced,
+			// not two crossings.
 			{From: "(core)", To: "flags", Declaration: "flagSet", Kind: "var", Uses: 4, State: EdgeIgnored},
+			{From: "completion", To: "flags", Declaration: "flagSet", Kind: "var", Uses: 1, State: EdgeIgnored},
 			{From: "completion", To: "(core)", Declaration: "Run", Kind: "func", Uses: 9, State: EdgeOpen},
 		},
 		Names: []NameFinding{
@@ -53,6 +57,15 @@ func fixtureSummary() Summary {
 		Path:       "example.com/x/internal/legacy",
 		AllCore:    true,
 		Namespaces: []Namespace{{Name: "(core)", Files: []string{"a.go", "b.go"}, Core: true, Declarations: 7}},
+		Findings: map[rule.Rule]Count{
+			rule.Boundary: {Asked: true, Keyable: true},
+			rule.Qualify:  {Keyable: true},
+		},
+	}, {
+		// No file of this package was read at all: every one is generated, or
+		// the filter removed them. Its row has to say so in every format, and
+		// the two disagreed about it while no fixture held one.
+		Path: "example.com/x/internal/generated",
 		Findings: map[rule.Rule]Count{
 			rule.Boundary: {Asked: true, Keyable: true},
 			rule.Qualify:  {Keyable: true},

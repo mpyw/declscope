@@ -119,6 +119,14 @@
     },
     {
       "from": "completion",
+      "to": "flags",
+      "declaration": "flagSet",
+      "kind": "var",
+      "uses": 1,
+      "state": "ignored"
+    },
+    {
+      "from": "completion",
       "to": "(core)",
       "declaration": "Run",
       "kind": "func",
