@@ -33,19 +33,15 @@ func TestGoldens(t *testing.T) {
 		name   string
 		render func(*bytes.Buffer) error
 	}{
-		{"inspect.text", func(b *bytes.Buffer) error { return pkg.WriteFormat(b, FormatText) }},
 		{"inspect.json", func(b *bytes.Buffer) error { return pkg.WriteFormat(b, FormatJSON) }},
 		{"inspect.md", func(b *bytes.Buffer) error { return pkg.WriteFormat(b, FormatMarkdown) }},
-		{"survey.text", func(b *bytes.Buffer) error { return summary.WriteFormat(b, FormatText) }},
 		{"survey.json", func(b *bytes.Buffer) error { return summary.WriteFormat(b, FormatJSON) }},
 		{"survey.md", func(b *bytes.Buffer) error { return summary.WriteFormat(b, FormatMarkdown) }},
 		// A package where both rules were switched off, and one where every
 		// file joined the core: between them they reach the branches that
 		// print a dash, the note about an unchecked crossing, and the two
 		// "nothing to report" paths.
-		{"unchecked.text", func(b *bytes.Buffer) error { return unchecked.WriteFormat(b, FormatText) }},
 		{"unchecked.md", func(b *bytes.Buffer) error { return unchecked.WriteFormat(b, FormatMarkdown) }},
-		{"quiet.text", func(b *bytes.Buffer) error { return quiet.WriteFormat(b, FormatText) }},
 		{"quiet.md", func(b *bytes.Buffer) error { return quiet.WriteFormat(b, FormatMarkdown) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

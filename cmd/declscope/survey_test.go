@@ -150,7 +150,7 @@ func TestSurveyRefusesAPackageThatDoesNotCompile(t *testing.T) {
 	if !strings.Contains(out, "1 failed") {
 		t.Errorf("the type check line does not report the failure:\n%s", out)
 	}
-	if strings.Contains(out, "example.com/declscopetest/p   0") {
+	if strings.Contains(out, "`example.com/declscopetest/p` |") {
 		t.Errorf("a package that did not compile was given a clean row:\n%s", out)
 	}
 }
@@ -166,7 +166,7 @@ func TestFormatNamesWhatItAccepts(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("an unknown format was accepted\n%s", out)
 	}
-	for _, want := range []string{"unknown format", "text, json, markdown"} {
+	for _, want := range []string{"unknown format", "markdown, json"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the error does not say %q:\n%s", want, out)
 		}
@@ -195,20 +195,21 @@ func TestSurveyLeavesTheSurplusRuleAloneWhereTheAnalyzerDoes(t *testing.T) {
 	if strings.Contains(analyzed, "surplus") {
 		t.Fatalf("the analyzer itself reported surplus here; the fixture no longer tests what it means to:\n%s", analyzed)
 	}
-	if !surveyTestRow(surveyed, "surplus", "-") {
+	if !surveyTestRuleRow(surveyed, "surplus", "-") {
 		t.Errorf("survey reports the surplus rule as asked where the analyzer stood it down:\n%s", surveyed)
 	}
 }
 
-// surveyTestRow reports whether the named row of a text table starts with the
-// given cell. Columns are aligned with padding that moves as other rows grow,
-// so the check reads the cells rather than the spacing between them.
-func surveyTestRow(out, name, first string) bool {
+// surveyTestRuleRow reports whether the Findings row for a rule opens with the
+// given cell. The cells are padded to their column, so the check reads them
+// rather than the spacing.
+func surveyTestRuleRow(out, rule, found string) bool {
 	for _, line := range strings.Split(out, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) >= 2 && fields[0] == name {
-			return fields[1] == first
+		cells := strings.Split(strings.Trim(strings.TrimSpace(line), "|"), "|")
+		if len(cells) < 2 || strings.Trim(strings.TrimSpace(cells[0]), "`") != rule {
+			continue
 		}
+		return strings.TrimSpace(cells[1]) == found
 	}
 	return false
 }

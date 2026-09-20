@@ -34,7 +34,7 @@ func surveyRun(args []string) {
 	configPath := fs.String("config", "", "path to a declscope YAML config file")
 	tests := fs.Bool("test", true, "measure *_test.go files as well")
 	allowErrors := fs.Bool("allow-errors", false, "measure anyway when some packages do not type-check")
-	format := fs.String("format", string(measure.FormatText), "output format: text, json or markdown")
+	format := fs.String("format", string(measure.FormatMarkdown), "output format: markdown or json")
 	fs.Usage = func() {
 		_, _ = io.WriteString(fs.Output(), surveyUsage)
 		fs.PrintDefaults()

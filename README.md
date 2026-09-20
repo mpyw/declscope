@@ -949,9 +949,10 @@ The columns count declarations within a pair, so they sum to more than the rule 
 
 | `-format` | For |
 | --- | --- |
-| `text` *(default)* | Reading in a terminal |
+| `markdown` *(default)* | Reading in a terminal **and** pasting into an issue, a pull request or a README. Cells are padded, so the same output is an aligned table in both. `inspect` adds a Mermaid diagram of the crossings |
 | `json` | An agent, and anything scripted |
-| `markdown` | Pasting into an issue, a pull request or a README. `inspect` adds a Mermaid diagram of the crossings |
+
+There is no third format. A plain-text renderer beside this one was the source of most of the defects found in review — a note added to one and not the other, a count spelled by hand in one where the other called a shared helper — and one renderer cannot disagree with itself.
 
 The JSON keeps `edges` and `names` flat, one row each, and `namespaces` carries the denominators every ratio divides by: between the three, each table above can be folded again a consumer's own way. Markdown is a rendering and never a different data set.
 

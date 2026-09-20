@@ -4,13 +4,14 @@
 
 ## Namespaces
 
-| namespace | files | declarations | qualify targets |
-|---|---|---:|---:|
-| (core) | `a.go`, `b.go` | 9 | - |
+| namespace | files          | declarations | qualify targets |
+| --------- | -------------- | -----------: | --------------: |
+| (core)    | `a.go`, `b.go` |            9 |               - |
 
 ## Crossings
 
 Nothing crosses a namespace in this package.
+
 
 ## Qualify
 

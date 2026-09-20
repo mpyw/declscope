@@ -22,7 +22,7 @@ func TestInspectNamesThePackageItWasAskedFor(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("inspect exited %d\n%s", code, out)
 	}
-	if !strings.Contains(out, "Package   example.com/declscopetest/q\n") {
+	if !strings.Contains(out, "# example.com/declscopetest/q\n") {
 		t.Errorf("inspect reported another package:\n%s", out)
 	}
 }

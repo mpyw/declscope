@@ -13,24 +13,28 @@ import (
 type Format string
 
 const (
-	// FormatText is aligned tables for a terminal.
-	FormatText Format = "text"
-
-	// FormatJSON is for an agent and for anything scripted. It is the
-	// interface the adoption skill reads.
-	FormatJSON Format = "json"
-
-	// FormatMarkdown is for pasting into an issue, a pull request, a README
-	// or an article: GitHub-flavoured tables, and a diagram where one fits.
+	// FormatMarkdown is the default: GitHub-flavoured tables, and a diagram
+	// where one fits. Its cells are padded, so it reads in a terminal as an
+	// aligned table and renders in an issue, a pull request or a README as
+	// the same table.
+	//
+	// There was a third format, plain aligned text, and keeping the two in
+	// step turned out to be the most common defect in this package: a note
+	// added to one, a count spelled by hand in one, a line printed after an
+	// early return in the other. One renderer cannot disagree with itself.
 	//
 	// It is a rendering and never a different data set. Anything it shows has
 	// to be derivable from the JSON of the same run; a number that exists only
 	// in markdown is a bug.
 	FormatMarkdown Format = "markdown"
+
+	// FormatJSON is for an agent and for anything scripted. It is the
+	// interface the adoption skill reads.
+	FormatJSON Format = "json"
 )
 
 // FormatSet is the values the flag accepts, in the order an error names them.
-var FormatSet = []Format{FormatText, FormatJSON, FormatMarkdown}
+var FormatSet = []Format{FormatMarkdown, FormatJSON}
 
 // ParseFormat resolves the flag value, and names what it takes when it cannot.
 func ParseFormat(s string) (Format, error) {
@@ -50,24 +54,16 @@ func ParseFormat(s string) (Format, error) {
 // the renderers are reached through it, so that a caller cannot pick one and
 // bypass the choice the flag records.
 func (p Package) WriteFormat(w io.Writer, f Format) error {
-	switch f {
-	case FormatJSON:
+	if f == FormatJSON {
 		return p.writeJSON(w)
-	case FormatMarkdown:
-		return p.writeMarkdown(w)
-	default:
-		return p.writeText(w)
 	}
+	return p.writeMarkdown(w)
 }
 
 // WriteFormat renders a whole run in the chosen format.
 func (s Summary) WriteFormat(w io.Writer, f Format) error {
-	switch f {
-	case FormatJSON:
+	if f == FormatJSON {
 		return s.writeJSON(w)
-	case FormatMarkdown:
-		return s.writeMarkdown(w)
-	default:
-		return s.writeText(w)
 	}
+	return s.writeMarkdown(w)
 }

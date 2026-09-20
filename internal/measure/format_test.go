@@ -18,7 +18,7 @@ func TestParseFormatNamesWhatItTakes(t *testing.T) {
 	if err == nil {
 		t.Fatal("an unknown format was accepted")
 	}
-	for _, want := range []string{"yaml", "text", "json", "markdown"} {
+	for _, want := range []string{"yaml", "markdown", "json"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the error does not mention %q: %v", want, err)
 		}
@@ -29,7 +29,6 @@ func TestParseFormatNamesWhatItTakes(t *testing.T) {
 // mark only that renderer writes.
 func TestWriteFormatDispatches(t *testing.T) {
 	for format, mark := range map[Format]string{
-		FormatText:     "Namespaces ",
 		FormatJSON:     `"namespaces"`,
 		FormatMarkdown: "## Namespaces",
 	} {

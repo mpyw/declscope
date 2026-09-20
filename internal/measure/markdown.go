@@ -32,17 +32,15 @@ func (p Package) writeMarkdown(w io.Writer) error {
 
 	asked := p.Findings[rule.Qualify].Asked
 
-	out.print("## Namespaces\n\n")
-	out.print("| namespace | files | declarations | qualify targets |\n|---|---|---:|---:|\n")
+	rows := [][]string{{"namespace", "files", "declarations", "qualify targets"}}
 	for _, ns := range p.Namespaces {
-		files := make([]string, 0, len(ns.Files))
-		for _, f := range ns.Files {
-			files = append(files, "`"+f+"`")
-		}
-		out.printf("| %s | %s | %d | %s |\n",
-			ns.Name, strings.Join(files, ", "), ns.Declarations,
-			cellCount(ns.QualifyTargets, asked && !ns.Core))
+		rows = append(rows, []string{
+			ns.Name, "`" + strings.Join(ns.Files, "`, `") + "`",
+			fmt.Sprint(ns.Declarations),
+			cellCount(ns.QualifyTargets, asked && !ns.Core),
+		})
 	}
+	writeMarkdownTable(out, "Namespaces", rows)
 
 	writeMarkdownCrossings(out, p, p.Findings[rule.Boundary].Asked)
 	writeMarkdownReach(out, p)
@@ -52,25 +50,27 @@ func (p Package) writeMarkdown(w io.Writer) error {
 
 func writeMarkdownCrossings(out *sink, p Package, asked bool) {
 	crossings := p.Crossings()
-	out.print("\n## Crossings\n\n")
 	if len(crossings) == 0 {
-		out.print("Nothing crosses a namespace in this package.\n")
+		out.print("## Crossings\n\nNothing crosses a namespace in this package.\n\n")
 		return
 	}
-	out.print("| crossing | mutual | declared | baselined | reported | clears | reached | uses |\n|---|---|---:|---:|---:|---:|---:|---:|\n")
+	rows := [][]string{{"crossing", "mutual", "declared", "baselined", "reported", "clears", "reached", "uses"}}
 	for _, c := range crossings {
-		out.printf("| %s → %s | %s | %s | %s | %s | %s | %d of %d | %d |\n",
-			c.From, c.To, cellYes(c.Mutual),
+		rows = append(rows, []string{
+			c.From + " → " + c.To, cellYes(c.Mutual),
 			cellCount(c.Declared, asked), cellCount(c.Baselined, asked), cellCount(c.Reported, asked),
 			cellCount(c.Clears, asked),
-			c.Reached, c.Declarations, c.Uses)
+			fmt.Sprintf("%d of %d", c.Reached, c.Declarations),
+			fmt.Sprint(c.Uses),
+		})
 	}
+	writeMarkdownTable(out, "Crossings", rows)
 	if open := p.DeclarationsCrossing(EdgeOpen); open > 0 {
-		out.printf("\n%s further: open, package-scoped by default rather than by decision, so left out of the table and of the diagram.\n",
+		out.printf("%s further: open, package-scoped by default rather than by decision, so left out of the table and of the diagram.\n",
 			cellPlural(open, "declaration is", "declarations are"))
 	}
 	if asked {
-		out.printf("\nDeclarations crossed: %d reported, %d baselined, %d declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.\n",
+		out.printf("Declarations crossed: %d reported, %d baselined, %d declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.\n",
 			p.DeclarationsCrossing(EdgeReported),
 			p.DeclarationsCrossing(EdgeBaselined),
 			p.DeclarationsCrossing(EdgeDeclared))
@@ -133,12 +133,14 @@ func writeMarkdownReach(out *sink, p Package) {
 	if len(reached) == 0 {
 		return
 	}
-	out.print("\n## Most-reached declarations\n\n")
-	out.print("| declaration | namespace | reached from | state |\n|---|---|---:|---|\n")
+	rows := [][]string{{"declaration", "namespace", "reached from", "state"}}
 	for _, r := range reached {
-		out.printf("| `%s` | %s | %s | %s |\n",
-			r.Declaration, r.Namespace, cellPlural(r.From, "namespace", "namespaces"), r.State)
+		rows = append(rows, []string{
+			"`" + r.Declaration + "`", r.Namespace,
+			cellPlural(r.From, "namespace", "namespaces"), string(r.State),
+		})
 	}
+	writeMarkdownTable(out, "Most-reached declarations", rows)
 }
 
 func writeMarkdownQualify(out *sink, p Package, asked bool) {
@@ -166,8 +168,7 @@ func writeMarkdownQualify(out *sink, p Package, asked bool) {
 //declscope:package // format.go dispatches to it
 func (s Summary) writeMarkdown(w io.Writer) error {
 	out := newSink(w)
-	out.print("## Checks in force\n\n")
-	out.print("| check | value | packages |\n|---|---|---:|\n")
+	rows := [][]string{{"check", "value", "packages"}}
 	for _, c := range s.Checks.Configs {
 		chain := "built-in defaults"
 		if len(c.Chain) > 0 {
@@ -177,33 +178,36 @@ func (s Summary) writeMarkdown(w io.Writer) error {
 		if c.Exported {
 			qualify += ", exported"
 		}
-		out.printf("| config | %s | %d |\n", chain, c.Packages)
-		out.printf("| rules | boundary %s, qualify %s, surplus %s | %d |\n",
-			cellOnOff(c.Boundary), qualify, cellOnOff(c.Surplus), c.Packages)
+		rows = append(rows,
+			[]string{"config", chain, fmt.Sprint(c.Packages)},
+			[]string{"rules", fmt.Sprintf("boundary %s, qualify %s, surplus %s",
+				cellOnOff(c.Boundary), qualify, cellOnOff(c.Surplus)), fmt.Sprint(c.Packages)})
 	}
 	for _, b := range s.Checks.Baselines {
-		out.printf("| baseline | `%s`, %s | |\n", b.Path, cellPlural(b.Entries, "entry", "entries"))
+		rows = append(rows, []string{"baseline",
+			fmt.Sprintf("`%s`, %s", b.Path, cellPlural(b.Entries, "entry", "entries")), ""})
 	}
-	out.printf("| type check | %s | |\n", cellTypeCheck(s.Checks.TypeCheck))
+	rows = append(rows, []string{"type check", cellTypeCheck(s.Checks.TypeCheck), ""})
+	writeMarkdownTable(out, "Checks in force", rows)
 
-	out.print("\n## Findings\n\n")
-	out.print("| rule | found | ignored | baselined | reported |\n|---|---:|---:|---:|---:|\n")
+	findings := [][]string{{"rule", "found", "ignored", "baselined", "reported"}}
 	for _, r := range rule.All {
 		count, ok := s.Totals[r]
 		if !ok {
 			continue
 		}
 		if !count.Asked {
-			out.printf("| `%s` | - | - | - | - |\n", r)
+			findings = append(findings, []string{"`" + string(r) + "`", "-", "-", "-", "-"})
 			continue
 		}
-		out.printf("| `%s` | %d | %d | %s | %d |\n",
-			r, count.Found, count.Ignored,
-			cellKeyable(count.Baselined, count.Keyable), count.Reported)
+		findings = append(findings, []string{
+			"`" + string(r) + "`", fmt.Sprint(count.Found), fmt.Sprint(count.Ignored),
+			cellKeyable(count.Baselined, count.Keyable), fmt.Sprint(count.Reported),
+		})
 	}
+	writeMarkdownTable(out, "Findings", findings)
 
-	out.print("\n## Packages — boundary\n\n")
-	out.print("| package | reported | baselined | declared | largest crossing |\n|---|---:|---:|---:|---|\n")
+	boundary := [][]string{{"package", "reported", "baselined", "declared", "largest crossing"}}
 	for _, r := range s.Rows {
 		name := "`" + r.Package + "`"
 		switch {
@@ -217,23 +221,38 @@ func (s Summary) writeMarkdown(w io.Writer) error {
 			largest = fmt.Sprintf("%s → %s (%s)", r.Largest.From, r.Largest.To,
 				cellPlural(r.Largest.Reached, "declaration", "declarations"))
 		}
-		out.printf("| %s | %d | %d | %d | %s |\n",
-			name, r.BoundaryReported, r.BoundaryBaselined, r.BoundaryDeclared, largest)
+		boundary = append(boundary, []string{
+			name, fmt.Sprint(r.BoundaryReported), fmt.Sprint(r.BoundaryBaselined),
+			fmt.Sprint(r.BoundaryDeclared), largest,
+		})
 	}
+	writeMarkdownTable(out, "Packages — boundary", boundary)
 
-	out.print("\n## Packages — qualify\n\n")
-	out.print("| package | reported | baselined | exempt | worst namespace |\n|---|---:|---:|---:|---|\n")
+	qualify := [][]string{{"package", "reported", "baselined", "exempt", "worst namespace"}}
 	for _, r := range s.Rows {
 		if !r.QualifyAsked {
-			out.printf("| `%s` | - | - | - | - |\n", r.Package)
+			qualify = append(qualify, []string{"`" + r.Package + "`", "-", "-", "-", "-"})
 			continue
 		}
 		worst := "-"
 		if r.HasWorst {
 			worst = fmt.Sprintf("%s %d of %d", r.Worst.Namespace, r.Worst.Saturation(), r.Worst.Targets)
 		}
-		out.printf("| `%s` | %d | %d | %d | %s |\n",
-			r.Package, r.QualifyReported, r.QualifyBaselined, r.QualifyExempt, worst)
+		qualify = append(qualify, []string{
+			"`" + r.Package + "`", fmt.Sprint(r.QualifyReported), fmt.Sprint(r.QualifyBaselined),
+			fmt.Sprint(r.QualifyExempt), worst,
+		})
 	}
+	writeMarkdownTable(out, "Packages — qualify", qualify)
 	return out.flush()
+}
+
+// writeMarkdownTable prints one padded table under its heading. Every table in
+// this file goes through it, so a column added anywhere lines up everywhere.
+func writeMarkdownTable(out *sink, heading string, rows [][]string) {
+	out.printf("## %s\n\n", heading)
+	for _, line := range cellTable(rows) {
+		out.print(line + "\n")
+	}
+	out.print("\n")
 }
