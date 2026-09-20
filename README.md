@@ -162,7 +162,7 @@ Pin it per project in `mise.toml`:
 
 ```toml
 [tools]
-"github:mpyw/declscope" = "0.8.0"
+"github:mpyw/declscope" = "0.9.0"
 ```
 
 As a tool dependency in `go.mod`:
@@ -187,7 +187,7 @@ go run github.com/mpyw/declscope/cmd/declscope@latest ./...
 From a release archive, verified against the published checksums:
 
 ```bash
-VERSION=0.8.0
+VERSION=0.9.0
 curl -LO "https://github.com/mpyw/declscope/releases/download/v${VERSION}/declscope_${VERSION}_darwin_arm64.tar.gz"
 curl -LO "https://github.com/mpyw/declscope/releases/download/v${VERSION}/checksums.txt"
 shasum -a 256 -c checksums.txt --ignore-missing
