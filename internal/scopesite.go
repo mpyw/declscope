@@ -83,6 +83,26 @@ func (c *collection) scopeSite(d directive.Decl) *scopeSite {
 	return s
 }
 
+// decidedAtScopeSite reports whether the directive that supplied a scope
+// actually decided it.
+//
+// A directive is bound only when the scope it names is one the declaration
+// could not have had under any configuration. An exported declaration resolves
+// to package scope whatever the config says, so a file-level
+// //declscope:package above it settles nothing — which is why the unused
+// directive report leaves it alone, and why the survey must not count it as a
+// decision somebody recorded. Twenty exported declarations under one such
+// directive are not twenty decisions.
+//
+//declscope:package // the survey asks it what counts as a decision
+func (c *collection) decidedAtScopeSite(d directive.Decl) bool {
+	if !d.HasScope {
+		return false
+	}
+	s, ok := c.scopes[d.ScopePos]
+	return ok && s.bound
+}
+
 // shadowedAtScopeSite records that a nearer directive supplied the scope of something outer
 // reaches. Called where the two are merged, since after the merge only the
 // winner's position survives.

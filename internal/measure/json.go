@@ -18,9 +18,17 @@ import (
 // unpick somebody else's grouping first.
 
 type jsonPackage struct {
-	Package    string          `json:"package"`
-	Config     []string        `json:"config,omitempty"`
-	AllCore    bool            `json:"allCore"`
+	Package string   `json:"package"`
+	Config  []string `json:"config,omitempty"`
+	AllCore bool     `json:"allCore"`
+
+	// Findings carries the same asked flag the tables print a dash for.
+	// Without it a consumer reads qualifyTargets as a live number where the
+	// text form says the rule was never in force — a zero from a switched-off
+	// rule reading exactly like a zero from clean code, in the format the
+	// adoption skill tells an agent to use.
+	Findings map[string]jsonCount `json:"findings"`
+
 	Namespaces []jsonNamespace `json:"namespaces"`
 	Edges      []jsonEdge      `json:"edges"`
 	Names      []jsonName      `json:"names"`
@@ -56,9 +64,10 @@ type jsonName struct {
 // WriteJSON renders one package.
 func (p Package) WriteJSON(w io.Writer) error {
 	out := jsonPackage{
-		Package: p.Path,
-		Config:  p.Config,
-		AllCore: p.AllCore,
+		Package:  p.Path,
+		Config:   p.Config,
+		AllCore:  p.AllCore,
+		Findings: jsonCounts(p.Findings),
 		// Never nil: an empty array says "none", where null says "this
 		// command does not report that", and a consumer has to branch.
 		Namespaces: make([]jsonNamespace, 0, len(p.Namespaces)),
@@ -183,8 +192,8 @@ type jsonLargest struct {
 	Uses    int    `json:"uses"`
 }
 
-// WriteSummaryJSON renders a whole run.
-func (s Summary) WriteSummaryJSON(w io.Writer) error {
+// WriteJSON renders a whole run.
+func (s Summary) WriteJSON(w io.Writer) error {
 	out := jsonSummary{
 		Checks: jsonChecks{
 			TypeCheck: jsonTypeCheck{
@@ -194,7 +203,6 @@ func (s Summary) WriteSummaryJSON(w io.Writer) error {
 			Configs:   make([]jsonConfig, 0, len(s.Checks.Configs)),
 			Baselines: make([]jsonBaseline, 0, len(s.Checks.Baselines)),
 		},
-		Totals:   map[string]jsonCount{},
 		Packages: make([]jsonSummaryPackage, 0, len(s.Rows)),
 	}
 	for _, c := range s.Checks.Configs {
@@ -215,19 +223,7 @@ func (s Summary) WriteSummaryJSON(w io.Writer) error {
 		// where the explicit mapping goes back in.
 		out.Checks.Baselines = append(out.Checks.Baselines, jsonBaseline(b))
 	}
-	for _, r := range rule.All {
-		count, ok := s.Totals[r]
-		if !ok {
-			continue
-		}
-		out.Totals[string(r)] = jsonCount{
-			Asked:     count.Asked,
-			Found:     count.Found,
-			Ignored:   count.Ignored,
-			Baselined: count.Baselined,
-			Reported:  count.Reported,
-		}
-	}
+	out.Totals = jsonCounts(s.Totals)
 	for _, row := range s.Rows {
 		pkg := jsonSummaryPackage{
 			Package:    row.Package,
@@ -264,6 +260,26 @@ func (s Summary) WriteSummaryJSON(w io.Writer) error {
 		out.Packages = append(out.Packages, pkg)
 	}
 	return writeJSONValue(w, out)
+}
+
+// jsonCounts renders one tally per rule, in rule.All's order, leaving out a
+// rule the model holds nothing for.
+func jsonCounts(counts map[rule.Rule]Count) map[string]jsonCount {
+	out := make(map[string]jsonCount, len(counts))
+	for _, r := range rule.All {
+		count, ok := counts[r]
+		if !ok {
+			continue
+		}
+		out[string(r)] = jsonCount{
+			Asked:     count.Asked,
+			Found:     count.Found,
+			Ignored:   count.Ignored,
+			Baselined: count.Baselined,
+			Reported:  count.Reported,
+		}
+	}
+	return out
 }
 
 func writeJSONValue(w io.Writer, v any) error {

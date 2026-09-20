@@ -58,14 +58,14 @@ func (p Package) WriteFormat(w io.Writer, f Format) error {
 	}
 }
 
-// WriteSummaryFormat renders a whole run in the chosen format.
-func (s Summary) WriteSummaryFormat(w io.Writer, f Format) error {
+// WriteFormat renders a whole run in the chosen format.
+func (s Summary) WriteFormat(w io.Writer, f Format) error {
 	switch f {
 	case FormatJSON:
-		return s.WriteSummaryJSON(w)
+		return s.WriteJSON(w)
 	case FormatMarkdown:
-		return s.WriteSummaryMarkdown(w)
+		return s.WriteMarkdown(w)
 	default:
-		return s.WriteSummaryText(w)
+		return s.WriteText(w)
 	}
 }

@@ -9,10 +9,8 @@ import (
 	"slices"
 	"strings"
 
-	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 
-	"github.com/mpyw/declscope"
 	"github.com/mpyw/declscope/internal"
 	"github.com/mpyw/declscope/internal/config"
 	"github.com/mpyw/declscope/internal/measure"
@@ -56,7 +54,8 @@ func surveyRun(args []string) {
 	if err != nil {
 		surveyFail(err)
 	}
-	failed := loadErrors(pkgs)
+	analyzable := loadWidestVariants(pkgs)
+	failed := loadErrors(analyzable)
 	if len(failed) > 0 && !*allowErrors {
 		// A package that does not type-check produces no findings, and that
 		// is indistinguishable from a package with nothing wrong. The skill
@@ -66,11 +65,11 @@ func surveyRun(args []string) {
 			strings.Join(failed, "\n  ")))
 	}
 
-	summary, err := surveyPackages(pkgs, *configPath, failed)
+	summary, err := surveyPackages(analyzable, *configPath, failed)
 	if err != nil {
 		surveyFail(err)
 	}
-	if err := summary.WriteSummaryFormat(os.Stdout, chosen); err != nil {
+	if err := summary.WriteFormat(os.Stdout, chosen); err != nil {
 		surveyFail(err)
 	}
 }
@@ -88,7 +87,13 @@ func surveyPackages(pkgs []*packages.Package, configPath string, failed []string
 	baselines := map[string]measure.BaselineUse{}
 	analyzed := 0
 
-	for _, pkg := range loadWidestVariants(pkgs) {
+	for _, pkg := range pkgs {
+		if len(pkg.Errors) > 0 {
+			// A package that did not type-check has nothing to measure. Its
+			// row would be a clean one, which is the reading -allow-errors
+			// must not buy: checks.typeCheck names it instead.
+			continue
+		}
 		dir := loadedPackageDir(pkg)
 		opts, _, err := config.Resolve(dir, configPath)
 		if err != nil {
@@ -123,18 +128,15 @@ func surveyPackages(pkgs []*packages.Package, configPath string, failed []string
 			}
 		}
 
-		measured = append(measured, internal.Survey(&analysis.Pass{
-			Analyzer:  declscope.Analyzer,
-			Fset:      pkg.Fset,
-			Files:     pkg.Syntax,
-			Pkg:       pkg.Types,
-			TypesInfo: pkg.TypesInfo,
-			Report:    func(analysis.Diagnostic) {},
-		}, opts))
+		measured = append(measured, internal.Survey(loadedPass(pkg), opts))
 	}
 
 	checks := measure.Checks{
-		TypeCheck: measure.TypeCheck{Packages: analyzed, Failed: failed},
+		// Both numbers are counted over the same set: one entry per import
+		// path, the widest variant of each. Taking the failures per variant
+		// instead made "ok" the difference of two different populations, and
+		// a one-package module with a test file printed -1 packages ok.
+		TypeCheck: measure.TypeCheck{Packages: analyzed + len(failed), Failed: failed},
 	}
 	for _, key := range configOrder {
 		checks.Configs = append(checks.Configs, *configs[key])

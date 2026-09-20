@@ -4,6 +4,43 @@
     ".declscope.yaml"
   ],
   "allCore": false,
+  "findings": {
+    "boundary": {
+      "asked": true,
+      "found": 5,
+      "ignored": 1,
+      "baselined": 2,
+      "reported": 2
+    },
+    "directive": {
+      "asked": true,
+      "found": 1,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 1
+    },
+    "filter": {
+      "asked": true,
+      "found": 0,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 0
+    },
+    "qualify": {
+      "asked": true,
+      "found": 4,
+      "ignored": 1,
+      "baselined": 1,
+      "reported": 2
+    },
+    "surplus": {
+      "asked": true,
+      "found": 0,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 0
+    }
+  },
   "namespaces": [
     {
       "namespace": "(core)",
@@ -48,6 +85,14 @@
       "to": "flags",
       "declaration": "Flags.parsed",
       "kind": "field",
+      "uses": 2,
+      "state": "baselined"
+    },
+    {
+      "from": "(core)",
+      "to": "completion",
+      "declaration": "compBuf",
+      "kind": "var",
       "uses": 2,
       "state": "baselined"
     },
@@ -102,6 +147,15 @@
       "kind": "func",
       "exported": false,
       "state": "baselined",
+      "fixable": false
+    },
+    {
+      "namespace": "completion",
+      "file": "completion.go",
+      "declaration": "compLine",
+      "kind": "func",
+      "exported": false,
+      "state": "exempt",
       "fixable": false
     }
   ]

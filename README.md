@@ -895,26 +895,33 @@ Two subcommands report what the analyzer found, folded into the two questions ad
 | `declscope inspect <package>` | namespace, crossing | **What shape is this package in?** |
 
 ```console
-$ declscope survey ./internal/...
+$ declscope survey -config .declscope-strict.yaml ./internal/...
 Checks in force
   config          .declscope-strict.yaml                                12 packages
   rules           boundary on, qualify ondemand, exported, surplus on   12 packages
-  baseline        .declscope-baseline.yaml                              12 entries
   type check      12 packages ok, 0 failed
 
 Findings      found   ignored   baselined   reported
-  boundary    35      0         30          5
-  qualify     119     2         88          29
-  ...
+  boundary    0       0         0           0
+  qualify     0       0         0           0
+  surplus     0       0         0           0
+  directive   0       0         -           0
+  filter      0       0         -           0
+  total       0       0         0           0
 
-Packages — boundary          reported   baselined   declared   largest crossing
-  …/internal/cmd             3          8           5          completion → flags (9 declarations)
-  …/internal/store           0          30          0          index → store (5 declarations)
+Packages — boundary                     reported   baselined   declared   largest crossing
+  …/declscope/internal                  0          0           101        collect → (core) (50 declarations)
+  …/declscope/internal/measure          0          0           16         text → cell (7 declarations)
+  …/declscope/internal/baseline         0          0           0          -
 ```
 
-**The state of the checks comes before any count**, because a count means nothing without it. A zero from a rule that was switched off, from a package that did not compile, or from a baseline that absorbed everything reads exactly like a zero from clean code. A rule that was not asked prints `-`, never `0`, and a package that does not type-check stops the run rather than contributing a zero — pass `-allow-errors` to measure the rest anyway.
+That is this repository, which holds itself to `.declscope-strict.yaml`; a codebase adopting declscope reads with numbers in the first three columns rather than the third alone.
 
-The row worth reading is the second one: nothing reported, everything deferred, nothing decided. Under the analyzer alone it looks clean.
+**The state of the checks comes before any count**, because a count means nothing without it. A zero from a rule that was switched off, from a package that did not compile, or from a baseline that absorbed everything reads exactly like a zero from clean code.
+
+A rule prints `-` rather than `0` wherever it was not asked — switched off in the config, or standing itself down as `surplus` does for a package holding a file it cannot read as a reference site. A package that does not type-check stops the run rather than contributing a zero; `-allow-errors` continues and names it under `type check` instead of giving it a row.
+
+The row worth looking for in your own codebase is the one with nothing reported, much baselined and nothing declared: nothing decided, everything deferred, and clean under the analyzer alone.
 
 ```console
 $ declscope inspect ./internal/cmd
@@ -927,7 +934,9 @@ Qualify        exempt   baselined   reported   saturation
   flags        0        0           9          9 of 16
 ```
 
-One row per directed edge, so a mutual pair is two rows and the count in each direction survives. `reached` is how many of the reached namespace's declarations this edge touches: `12 of 19` says the second namespace holds the working parts of the first. `saturation` says how much of a namespace the naming rule is unsatisfied by — near the top, what is wrong is usually the namespace name rather than the declarations.
+One row per directed edge, so a mutual pair is two rows and the count in each direction survives. `reached` counts the declarations of the reached namespace that this edge touches, over every declaration that namespace holds: `12 of 19` says the second namespace holds the working parts of the first. Open crossings — package-scoped because nothing says otherwise — are left out of the rows and counted under the table, so they are outside the numerator and inside the denominator.
+
+`saturation` says how much of a namespace the naming rule is unsatisfied by, over the declarations it examines there. Near the top, what is wrong is usually the namespace name rather than the declarations; the skill carries that reading.
 
 ### Formats
 

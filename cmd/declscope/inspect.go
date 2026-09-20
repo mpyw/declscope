@@ -8,10 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 
-	"github.com/mpyw/declscope"
 	"github.com/mpyw/declscope/internal"
 	"github.com/mpyw/declscope/internal/config"
 	"github.com/mpyw/declscope/internal/measure"
@@ -64,25 +62,24 @@ func inspectRun(args []string) {
 			strings.Join(failed, "\n  ")))
 	}
 
-	pkg, err := inspectOnePackage(pkgs)
+	pkg, err := inspectOnePackage(loadWidestVariants(pkgs))
 	if err != nil {
 		inspectFail(err)
 	}
 
-	opts, configFile, err := config.Resolve(loadedPackageDir(pkg), *configPath)
+	dir := loadedPackageDir(pkg)
+	opts, _, err := config.Resolve(dir, *configPath)
 	if err != nil {
 		inspectFail(err)
 	}
-	surveyed := internal.Survey(&analysis.Pass{
-		Analyzer:  declscope.Analyzer,
-		Fset:      pkg.Fset,
-		Files:     pkg.Syntax,
-		Pkg:       pkg.Types,
-		TypesInfo: pkg.TypesInfo,
-		Report:    func(analysis.Diagnostic) {},
-	}, opts)
-	if configFile != "" {
-		surveyed.Config = []string{configFile}
+	surveyed := internal.Survey(loadedPass(pkg), opts)
+	// The chain, not the nearest file. Config files compose key by key, so
+	// the file next to the package can leave qualify at never while the one
+	// above it turned the rule on, and naming only the nearer one
+	// misattributes every rule that ran.
+	surveyed.Config = config.FindChain(dir)
+	if *configPath != "" {
+		surveyed.Config = []string{*configPath}
 	}
 	if err := surveyed.WriteFormat(os.Stdout, chosen); err != nil {
 		inspectFail(err)
@@ -92,44 +89,38 @@ func inspectRun(args []string) {
 // inspectOnePackage picks the package to report, and refuses where the answer
 // would be ambiguous.
 //
-// Loading with tests turns one pattern into up to three packages: the package,
-// its external test package, and the synthesized test binary. That is not the
-// ambiguity worth refusing over — they are variants of one thing, and the one
-// that sees every file is the one to report. Two distinct packages are.
+// Its input is already one package per import path, the widest variant of
+// each, so the ambiguity left is between distinct packages. An external test
+// package is one of those: foo_test declares into its own scope with its own
+// namespaces, and reporting it in answer to a request for foo would hand back
+// a different package under the asked-for name. It is skipped when its
+// subject is present, and refused alongside anything else.
 func inspectOnePackage(pkgs []*packages.Package) (*packages.Package, error) {
-	byPath := map[string][]*packages.Package{}
-	var paths []string
+	byPath := map[string]*packages.Package{}
 	for _, pkg := range pkgs {
-		if !loadIsAnalyzable(pkg) {
-			continue
-		}
-		path := strings.TrimSuffix(pkg.PkgPath, "_test")
-		if _, seen := byPath[path]; !seen {
-			paths = append(paths, path)
-		}
-		byPath[path] = append(byPath[path], pkg)
+		byPath[pkg.PkgPath] = pkg
 	}
+
+	var paths []string
+	for path := range byPath {
+		if subject := strings.TrimSuffix(path, "_test"); subject != path {
+			if _, ok := byPath[subject]; ok {
+				continue
+			}
+		}
+		paths = append(paths, path)
+	}
+	slices.Sort(paths)
+
 	switch len(paths) {
 	case 0:
 		return nil, fmt.Errorf("no package matched")
 	case 1:
+		return byPath[paths[0]], nil
 	default:
-		slices.Sort(paths)
 		return nil, fmt.Errorf("this pattern matches %d packages, and a namespace of one means nothing in another:\n  %s\nname one of them",
 			len(paths), strings.Join(paths, "\n  "))
 	}
-
-	// The variant that sees the most files sees the test files too, and with
-	// them the references the ordinary variant cannot: a declaration reached
-	// only from a test is reached all the same.
-	variants := byPath[paths[0]]
-	widest := variants[0]
-	for _, pkg := range variants[1:] {
-		if len(pkg.Syntax) > len(widest.Syntax) {
-			widest = pkg
-		}
-	}
-	return widest, nil
 }
 
 func inspectFail(err error) {

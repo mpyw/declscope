@@ -39,13 +39,13 @@ func (p Package) WriteMarkdown(w io.Writer) error {
 			cellCount(ns.QualifyTargets, asked && !ns.Core))
 	}
 
-	writeMarkdownCrossings(out, p)
+	writeMarkdownCrossings(out, p, p.Findings[rule.Boundary].Asked)
 	writeMarkdownReach(out, p)
 	writeMarkdownQualify(out, p, asked)
 	return out.flush()
 }
 
-func writeMarkdownCrossings(out *sink, p Package) {
+func writeMarkdownCrossings(out *sink, p Package, asked bool) {
 	crossings := p.Crossings()
 	out.print("\n## Crossings\n\n")
 	if len(crossings) == 0 {
@@ -54,8 +54,9 @@ func writeMarkdownCrossings(out *sink, p Package) {
 	}
 	out.print("| crossing | mutual | declared | baselined | reported | reached | uses |\n|---|---|---:|---:|---:|---:|---:|\n")
 	for _, c := range crossings {
-		out.printf("| %s → %s | %s | %d | %d | %d | %d of %d | %d |\n",
-			c.From, c.To, cellYes(c.Mutual), c.Declared, c.Baselined, c.Reported,
+		out.printf("| %s → %s | %s | %s | %s | %s | %d of %d | %d |\n",
+			c.From, c.To, cellYes(c.Mutual),
+			cellCount(c.Declared, asked), cellCount(c.Baselined, asked), cellCount(c.Reported, asked),
 			c.Reached, c.Declarations, c.Uses)
 	}
 	if open := p.OpenCrossings(); open > 0 {
@@ -145,9 +146,9 @@ func writeMarkdownQualify(out *sink, p Package, asked bool) {
 	}
 }
 
-// WriteSummaryMarkdown renders a whole run. It carries no diagram: the unit
+// WriteMarkdown renders a whole run. It carries no diagram: the unit
 // here is the package, and there is no edge set at that level to draw.
-func (s Summary) WriteSummaryMarkdown(w io.Writer) error {
+func (s Summary) WriteMarkdown(w io.Writer) error {
 	out := newSink(w)
 	out.print("## Checks in force\n\n")
 	out.print("| check | value | packages |\n|---|---|---:|\n")

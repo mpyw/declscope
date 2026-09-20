@@ -41,8 +41,9 @@ func Collect(pass *analysis.Pass, opts Options) []baseline.Key {
 // crossings between them, what became of each, and the tally behind each rule.
 // It is the entry point used by declscope survey and declscope inspect.
 //
-// Unlike Collect it reads the baseline rather than ignoring it, because what
-// the baseline is absorbing is one of the things being reported.
+// Unlike Collect it is given options with the baseline loaded — config.Resolve
+// rather than config.ResolveForBaseline — because what the baseline is
+// absorbing is one of the things being reported.
 func Survey(pass *analysis.Pass, opts Options) measure.Package {
 	return build(pass, opts).surveyed(pass, opts)
 }

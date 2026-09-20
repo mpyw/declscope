@@ -252,12 +252,12 @@ func (c *collection) surveyedFindingsForReport(pass *analysis.Pass, opts Options
 	findings := c.findingsForReport(pass, opts, t)
 	out := make([]measure.Finding, 0, len(findings))
 	for _, f := range findings {
-		state := measure.EdgeReported
+		state := measure.FindingReported
 		switch {
 		case c.silencedByIgnore(t, f.rule):
-			state = measure.EdgeIgnored
+			state = measure.FindingIgnored
 		case opts.Baseline.Has(f.key(pass, t)):
-			state = measure.EdgeBaselined
+			state = measure.FindingBaselined
 		}
 		out = append(out, measure.Finding{
 			Rule:        f.rule,
@@ -411,15 +411,7 @@ func (c *collection) boundaryFindingForReport(pass *analysis.Pass, opts Options,
 // Whether it applies at all depends on rules.naming.qualify, which defaults
 // to never: the convention is opt-in. See Mode and DefaultOptions.
 func (c *collection) qualifyFindingForReport(pass *analysis.Pass, opts Options, t *target) (reportedFinding, bool) {
-	if !opts.Qualify.Applies(c.namespaces) || !t.reportsName(opts) {
-		return reportedFinding{}, false
-	}
-	// A namespace is always an identity, but not always a prefix: 2fa.go
-	// bounds its declarations like any other file, yet no identifier can
-	// start with a digit. Containment alone could be satisfied there, by
-	// spelling the namespace later in the name, but the fix could not be,
-	// so the rule stays out rather than report what it cannot remedy.
-	if !namespace.CanPrefix(t.file.ns) {
+	if !c.qualifyExaminesForReport(pass, opts, t) {
 		return reportedFinding{}, false
 	}
 	name := t.obj.Name()
@@ -434,11 +426,6 @@ func (c *collection) qualifyFindingForReport(pass *analysis.Pass, opts Options, 
 			return reportedFinding{}, false
 		}
 	}
-	// main is a name the toolchain requires, so nothing can be asked of it.
-	if t.kind == kindFunc && name == "main" && pass.Pkg.Name() == "main" {
-		return reportedFinding{}, false
-	}
-
 	f := reportedFinding{
 		rule: rule.Qualify,
 		decl: name,
@@ -456,6 +443,30 @@ func (c *collection) qualifyFindingForReport(pass *analysis.Pass, opts Options, 
 		f.fixes = append(f.fixes, fix)
 	}
 	return f, true
+}
+
+// qualifyExaminesForReport reports whether the naming rule asks anything of a
+// declaration at all. It is the whole gate, in one place, because it is also
+// the denominator every saturation divides by: a survey that counted one of
+// these conjuncts would move a number without a diagnostic moving with it.
+//
+// A namespace is always an identity, but not always a prefix: 2fa.go bounds
+// its declarations like any other file, yet no identifier can start with a
+// digit. Containment alone could be satisfied there, by spelling the namespace
+// later in the name, but the fix could not be, so the rule stays out rather
+// than report what it cannot remedy.
+//
+// main is a name the toolchain requires, so nothing can be asked of it.
+//
+//declscope:package // the survey divides by it, and must divide by this one
+func (c *collection) qualifyExaminesForReport(pass *analysis.Pass, opts Options, t *target) bool {
+	if !opts.Qualify.Applies(c.namespaces) || !t.reportsName(opts) {
+		return false
+	}
+	if !namespace.CanPrefix(t.file.ns) {
+		return false
+	}
+	return t.kind != kindFunc || t.obj.Name() != "main" || pass.Pkg.Name() != "main"
 }
 
 // directiveFixInReport inserts an explicit scope directive above the declaration.
@@ -539,8 +550,6 @@ func fileInReport(f *fileInfo) string {
 // while the two are the same unit. A method filed away from its type points the
 // reader at a namespace that does not hold it, so the rule reaches it and asks
 // for the namespace it is actually written in.
-//
-//declscope:package // the survey divides by it, and must divide by this one
 func (t *target) reportsName(opts Options) bool {
 	if t.file.core || t.reportsToolchainName() {
 		return false

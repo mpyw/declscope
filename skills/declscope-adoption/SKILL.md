@@ -100,7 +100,9 @@ declscope survey -format=json ./...           # which package to open first
 declscope inspect -format=json <that package> # what shape it is in
 ```
 
-**`survey` refuses to print a count it cannot stand behind.** It stops on a package that does not type-check, and it reports what was in force before anything else: which config governed which packages, whether each rule was on, and how many entries a baseline holds. A rule that was not asked prints `-`, never `0`.
+**`survey` refuses to print a count it cannot stand behind.** It stops on a package that does not type-check, and it reports what was in force before anything else: which config governed which packages, whether each rule was on, and how many entries a baseline holds. A rule that was not asked prints `-`, never `0` — including a rule that stood itself down, as `surplus` does for a package holding assembly, cgo or a build-excluded file.
+
+`-allow-errors` continues past a package that does not compile. It is named under `type check` and given no row, so nothing in the tables reads as a clean result for it.
 
 That removes three steps this skill used to require. Do **not** move the baseline aside to measure: `survey` reports `baselined` as its own column, so what is suppressed and what is left are visible at once. Do not count message fragments either; the wording of a diagnostic is not an interface, and the JSON is.
 
@@ -200,7 +202,7 @@ declscope survey ./...              # refuses on a package that does not type-ch
 go build ./... && declscope ./...   # never read a bare count without this
 ```
 
-**A zero may be the filter, not the code.** A `filter.only` anywhere in the chain can leave a package with nothing to read. A package nothing was read from reports nothing. `declscope` says so only when a nested `only` was cancelled by one above it, so the quiet cases stay quiet. Count the files the analysis actually saw before trusting a zero.
+**A zero may be the filter, not the code.** A `filter.only` anywhere in the chain can leave a package with nothing to read. A package nothing was read from reports nothing. `declscope` says so only when a nested `only` was cancelled by one above it, so the quiet cases stay quiet. `declscope inspect` lists the files each namespace was built from (`namespaces[].files`); a package whose files are missing from it is one the filter removed.
 
 **A zero from `boundary` may be the switch, not the code.** `rules.allowBoundary: true` silences the rule entirely, and the run looks like a clean repository. Read every config before reporting a count, the same way you would for `qualify`.
 

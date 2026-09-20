@@ -43,28 +43,28 @@ func TestSurveyAgreesWithTheAnalyzer(t *testing.T) {
 		"allowboundary",
 		"corens",
 		// Directive problems are settled in a second pass, after every other
-		// finding: a misplaced directive, a block-level ignore judged once for
-		// every spec it reaches, and an ignore only the test variant needs.
+		// finding: a misplaced directive, and a block-level ignore judged once
+		// for every spec it reaches.
 		"directives",
 		"blockignore",
 		"braceignore",
+		// The remaining two rules, which no fixture above exercises: surplus
+		// with and without a baseline absorbing it, and the one filter report.
+		"surplus",
+		"surplusbaselined",
+		"filtercancelled/sub",
+		// The only fixture whose two variants disagree. Everything above has
+		// no _test.go file, so "per variant" goes untested without it.
+		"testonlyignore",
 	} {
 		t.Run(pkg, func(t *testing.T) {
-			for _, res := range analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, pkg) {
-				if res.Pass == nil || len(res.Pass.Files) == 0 {
-					continue
-				}
-				opts, _, err := config.Resolve(surveyTestPackageDir(res.Pass), "")
-				if err != nil {
-					t.Fatal(err)
-				}
-
+			for _, res := range surveyTestRun(t, pkg) {
 				reported := map[rule.Rule]int{}
 				for _, d := range res.Diagnostics {
 					reported[rule.Rule(d.Category)]++
 				}
 
-				surveyed := internal.Survey(res.Pass, opts)
+				surveyed := surveyTestMeasure(t, res.Pass)
 				for _, r := range rule.All {
 					count := surveyed.Findings[r]
 					if count.Reported != reported[r] {
@@ -81,20 +81,78 @@ func TestSurveyAgreesWithTheAnalyzer(t *testing.T) {
 	}
 }
 
+// TestSurveyEdgesAgreeWithTheCounts ties the crossings to the tally they are
+// folded from: a boundary finding is per declaration, and an edge is per
+// declaration and reaching namespace, so the declarations carrying edges in
+// one state must be exactly as many as the rule counted in that state.
+//
+// Without this the state on an edge is unchecked: returning Open where the
+// code returns Declared type-checks, passes every other test, and quietly
+// empties both the crossing table and the most-reached table, since open
+// crossings are left out of each.
+func TestSurveyEdgesAgreeWithTheCounts(t *testing.T) {
+	for _, pkg := range []string{"pkglevel", "baselined", "ignorescope", "allowboundary", "surplus"} {
+		t.Run(pkg, func(t *testing.T) {
+			for _, res := range surveyTestRun(t, pkg) {
+				surveyed := surveyTestMeasure(t, res.Pass)
+				count := surveyed.Findings[rule.Boundary]
+
+				declarations := map[measure.EdgeState]map[string]bool{}
+				for _, e := range surveyed.Edges {
+					if declarations[e.State] == nil {
+						declarations[e.State] = map[string]bool{}
+					}
+					declarations[e.State][e.To+"\x00"+e.Declaration] = true
+				}
+				for state, want := range map[measure.EdgeState]int{
+					measure.EdgeReported:  count.Reported,
+					measure.EdgeBaselined: count.Baselined,
+					measure.EdgeIgnored:   count.Ignored,
+				} {
+					if got := len(declarations[state]); got != want {
+						t.Errorf("%s: %d declarations carry %s edges, but the boundary rule counted %d",
+							res.Pass.Pkg.Path(), got, state, want)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestSurveyProducesEveryEdgeState checks that the fixtures between them reach
+// every state a crossing can end in. A state nothing produces is a state
+// nothing tests, and each of these is a different answer to "was this decided,
+// and by whom".
+func TestSurveyProducesEveryEdgeState(t *testing.T) {
+	seen := map[measure.EdgeState]string{}
+	for _, pkg := range []string{"pkglevel", "baselined", "ignorescope", "allowboundary", "surplus", "exportedscope"} {
+		for _, res := range surveyTestRun(t, pkg) {
+			for _, e := range surveyTestMeasure(t, res.Pass).Edges {
+				seen[e.State] = pkg
+			}
+		}
+	}
+	for _, state := range []measure.EdgeState{
+		measure.EdgeDeclared,
+		measure.EdgeBaselined,
+		measure.EdgeReported,
+		measure.EdgeIgnored,
+		measure.EdgeOpen,
+		measure.EdgeUnchecked,
+	} {
+		if seen[state] == "" {
+			t.Errorf("no fixture produced a %s crossing", state)
+		}
+	}
+}
+
 // TestSurveyNamesEveryCrossingItsNamespaces checks the shape of the edge set
 // against the diagnostics: every namespace a crossing names must be one the
 // survey also lists, since a namespace spelled in only one of the two would
 // be a name the reader cannot look up.
 func TestSurveyNamesEveryCrossingItsNamespaces(t *testing.T) {
-	for _, res := range analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "pkglevel") {
-		if res.Pass == nil || len(res.Pass.Files) == 0 {
-			continue
-		}
-		opts, _, err := config.Resolve(surveyTestPackageDir(res.Pass), "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		surveyed := internal.Survey(res.Pass, opts)
+	for _, res := range surveyTestRun(t, "pkglevel") {
+		surveyed := surveyTestMeasure(t, res.Pass)
 		if len(surveyed.Edges) == 0 {
 			t.Fatalf("%s declares crossings but the survey found none", res.Pass.Pkg.Path())
 		}
@@ -117,6 +175,26 @@ func TestSurveyNamesEveryCrossingItsNamespaces(t *testing.T) {
 	}
 }
 
-func surveyTestPackageDir(pass *analysis.Pass) string {
-	return filepath.Dir(pass.Fset.Position(pass.Files[0].Pos()).Filename)
+func surveyTestRun(t *testing.T, pkg string) []*analysistest.Result {
+	t.Helper()
+	var out []*analysistest.Result
+	for _, res := range analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, pkg) {
+		if res.Pass != nil && len(res.Pass.Files) > 0 {
+			out = append(out, res)
+		}
+	}
+	return out
+}
+
+// surveyTestMeasure resolves the options the analyzer would have resolved for
+// this package, so the survey is measured under the same rules the diagnostics
+// were produced under.
+func surveyTestMeasure(t *testing.T, pass *analysis.Pass) measure.Package {
+	t.Helper()
+	dir := filepath.Dir(pass.Fset.Position(pass.Files[0].Pos()).Filename)
+	opts, _, err := config.Resolve(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return internal.Survey(pass, opts)
 }

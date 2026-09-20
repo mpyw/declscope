@@ -9,10 +9,8 @@ import (
 	"slices"
 	"strings"
 
-	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 
-	"github.com/mpyw/declscope"
 	"github.com/mpyw/declscope/internal"
 	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/config"
@@ -134,15 +132,7 @@ func baselineCollect(patterns []string, configPath, out, cwd string) (map[string
 			path = p
 		}
 
-		pass := &analysis.Pass{
-			Analyzer:  declscope.Analyzer,
-			Fset:      pkg.Fset,
-			Files:     pkg.Syntax,
-			Pkg:       pkg.Types,
-			TypesInfo: pkg.TypesInfo,
-			Report:    func(analysis.Diagnostic) {},
-		}
-		targets[path] = append(targets[path], internal.Collect(pass, opts)...)
+		targets[path] = append(targets[path], internal.Collect(loadedPass(pkg), opts)...)
 	}
 	if len(unplaceable) > 0 {
 		slices.Sort(unplaceable)

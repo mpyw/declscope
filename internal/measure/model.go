@@ -25,6 +25,7 @@ package measure
 
 import (
 	"cmp"
+	"maps"
 	"slices"
 
 	"github.com/mpyw/declscope/internal/rule"
@@ -67,6 +68,22 @@ const (
 	EdgeUnchecked EdgeState = "unchecked"
 )
 
+// FindingState is what became of one finding: silenced by a directive,
+// absorbed by a baseline, or reported.
+//
+// It is deliberately not EdgeState. A finding is not a crossing, and the three
+// states a crossing can be in without ever having been a finding — declared,
+// open, unchecked — have no meaning here; typing them the same made the
+// translation between them partial, with a default arm quietly answering for
+// three values that cannot occur.
+type FindingState string
+
+const (
+	FindingIgnored   FindingState = "ignored"
+	FindingBaselined FindingState = "baselined"
+	FindingReported  FindingState = "reported"
+)
+
 // NameState is what became of one declaration the naming rule examined.
 type NameState string
 
@@ -94,7 +111,7 @@ type Finding struct {
 	// directive is consulted before the baseline, so a suppression the
 	// baseline would also have absorbed still counts as the directive doing
 	// its job.
-	State EdgeState
+	State FindingState
 
 	// Fixable records whether the analyzer offered a fix for this finding.
 	// It is the analyzer's own answer, not a second opinion: the reasons a
@@ -295,6 +312,10 @@ func (p Package) Sorted() Package {
 	p.Namespaces = slices.Clone(p.Namespaces)
 	p.Edges = slices.Clone(p.Edges)
 	p.Names = slices.Clone(p.Names)
+	// The map goes too. A copy that shared it would let a caller holding the
+	// original change what the copy reports, which is the surprise this
+	// method exists to avoid.
+	p.Findings = maps.Clone(p.Findings)
 
 	slices.SortFunc(p.Namespaces, func(a, b Namespace) int {
 		if a.Core != b.Core {

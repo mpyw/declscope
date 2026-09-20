@@ -1,0 +1,17 @@
+# example.com/x/internal/only
+
+> Every file is in the core namespace, so nothing crosses and no name is asked to carry one.
+
+## Namespaces
+
+| namespace | files | declarations | qualify targets |
+|---|---|---:|---:|
+| (core) | `a.go`, `b.go` | 9 | - |
+
+## Crossings
+
+Nothing crosses a namespace in this package.
+
+## Qualify
+
+Not asked: `rules.naming.qualify` does not apply to this package.

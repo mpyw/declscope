@@ -6,7 +6,10 @@ import (
 	"slices"
 	"strings"
 
+	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
+
+	"github.com/mpyw/declscope"
 )
 
 // loadPackages type-checks the patterns and hands back what the subcommands
@@ -107,6 +110,28 @@ func loadWidestVariants(pkgs []*packages.Package) []*packages.Package {
 		out = append(out, widest[path])
 	}
 	return out
+}
+
+// loadedPass builds the pass a subcommand analyzes a package with.
+//
+// OtherFiles and IgnoredFiles are not decoration. The surplus rule stands
+// itself down for a package holding assembly, cgo or a build-excluded file,
+// because it concludes from an absence and cannot see what those files use.
+// A pass built without them answers that question wrongly, and the command
+// reports a finding the analyzer itself refuses to print.
+//
+//declscope:package // every subcommand analyzes through this one pass
+func loadedPass(pkg *packages.Package) *analysis.Pass {
+	return &analysis.Pass{
+		Analyzer:     declscope.Analyzer,
+		Fset:         pkg.Fset,
+		Files:        pkg.Syntax,
+		OtherFiles:   pkg.OtherFiles,
+		IgnoredFiles: pkg.IgnoredFiles,
+		Pkg:          pkg.Types,
+		TypesInfo:    pkg.TypesInfo,
+		Report:       func(analysis.Diagnostic) {},
+	}
 }
 
 // loadedPackageDir is the directory a package's config and baseline are looked

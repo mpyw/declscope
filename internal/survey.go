@@ -35,11 +35,11 @@ func (c *collection) surveyed(pass *analysis.Pass, opts Options) measure.Package
 
 	out := measure.Package{
 		Path:     pass.Pkg.Path(),
-		Findings: countsForSurvey(c, opts),
+		Findings: countsForSurvey(pass, c, opts),
 	}
 
 	for _, t := range c.targets {
-		crossed := measure.EdgeState("")
+		crossed := measure.FindingState("")
 		for _, f := range c.surveyedFindingsForReport(pass, opts, t) {
 			bumpSurveyCount(out.Findings, f)
 			switch f.Rule {
@@ -56,7 +56,7 @@ func (c *collection) surveyed(pass *analysis.Pass, opts Options) measure.Package
 	// been seen, exactly as the report settles them.
 	out.Findings[rule.Directive], out.Findings[rule.Filter] = c.surveyedProblemsForReport(pass)
 
-	out.Namespaces, out.AllCore = namespacesForSurvey(c, opts)
+	out.Namespaces, out.AllCore = namespacesForSurvey(pass, c, opts)
 	return out.Sorted()
 }
 
@@ -67,7 +67,7 @@ func (c *collection) surveyed(pass *analysis.Pass, opts Options) measure.Package
 // none, the crossing is still real, and why nothing was reported is itself the
 // answer: a directive widened the declaration, the configured default did, or
 // the rule is switched off.
-func edgesForSurvey(c *collection, t *target, crossed measure.EdgeState) []measure.Edge {
+func edgesForSurvey(c *collection, t *target, crossed measure.FindingState) []measure.Edge {
 	uses := map[string]int{}
 	for _, r := range c.refs[t.obj] {
 		if r.file.key() != t.file.key() {
@@ -77,9 +77,9 @@ func edgesForSurvey(c *collection, t *target, crossed measure.EdgeState) []measu
 	if len(uses) == 0 {
 		return nil
 	}
-	state := crossed
-	if state == "" {
-		state = stateOfUnreportedSurveyedEdge(t)
+	state := edgeStateForSurvey(crossed)
+	if crossed == "" {
+		state = stateOfUnreportedSurveyedEdge(c, t)
 	}
 	out := make([]measure.Edge, 0, len(uses))
 	for from, n := range uses {
@@ -98,19 +98,22 @@ func edgesForSurvey(c *collection, t *target, crossed measure.EdgeState) []measu
 // stateOfUnreportedSurveyedEdge names why a crossing produced no finding.
 //
 // Declared is the one that matters: a directive says the declaration is
-// shared, so the crossing is a decision somebody recorded. The test is not
-// "bound by a directive", since //declscope:private is one of those too, and
-// it is not "exported" either: a declaration widened by defaults.unexported
+// shared, so the crossing is a decision somebody recorded. Three things it is
+// not. Not "bound by a directive", since //declscope:private is one of those
+// too. Not "unexported", since a declaration widened by defaults.unexported
 // reaches package scope with nothing written down about it, which is the same
-// absence of a decision as an exported name. boundBy is the zero directive
-// when the configured default supplied the scope, which is exactly that case.
-func stateOfUnreportedSurveyedEdge(t *target) measure.EdgeState {
+// absence of a decision as an exported name. And not "a directive names this
+// scope": the analyzer only counts a directive as deciding when the scope it
+// names is one the declaration could not have had anyway, which is what keeps
+// a file-level //declscope:package above twenty exported names from reading
+// as twenty decisions.
+func stateOfUnreportedSurveyedEdge(c *collection, t *target) measure.EdgeState {
 	switch {
 	case t.scope == scope.Private:
 		// Private, crossed, and nothing reported: the rule was not asked.
 		// Nothing about this crossing has been decided.
 		return measure.EdgeUnchecked
-	case t.boundBy.HasScope && t.boundBy.Scope == scope.PackageInternal:
+	case t.boundBy.Scope == scope.PackageInternal && c.decidedAtScopeSite(t.boundBy):
 		return measure.EdgeDeclared
 	default:
 		return measure.EdgeOpen
@@ -131,11 +134,25 @@ func nameFindingForSurvey(t *target, f measure.Finding) measure.NameFinding {
 	}
 }
 
-func nameStateForSurvey(state measure.EdgeState) measure.NameState {
+// edgeStateForSurvey carries a finding's outcome onto the crossing it was
+// found on. The three states a finding can hold are the three a crossing
+// shares with it; the other three say why there was no finding at all.
+func edgeStateForSurvey(state measure.FindingState) measure.EdgeState {
 	switch state {
-	case measure.EdgeIgnored:
+	case measure.FindingIgnored:
+		return measure.EdgeIgnored
+	case measure.FindingBaselined:
+		return measure.EdgeBaselined
+	default:
+		return measure.EdgeReported
+	}
+}
+
+func nameStateForSurvey(state measure.FindingState) measure.NameState {
+	switch state {
+	case measure.FindingIgnored:
 		return measure.NameExempt
-	case measure.EdgeBaselined:
+	case measure.FindingBaselined:
 		return measure.NameBaselined
 	default:
 		return measure.NameReported
@@ -144,11 +161,11 @@ func nameStateForSurvey(state measure.EdgeState) measure.NameState {
 
 // namespacesForSurvey counts, per namespace, what the two rules divide by.
 //
-// The naming denominator is target.reportsName and nothing else. Spelling that
-// predicate out a second time here would let a change to the rule move a
-// survey number without moving a diagnostic, which is the drift this command
-// exists not to introduce.
-func namespacesForSurvey(c *collection, opts Options) ([]measure.Namespace, bool) {
+// The naming denominator is qualifyExaminesForReport, which is the whole gate
+// the rule itself applies. Spelling any part of it out a second time here
+// would let a change to the rule move a survey number without moving a
+// diagnostic, which is the drift this command exists not to introduce.
+func namespacesForSurvey(pass *analysis.Pass, c *collection, opts Options) ([]measure.Namespace, bool) {
 	byKey := map[string]*measure.Namespace{}
 	order := make([]string, 0, len(c.files))
 	for _, fi := range c.files {
@@ -169,7 +186,7 @@ func namespacesForSurvey(c *collection, opts Options) ([]measure.Namespace, bool
 			continue
 		}
 		ns.Declarations++
-		if t.reportsName(opts) {
+		if c.qualifyExaminesForReport(pass, opts, t) {
 			ns.QualifyTargets++
 		}
 	}
@@ -190,11 +207,15 @@ func namespacesForSurvey(c *collection, opts Options) ([]measure.Namespace, bool
 // at all. A rule that is switched off counts zero for a reason that has
 // nothing to do with the code, and saying so is the whole point of reporting a
 // tally beside the checks.
-func countsForSurvey(c *collection, opts Options) map[rule.Rule]measure.Count {
+func countsForSurvey(pass *analysis.Pass, c *collection, opts Options) map[rule.Rule]measure.Count {
 	return map[rule.Rule]measure.Count{
 		rule.Boundary: {Asked: !opts.AllowBoundary, Keyable: true},
 		rule.Qualify:  {Asked: opts.Qualify.Applies(c.namespaces), Keyable: true},
-		rule.Surplus:  {Asked: !opts.AllowSurplus, Keyable: true},
+		// Not !opts.AllowSurplus: the rule also stands itself down for a
+		// package this pass cannot see every file of, and a count of zero
+		// there is the "zero for a reason that is not the code" this column
+		// exists to rule out.
+		rule.Surplus: {Asked: !opts.AllowSurplus && c.surplusSeesEveryFile(pass), Keyable: true},
 	}
 }
 
@@ -202,9 +223,9 @@ func bumpSurveyCount(counts map[rule.Rule]measure.Count, f measure.Finding) {
 	count := counts[f.Rule]
 	count.Found++
 	switch f.State {
-	case measure.EdgeIgnored:
+	case measure.FindingIgnored:
 		count.Ignored++
-	case measure.EdgeBaselined:
+	case measure.FindingBaselined:
 		count.Baselined++
 	default:
 		count.Reported++

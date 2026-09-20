@@ -28,9 +28,9 @@
   "totals": {
     "boundary": {
       "asked": true,
-      "found": 4,
+      "found": 5,
       "ignored": 1,
-      "baselined": 1,
+      "baselined": 2,
       "reported": 2
     },
     "directive": {
@@ -49,8 +49,8 @@
     },
     "qualify": {
       "asked": true,
-      "found": 3,
-      "ignored": 0,
+      "found": 4,
+      "ignored": 1,
       "baselined": 1,
       "reported": 2
     },
@@ -70,14 +70,14 @@
       "allCore": false,
       "boundary": {
         "reported": 2,
-        "baselined": 1,
+        "baselined": 2,
         "declared": 1
       },
       "qualify": {
         "asked": true,
         "reported": 2,
         "baselined": 1,
-        "exempt": 0,
+        "exempt": 1,
         "worst": {
           "namespace": "flags",
           "failing": 2,

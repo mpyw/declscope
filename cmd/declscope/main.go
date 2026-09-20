@@ -19,7 +19,7 @@ import (
 )
 
 func main() {
-	// Both subcommands are matched before singlechecker sees the arguments,
+	// Every subcommand is matched before singlechecker sees the arguments,
 	// since singlechecker treats every non-flag argument as a package pattern.
 	if len(os.Args) > 1 {
 		switch os.Args[1] {

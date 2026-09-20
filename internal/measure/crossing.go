@@ -101,12 +101,16 @@ func (p Package) Crossings() []Crossing {
 
 // OpenCrossings counts the declarations reached across a namespace that are
 // package-scoped by default rather than by decision.
+//
+// Declarations, not edges: one helper reached from three namespaces is one
+// declaration nobody was asked about, and the column beside this number
+// counts the same way.
 func (p Package) OpenCrossings() int {
-	n := 0
+	open := map[[2]string]bool{}
 	for _, e := range p.Edges {
 		if e.State == EdgeOpen {
-			n++
+			open[[2]string{e.To, e.Declaration}] = true
 		}
 	}
-	return n
+	return len(open)
 }

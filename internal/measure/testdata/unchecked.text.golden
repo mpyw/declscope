@@ -1,0 +1,15 @@
+Package   example.com/x/internal/legacy
+
+Namespaces   files      declarations   qualify targets
+  api        api.go     3              -
+  store      store.go   2              -
+
+Crossings       mutual   declared   baselined   reported   reached   uses
+  api → store            -          -           -          1 of 2    5
+  (1 not checked, rules.allowBoundary is on)
+
+Most-reached declarations   namespace   reached from   state
+  rows                      store       1 namespace    unchecked
+
+Qualify   not asked: rules.naming.qualify does not apply to this package
+
