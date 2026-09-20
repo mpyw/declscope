@@ -206,16 +206,16 @@ tar xzf "declscope_${VERSION}_darwin_arm64.tar.gz"
 | `-diff` | `false` | With `-fix`, print a diff instead of writing files |
 | `-V=full` | | Print the version and exit |
 
-`-test`, `-fix` and `-diff` come from `go/analysis`. `declscope -help` lists the rest.
+`-test`, `-fix` and `-diff` come from `go/analysis`. `declscope -help` lists the rest. The table above is the analyzer's; each subcommand takes its own flags, listed by `declscope <subcommand> -help`.
 
 ### Subcommands
 
-| Command | What it does |
-| --- | --- |
-| `declscope survey [packages]` | [Report what was checked and what it found](#measuring-what-is-there), one row per package |
-| `declscope inspect <package>` | [Report the shape of one package](#measuring-what-is-there): its namespaces and the crossings between them |
-| `declscope baseline [packages]` | [Record the violations a codebase already has](#adopting-on-an-existing-codebase) |
-| `declscope skill install` | Install the adoption skill for an AI agent |
+| Command | What it does | Flags of its own |
+| --- | --- | --- |
+| `declscope survey [packages]` | [Report what was checked and what it found](#measuring-what-is-there), one row per package | `-format`, `-test`, `-config`, `-allow-errors` |
+| `declscope inspect <package>` | [Report the shape of one package](#measuring-what-is-there): its namespaces and the crossings between them | `-format`, `-test`, `-config` |
+| `declscope baseline [packages]` | [Record the violations a codebase already has](#adopting-on-an-existing-codebase) | `-config`, `-o` |
+| `declscope skill install` | Install the adoption skill for an AI agent | `--agent`, `--scope` |
 
 Every diagnostic carries **at most one** fix, so `-fix` never has to choose.
 
@@ -894,28 +894,33 @@ Two subcommands report what the analyzer found, folded into the two questions ad
 | `declscope survey [packages]` | package | **Which package do I open first?** |
 | `declscope inspect <package>` | namespace, crossing | **What shape is this package in?** |
 
-Both take `-test=false`, and on a large package it changes what you are looking at: in `net/http` the heaviest crossing is `export_test.go` reaching the transport internals, which is what that file is for and not something to restructure.
+Both take `-test=false`. On a large package it changes what you are looking at: in `net/http` the heaviest crossing is `export_test.go` reaching the transport internals, which is what that file is for and not something to restructure.
 
 ```console
 $ declscope survey -config .declscope-strict.yaml ./internal/measure/...
-Checks in force
-  config          .declscope-strict.yaml                                1 package
-  rules           boundary on, qualify ondemand, exported, surplus on   1 package
-  type check      1 package ok, 0 failed
+## Checks in force
 
-Findings      found   ignored   baselined   reported
-  boundary    0       0         0           0
-  qualify     0       0         0           0
-  surplus     0       0         0           0
-  directive   0       0         -           0
-  filter      0       0         -           0
-  total       0       0         0           0
+| check      | value                                               | packages |
+| ---------- | --------------------------------------------------- | -------: |
+| config     | `.declscope-strict.yaml`                            |        1 |
+| rules      | boundary on, qualify ondemand, exported, surplus on |        1 |
+| type check | 1 package ok, 0 failed                              |          |
 
-Packages — boundary                            reported   baselined   declared   largest crossing
-  github.com/mpyw/declscope/internal/measure   0          0           22         text → cell (7 declarations)
+## Findings
 
-Packages — qualify                             reported   baselined   exempt   worst namespace
-  github.com/mpyw/declscope/internal/measure   0          0           0        -
+| rule        | found | ignored | baselined | reported |
+| ----------- | ----: | ------: | --------: | -------: |
+| `boundary`  |     0 |       0 |         0 |        0 |
+| `qualify`   |     0 |       0 |         0 |        0 |
+| `surplus`   |     0 |       0 |         0 |        0 |
+| `directive` |     0 |       0 |         - |        0 |
+| `filter`    |     0 |       0 |         - |        0 |
+
+## Packages — boundary
+
+| package                                      | reported | baselined | declared | largest crossing                 |
+| -------------------------------------------- | -------: | --------: | -------: | -------------------------------- |
+| `github.com/mpyw/declscope/internal/measure` |        0 |         0 |       20 | markdown → cell (7 declarations) |
 ```
 
 That is one package of this repository, which holds itself to `.declscope-strict.yaml`. A codebase adopting declscope reads with numbers in the first two columns rather than the third alone, and with a row per package.
@@ -924,26 +929,35 @@ That is one package of this repository, which holds itself to `.declscope-strict
 
 A rule prints `-` rather than `0` wherever it was not asked — switched off in the config, or standing itself down as `surplus` does for a package holding a file it cannot read as a reference site. A package that does not type-check stops the run rather than contributing a zero; `-allow-errors` continues and names it under `type check` instead of giving it a row.
 
-Rows are ordered by how much is undecided, reported and baselined together, so the package at the top is the one with the most outstanding — not necessarily the one where it is most concentrated. Concentration is what `largest crossing` names, and it is what decides whether one structural change clears a cluster or twelve separate ones are needed.
+Rows are ordered by how much is undecided, reported and baselined together, so the package at the top is the one with the most outstanding — not necessarily the one where it is most concentrated. Concentration is what `largest crossing` names.
 
 The row worth looking for in your own codebase is the one with nothing reported, much baselined and nothing declared: nothing decided, everything deferred, and clean under the analyzer alone.
 
 ```console
-$ declscope inspect ./internal/cmd
-Crossings              mutual   declared   baselined   reported   reached   uses
-  completion → flags   yes      3          8           1          12 of 19   31
-  flags → completion   yes      2          0           0          2 of 7     4
+$ declscope inspect -config .declscope-strict.yaml ./internal/measure
+## Crossings
 
-Qualify        exempt   baselined   reported   saturation
-  completion   0        8           4          12 of 24
-  flags        0        0           9          9 of 16
+| crossing          | mutual | declared | baselined | reported | clears |  reached | uses |
+| ----------------- | -----: | -------: | --------: | -------: | -----: | -------: | ---: |
+| markdown → cell   |        |        7 |         0 |        0 |      0 |  7 of 10 |   15 |
+| markdown → sink   |        |        5 |         0 |        0 |      0 |  5 of 17 |   28 |
+| golden → (core)   |        |        4 |         0 |        0 |      0 |  4 of 78 |    9 |
+| format → json     |        |        2 |         0 |        0 |      0 | 2 of 105 |    2 |
+
+114 declarations are further: open, package-scoped by default rather than by decision, so left out of the table and of the diagram.
+
+Declarations crossed: 0 reported, 0 baselined, 20 declared.
 ```
 
-One row per directed edge, so a mutual pair is two rows and the count in each direction survives. `reached` counts the declarations of the reached namespace that this edge touches, over every declaration that namespace holds: `12 of 19` says the second namespace holds the working parts of the first. Open crossings — package-scoped because nothing says otherwise — are left out of the rows and counted under the table, so they are outside the numerator and inside the denominator.
+One row per directed edge, so a mutual pair is two rows and the count in each direction survives.
 
-The columns count declarations within a pair, so they sum to more than the rule found — a declaration reached from two namespaces is two rows and one finding. The line under the table gives the rule's own unit, which is the number the survey row for that package carries.
+| Column | What it says |
+| --- | --- |
+| `clears` | **How many findings would go away if these two namespaces became one.** Not the same as how much the edge touches: a declaration a third namespace also reaches survives the merge, so a heavy crossing can clear much less than it reaches. This is the number the decision turns on |
+| `reached` | Declarations of the reached namespace that this edge touches, over every declaration that namespace holds. `12 of 19` says the second namespace holds the working parts of the first. Open crossings are left out of the rows and counted under the table, so they are outside the numerator and inside the denominator |
+| `declared` / `baselined` / `reported` | Declarations on this edge, by what became of each. They count within a pair, so they sum to more than the rule found — a declaration reached from two namespaces is two rows and one finding. The line under the table gives the rule's own unit, which is the number the survey row for that package carries |
 
-`saturation` says how much of a namespace the naming rule is unsatisfied by, over the declarations it examines there. Near the top, what is wrong is usually the namespace name rather than the declarations; the skill carries that reading.
+`saturation`, in the `Qualify` table, says how much of a namespace the naming rule is unsatisfied by, over the declarations it examines there. Near the top, what is wrong is usually the namespace name rather than the declarations; the skill carries that reading.
 
 ### Formats
 
@@ -954,7 +968,7 @@ The columns count declarations within a pair, so they sum to more than the rule 
 
 There is no third format. A plain-text renderer beside this one was the source of most of the defects found in review — a note added to one and not the other, a count spelled by hand in one where the other called a shared helper — and one renderer cannot disagree with itself.
 
-The JSON keeps `edges` and `names` flat, one row each, and `namespaces` carries the denominators every ratio divides by: between the three, each table above can be folded again a consumer's own way. Markdown is a rendering and never a different data set.
+The JSON carries four arrays. `edges` and `names` are flat, one row each; `crossings` is the fold the crossing table prints, `clears` included, so a consumer deciding what to merge does not have to rebuild it; and `namespaces` holds the denominators every ratio divides by. `findings` carries the same `asked` flag the tables print a dash for. Markdown is a rendering and never a different data set.
 
 Neither command asks the analyzer's questions a second way. They walk the same findings through the same entry point and add only the outcome — reported, deferred by a baseline, silenced by a directive, or never asked — which is what keeps a survey from drifting into a second analyzer with its own opinion.
 
@@ -1071,8 +1085,10 @@ For the work of introducing it, give the agent `-format=json` rather than the di
 
 ```bash
 declscope survey -format=json ./...             # what is in force, and which package to open
-declscope inspect -format=json ./internal/cmd   # its namespaces, crossings and names, flat
+declscope inspect -format=json ./internal/cmd   # its namespaces, crossings, edges and names
 ```
+
+`crossings[].clears` is the one an agent should rank by: how many findings would go away if two namespaces became one. `-test=false` takes the scaffolding out of that ranking, which in a large package is most of what crosses.
 
 That keeps an agent from counting message fragments, which the wording of a diagnostic is not an interface for, and it refuses rather than reporting a zero from a package that did not compile.
 

@@ -12,7 +12,7 @@
 
 Nothing crosses a namespace in this package.
 
-
 ## Qualify
 
 Not asked: `rules.naming.qualify` does not apply to this package.
+

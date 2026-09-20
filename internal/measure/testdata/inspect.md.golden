@@ -20,7 +20,9 @@ Config: `.declscope.yaml`
 | flags → completion  | yes    |        1 |         0 |        0 |      2 |  1 of 6 |    1 |
 
 1 declaration is further: open, package-scoped by default rather than by decision, so left out of the table and of the diagram.
+
 Declarations crossed: 1 reported, 2 baselined, 1 declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.
+
 
 ```mermaid
 graph LR
@@ -42,11 +44,11 @@ graph LR
 | `Flags.parsed` | flags      | 1 namespace  | baselined |
 | `compName`     | completion | 1 namespace  | declared  |
 
-
 ## Qualify
 
-| namespace | exempt | baselined | reported | saturation |
-|---|---:|---:|---:|---:|
-| (core) | - | - | - | - |
-| completion | 1 | 1 | 0 | 1 of 4 |
-| flags | 0 | 0 | 2 | 2 of 2 |
+| namespace  | exempt | baselined | reported | saturation |
+| ---------- | -----: | --------: | -------: | ---------: |
+| (core)     |      - |         - |        - |          - |
+| completion |      1 |         1 |        0 |     1 of 4 |
+| flags      |      0 |         0 |        2 |     2 of 2 |
+

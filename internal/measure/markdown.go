@@ -69,8 +69,9 @@ func writeMarkdownCrossings(out *sink, p Package, asked bool) {
 		out.printf("%s further: open, package-scoped by default rather than by decision, so left out of the table and of the diagram.\n",
 			cellPlural(open, "declaration is", "declarations are"))
 	}
+	out.print("\n")
 	if asked {
-		out.printf("Declarations crossed: %d reported, %d baselined, %d declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.\n",
+		out.printf("Declarations crossed: %d reported, %d baselined, %d declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.\n\n",
 			p.DeclarationsCrossing(EdgeReported),
 			p.DeclarationsCrossing(EdgeBaselined),
 			p.DeclarationsCrossing(EdgeDeclared))
@@ -144,22 +145,24 @@ func writeMarkdownReach(out *sink, p Package) {
 }
 
 func writeMarkdownQualify(out *sink, p Package, asked bool) {
-	out.print("\n## Qualify\n\n")
 	if !asked {
-		out.print("Not asked: `rules.naming.qualify` does not apply to this package.\n")
+		out.print("## Qualify\n\nNot asked: `rules.naming.qualify` does not apply to this package.\n\n")
 		return
 	}
-	out.print("| namespace | exempt | baselined | reported | saturation |\n|---|---:|---:|---:|---:|\n")
+	rows := [][]string{{"namespace", "exempt", "baselined", "reported", "saturation"}}
 	for _, q := range p.QualifyRows() {
 		if q.Core || q.Targets == 0 {
 			// Nothing was examined here, so nothing was excused either:
 			// printing 0 would answer a question that was not put.
-			out.print("| " + q.Namespace + " | - | - | - | - |\n")
+			rows = append(rows, []string{q.Namespace, "-", "-", "-", "-"})
 			continue
 		}
-		out.printf("| %s | %d | %d | %d | %d of %d |\n",
-			q.Namespace, q.Exempt, q.Baselined, q.Reported, q.Saturation(), q.Targets)
+		rows = append(rows, []string{
+			q.Namespace, fmt.Sprint(q.Exempt), fmt.Sprint(q.Baselined), fmt.Sprint(q.Reported),
+			fmt.Sprintf("%d of %d", q.Saturation(), q.Targets),
+		})
 	}
+	writeMarkdownTable(out, "Qualify", rows)
 }
 
 // writeMarkdown renders a whole run. It carries no diagram: the unit
