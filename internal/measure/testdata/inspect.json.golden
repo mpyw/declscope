@@ -76,6 +76,64 @@
       "qualifyTargets": 2
     }
   ],
+  "crossings": [
+    {
+      "from": "completion",
+      "to": "flags",
+      "mutual": true,
+      "declared": 0,
+      "baselined": 1,
+      "reported": 1,
+      "ignored": 1,
+      "unchecked": 0,
+      "reached": 3,
+      "declarations": 5,
+      "uses": 6,
+      "clears": 2
+    },
+    {
+      "from": "(core)",
+      "to": "flags",
+      "mutual": false,
+      "declared": 0,
+      "baselined": 0,
+      "reported": 0,
+      "ignored": 1,
+      "unchecked": 0,
+      "reached": 1,
+      "declarations": 5,
+      "uses": 4,
+      "clears": 0
+    },
+    {
+      "from": "(core)",
+      "to": "completion",
+      "mutual": false,
+      "declared": 0,
+      "baselined": 1,
+      "reported": 0,
+      "ignored": 0,
+      "unchecked": 0,
+      "reached": 1,
+      "declarations": 6,
+      "uses": 2,
+      "clears": 1
+    },
+    {
+      "from": "flags",
+      "to": "completion",
+      "mutual": true,
+      "declared": 1,
+      "baselined": 0,
+      "reported": 0,
+      "ignored": 0,
+      "unchecked": 0,
+      "reached": 1,
+      "declarations": 6,
+      "uses": 1,
+      "clears": 2
+    }
+  ],
   "edges": [
     {
       "from": "completion",

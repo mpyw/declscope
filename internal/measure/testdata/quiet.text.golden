@@ -4,9 +4,8 @@ Note      every file is in the core namespace, so nothing crosses and no name is
 Namespaces   files        declarations   qualify targets
   (core)     a.go, b.go   9              -
 
-Crossings   mutual   declared   baselined   reported   reached   uses
-  none                                                           
-  declarations crossed: 0 reported, 0 baselined, 0 declared
+Crossings   mutual   declared   baselined   reported   clears   reached   uses
+  none                                                                    
 
 Qualify   not asked: rules.naming.qualify does not apply to this package
 

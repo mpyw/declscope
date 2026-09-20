@@ -53,7 +53,13 @@ Each file's patterns are read against **its own** directory, and anchor there wh
 
 **The minimum is no config file at all.** `boundary` and `surplus` are on. Those two answer a question about the code, where the naming rule answers one about a convention. Most repositories report a handful. Adopting this much is a complete adoption.
 
-**If the goal is a tidier codebase, offer the naming rule on top.** It is a convention. It fires where nothing is wrong, and it costs real work:
+**If the goal is a tidier codebase, offer the naming rule on top.** It is a convention. It fires where nothing is wrong, and it costs real work. Size it before offering, with a throwaway config rather than by counting message fragments:
+
+```bash
+printf 'rules:\n  naming:\n    qualify: ondemand\n    exported: true\n' > /tmp/q.yaml
+declscope survey -config /tmp/q.yaml -format=json ./... | jq .totals.qualify
+```
+
 
 ```yaml
 rules:
@@ -113,8 +119,15 @@ That removes three steps this skill used to require. Do **not** move the baselin
 | Is anything even being checked | `checks.configs[].rules`, `checks.typeCheck` |
 | Which package to open | `packages[]`, already sorted; the first row is the heaviest |
 | Is this deferred or decided | `boundary.baselined` against `boundary.declared` |
-| Where the structure is | `inspect`'s `edges[]`, flat, one row per declaration and reaching namespace |
+| Which two namespaces to merge | `inspect`'s `crossings[]`, one row per ordered pair, with `clears` |
+| Where the structure is | `inspect`'s `edges[]`, one row per declaration **and reaching namespace** |
 | Where a name is wrong | `inspect`'s `names[]`, with `fixable` saying whether `-fix` would rename it |
+
+**`clears` is the number the decision turns on.** A crossing's `reached` says how much of a namespace it touches; `clears` says how many findings would go away if the two became one namespace, which is less whenever a third namespace reaches the same declaration. Rank the work by `clears`, not by `reached` or `uses`.
+
+**`edges[]` does not count findings.** One declaration reached from three namespaces is three rows and one finding, so the rows always outnumber `findings.boundary.reported`. Count distinct `declaration` values, or read `crossings[]`, or read the tally.
+
+A crossing's `state` is one of six. Three are outcomes of a finding — `reported`, `baselined`, `ignored` — and three say why there was no finding: `declared` (a `//declscope:package` says it is shared), `open` (package-scoped because nothing says otherwise, which is most exported API), and `unchecked` (`rules.allowBoundary` is on).
 
 **A package with nothing reported, much baselined and nothing declared has never been decided about.** It reads as clean under the analyzer alone, which is why `declared` is a column.
 
@@ -123,6 +136,8 @@ Boundary violations cluster. Measured across eight repositories, one structural 
 **Start where the count is concentrated, not where it is large.** The row order does not give you that: rows are sorted by how much is undecided, which is size. Concentration is the `largest crossing` column — a package with 12 findings spread over 6 namespaces sorts above one with 4 in a single crossing, and the second is the one where one decision clears the cluster.
 
 ### Reading a saturation
+
+**This needs the naming rule switched on.** At the configuration to start from it is off, so `qualifyTargets` is `0`, `names[]` is empty and every ratio prints `-`. Measure it with the throwaway config above before reading any of what follows.
 
 `inspect` reports, per namespace, how many of the declarations the naming rule examines there fail it. The ratio says which thing is wrong, and the answer is rarely the rename the diagnostic suggests.
 
@@ -145,6 +160,8 @@ A baselined finding counts toward it: the baseline defers a decision rather than
 | `pkg.Foo` is asked to become `pkg.PkgFoo` | The file is the package's API | `//declscope:core` |
 | One helper is used from several files | Shared on purpose | `//declscope:package // why` at the declaration |
 | A name reads badly with its namespace in it | Often the file name, not the declaration | Rename the file |
+
+**Two rows can fire on one cluster.** A mutual pair whose declarations are also read from four other namespaces matches both the second row and the third. Take the one with the larger `clears`: merging two namespaces settles only what no third namespace reaches, so the fan-in case is usually the smaller change and the core case the larger.
 
 That last row is worth its own note. In one repository a single file held three concerns, and splitting it into three cleared every entry in that cluster **without renaming a single declaration**. The file name was the thing that was wrong.
 
@@ -207,6 +224,8 @@ go build ./... && declscope ./...   # never read a bare count without this
 **A zero may be the filter, not the code.** A `filter.only` anywhere in the chain can leave a package with nothing to read. A package nothing was read from reports nothing. `declscope` says so only when a nested `only` was cancelled by one above it, so the quiet cases stay quiet. `declscope inspect` lists the files each namespace was built from (`namespaces[].files`); a package whose files are missing from it is one the filter removed.
 
 **A zero from `boundary` may be the switch, not the code.** `rules.allowBoundary: true` silences the rule entirely, and the run looks like a clean repository. Read every config before reporting a count, the same way you would for `qualify`.
+
+**`-fix` widens; it does not draw boundaries.** On a codebase with boundary findings, `declscope -fix ./...` inserts `//declscope:package` above every crossed declaration — the wholesale widening step 2 of the order of work exists to avoid. Run `-fix -diff` first and read it. Its place in an adoption is renaming, after the structure is settled, and only where `names[].fixable` is true.
 
 **A dirty working tree poisons a comparison.** Measuring option A, then option B without reverting, measures A and B together. `git stash` leaves untracked files behind, so a new file from the previous attempt stays. Copy the tree instead:
 

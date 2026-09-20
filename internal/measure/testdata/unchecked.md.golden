@@ -9,9 +9,9 @@
 
 ## Crossings
 
-| crossing | mutual | declared | baselined | reported | reached | uses |
-|---|---|---:|---:|---:|---:|---:|
-| api → store |  | - | - | - | 1 of 2 | 5 |
+| crossing | mutual | declared | baselined | reported | clears | reached | uses |
+|---|---|---:|---:|---:|---:|---:|---:|
+| api → store |  | - | - | - | - | 1 of 2 | 5 |
 
 ```mermaid
 graph LR

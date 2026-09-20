@@ -57,11 +57,12 @@ func writeMarkdownCrossings(out *sink, p Package, asked bool) {
 		out.print("Nothing crosses a namespace in this package.\n")
 		return
 	}
-	out.print("| crossing | mutual | declared | baselined | reported | reached | uses |\n|---|---|---:|---:|---:|---:|---:|\n")
+	out.print("| crossing | mutual | declared | baselined | reported | clears | reached | uses |\n|---|---|---:|---:|---:|---:|---:|---:|\n")
 	for _, c := range crossings {
-		out.printf("| %s → %s | %s | %s | %s | %s | %d of %d | %d |\n",
+		out.printf("| %s → %s | %s | %s | %s | %s | %s | %d of %d | %d |\n",
 			c.From, c.To, cellYes(c.Mutual),
 			cellCount(c.Declared, asked), cellCount(c.Baselined, asked), cellCount(c.Reported, asked),
+			cellCount(c.Clears, asked),
 			c.Reached, c.Declarations, c.Uses)
 	}
 	if open := p.DeclarationsCrossing(EdgeOpen); open > 0 {

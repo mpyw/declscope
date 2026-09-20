@@ -65,14 +65,15 @@ func writeTextNamespaces(out *sink, p Package, asked bool) {
 
 func writeTextCrossings(out *sink, p Package, asked bool) {
 	crossings := p.Crossings()
-	out.print("Crossings\tmutual\tdeclared\tbaselined\treported\treached\tuses\n")
+	out.print("Crossings\tmutual\tdeclared\tbaselined\treported\tclears\treached\tuses\n")
 	if len(crossings) == 0 {
-		out.print("  none\t\t\t\t\t\t\n")
+		out.print("  none\t\t\t\t\t\t\t\n")
 	}
 	for _, c := range crossings {
-		out.printf("  %s → %s\t%s\t%s\t%s\t%s\t%d of %d\t%d\n",
+		out.printf("  %s → %s\t%s\t%s\t%s\t%s\t%s\t%d of %d\t%d\n",
 			c.From, c.To, cellYes(c.Mutual),
 			cellCount(c.Declared, asked), cellCount(c.Baselined, asked), cellCount(c.Reported, asked),
+			cellCount(c.Clears, asked),
 			c.Reached, c.Declarations, c.Uses)
 	}
 
@@ -99,7 +100,7 @@ func writeTextCrossings(out *sink, p Package, asked bool) {
 	// than the rule found: a declaration reached from two namespaces is two
 	// rows and one finding. This line is the rule's own unit, and the number
 	// a survey row carries for the same package.
-	if asked {
+	if asked && len(crossings) > 0 {
 		out.printf("  declarations crossed: %d reported, %d baselined, %d declared\n",
 			p.DeclarationsCrossing(EdgeReported),
 			p.DeclarationsCrossing(EdgeBaselined),

@@ -38,6 +38,18 @@ type Crossing struct {
 	// Uses counts reference sites. It is not the sum of the state counts,
 	// which are per declaration.
 	Uses int
+
+	// Clears is how many of the package's findings would go away if these two
+	// namespaces became one: the declarations reached from nowhere else.
+	//
+	// It is the number the decision turns on, and it is not Reached. Merging
+	// two namespaces does nothing for a declaration a third also reaches, so
+	// a heavy edge can clear much less than it touches. Being a property of
+	// the pair, both rows of a mutual pair carry the same figure.
+	//
+	// It counts, it does not advise: whether these two are one unit is the
+	// reader's call, and this says what it would cost to act on the answer.
+	Clears int
 }
 
 // Crossings folds the edge set into one row per ordered pair, heaviest first.
@@ -79,9 +91,12 @@ func (p Package) Crossings() []Crossing {
 		}
 	}
 
+	reachedBy := p.namespacesReachingCrossing()
+
 	out := make([]Crossing, 0, len(byPair))
 	for key, c := range byPair {
 		_, c.Mutual = byPair[[2]string{key[1], key[0]}]
+		c.Clears = clearedByCrossing(reachedBy, c.From, c.To)
 		out = append(out, *c)
 	}
 	slices.SortFunc(out, func(a, b Crossing) int {
@@ -113,4 +128,44 @@ func (p Package) DeclarationsCrossing(state EdgeState) int {
 		}
 	}
 	return len(seen)
+}
+
+// namespacesReachingCrossing indexes, per declaration still under a finding,
+// every namespace that reaches it. A declared or open crossing is left out:
+// nothing is outstanding on it, so merging clears nothing there.
+func (p Package) namespacesReachingCrossing() map[[2]string]map[string]bool {
+	out := map[[2]string]map[string]bool{}
+	for _, e := range p.Edges {
+		if e.State != EdgeReported && e.State != EdgeBaselined {
+			continue
+		}
+		key := [2]string{e.To, e.Declaration}
+		if out[key] == nil {
+			out[key] = map[string]bool{}
+		}
+		out[key][e.From] = true
+	}
+	return out
+}
+
+// clearedByCrossing counts the declarations of either namespace that no third
+// namespace reaches, which are the findings merging the two would settle.
+func clearedByCrossing(reachedBy map[[2]string]map[string]bool, from, to string) int {
+	n := 0
+	for key, froms := range reachedBy {
+		if key[0] != from && key[0] != to {
+			continue
+		}
+		outside := false
+		for ns := range froms {
+			if ns != from && ns != to {
+				outside = true
+				break
+			}
+		}
+		if !outside {
+			n++
+		}
+	}
+	return n
 }

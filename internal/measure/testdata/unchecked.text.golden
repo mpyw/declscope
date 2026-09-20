@@ -4,8 +4,8 @@ Namespaces   files      declarations   qualify targets
   api        api.go     3              -
   store      store.go   2              -
 
-Crossings       mutual   declared   baselined   reported   reached   uses
-  api → store            -          -           -          1 of 2    5
+Crossings       mutual   declared   baselined   reported   clears   reached   uses
+  api → store            -          -           -          -        1 of 2    5
   (1 not checked, rules.allowBoundary is on)
 
 Most-reached declarations   namespace   reached from   state

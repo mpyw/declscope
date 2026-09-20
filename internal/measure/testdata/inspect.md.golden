@@ -12,12 +12,12 @@ Config: `.declscope.yaml`
 
 ## Crossings
 
-| crossing | mutual | declared | baselined | reported | reached | uses |
-|---|---|---:|---:|---:|---:|---:|
-| completion → flags | yes | 0 | 1 | 1 | 3 of 5 | 6 |
-| (core) → flags |  | 0 | 0 | 0 | 1 of 5 | 4 |
-| (core) → completion |  | 0 | 1 | 0 | 1 of 6 | 2 |
-| flags → completion | yes | 1 | 0 | 0 | 1 of 6 | 1 |
+| crossing | mutual | declared | baselined | reported | clears | reached | uses |
+|---|---|---:|---:|---:|---:|---:|---:|
+| completion → flags | yes | 0 | 1 | 1 | 2 | 3 of 5 | 6 |
+| (core) → flags |  | 0 | 0 | 0 | 0 | 1 of 5 | 4 |
+| (core) → completion |  | 0 | 1 | 0 | 1 | 1 of 6 | 2 |
+| flags → completion | yes | 1 | 0 | 0 | 2 | 1 of 6 | 1 |
 
 1 declaration is further: open, package-scoped by default rather than by decision, so left out of the table and of the diagram.
 

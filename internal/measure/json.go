@@ -30,8 +30,32 @@ type jsonPackage struct {
 	Findings map[string]jsonCount `json:"findings"`
 
 	Namespaces []jsonNamespace `json:"namespaces"`
-	Edges      []jsonEdge      `json:"edges"`
-	Names      []jsonName      `json:"names"`
+
+	// Crossings is the edges folded per pair, which is the form the decision
+	// is made in: an agent told to judge whether two namespaces are one unit
+	// needs the fold and the mutual flag, and re-deriving them from edges is
+	// work every consumer would repeat.
+	Crossings []jsonCrossing `json:"crossings"`
+
+	Edges []jsonEdge `json:"edges"`
+	Names []jsonName `json:"names"`
+}
+
+type jsonCrossing struct {
+	From         string `json:"from"`
+	To           string `json:"to"`
+	Mutual       bool   `json:"mutual"`
+	Declared     int    `json:"declared"`
+	Baselined    int    `json:"baselined"`
+	Reported     int    `json:"reported"`
+	Ignored      int    `json:"ignored"`
+	Unchecked    int    `json:"unchecked"`
+	Reached      int    `json:"reached"`
+	Declarations int    `json:"declarations"`
+	Uses         int    `json:"uses"`
+
+	// Clears is how many findings merging these two namespaces would settle.
+	Clears int `json:"clears"`
 }
 
 type jsonNamespace struct {
@@ -73,6 +97,7 @@ func (p Package) writeJSON(w io.Writer) error {
 		// Never nil: an empty array says "none", where null says "this
 		// command does not report that", and a consumer has to branch.
 		Namespaces: make([]jsonNamespace, 0, len(p.Namespaces)),
+		Crossings:  make([]jsonCrossing, 0),
 		Edges:      make([]jsonEdge, 0, len(p.Edges)),
 		Names:      make([]jsonName, 0, len(p.Names)),
 	}
@@ -84,6 +109,9 @@ func (p Package) writeJSON(w io.Writer) error {
 			Declarations:   ns.Declarations,
 			QualifyTargets: ns.QualifyTargets,
 		})
+	}
+	for _, c := range p.Crossings() {
+		out.Crossings = append(out.Crossings, jsonCrossing(c))
 	}
 	for _, e := range p.Edges {
 		out.Edges = append(out.Edges, jsonEdge{
