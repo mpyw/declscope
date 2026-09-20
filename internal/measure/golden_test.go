@@ -83,10 +83,10 @@ func TestMarkdownIsDerivableFromJSON(t *testing.T) {
 	for _, pkg := range []Package{fixturePackage(), fixtureUncheckedPackage(), fixtureQuietPackage()} {
 		t.Run(pkg.Path, func(t *testing.T) {
 			var md, js bytes.Buffer
-			if err := pkg.WriteMarkdown(&md); err != nil {
+			if err := pkg.writeMarkdown(&md); err != nil {
 				t.Fatal(err)
 			}
-			if err := pkg.WriteJSON(&js); err != nil {
+			if err := pkg.writeJSON(&js); err != nil {
 				t.Fatal(err)
 			}
 

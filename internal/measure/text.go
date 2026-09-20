@@ -15,14 +15,16 @@ import (
 // each type, where a file per type and format would have spelled the type into
 // the name of every method on it.
 
-// WriteText renders one package for a terminal: what it is, what its
+// writeText renders one package for a terminal: what it is, what its
 // namespaces are, what reaches across them, and where the naming rule stands.
 //
 // Every number here is a fold of the model, and the model is a fold of what
 // the analyzer found. Nothing is decided at this level, including what a
 // saturation or a mutual crossing means; the tables carry the facts and the
 // skill carries the reading.
-func (p Package) WriteText(w io.Writer) error {
+//
+//declscope:package // format.go dispatches to it
+func (p Package) writeText(w io.Writer) error {
 	out := newSink(tabwriter.NewWriter(w, 0, 0, 3, ' ', 0))
 
 	out.printf("Package\t%s\n", p.Path)
@@ -117,8 +119,9 @@ func writeTextQualify(out *sink, p Package, asked bool) {
 	for _, q := range p.QualifyRows() {
 		if q.Core || q.Targets == 0 {
 			// Asked nothing, rather than asked and satisfied. A row of zeros
-			// would say the second.
-			out.printf("  %s\t%d\t-\t-\t-\n", q.Namespace, q.Exempt)
+			// would say the second — including the exempt cell, since nothing
+			// examined is nothing excused.
+			out.printf("  %s\t-\t-\t-\t-\n", q.Namespace)
 			continue
 		}
 		out.printf("  %s\t%d\t%d\t%d\t%d of %d\n",
@@ -129,7 +132,9 @@ func writeTextQualify(out *sink, p Package, asked bool) {
 
 // WriteSummaryText renders a whole run: what was checked, what was found, and
 // which package to open first.
-func (s Summary) WriteText(w io.Writer) error {
+//
+//declscope:package // format.go dispatches to it
+func (s Summary) writeText(w io.Writer) error {
 	out := newSink(tabwriter.NewWriter(w, 0, 0, 3, ' ', 0))
 
 	writeSummaryTextChecks(out, s.Checks)

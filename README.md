@@ -895,11 +895,11 @@ Two subcommands report what the analyzer found, folded into the two questions ad
 | `declscope inspect <package>` | namespace, crossing | **What shape is this package in?** |
 
 ```console
-$ declscope survey -config .declscope-strict.yaml ./internal/...
+$ declscope survey -config .declscope-strict.yaml ./internal/measure/...
 Checks in force
-  config          .declscope-strict.yaml                                12 packages
-  rules           boundary on, qualify ondemand, exported, surplus on   12 packages
-  type check      12 packages ok, 0 failed
+  config          .declscope-strict.yaml                                1 package
+  rules           boundary on, qualify ondemand, exported, surplus on   1 package
+  type check      1 package ok, 0 failed
 
 Findings      found   ignored   baselined   reported
   boundary    0       0         0           0
@@ -909,17 +909,20 @@ Findings      found   ignored   baselined   reported
   filter      0       0         -           0
   total       0       0         0           0
 
-Packages — boundary                     reported   baselined   declared   largest crossing
-  …/declscope/internal                  0          0           101        collect → (core) (50 declarations)
-  …/declscope/internal/measure          0          0           16         text → cell (7 declarations)
-  …/declscope/internal/baseline         0          0           0          -
+Packages — boundary                            reported   baselined   declared   largest crossing
+  github.com/mpyw/declscope/internal/measure   0          0           22         text → cell (7 declarations)
+
+Packages — qualify                             reported   baselined   exempt   worst namespace
+  github.com/mpyw/declscope/internal/measure   0          0           0        -
 ```
 
-That is this repository, which holds itself to `.declscope-strict.yaml`; a codebase adopting declscope reads with numbers in the first three columns rather than the third alone.
+That is one package of this repository, which holds itself to `.declscope-strict.yaml`. A codebase adopting declscope reads with numbers in the first two columns rather than the third alone, and with a row per package.
 
 **The state of the checks comes before any count**, because a count means nothing without it. A zero from a rule that was switched off, from a package that did not compile, or from a baseline that absorbed everything reads exactly like a zero from clean code.
 
 A rule prints `-` rather than `0` wherever it was not asked — switched off in the config, or standing itself down as `surplus` does for a package holding a file it cannot read as a reference site. A package that does not type-check stops the run rather than contributing a zero; `-allow-errors` continues and names it under `type check` instead of giving it a row.
+
+Rows are ordered by how much is undecided, reported and baselined together, so the package at the top is the one with the most outstanding — not necessarily the one where it is most concentrated. Concentration is what `largest crossing` names, and it is what decides whether one structural change clears a cluster or twelve separate ones are needed.
 
 The row worth looking for in your own codebase is the one with nothing reported, much baselined and nothing declared: nothing decided, everything deferred, and clean under the analyzer alone.
 
@@ -946,7 +949,7 @@ One row per directed edge, so a mutual pair is two rows and the count in each di
 | `json` | An agent, and anything scripted |
 | `markdown` | Pasting into an issue, a pull request or a README. `inspect` adds a Mermaid diagram of the crossings |
 
-The JSON keeps `edges` and `names` flat, one row each: every table above is a fold of those two arrays, so a consumer can fold them its own way. Markdown is a rendering and never a different data set.
+The JSON keeps `edges` and `names` flat, one row each, and `namespaces` carries the denominators every ratio divides by: between the three, each table above can be folded again a consumer's own way. Markdown is a rendering and never a different data set.
 
 Neither command asks the analyzer's questions a second way. They walk the same findings through the same entry point and add only the outcome — reported, deferred by a baseline, silenced by a directive, or never asked — which is what keeps a survey from drifting into a second analyzer with its own opinion.
 

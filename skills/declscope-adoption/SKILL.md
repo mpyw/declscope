@@ -118,7 +118,7 @@ That removes three steps this skill used to require. Do **not** move the baselin
 
 Boundary violations cluster. Measured across eight repositories, one structural decision cleared between 10 and 100 entries every time. In one repository 34 of 35 sat in a single namespace.
 
-**Start where the count is concentrated, not where it is large.** That is what the row order gives you.
+**Start where the count is concentrated, not where it is large.** The row order does not give you that: rows are sorted by how much is undecided, which is size. Concentration is the `largest crossing` column — a package with 12 findings spread over 6 namespaces sorts above one with 4 in a single crossing, and the second is the one where one decision clears the cluster.
 
 ### Reading a saturation
 

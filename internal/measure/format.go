@@ -46,15 +46,17 @@ func ParseFormat(s string) (Format, error) {
 	return "", fmt.Errorf("unknown format %q: this flag takes %s", s, strings.Join(names, ", "))
 }
 
-// WriteFormat renders one package in the chosen format.
+// WriteFormat renders one package in the chosen format. It is the one entry:
+// the renderers are reached through it, so that a caller cannot pick one and
+// bypass the choice the flag records.
 func (p Package) WriteFormat(w io.Writer, f Format) error {
 	switch f {
 	case FormatJSON:
-		return p.WriteJSON(w)
+		return p.writeJSON(w)
 	case FormatMarkdown:
-		return p.WriteMarkdown(w)
+		return p.writeMarkdown(w)
 	default:
-		return p.WriteText(w)
+		return p.writeText(w)
 	}
 }
 
@@ -62,10 +64,10 @@ func (p Package) WriteFormat(w io.Writer, f Format) error {
 func (s Summary) WriteFormat(w io.Writer, f Format) error {
 	switch f {
 	case FormatJSON:
-		return s.WriteJSON(w)
+		return s.writeJSON(w)
 	case FormatMarkdown:
-		return s.WriteMarkdown(w)
+		return s.writeMarkdown(w)
 	default:
-		return s.WriteText(w)
+		return s.writeText(w)
 	}
 }

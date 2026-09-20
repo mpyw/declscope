@@ -61,8 +61,10 @@ type jsonName struct {
 	Fixable     bool   `json:"fixable"`
 }
 
-// WriteJSON renders one package.
-func (p Package) WriteJSON(w io.Writer) error {
+// writeJSON renders one package.
+//
+//declscope:package // format.go dispatches to it
+func (p Package) writeJSON(w io.Writer) error {
 	out := jsonPackage{
 		Package:  p.Path,
 		Config:   p.Config,
@@ -192,8 +194,10 @@ type jsonLargest struct {
 	Uses    int    `json:"uses"`
 }
 
-// WriteJSON renders a whole run.
-func (s Summary) WriteJSON(w io.Writer) error {
+// writeJSON renders a whole run.
+//
+//declscope:package // format.go dispatches to it
+func (s Summary) writeJSON(w io.Writer) error {
 	out := jsonSummary{
 		Checks: jsonChecks{
 			TypeCheck: jsonTypeCheck{

@@ -8,14 +8,16 @@ import (
 	"github.com/mpyw/declscope/internal/rule"
 )
 
-// WriteMarkdown renders one package for pasting somewhere: an issue, a pull
+// writeMarkdown renders one package for pasting somewhere: an issue, a pull
 // request, a README, an article.
 //
 // It carries the same numbers as the text form and adds the diagram, which is
 // what the format is for. A picture of a package's crossings belongs where
 // pictures render, and nowhere else: in a terminal it would be a second way of
 // saying what the table already says.
-func (p Package) WriteMarkdown(w io.Writer) error {
+//
+//declscope:package // format.go dispatches to it
+func (p Package) writeMarkdown(w io.Writer) error {
 	out := newSink(w)
 	out.printf("# %s\n\n", p.Path)
 	if len(p.Config) > 0 {
@@ -138,7 +140,9 @@ func writeMarkdownQualify(out *sink, p Package, asked bool) {
 	out.print("| namespace | exempt | baselined | reported | saturation |\n|---|---:|---:|---:|---:|\n")
 	for _, q := range p.QualifyRows() {
 		if q.Core || q.Targets == 0 {
-			out.printf("| %s | %d | - | - | - |\n", q.Namespace, q.Exempt)
+			// Nothing was examined here, so nothing was excused either:
+			// printing 0 would answer a question that was not put.
+			out.print("| " + q.Namespace + " | - | - | - | - |\n")
 			continue
 		}
 		out.printf("| %s | %d | %d | %d | %d of %d |\n",
@@ -146,9 +150,11 @@ func writeMarkdownQualify(out *sink, p Package, asked bool) {
 	}
 }
 
-// WriteMarkdown renders a whole run. It carries no diagram: the unit
+// writeMarkdown renders a whole run. It carries no diagram: the unit
 // here is the package, and there is no edge set at that level to draw.
-func (s Summary) WriteMarkdown(w io.Writer) error {
+//
+//declscope:package // format.go dispatches to it
+func (s Summary) writeMarkdown(w io.Writer) error {
 	out := newSink(w)
 	out.print("## Checks in force\n\n")
 	out.print("| check | value | packages |\n|---|---|---:|\n")
@@ -166,7 +172,7 @@ func (s Summary) WriteMarkdown(w io.Writer) error {
 			cellOnOff(c.Boundary), qualify, cellOnOff(c.Surplus), c.Packages)
 	}
 	for _, b := range s.Checks.Baselines {
-		out.printf("| baseline | `%s`, %d entries | |\n", b.Path, b.Entries)
+		out.printf("| baseline | `%s`, %s | |\n", b.Path, cellPlural(b.Entries, "entry", "entries"))
 	}
 	out.printf("| type check | %s | |\n", cellTypeCheck(s.Checks.TypeCheck))
 

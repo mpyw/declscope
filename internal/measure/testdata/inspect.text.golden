@@ -21,7 +21,7 @@ Most-reached declarations   namespace    reached from   state
   compName                  completion   1 namespace    declared
 
 Qualify        exempt   baselined   reported   saturation
-  (core)       0        -           -          -
+  (core)       -        -           -          -
   completion   1        1           0          1 of 4
   flags        0        0           2          2 of 2
 
