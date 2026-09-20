@@ -34,13 +34,16 @@ type Reach struct {
 // MostReached returns the declarations reached from the most namespaces, at
 // most limit of them. A limit of zero returns all of them.
 func (p Package) MostReached(limit int) []Reach {
-	byDecl := map[string]*Reach{}
-	order := make([]string, 0, len(p.Edges))
+	// Keyed on the pair, not on a joined string: a namespace can be spelled
+	// "(file x.go)" and a member "Type.member", so both sides may hold a dot
+	// and a join would not be injective.
+	byDecl := map[[2]string]*Reach{}
+	order := make([][2]string, 0, len(p.Edges))
 	for _, e := range p.Edges {
 		if e.State == EdgeOpen {
 			continue
 		}
-		key := e.To + "." + e.Declaration
+		key := [2]string{e.To, e.Declaration}
 		r, ok := byDecl[key]
 		if !ok {
 			r = &Reach{

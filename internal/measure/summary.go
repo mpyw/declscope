@@ -124,10 +124,10 @@ func summaryRowOf(p Package) SummaryRow {
 	}
 	// Per declaration, not per edge: one helper shared with three namespaces
 	// is one decision somebody took, not three.
-	declared := map[string]bool{}
+	declared := map[[2]string]bool{}
 	for _, e := range p.Edges {
 		if e.State == EdgeDeclared {
-			declared[e.To+"."+e.Declaration] = true
+			declared[[2]string{e.To, e.Declaration}] = true
 		}
 	}
 	row.BoundaryDeclared = len(declared)
