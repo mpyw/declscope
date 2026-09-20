@@ -2,11 +2,14 @@ package measure
 
 import "testing"
 
-// TestWorstQualifiedComparesRatios checks that the namespace a package row
-// names is the one the rule is least satisfied by, as a share rather than a
-// count: a namespace failing two of two is worse than one failing three of
-// thirty, and naming the larger count would send the reader to the wrong file.
-func TestWorstQualifiedComparesRatios(t *testing.T) {
+// TestWorstQualifiedNamesTheWork checks that the namespace a package row names
+// is where the work is, with the ratio beside it rather than deciding it.
+//
+// Ratio first was tried and measured: on go/printer it named math 2 of 2 while
+// nodes 56 of 57 was the whole job, and on encoding/json it named doc 2 of 2.
+// A fully saturated two-declaration file is a real shape and a trivial amount
+// of work, and the first screen of a report should not point at it.
+func TestWorstQualifiedNamesTheWork(t *testing.T) {
 	pkg := Package{
 		Namespaces: []Namespace{
 			{Name: "small", QualifyTargets: 2},
@@ -24,11 +27,34 @@ func TestWorstQualifiedComparesRatios(t *testing.T) {
 	if !ok {
 		t.Fatal("no worst namespace where two of them fail")
 	}
-	if worst.Namespace != "small" {
-		t.Errorf("worst is %q, want small: 2 of 2 is worse than 3 of 30", worst.Namespace)
+	if worst.Namespace != "large" {
+		t.Errorf("worst is %q, want large: three failing names are more work than two", worst.Namespace)
 	}
-	if worst.Saturation() != 2 {
-		t.Errorf("saturation counts %d, want both reported findings", worst.Saturation())
+	if worst.Saturation() != 3 || worst.Targets != 30 {
+		t.Errorf("worst reads %d of %d, want 3 of 30 — the ratio is reported, not the ranking",
+			worst.Saturation(), worst.Targets)
+	}
+}
+
+// TestWorstQualifiedBreaksTiesByShare checks the other half: between two
+// namespaces holding the same amount of work, the saturated one is named,
+// since that is the one a single rename can clear.
+func TestWorstQualifiedBreaksTiesByShare(t *testing.T) {
+	pkg := Package{
+		Namespaces: []Namespace{
+			{Name: "whole", QualifyTargets: 2},
+			{Name: "part", QualifyTargets: 30},
+		},
+		Names: []NameFinding{
+			{Namespace: "whole", Declaration: "a", State: NameReported},
+			{Namespace: "whole", Declaration: "b", State: NameReported},
+			{Namespace: "part", Declaration: "c", State: NameReported},
+			{Namespace: "part", Declaration: "d", State: NameReported},
+		},
+	}
+	worst, ok := pkg.WorstQualified()
+	if !ok || worst.Namespace != "whole" {
+		t.Errorf("worst is %q, want whole: two of two is cleared by renaming the file", worst.Namespace)
 	}
 }
 

@@ -68,6 +68,12 @@ func writeMarkdownCrossings(out *sink, p Package, asked bool) {
 		out.printf("\n%s further: open, package-scoped by default rather than by decision, so left out of the table and of the diagram.\n",
 			cellPlural(open, "declaration is", "declarations are"))
 	}
+	if asked {
+		out.printf("\nDeclarations crossed: %d reported, %d baselined, %d declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.\n",
+			p.DeclarationsCrossing(EdgeReported),
+			p.DeclarationsCrossing(EdgeBaselined),
+			p.DeclarationsCrossing(EdgeDeclared))
+	}
 	writeMarkdownMermaid(out, crossings)
 }
 

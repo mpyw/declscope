@@ -32,6 +32,7 @@ counts say. Use declscope itself for that, and a baseline to adopt it.
 func surveyRun(args []string) {
 	fs := flag.NewFlagSet("declscope survey", flag.ExitOnError)
 	configPath := fs.String("config", "", "path to a declscope YAML config file")
+	tests := fs.Bool("test", true, "measure *_test.go files as well")
 	allowErrors := fs.Bool("allow-errors", false, "measure anyway when some packages do not type-check")
 	format := fs.String("format", string(measure.FormatText), "output format: text, json or markdown")
 	fs.Usage = func() {
@@ -50,7 +51,7 @@ func surveyRun(args []string) {
 		surveyFail(err)
 	}
 
-	pkgs, err := loadPackages(patterns)
+	pkgs, err := loadPackages(patterns, *tests)
 	if err != nil {
 		surveyFail(err)
 	}

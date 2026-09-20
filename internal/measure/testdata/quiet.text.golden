@@ -6,6 +6,7 @@ Namespaces   files        declarations   qualify targets
 
 Crossings   mutual   declared   baselined   reported   reached   uses
   none                                                           
+  declarations crossed: 0 reported, 0 baselined, 0 declared
 
 Qualify   not asked: rules.naming.qualify does not apply to this package
 

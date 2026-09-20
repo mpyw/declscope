@@ -12,6 +12,7 @@ Crossings               mutual   declared   baselined   reported   reached   use
   (core) → completion            0          1           0          1 of 6    2
   flags → completion    yes      1          0           0          1 of 6    1
   (1 silenced by a directive; 1 open, package-scoped by default rather than by decision)
+  declarations crossed: 1 reported, 2 baselined, 1 declared
 
 Most-reached declarations   namespace    reached from   state
   flagSet                   flags        2 namespaces   ignored

@@ -100,6 +100,8 @@ declscope survey -format=json ./...           # which package to open first
 declscope inspect -format=json <that package> # what shape it is in
 ```
 
+Add `-test=false` once the first pass is read. In a large package most of what crosses is scaffolding — `export_test.go` reaching internals is what that file is for — and it outranks the crossings worth acting on.
+
 **`survey` refuses to print a count it cannot stand behind.** It stops on a package that does not type-check, and it reports what was in force before anything else: which config governed which packages, whether each rule was on, and how many entries a baseline holds. A rule that was not asked prints `-`, never `0` — including a rule that stood itself down, as `surplus` does for a package holding assembly, cgo or a build-excluded file.
 
 `-allow-errors` continues past a package that does not compile. It is named under `type check` and given no row, so nothing in the tables reads as a clean result for it.

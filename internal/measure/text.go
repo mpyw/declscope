@@ -95,6 +95,16 @@ func writeTextCrossings(out *sink, p Package, asked bool) {
 		// column, and this one is a sentence.
 		out.printf("  (%s)\n", strings.Join(notes, "; "))
 	}
+	// The columns above count declarations within a pair, so they sum to more
+	// than the rule found: a declaration reached from two namespaces is two
+	// rows and one finding. This line is the rule's own unit, and the number
+	// a survey row carries for the same package.
+	if asked {
+		out.printf("  declarations crossed: %d reported, %d baselined, %d declared\n",
+			p.DeclarationsCrossing(EdgeReported),
+			p.DeclarationsCrossing(EdgeBaselined),
+			p.DeclarationsCrossing(EdgeDeclared))
+	}
 	out.print("\n")
 }
 

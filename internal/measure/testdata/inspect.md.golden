@@ -21,6 +21,8 @@ Config: `.declscope.yaml`
 
 1 declaration is further: open, package-scoped by default rather than by decision, so left out of the table and of the diagram.
 
+Declarations crossed: 1 reported, 2 baselined, 1 declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.
+
 ```mermaid
 graph LR
   n0["completion"]

@@ -93,7 +93,7 @@ func baselineRun(args []string) {
 // that lookup ends. An explicit -o overrides this and gathers everything into
 // one file, which is then the caller's job to place.
 func baselineCollect(patterns []string, configPath, out, cwd string) (map[string][]baseline.Key, error) {
-	pkgs, err := loadPackages(patterns)
+	pkgs, err := loadPackages(patterns, true)
 	if err != nil {
 		return nil, err
 	}

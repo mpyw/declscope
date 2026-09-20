@@ -70,11 +70,18 @@ func (p Package) QualifyRows() []QualifyRow {
 	return out
 }
 
-// WorstQualified is the namespace with the highest saturation, and whether
-// there is one at all. It is what a package-level report names instead of
-// counting namespaces that cross some threshold: a ratio carries its own
-// scale, and "how many namespaces are fully saturated" hides a cutoff that one
-// ignore directive can flip.
+// WorstQualified is the namespace holding the most of a package's naming work,
+// with its ratio beside it, and whether there is one at all.
+//
+// The count leads and the ratio breaks ties, because the other way round sends
+// the reader to the smallest file in the package: a namespace failing two of
+// two is fully saturated and two declarations of work, where one failing
+// fifty-six of fifty-seven is the same shape and the whole job. Both are
+// reported, so the ratio still says whether renaming the file would clear it.
+//
+// Naming one namespace is what a package-level report does instead of counting
+// namespaces past a threshold, which would hide a cutoff that one ignore
+// directive can flip.
 func (p Package) WorstQualified() (QualifyRow, bool) {
 	var worst QualifyRow
 	found := false
@@ -82,7 +89,10 @@ func (p Package) WorstQualified() (QualifyRow, bool) {
 		if row.Core || row.Targets == 0 || row.Saturation() == 0 {
 			continue
 		}
-		if !found || row.Saturation()*worst.Targets > worst.Saturation()*row.Targets {
+		switch {
+		case !found,
+			row.Saturation() > worst.Saturation(),
+			row.Saturation() == worst.Saturation() && row.Saturation()*worst.Targets > worst.Saturation()*row.Targets:
 			worst, found = row, true
 		}
 	}

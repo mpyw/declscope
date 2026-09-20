@@ -21,17 +21,20 @@ import (
 // and exports no facts, so driving it over go/packages directly is a few lines
 // and avoids parsing the analyzer's own messages back out of strings.
 //
-// Tests are always loaded. A test variant sees references the ordinary variant
-// does not, and both the baseline and the survey would otherwise report a
-// declaration as unreached when a test reaches it.
+// Tests are loaded by default, matching the analyzer's own -test: a test
+// variant sees references the ordinary variant does not, and both the baseline
+// and the survey would otherwise report a declaration as unreached when a test
+// reaches it. Turning them off is how a reader asks what the package looks like
+// without its scaffolding, which in a large package is most of what the
+// crossings are.
 //
 //declscope:package // every subcommand that reads packages starts here
-func loadPackages(patterns []string) ([]*packages.Package, error) {
+func loadPackages(patterns []string, tests bool) ([]*packages.Package, error) {
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles |
 			packages.NeedImports | packages.NeedDeps | packages.NeedTypes |
 			packages.NeedSyntax | packages.NeedTypesInfo,
-		Tests: true,
+		Tests: tests,
 	}
 	pkgs, err := packages.Load(cfg, patterns...)
 	if err != nil {

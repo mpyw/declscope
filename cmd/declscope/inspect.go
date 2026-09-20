@@ -32,6 +32,7 @@ would answer a question nobody asked.
 func inspectRun(args []string) {
 	fs := flag.NewFlagSet("declscope inspect", flag.ExitOnError)
 	configPath := fs.String("config", "", "path to a declscope YAML config file")
+	tests := fs.Bool("test", true, "measure *_test.go files as well")
 	format := fs.String("format", string(measure.FormatText), "output format: text, json or markdown")
 	fs.Usage = func() {
 		_, _ = io.WriteString(fs.Output(), inspectUsage)
@@ -50,7 +51,7 @@ func inspectRun(args []string) {
 		inspectFail(err)
 	}
 
-	pkgs, err := loadPackages(patterns)
+	pkgs, err := loadPackages(patterns, *tests)
 	if err != nil {
 		inspectFail(err)
 	}

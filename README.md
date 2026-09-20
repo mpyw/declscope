@@ -894,6 +894,8 @@ Two subcommands report what the analyzer found, folded into the two questions ad
 | `declscope survey [packages]` | package | **Which package do I open first?** |
 | `declscope inspect <package>` | namespace, crossing | **What shape is this package in?** |
 
+Both take `-test=false`, and on a large package it changes what you are looking at: in `net/http` the heaviest crossing is `export_test.go` reaching the transport internals, which is what that file is for and not something to restructure.
+
 ```console
 $ declscope survey -config .declscope-strict.yaml ./internal/measure/...
 Checks in force
@@ -938,6 +940,8 @@ Qualify        exempt   baselined   reported   saturation
 ```
 
 One row per directed edge, so a mutual pair is two rows and the count in each direction survives. `reached` counts the declarations of the reached namespace that this edge touches, over every declaration that namespace holds: `12 of 19` says the second namespace holds the working parts of the first. Open crossings — package-scoped because nothing says otherwise — are left out of the rows and counted under the table, so they are outside the numerator and inside the denominator.
+
+The columns count declarations within a pair, so they sum to more than the rule found — a declaration reached from two namespaces is two rows and one finding. The line under the table gives the rule's own unit, which is the number the survey row for that package carries.
 
 `saturation` says how much of a namespace the naming rule is unsatisfied by, over the declarations it examines there. Near the top, what is wrong is usually the namespace name rather than the declarations; the skill carries that reading.
 
