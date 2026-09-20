@@ -167,10 +167,11 @@ func (c *collection) addFuncToCollection(pass *analysis.Pass, opts Options, fi *
 		if d.Name.Name == "init" {
 			return
 		}
-		sc, boundBy, boundAt := c.bindAtScopeSite(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
+		sc, boundBy, boundAt, decided := c.bindAtScopeSite(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
 		c.addToCollection(&target{
 			obj: obj, ident: d.Name, kind: kindFunc, file: fi, dir: dir, anchor: d.Pos(),
 			scope:      sc,
+			decided:    decided,
 			boundBy:    boundBy,
 			boundAt:    boundAt,
 			renameable: true,
@@ -189,11 +190,12 @@ func (c *collection) addFuncToCollection(pass *analysis.Pass, opts Options, fi *
 		owner = ownerObj.Name()
 		ownerFile = c.fileAt(pass, ownerObj.Pos())
 	}
-	sc, boundBy, boundAt := c.bindAtScopeSite(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
+	sc, boundBy, boundAt, decided := c.bindAtScopeSite(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
 	c.addToCollection(&target{
 		obj: obj, ident: d.Name, kind: kindMethod, file: fi,
 		owner: owner, ownerObj: ownerObj, ownerFile: ownerFile, dir: dir, anchor: d.Pos(),
 		scope:   sc,
+		decided: decided,
 		boundBy: boundBy,
 		boundAt: boundAt,
 	})
@@ -225,10 +227,11 @@ func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, f
 				anchor = spec.Pos()
 			}
 			if obj, ok := pass.TypesInfo.Defs[spec.Name]; ok && spec.Name.Name != "_" {
-				sc, boundBy, boundAt := c.bindAtScopeSite(opts, spec.Name.Name, dir, directive.Decl{}, fi.scope)
+				sc, boundBy, boundAt, decided := c.bindAtScopeSite(opts, spec.Name.Name, dir, directive.Decl{}, fi.scope)
 				c.addToCollection(&target{
 					obj: obj, ident: spec.Name, kind: kindType, file: fi, dir: dir, anchor: anchor,
 					scope:      sc,
+					decided:    decided,
 					boundBy:    boundBy,
 					boundAt:    boundAt,
 					renameable: true,
@@ -252,10 +255,11 @@ func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, f
 				if !ok || name.Name == "_" {
 					continue
 				}
-				sc, boundBy, boundAt := c.bindAtScopeSite(opts, name.Name, dir, directive.Decl{}, fi.scope)
+				sc, boundBy, boundAt, decided := c.bindAtScopeSite(opts, name.Name, dir, directive.Decl{}, fi.scope)
 				c.addToCollection(&target{
 					obj: obj, ident: name, kind: k, file: fi, dir: dir, anchor: anchor,
 					scope:      sc,
+					decided:    decided,
 					boundBy:    boundBy,
 					boundAt:    boundAt,
 					renameable: true,
@@ -312,13 +316,14 @@ func (c *collection) addMembersToCollection(pass *analysis.Pass, opts Options, f
 			if !ok || name.Name == "_" {
 				continue
 			}
-			sc, boundBy, boundAt := c.bindAtScopeSite(opts, name.Name, dir, container, fi.scope)
+			sc, boundBy, boundAt, decided := c.bindAtScopeSite(opts, name.Name, dir, container, fi.scope)
 			c.addToCollection(&target{
 				obj: obj, ident: name, kind: k, file: fi,
 				contained: true,
 				owner:     spec.Name.Name, ownerObj: ownerObj, dir: dir,
 				anchor:  m.Pos(),
 				scope:   sc,
+				decided: decided,
 				boundBy: boundBy,
 				boundAt: boundAt,
 			})

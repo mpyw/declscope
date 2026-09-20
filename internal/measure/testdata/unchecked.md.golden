@@ -1,0 +1,33 @@
+# example.com/x/internal/legacy
+
+## Namespaces
+
+| namespace | files      | declarations | qualify targets |
+| --------- | ---------- | -----------: | --------------: |
+| api       | `api.go`   |            3 |               - |
+| store     | `store.go` |            2 |               - |
+
+## Crossings
+
+| crossing    | mutual | declared | baselined | reported | clears | reached | uses |
+| ----------- | -----: | -------: | --------: | -------: | -----: | ------: | ---: |
+| api → store |        |        - |         - |        - |      - |  1 of 2 |    5 |
+
+
+
+```mermaid
+graph LR
+  n0["api"]
+  n1["store"]
+  n0 -.->|1| n1
+```
+## Most-reached declarations
+
+| declaration | namespace | reached from | state     |
+| ----------- | --------- | ------------ | --------- |
+| `rows`      | store     | 1 namespace  | unchecked |
+
+## Qualify
+
+Not asked: `rules.naming.qualify` does not apply to this package.
+

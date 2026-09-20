@@ -80,6 +80,8 @@ internal/
   mode.go                 Mode, the vocabulary rules.naming.qualify is spelled in
   scopesite.go            scope resolution (bind), and which directives bound nothing
   report.go               diagnostics and suggested fixes
+  survey.go               the same findings, with what became of each, plus
+                          the crossings the report never names
   ignore.go               ignore accounting: which comment silenced what, and which bound to nothing
   rename.go               the conditions under which a rename fix is offered at all
   rule/                   the rule vocabulary, shared by diagnostics, config, baseline and ignores
@@ -88,7 +90,10 @@ internal/
   directive/              //declscope:... comment parsing
   config/                 YAML loading and lookup
   baseline/               baseline file format, lookup and regeneration
-cmd/declscope/            singlechecker entry point, the `baseline` subcommand, and -V
+  measure/                what survey and inspect report: the model, the folds
+                          over it, and the text, JSON and markdown renderers
+cmd/declscope/            singlechecker entry point, the `baseline`, `survey`
+                          and `inspect` subcommands, and -V
 ```
 
 Each file of `internal/` is its own namespace, taken from its stem. `analyzer.go` and `subject.go` join the **core** instead: the model they hold is read by every stage, and in a named namespace each type would have to carry that namespace's prefix, so the builder's name would be spelled into the model every other file reads.
@@ -106,7 +111,9 @@ collect.go never writes another stage's state. `//declscope:package` on a
 constructor would have worked too, but the lazy form is what rename.go already
 did.
 
-`subject.go` carries a file-level `//declscope:package` because the shared model is shared on purpose. Everything else that crosses a namespace says so one declaration at a time, and those directives are the record of what each stage hands to another. `cmd/declscope/baseline.go` and `version.go` are each their own namespace for the same reason; only `main.go` is `main`.
+`subject.go` carries a file-level `//declscope:package` because the shared model is shared on purpose. Everything else that crosses a namespace says so one declaration at a time, and those directives are the record of what each stage hands to another. `cmd/declscope/baseline.go`, `survey.go`, `inspect.go`, `load.go` and `version.go` are each their own namespace for the same reason; only `main.go` is `main`.
+
+`internal/measure` repeats the shape one level down. `model.go` is its core, because every renderer reads the model and a named namespace would spell itself into each type's name; it states no scope, since everything in it is exported and already package-scoped. `cell.go` and `sink.go` carry file-level directives because they exist to be shared — the same exception `subject.go` takes. Each renderer is its own namespace, one per format rather than one per format and type, and reaches the model through `WriteFormat`, which is the only entry a caller outside the package has.
 
 > [!IMPORTANT]
 > Keep those directives when adding files to either unit. Without them the naming rule asks every declaration to carry a `baseline`/`analyzer` prefix, which is the tool reporting a boundary that is not really there.

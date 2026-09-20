@@ -251,6 +251,8 @@ func load(t *testing.T, path string) *baseline.Set {
 // runIn executes the binary in dir and returns its combined output and exit
 // code. Diagnostics and refusals both exit non-zero, so only a failure to
 // start is fatal.
+//
+//declscope:package // every subcommand's tests drive the same binary through it
 func runIn(t *testing.T, bin, dir string, args ...string) (string, int) {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
@@ -290,6 +292,12 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// testModule is the go.mod every temporary module here is built around.
+//
+//declscope:package // every subcommand's tests lay out a module with it
+const testModule = "module example.com/declscopetest\n\ngo 1.25\n"
+
+//declscope:package // every subcommand's tests lay out a module with it
 func writeTree(t *testing.T, root, name, body string) {
 	t.Helper()
 	path := filepath.Join(root, name)

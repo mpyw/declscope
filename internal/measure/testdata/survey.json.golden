@@ -1,0 +1,137 @@
+{
+  "checks": {
+    "typeCheck": {
+      "packages": 2,
+      "failed": []
+    },
+    "configs": [
+      {
+        "chain": [
+          ".declscope.yaml"
+        ],
+        "packages": 2,
+        "rules": {
+          "boundary": true,
+          "qualify": "ondemand",
+          "exported": true,
+          "surplus": true
+        }
+      }
+    ],
+    "baselines": [
+      {
+        "path": ".declscope-baseline.yaml",
+        "entries": 12
+      }
+    ]
+  },
+  "totals": {
+    "boundary": {
+      "asked": true,
+      "keyable": true,
+      "found": 5,
+      "ignored": 1,
+      "baselined": 2,
+      "reported": 2
+    },
+    "directive": {
+      "asked": true,
+      "keyable": false,
+      "found": 1,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 1
+    },
+    "filter": {
+      "asked": true,
+      "keyable": false,
+      "found": 0,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 0
+    },
+    "qualify": {
+      "asked": true,
+      "keyable": true,
+      "found": 4,
+      "ignored": 1,
+      "baselined": 1,
+      "reported": 2
+    },
+    "surplus": {
+      "asked": true,
+      "keyable": true,
+      "found": 0,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 0
+    }
+  },
+  "packages": [
+    {
+      "package": "example.com/x/internal/cmd",
+      "namespaces": 3,
+      "coreFiles": 1,
+      "allCore": false,
+      "boundary": {
+        "asked": true,
+        "reported": 2,
+        "baselined": 2,
+        "declared": 1
+      },
+      "qualify": {
+        "asked": true,
+        "reported": 2,
+        "baselined": 1,
+        "exempt": 1,
+        "worst": {
+          "namespace": "flags",
+          "failing": 2,
+          "targets": 2
+        }
+      },
+      "largest": {
+        "from": "completion",
+        "to": "flags",
+        "reached": 3,
+        "uses": 6
+      }
+    },
+    {
+      "package": "example.com/x/internal/generated",
+      "namespaces": 0,
+      "coreFiles": 0,
+      "allCore": false,
+      "boundary": {
+        "asked": true,
+        "reported": 0,
+        "baselined": 0,
+        "declared": 0
+      },
+      "qualify": {
+        "asked": false,
+        "reported": 0,
+        "baselined": 0,
+        "exempt": 0
+      }
+    },
+    {
+      "package": "example.com/x/internal/legacy",
+      "namespaces": 1,
+      "coreFiles": 2,
+      "allCore": true,
+      "boundary": {
+        "asked": true,
+        "reported": 0,
+        "baselined": 0,
+        "declared": 0
+      },
+      "qualify": {
+        "asked": false,
+        "reported": 0,
+        "baselined": 0,
+        "exempt": 0
+      }
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+# example.com/x/internal/cmd
+
+Config: `.declscope.yaml`
+
+## Namespaces
+
+| namespace  | files                          | declarations | qualify targets |
+| ---------- | ------------------------------ | -----------: | --------------: |
+| (core)     | `cmd.go`                       |            4 |               - |
+| completion | `completion.go`, `comp_zsh.go` |            6 |               4 |
+| flags      | `flags.go`                     |            5 |               2 |
+
+## Crossings
+
+| crossing            | mutual | declared | baselined | reported | clears | reached | uses |
+| ------------------- | ------ | -------: | --------: | -------: | -----: | ------: | ---: |
+| completion → flags  | yes    |        0 |         1 |        1 |      2 |  3 of 5 |    6 |
+| (core) → flags      |        |        0 |         0 |        0 |      0 |  1 of 5 |    4 |
+| (core) → completion |        |        0 |         1 |        0 |      1 |  1 of 6 |    2 |
+| flags → completion  | yes    |        1 |         0 |        0 |      2 |  1 of 6 |    1 |
+
+1 declaration is further: open, package-scoped by default rather than by decision, so left out of the table and of the diagram.
+
+Declarations crossed: 1 reported, 2 baselined, 1 declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.
+
+
+```mermaid
+graph LR
+  n0["completion"]
+  n1["flags"]
+  n2["(core)"]
+  n0 ==>|3| n1
+  n2 -.->|1| n1
+  n2 -->|1| n0
+  n1 -.->|1| n0
+```
+## Most-reached declarations
+
+| declaration    | namespace  | reached from | state     |
+| -------------- | ---------- | ------------ | --------- |
+| `flagSet`      | flags      | 2 namespaces | ignored   |
+| `writeFlag`    | flags      | 1 namespace  | reported  |
+| `compBuf`      | completion | 1 namespace  | baselined |
+| `Flags.parsed` | flags      | 1 namespace  | baselined |
+| `compName`     | completion | 1 namespace  | declared  |
+
+## Qualify
+
+| namespace  | exempt | baselined | reported | saturation |
+| ---------- | -----: | --------: | -------: | ---------: |
+| (core)     |      - |         - |        - |          - |
+| completion |      1 |         1 |        0 |     1 of 4 |
+| flags      |      0 |         0 |        2 |     2 of 2 |
+

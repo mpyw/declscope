@@ -1,0 +1,233 @@
+{
+  "package": "example.com/x/internal/cmd",
+  "config": [
+    ".declscope.yaml"
+  ],
+  "allCore": false,
+  "findings": {
+    "boundary": {
+      "asked": true,
+      "keyable": true,
+      "found": 5,
+      "ignored": 1,
+      "baselined": 2,
+      "reported": 2
+    },
+    "directive": {
+      "asked": true,
+      "keyable": false,
+      "found": 1,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 1
+    },
+    "filter": {
+      "asked": true,
+      "keyable": false,
+      "found": 0,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 0
+    },
+    "qualify": {
+      "asked": true,
+      "keyable": true,
+      "found": 4,
+      "ignored": 1,
+      "baselined": 1,
+      "reported": 2
+    },
+    "surplus": {
+      "asked": true,
+      "keyable": true,
+      "found": 0,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 0
+    }
+  },
+  "namespaces": [
+    {
+      "namespace": "(core)",
+      "files": [
+        "cmd.go"
+      ],
+      "core": true,
+      "declarations": 4,
+      "qualifyTargets": 0
+    },
+    {
+      "namespace": "completion",
+      "files": [
+        "completion.go",
+        "comp_zsh.go"
+      ],
+      "core": false,
+      "declarations": 6,
+      "qualifyTargets": 4
+    },
+    {
+      "namespace": "flags",
+      "files": [
+        "flags.go"
+      ],
+      "core": false,
+      "declarations": 5,
+      "qualifyTargets": 2
+    }
+  ],
+  "crossings": [
+    {
+      "from": "completion",
+      "to": "flags",
+      "mutual": true,
+      "declared": 0,
+      "baselined": 1,
+      "reported": 1,
+      "ignored": 1,
+      "unchecked": 0,
+      "reached": 3,
+      "declarations": 5,
+      "uses": 6,
+      "clears": 2
+    },
+    {
+      "from": "(core)",
+      "to": "flags",
+      "mutual": false,
+      "declared": 0,
+      "baselined": 0,
+      "reported": 0,
+      "ignored": 1,
+      "unchecked": 0,
+      "reached": 1,
+      "declarations": 5,
+      "uses": 4,
+      "clears": 0
+    },
+    {
+      "from": "(core)",
+      "to": "completion",
+      "mutual": false,
+      "declared": 0,
+      "baselined": 1,
+      "reported": 0,
+      "ignored": 0,
+      "unchecked": 0,
+      "reached": 1,
+      "declarations": 6,
+      "uses": 2,
+      "clears": 1
+    },
+    {
+      "from": "flags",
+      "to": "completion",
+      "mutual": true,
+      "declared": 1,
+      "baselined": 0,
+      "reported": 0,
+      "ignored": 0,
+      "unchecked": 0,
+      "reached": 1,
+      "declarations": 6,
+      "uses": 1,
+      "clears": 2
+    }
+  ],
+  "edges": [
+    {
+      "from": "completion",
+      "to": "flags",
+      "declaration": "writeFlag",
+      "kind": "func",
+      "uses": 3,
+      "state": "reported"
+    },
+    {
+      "from": "completion",
+      "to": "flags",
+      "declaration": "Flags.parsed",
+      "kind": "field",
+      "uses": 2,
+      "state": "baselined"
+    },
+    {
+      "from": "(core)",
+      "to": "completion",
+      "declaration": "compBuf",
+      "kind": "var",
+      "uses": 2,
+      "state": "baselined"
+    },
+    {
+      "from": "flags",
+      "to": "completion",
+      "declaration": "compName",
+      "kind": "func",
+      "uses": 1,
+      "state": "declared"
+    },
+    {
+      "from": "(core)",
+      "to": "flags",
+      "declaration": "flagSet",
+      "kind": "var",
+      "uses": 4,
+      "state": "ignored"
+    },
+    {
+      "from": "completion",
+      "to": "flags",
+      "declaration": "flagSet",
+      "kind": "var",
+      "uses": 1,
+      "state": "ignored"
+    },
+    {
+      "from": "completion",
+      "to": "(core)",
+      "declaration": "Run",
+      "kind": "func",
+      "uses": 9,
+      "state": "open"
+    }
+  ],
+  "names": [
+    {
+      "namespace": "flags",
+      "file": "flags.go",
+      "declaration": "parseAll",
+      "kind": "func",
+      "exported": false,
+      "state": "reported",
+      "fixable": true
+    },
+    {
+      "namespace": "flags",
+      "file": "flags.go",
+      "declaration": "Reset",
+      "kind": "func",
+      "exported": true,
+      "state": "reported",
+      "fixable": false
+    },
+    {
+      "namespace": "completion",
+      "file": "comp_zsh.go",
+      "declaration": "zshHeader",
+      "kind": "func",
+      "exported": false,
+      "state": "baselined",
+      "fixable": false
+    },
+    {
+      "namespace": "completion",
+      "file": "completion.go",
+      "declaration": "compLine",
+      "kind": "func",
+      "exported": false,
+      "state": "exempt",
+      "fixable": false
+    }
+  ]
+}

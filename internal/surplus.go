@@ -157,6 +157,8 @@ func surplusMessage(rep *target, group []*target) string {
 //     read as a reference site.
 //   - cgo and assembly reach declarations from sources the analysis never
 //     parses at all.
+//
+//declscope:package // the survey reports whether the rule was asked at all
 func (c *collection) surplusSeesEveryFile(pass *analysis.Pass) bool {
 	if u := c.unseen(pass); u.all || len(u.names) > 0 {
 		return false

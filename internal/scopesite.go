@@ -118,19 +118,20 @@ const (
 // author's decision or merely state an exception to a default.
 //
 //declscope:package // the one scope resolution, shared with the collector
-func (c *collection) bindAtScopeSite(opts Options, name string, dir, container, file directive.Decl) (scope.Scope, directive.Decl, scopesiteLevel) {
+func (c *collection) bindAtScopeSite(opts Options, name string, dir, container, file directive.Decl) (scope.Scope, directive.Decl, scopesiteLevel, bool) {
 	levels := []directive.Decl{dir, container, file}
 	for i, d := range levels {
 		if !d.HasScope {
 			continue
 		}
-		if !isInertScopeSite(opts, name, d.Scope, levels[i+1:]) {
+		decided := !isInertScopeSite(opts, name, d.Scope, levels[i+1:])
+		if decided {
 			c.scopeSite(d).bound = true
 		}
-		return d.Scope, d, scopesiteLevel(i + 1)
+		return d.Scope, d, scopesiteLevel(i + 1), decided
 	}
 	outer, _ := outerScopeOfScopeSite(opts, name, nil)
-	return outer, directive.Decl{}, scopesiteLevelDefault
+	return outer, directive.Decl{}, scopesiteLevelDefault, false
 }
 
 // outerScopeOfScopeSite is the scope a declaration would take from the levels outside the

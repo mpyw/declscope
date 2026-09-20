@@ -12,6 +12,7 @@ import (
 
 	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/directive"
+	"github.com/mpyw/declscope/internal/measure"
 	"github.com/mpyw/declscope/internal/namespace"
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
@@ -195,6 +196,8 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 // whose prefix is empty and whose files all share it, and free for the file
 // with no stem at all — which has no namespace either, and must not share a
 // key with every other such file.
+//
+//declscope:package // the survey spells every namespace with it too
 func (f *fileInfo) namespaceForReport() string {
 	if f.core {
 		return "(core)"
@@ -230,6 +233,90 @@ func (c *collection) keysForReport(pass *analysis.Pass, opts Options) []baseline
 		}
 	}
 	return out
+}
+
+// surveyedFindingsForReport returns one target's findings together with what
+// became of each: silenced by a directive, absorbed by the baseline, or
+// reported.
+//
+// It is the only entry the survey uses, so that the survey never asks "is this
+// a violation" a second way — a second answer would drift from this one, and
+// the difference would read as a bug in one of them rather than as two
+// different questions. Routing through here is also what keeps the order of
+// the two suppressions the same: an ignore is consulted before the baseline,
+// so a suppression the baseline would also have absorbed still counts as the
+// directive doing its job.
+//
+//declscope:package // the survey's entry, driven from survey.go
+func (c *collection) surveyedFindingsForReport(pass *analysis.Pass, opts Options, t *target) []measure.Finding {
+	findings := c.findingsForReport(pass, opts, t)
+	out := make([]measure.Finding, 0, len(findings))
+	for _, f := range findings {
+		state := measure.FindingReported
+		switch {
+		case c.silencedByIgnore(t, f.rule):
+			state = measure.FindingIgnored
+		case opts.Baseline.Has(f.key(pass, t)):
+			state = measure.FindingBaselined
+		}
+		out = append(out, measure.Finding{
+			Rule:        f.rule,
+			Declaration: f.decl,
+			State:       state,
+			// The fix the analyzer decided on, not a rerun of the decision:
+			// renameFix reserves the name it claims, so asking again would
+			// answer about a package that already contains this fix.
+			Fixable: len(f.fixes) > 0,
+		})
+	}
+	return out
+}
+
+// surveyedProblemsForReport tallies the two rules that carry no baseline key:
+// the directive rule, whose findings are settled in a second pass once every
+// other finding has been seen, and the filter rule, which reports at most once
+// per package.
+//
+// It runs the same two stages report runs, in the same order, for the same
+// reason: an ignore written for a directive problem silences something
+// attached to no declaration, so it has to be consulted before the unused
+// ignores are judged, or the author is told to delete the comment doing the
+// job.
+//
+//declscope:package // the survey's second entry, driven from survey.go
+func (c *collection) surveyedProblemsForReport(pass *analysis.Pass) (measure.Count, measure.Count) {
+	count := measure.Count{Asked: true}
+
+	c.reportUnusedScopeSites(pass)
+	count.Found = len(c.problems)
+	c.problems = c.silencedProblemsForReport(pass)
+
+	kept := len(c.problems)
+	c.reportUnusedIgnores(pass)
+	count.Found += len(c.problems) - kept
+	c.problems = c.silencedProblemsForReport(pass)
+
+	count.Reported = len(c.problems)
+	count.Ignored = count.Found - count.Reported
+
+	filtered := measure.Count{Asked: true}
+	if c.filterWarning != nil {
+		filtered.Found, filtered.Reported = 1, 1
+	}
+	return count, filtered
+}
+
+// silencedProblemsForReport drops the problems a file-level ignore stands
+// down, marking the directive that did it used.
+func (c *collection) silencedProblemsForReport(pass *analysis.Pass) []directive.Problem {
+	kept := c.problems[:0]
+	for _, p := range c.problems {
+		if c.ignoreSilencesFile(c.fileAt(pass, p.Pos), rule.Directive) {
+			continue
+		}
+		kept = append(kept, p)
+	}
+	return kept
 }
 
 func (c *collection) findingsForReport(pass *analysis.Pass, opts Options, t *target) []reportedFinding {
@@ -324,15 +411,7 @@ func (c *collection) boundaryFindingForReport(pass *analysis.Pass, opts Options,
 // Whether it applies at all depends on rules.naming.qualify, which defaults
 // to never: the convention is opt-in. See Mode and DefaultOptions.
 func (c *collection) qualifyFindingForReport(pass *analysis.Pass, opts Options, t *target) (reportedFinding, bool) {
-	if !opts.Qualify.Applies(c.namespaces) || !t.reportsName(opts) {
-		return reportedFinding{}, false
-	}
-	// A namespace is always an identity, but not always a prefix: 2fa.go
-	// bounds its declarations like any other file, yet no identifier can
-	// start with a digit. Containment alone could be satisfied there, by
-	// spelling the namespace later in the name, but the fix could not be,
-	// so the rule stays out rather than report what it cannot remedy.
-	if !namespace.CanPrefix(t.file.ns) {
+	if !c.qualifyExaminesForReport(pass, opts, t) {
 		return reportedFinding{}, false
 	}
 	name := t.obj.Name()
@@ -347,11 +426,6 @@ func (c *collection) qualifyFindingForReport(pass *analysis.Pass, opts Options, 
 			return reportedFinding{}, false
 		}
 	}
-	// main is a name the toolchain requires, so nothing can be asked of it.
-	if t.kind == kindFunc && name == "main" && pass.Pkg.Name() == "main" {
-		return reportedFinding{}, false
-	}
-
 	f := reportedFinding{
 		rule: rule.Qualify,
 		decl: name,
@@ -369,6 +443,30 @@ func (c *collection) qualifyFindingForReport(pass *analysis.Pass, opts Options, 
 		f.fixes = append(f.fixes, fix)
 	}
 	return f, true
+}
+
+// qualifyExaminesForReport reports whether the naming rule asks anything of a
+// declaration at all. It is the whole gate, in one place, because it is also
+// the denominator every saturation divides by: a survey that counted one of
+// these conjuncts would move a number without a diagnostic moving with it.
+//
+// A namespace is always an identity, but not always a prefix: 2fa.go bounds
+// its declarations like any other file, yet no identifier can start with a
+// digit. Containment alone could be satisfied there, by spelling the namespace
+// later in the name, but the fix could not be, so the rule stays out rather
+// than report what it cannot remedy.
+//
+// main is a name the toolchain requires, so nothing can be asked of it.
+//
+//declscope:package // the survey divides by it, and must divide by this one
+func (c *collection) qualifyExaminesForReport(pass *analysis.Pass, opts Options, t *target) bool {
+	if !opts.Qualify.Applies(c.namespaces) || !t.reportsName(opts) {
+		return false
+	}
+	if !namespace.CanPrefix(t.file.ns) {
+		return false
+	}
+	return t.kind != kindFunc || t.obj.Name() != "main" || pass.Pkg.Name() != "main"
 }
 
 // directiveFixInReport inserts an explicit scope directive above the declaration.

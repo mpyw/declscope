@@ -6,14 +6,11 @@ import (
 	"io"
 	"maps"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
-	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 
-	"github.com/mpyw/declscope"
 	"github.com/mpyw/declscope/internal"
 	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/config"
@@ -96,15 +93,7 @@ func baselineRun(args []string) {
 // that lookup ends. An explicit -o overrides this and gathers everything into
 // one file, which is then the caller's job to place.
 func baselineCollect(patterns []string, configPath, out, cwd string) (map[string][]baseline.Key, error) {
-	cfg := &packages.Config{
-		Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles |
-			packages.NeedImports | packages.NeedDeps | packages.NeedTypes |
-			packages.NeedSyntax | packages.NeedTypesInfo,
-		// Test variants see references that the ordinary variant does not, and
-		// a baseline that omitted them would report those as new.
-		Tests: true,
-	}
-	pkgs, err := packages.Load(cfg, patterns...)
+	pkgs, err := loadPackages(patterns, true)
 	if err != nil {
 		return nil, err
 	}
@@ -118,10 +107,10 @@ func baselineCollect(patterns []string, configPath, out, cwd string) (map[string
 	}
 	var unplaceable []string
 	for _, pkg := range pkgs {
-		if len(pkg.Syntax) == 0 || pkg.TypesInfo == nil || pkg.Types == nil || baselineIsTestMain(pkg) {
+		if !loadIsAnalyzable(pkg) {
 			continue
 		}
-		dir := baselinePackageDir(pkg)
+		dir := loadedPackageDir(pkg)
 		// Options are resolved per package, since a subtree may configure its
 		// own rules. The existing baseline is deliberately not loaded:
 		// regeneration records the current state from scratch, and a file
@@ -143,15 +132,7 @@ func baselineCollect(patterns []string, configPath, out, cwd string) (map[string
 			path = p
 		}
 
-		pass := &analysis.Pass{
-			Analyzer:  declscope.Analyzer,
-			Fset:      pkg.Fset,
-			Files:     pkg.Syntax,
-			Pkg:       pkg.Types,
-			TypesInfo: pkg.TypesInfo,
-			Report:    func(analysis.Diagnostic) {},
-		}
-		targets[path] = append(targets[path], internal.Collect(pass, opts)...)
+		targets[path] = append(targets[path], internal.Collect(loadedPass(pkg), opts)...)
 	}
 	if len(unplaceable) > 0 {
 		slices.Sort(unplaceable)
@@ -160,23 +141,6 @@ func baselineCollect(patterns []string, configPath, out, cwd string) (map[string
 			baselineDefaultName, cwd, strings.Join(unplaceable, "\n"))
 	}
 	return targets, nil
-}
-
-// baselineIsTestMain reports the synthesized main package of a test binary. It
-// lives in the build cache, so no baseline could ever be looked up from it, and
-// it has nothing to record.
-func baselineIsTestMain(pkg *packages.Package) bool {
-	return pkg.Name == "main" && strings.HasSuffix(pkg.PkgPath, ".test")
-}
-
-func baselinePackageDir(pkg *packages.Package) string {
-	for _, f := range pkg.GoFiles {
-		return filepath.Dir(f)
-	}
-	for _, f := range pkg.CompiledGoFiles {
-		return filepath.Dir(f)
-	}
-	return ""
 }
 
 func baselineFail(err error) {

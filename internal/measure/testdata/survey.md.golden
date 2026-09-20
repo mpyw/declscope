@@ -1,0 +1,35 @@
+## Checks in force
+
+| check      | value                                               | packages |
+| ---------- | --------------------------------------------------- | -------: |
+| config     | `.declscope.yaml`                                   |        2 |
+| rules      | boundary on, qualify ondemand, exported, surplus on |        2 |
+| baseline   | `.declscope-baseline.yaml`, 12 entries              |          |
+| type check | 2 packages ok, 0 failed                             |          |
+
+## Findings
+
+| rule        | found | ignored | baselined | reported |
+| ----------- | ----: | ------: | --------: | -------: |
+| `boundary`  |     5 |       1 |         2 |        2 |
+| `qualify`   |     4 |       1 |         1 |        2 |
+| `surplus`   |     0 |       0 |         0 |        0 |
+| `directive` |     1 |       0 |         - |        1 |
+| `filter`    |     0 |       0 |         - |        0 |
+
+## Packages — boundary
+
+| package                                           | reported | baselined | declared | largest crossing                    |
+| ------------------------------------------------- | -------: | --------: | -------: | ----------------------------------- |
+| `example.com/x/internal/cmd`                      |        2 |         2 |        1 | completion → flags (3 declarations) |
+| `example.com/x/internal/generated` [nothing read] |        0 |         0 |        0 | -                                   |
+| `example.com/x/internal/legacy` [all core]        |        0 |         0 |        0 | -                                   |
+
+## Packages — qualify
+
+| package                            | reported | baselined | exempt | worst namespace |
+| ---------------------------------- | -------: | --------: | -----: | --------------- |
+| `example.com/x/internal/cmd`       |        2 |         1 |      1 | flags 2 of 2    |
+| `example.com/x/internal/generated` |        - |         - |      - | -               |
+| `example.com/x/internal/legacy`    |        - |         - |      - | -               |
+
