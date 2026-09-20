@@ -180,9 +180,10 @@ type NameFinding struct {
 	Declaration string
 	Kind        string
 
-	// Exported marks a declaration reached only because rules.naming.exported
-	// is on. No rename is ever offered for one, so it is a different kind of
-	// work from the rest and is counted separately.
+	// Exported marks a declaration the rule reached only because
+	// rules.naming.exported is on. No rename is ever offered for one, so a
+	// consumer sorting the work by what -fix can do reads it here; no table
+	// splits the count.
 	Exported bool
 
 	State NameState

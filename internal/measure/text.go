@@ -31,6 +31,12 @@ func (p Package) writeText(w io.Writer) error {
 	if len(p.Config) > 0 {
 		out.printf("Config\t%s\n", strings.Join(p.Config, " + "))
 	}
+	if len(p.Namespaces) == 0 {
+		// No file of this package was read: every one is generated, or the
+		// filter removed them. Every count below is zero for a reason that
+		// has nothing to do with the code.
+		out.print("Note\tno file of this package was read, so nothing here was checked\n")
+	}
 	if p.AllCore {
 		// Not a note in passing: the two rules this command reports have
 		// nothing to check here, and a table of zeros would say the opposite.
@@ -63,10 +69,7 @@ func writeTextCrossings(out *sink, p Package, asked bool) {
 	if len(crossings) == 0 {
 		out.print("  none\t\t\t\t\t\t\n")
 	}
-	var ignored, unchecked int
 	for _, c := range crossings {
-		ignored += c.Ignored
-		unchecked += c.Unchecked
 		out.printf("  %s → %s\t%s\t%s\t%s\t%s\t%d of %d\t%d\n",
 			c.From, c.To, cellYes(c.Mutual),
 			cellCount(c.Declared, asked), cellCount(c.Baselined, asked), cellCount(c.Reported, asked),
@@ -78,14 +81,14 @@ func writeTextCrossings(out *sink, p Package, asked bool) {
 	// the table on purpose — but a reader who is told nothing about them would
 	// read the columns above as the whole of what crosses.
 	var notes []string
-	if ignored > 0 {
-		notes = append(notes, fmt.Sprintf("%d silenced by a directive", ignored))
+	if n := p.DeclarationsCrossing(EdgeIgnored); n > 0 {
+		notes = append(notes, fmt.Sprintf("%d silenced by a directive", n))
 	}
-	if unchecked > 0 {
-		notes = append(notes, fmt.Sprintf("%d not checked, rules.allowBoundary is on", unchecked))
+	if n := p.DeclarationsCrossing(EdgeUnchecked); n > 0 {
+		notes = append(notes, fmt.Sprintf("%d not checked, rules.allowBoundary is on", n))
 	}
-	if open := p.OpenCrossings(); open > 0 {
-		notes = append(notes, fmt.Sprintf("%d open, package-scoped by default rather than by decision", open))
+	if n := p.DeclarationsCrossing(EdgeOpen); n > 0 {
+		notes = append(notes, fmt.Sprintf("%d open, package-scoped by default rather than by decision", n))
 	}
 	if len(notes) > 0 {
 		// No tabs: a line inside the block would set the width of the first
@@ -208,7 +211,10 @@ func writeSummaryTextBoundary(out *sink, rows []SummaryRow) {
 	out.print("Packages — boundary\treported\tbaselined\tdeclared\tlargest crossing\n")
 	for _, r := range rows {
 		name := r.Package
-		if r.AllCore {
+		switch {
+		case r.Namespaces == 0:
+			name += " [nothing read]"
+		case r.AllCore:
 			name += " [all core]"
 		}
 		largest := "-"

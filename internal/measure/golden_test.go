@@ -124,8 +124,8 @@ func TestMarkdownIsDerivableFromJSON(t *testing.T) {
 					open++
 				}
 			}
-			if open != pkg.OpenCrossings() {
-				t.Errorf("the JSON carries %d open crossings, the model holds %d", open, pkg.OpenCrossings())
+			if open != pkg.DeclarationsCrossing(EdgeOpen) {
+				t.Errorf("the JSON carries %d open crossings, the model holds %d", open, pkg.DeclarationsCrossing(EdgeOpen))
 			}
 		})
 	}

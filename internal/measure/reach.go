@@ -14,7 +14,6 @@ import (
 // filed by concern rather than a boundary anyone drew.
 type Reach struct {
 	Declaration string
-	Kind        string
 
 	// Namespace is where the declaration is written.
 	Namespace string
@@ -48,7 +47,6 @@ func (p Package) MostReached(limit int) []Reach {
 		if !ok {
 			r = &Reach{
 				Declaration: e.Declaration,
-				Kind:        e.Kind,
 				Namespace:   e.To,
 				State:       e.State,
 			}

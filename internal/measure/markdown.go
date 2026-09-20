@@ -23,6 +23,9 @@ func (p Package) writeMarkdown(w io.Writer) error {
 	if len(p.Config) > 0 {
 		out.printf("Config: `%s`\n\n", strings.Join(p.Config, "` + `"))
 	}
+	if len(p.Namespaces) == 0 {
+		out.print("> No file of this package was read — every one is generated, or the filter removed them — so nothing here was checked.\n\n")
+	}
 	if p.AllCore {
 		out.print("> Every file is in the core namespace, so nothing crosses and no name is asked to carry one.\n\n")
 	}
@@ -61,9 +64,9 @@ func writeMarkdownCrossings(out *sink, p Package, asked bool) {
 			cellCount(c.Declared, asked), cellCount(c.Baselined, asked), cellCount(c.Reported, asked),
 			c.Reached, c.Declarations, c.Uses)
 	}
-	if open := p.OpenCrossings(); open > 0 {
+	if open := p.DeclarationsCrossing(EdgeOpen); open > 0 {
 		out.printf("\n%s further: open, package-scoped by default rather than by decision, so left out of the table and of the diagram.\n",
-			cellPlural(open, "crossing is", "crossings are"))
+			cellPlural(open, "declaration is", "declarations are"))
 	}
 	writeMarkdownMermaid(out, crossings)
 }

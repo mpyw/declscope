@@ -28,6 +28,7 @@
   "totals": {
     "boundary": {
       "asked": true,
+      "keyable": true,
       "found": 5,
       "ignored": 1,
       "baselined": 2,
@@ -35,6 +36,7 @@
     },
     "directive": {
       "asked": true,
+      "keyable": false,
       "found": 1,
       "ignored": 0,
       "baselined": 0,
@@ -42,6 +44,7 @@
     },
     "filter": {
       "asked": true,
+      "keyable": false,
       "found": 0,
       "ignored": 0,
       "baselined": 0,
@@ -49,6 +52,7 @@
     },
     "qualify": {
       "asked": true,
+      "keyable": true,
       "found": 4,
       "ignored": 1,
       "baselined": 1,
@@ -56,6 +60,7 @@
     },
     "surplus": {
       "asked": true,
+      "keyable": true,
       "found": 0,
       "ignored": 0,
       "baselined": 0,

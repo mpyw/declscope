@@ -19,7 +19,7 @@ Config: `.declscope.yaml`
 | (core) → completion |  | 0 | 1 | 0 | 1 of 6 | 2 |
 | flags → completion | yes | 1 | 0 | 0 | 1 of 6 | 1 |
 
-1 crossing is further: open, package-scoped by default rather than by decision, so left out of the table and of the diagram.
+1 declaration is further: open, package-scoped by default rather than by decision, so left out of the table and of the diagram.
 
 ```mermaid
 graph LR

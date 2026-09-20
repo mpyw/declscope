@@ -147,11 +147,18 @@ type jsonBaseline struct {
 type jsonCount struct {
 	// Asked says whether the rule was in force anywhere. The counts below are
 	// zero either way when it is false, and the reason is not the code.
-	Asked     bool `json:"asked"`
-	Found     int  `json:"found"`
-	Ignored   int  `json:"ignored"`
-	Baselined int  `json:"baselined"`
-	Reported  int  `json:"reported"`
+	Asked bool `json:"asked"`
+
+	// Keyable is false for a rule no baseline can suppress, which is the
+	// directive rule and the filter rule. The tables print a dash for their
+	// baselined cell, and without this a consumer reads the zero beside it as
+	// "suppressible, and none suppressed".
+	Keyable bool `json:"keyable"`
+
+	Found     int `json:"found"`
+	Ignored   int `json:"ignored"`
+	Baselined int `json:"baselined"`
+	Reported  int `json:"reported"`
 }
 
 type jsonSummaryPackage struct {
@@ -277,6 +284,7 @@ func jsonCounts(counts map[rule.Rule]Count) map[string]jsonCount {
 		}
 		out[string(r)] = jsonCount{
 			Asked:     count.Asked,
+			Keyable:   count.Keyable,
 			Found:     count.Found,
 			Ignored:   count.Ignored,
 			Baselined: count.Baselined,

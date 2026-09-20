@@ -99,18 +99,18 @@ func (p Package) Crossings() []Crossing {
 	return out
 }
 
-// OpenCrossings counts the declarations reached across a namespace that are
-// package-scoped by default rather than by decision.
+// DeclarationsCrossing counts the declarations crossed in one state.
 //
 // Declarations, not edges: one helper reached from three namespaces is one
-// declaration nobody was asked about, and the column beside this number
-// counts the same way.
-func (p Package) OpenCrossings() int {
-	open := map[[2]string]bool{}
+// declaration, and every other number in the report counts the same way — the
+// rule tallies a finding per declaration, and the crossing table's own columns
+// are per declaration within a pair.
+func (p Package) DeclarationsCrossing(state EdgeState) int {
+	seen := map[[2]string]bool{}
 	for _, e := range p.Edges {
-		if e.State == EdgeOpen {
-			open[[2]string{e.To, e.Declaration}] = true
+		if e.State == state {
+			seen[[2]string{e.To, e.Declaration}] = true
 		}
 	}
-	return len(open)
+	return len(seen)
 }

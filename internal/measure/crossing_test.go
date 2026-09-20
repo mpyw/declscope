@@ -38,7 +38,7 @@ func TestCrossingsLeaveOpenOut(t *testing.T) {
 			t.Error("an open crossing was listed as a row")
 		}
 	}
-	if got := pkg.OpenCrossings(); got != 1 {
+	if got := pkg.DeclarationsCrossing(EdgeOpen); got != 1 {
 		t.Errorf("OpenCrossings = %d, want 1", got)
 	}
 }
