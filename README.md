@@ -1,6 +1,7 @@
 # declscope
 
 [![CI](https://github.com/mpyw/declscope/actions/workflows/ci.yml/badge.svg)](https://github.com/mpyw/declscope/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/mpyw/declscope/graph/badge.svg)](https://codecov.io/gh/mpyw/declscope)
 [![Go Reference](https://pkg.go.dev/badge/github.com/mpyw/declscope.svg)](https://pkg.go.dev/github.com/mpyw/declscope)
 
 Keep your Go packages **flat** without letting them turn into a free-for-all.
