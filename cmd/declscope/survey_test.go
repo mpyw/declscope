@@ -378,3 +378,20 @@ func TestSurveyRefusesAnUnknownFormat(t *testing.T) {
 		t.Errorf("the refusal does not name the format:\n%s", out)
 	}
 }
+
+// TestSurveyRefusesABrokenConfig checks that a config one package cannot load
+// stops the run with that config's error. The packages are measured in
+// parallel, so this is also the check that an error from one of them is not
+// lost among the results of the others.
+func TestSurveyRefusesABrokenConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, "a/a.go", "package a\n")
+	writeTree(t, dir, "b/b.go", "package b\n")
+	writeTree(t, dir, "b/.declscope.yaml", "rules:\n  surplus: bogus\n")
+
+	out, code := runIn(t, bin, dir, "survey", "./...")
+	if code == 0 || !strings.Contains(out, `rules.surplus: unknown mode "bogus"`) {
+		t.Errorf("want the config error and a non-zero exit, got %d:\n%s", code, out)
+	}
+}

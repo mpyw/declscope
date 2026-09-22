@@ -412,3 +412,23 @@ func TestBaselineRecordsSettledMembers(t *testing.T) {
 		t.Errorf("want only the new field reported:\n%s", out)
 	}
 }
+
+// TestBaselineRefusesABrokenConfig checks that a config one package cannot
+// load stops the regeneration with that config's error, and writes nothing.
+// The packages are collected in parallel, so this is also the check that an
+// error from one of them is not lost among the results of the others.
+func TestBaselineRefusesABrokenConfig(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
+	writeTree(t, root, "a/a.go", "package a\n")
+	writeTree(t, root, "b/b.go", "package b\n")
+	writeTree(t, root, "b/.declscope.yaml", "rules:\n  surplus: bogus\n")
+
+	out, code := runIn(t, bin, root, "baseline", "./...")
+	if code == 0 || !strings.Contains(out, `rules.surplus: unknown mode "bogus"`) {
+		t.Errorf("want the config error and a non-zero exit, got %d:\n%s", code, out)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".declscope-baseline.yaml")); err == nil {
+		t.Error("a refused run wrote a baseline")
+	}
+}

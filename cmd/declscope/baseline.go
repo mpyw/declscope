@@ -105,19 +105,27 @@ func baselineCollect(patterns []string, configPath, out, cwd string) (map[string
 	if out != "" {
 		targets[out] = nil
 	}
-	var unplaceable []string
-	for _, pkg := range pkgs {
-		if !loadIsAnalyzable(pkg) {
-			continue
-		}
-		dir := loadedPackageDir(pkg)
+	// Each package is resolved and collected on its own, in parallel. Only
+	// the fold below sees more than one, and it runs in package order, so
+	// the first error and the order of every entry are the ones a sequential
+	// run would give.
+	pkgs = slices.DeleteFunc(slices.Clone(pkgs), func(pkg *packages.Package) bool { return !loadIsAnalyzable(pkg) })
+	type collectedPackage struct {
+		path string // empty when no baseline is found from the package
+		keys []baseline.Key
+		err  error
+	}
+	results := make([]collectedPackage, len(pkgs))
+	loadInParallel(len(pkgs), func(i int) {
+		dir := loadedPackageDir(pkgs[i])
 		// Options are resolved per package, since a subtree may configure its
 		// own rules. The existing baseline is deliberately not loaded:
 		// regeneration records the current state from scratch, and a file
 		// that fails to parse must not block being replaced.
 		opts, _, named, err := config.ResolveForBaseline(dir, configPath)
 		if err != nil {
-			return nil, err
+			results[i].err = err
+			return
 		}
 		path := out
 		if path == "" {
@@ -126,13 +134,24 @@ func baselineCollect(patterns []string, configPath, out, cwd string) (map[string
 		if path == "" {
 			p, ok := config.DefaultBaseline(dir, cwd)
 			if !ok {
-				unplaceable = append(unplaceable, fmt.Sprintf("  %s (%s)", pkg.PkgPath, dir))
-				continue
+				return
 			}
 			path = p
 		}
+		results[i] = collectedPackage{path: path, keys: internal.Collect(loadedPass(pkgs[i]), opts)}
+	})
 
-		targets[path] = append(targets[path], internal.Collect(loadedPass(pkg), opts)...)
+	var unplaceable []string
+	for i, pkg := range pkgs {
+		r := results[i]
+		if r.err != nil {
+			return nil, r.err
+		}
+		if r.path == "" {
+			unplaceable = append(unplaceable, fmt.Sprintf("  %s (%s)", pkg.PkgPath, loadedPackageDir(pkg)))
+			continue
+		}
+		targets[r.path] = append(targets[r.path], r.keys...)
 	}
 	if len(unplaceable) > 0 {
 		slices.Sort(unplaceable)
