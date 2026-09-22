@@ -1,4 +1,4 @@
-package internal
+package rule
 
 import "testing"
 
@@ -92,6 +92,16 @@ func TestQualifyModeSetString(t *testing.T) {
 	for _, tt := range tests {
 		if got := tt.set.String(); got != tt.want {
 			t.Errorf("String() = %q, want %q", got, tt.want)
+		}
+	}
+}
+
+// TestModeStringUnknown pins what a value outside every mode spells, so that
+// a mode added without its spelling reads as a bug rather than as a setting.
+func TestModeStringUnknown(t *testing.T) {
+	for _, got := range []string{QualifyMode(-1).String(), SurplusMode(-1).String(), BoundaryMode(-1).String()} {
+		if got != "unknown" {
+			t.Errorf("String() = %q, want unknown", got)
 		}
 	}
 }

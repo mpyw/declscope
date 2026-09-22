@@ -1,4 +1,4 @@
-package internal
+package rule
 
 import (
 	"strings"
@@ -214,5 +214,3 @@ func (s BoundaryModeSet) String() string {
 	}
 	return modeJoin(names)
 }
-
-// Options is the resolved configuration for a run.

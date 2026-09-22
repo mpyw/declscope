@@ -2,6 +2,7 @@ package internal
 
 import (
 	"github.com/mpyw/declscope/internal/baseline"
+	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
@@ -14,7 +15,7 @@ type Options struct {
 
 	// Qualify says when a package-level declaration must carry its namespace
 	// somewhere in its name.
-	Qualify QualifyMode
+	Qualify rule.QualifyMode
 
 	// Vocabulary lists, per namespace, extra words that carry the namespace as
 	// its own spelling would: irregular inflections and domain synonyms that
@@ -35,7 +36,7 @@ type Options struct {
 	// This is not the way to adopt declscope gradually. A baseline records
 	// what a codebase already has and still reports what is new, which a
 	// switch cannot do.
-	Boundary BoundaryMode
+	Boundary rule.BoundaryMode
 
 	// Surplus says how much the surplus rule reports. Loose, the default,
 	// reports a //declscope:package when declscope sees no use of anything
@@ -49,7 +50,7 @@ type Options struct {
 	// Neither shape has a way to break a build, but loose's advice is to
 	// delete a directive, so it never has a fix: every case it cannot see is
 	// one where the directive stays and the advice would be to delete it.
-	Surplus SurplusMode
+	Surplus rule.SurplusMode
 
 	// NameExported widens the naming rule to exported declarations. Inside
 	// the package an exported name is read as bare as any other, so the package
@@ -102,9 +103,9 @@ type Options struct {
 func DefaultOptions() Options {
 	return Options{
 		Unexported: scope.Private,
-		Qualify:    QualifyModeNever,
-		Boundary:   BoundaryModeOn,
-		Surplus:    SurplusModeLoose,
+		Qualify:    rule.QualifyModeNever,
+		Boundary:   rule.BoundaryModeOn,
+		Surplus:    rule.SurplusModeLoose,
 	}
 }
 

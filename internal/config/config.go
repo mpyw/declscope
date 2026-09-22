@@ -16,8 +16,8 @@
 //	  boundary: on          # off | on (off stops checking reach, leaving only the naming rule)
 //	  surplus: loose        # off | loose | strict
 //
-// rules.naming.qualify reads an internal.QualifyMode; rules.boundary reads an
-// internal.BoundaryMode; rules.surplus reads an internal.SurplusMode;
+// rules.naming.qualify reads an rule.QualifyMode; rules.boundary reads an
+// rule.BoundaryMode; rules.surplus reads an rule.SurplusMode;
 // rules.naming.exported is true/false; rules.naming.vocabulary maps a
 // namespace to the extra words that satisfy the naming rule for it.
 //
@@ -41,6 +41,7 @@ import (
 
 	"github.com/mpyw/declscope/internal"
 	"github.com/mpyw/declscope/internal/baseline"
+	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
@@ -52,13 +53,13 @@ var Names = []string{".declscope.yaml", ".declscope.yml"}
 var BaselineNames = []string{".declscope-baseline.yaml", ".declscope-baseline.yml"}
 
 // The values rules.naming.qualify accepts.
-var qualifyModes = internal.QualifyModeSet{internal.QualifyModeAlways, internal.QualifyModeNever, internal.QualifyModeOnDemand}
+var qualifyModes = rule.QualifyModeSet{rule.QualifyModeAlways, rule.QualifyModeNever, rule.QualifyModeOnDemand}
 
 // The values rules.boundary accepts, from reporting least to most.
-var boundaryModes = internal.BoundaryModeSet{internal.BoundaryModeOff, internal.BoundaryModeOn}
+var boundaryModes = rule.BoundaryModeSet{rule.BoundaryModeOff, rule.BoundaryModeOn}
 
 // The values rules.surplus accepts, from reporting least to most.
-var surplusModes = internal.SurplusModeSet{internal.SurplusModeOff, internal.SurplusModeLoose, internal.SurplusModeStrict}
+var surplusModes = rule.SurplusModeSet{rule.SurplusModeOff, rule.SurplusModeLoose, rule.SurplusModeStrict}
 
 // boolSetting is a true/false key, with its own error naming the two values it
 // takes rather than the parser's "cannot unmarshal".

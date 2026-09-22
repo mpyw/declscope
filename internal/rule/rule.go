@@ -1,9 +1,18 @@
-// Package rule names declscope's checks.
+// Package rule names declscope's checks, and the modes their settings are
+// spelled in.
 //
 // The same names are used everywhere a check has to be referred to: the
 // category of a diagnostic, the key of a baseline entry, and the target of an
 // ignore directive. One vocabulary means that whatever a diagnostic calls
 // itself is exactly what can be written to silence or record it.
+//
+// This file is the package's core, and mode.go is its own namespace: the
+// rule names are what every caller spells, and a named namespace would spell
+// itself into each of them (rule.RuleBoundary). Everything here is exported
+// and already package-scoped, so the core states no scope.
+//
+//declscope:core
+
 package rule
 
 import "slices"

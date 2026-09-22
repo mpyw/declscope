@@ -9,6 +9,7 @@ import (
 	"github.com/mpyw/declscope/internal"
 	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/config"
+	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
@@ -53,7 +54,7 @@ filter:
 	if opts.Unexported != scope.PackageInternal {
 		t.Errorf("defaults not applied: %+v", opts)
 	}
-	if opts.Qualify != internal.QualifyModeNever || !opts.NameExported {
+	if opts.Qualify != rule.QualifyModeNever || !opts.NameExported {
 		t.Errorf("rules not applied: %+v", opts)
 	}
 	// The pattern arrives as written, together with the directory it is to be
@@ -244,11 +245,11 @@ func apply(t *testing.T, body string) (internal.Options, error) {
 func TestQualifyModes(t *testing.T) {
 	tests := []struct {
 		yaml string
-		want internal.QualifyMode
+		want rule.QualifyMode
 	}{
-		{"rules:\n  naming:\n    qualify: always\n", internal.QualifyModeAlways},
-		{"rules:\n  naming:\n    qualify: never\n", internal.QualifyModeNever},
-		{"rules:\n  naming:\n    qualify: ondemand\n", internal.QualifyModeOnDemand},
+		{"rules:\n  naming:\n    qualify: always\n", rule.QualifyModeAlways},
+		{"rules:\n  naming:\n    qualify: never\n", rule.QualifyModeNever},
+		{"rules:\n  naming:\n    qualify: ondemand\n", rule.QualifyModeOnDemand},
 	}
 	for _, tt := range tests {
 		opts, err := apply(t, tt.yaml)
@@ -266,10 +267,10 @@ func TestQualifyModes(t *testing.T) {
 func TestBoundaryModes(t *testing.T) {
 	for _, tt := range []struct {
 		value string
-		want  internal.BoundaryMode
+		want  rule.BoundaryMode
 	}{
-		{"off", internal.BoundaryModeOff},
-		{"on", internal.BoundaryModeOn},
+		{"off", rule.BoundaryModeOff},
+		{"on", rule.BoundaryModeOn},
 	} {
 		opts, err := apply(t, "rules:\n  boundary: "+tt.value+"\n")
 		if err != nil {
@@ -289,11 +290,11 @@ func TestBoundaryModes(t *testing.T) {
 func TestSurplusModes(t *testing.T) {
 	for _, tt := range []struct {
 		value string
-		want  internal.SurplusMode
+		want  rule.SurplusMode
 	}{
-		{"off", internal.SurplusModeOff},
-		{"loose", internal.SurplusModeLoose},
-		{"strict", internal.SurplusModeStrict},
+		{"off", rule.SurplusModeOff},
+		{"loose", rule.SurplusModeLoose},
+		{"strict", rule.SurplusModeStrict},
 	} {
 		opts, err := apply(t, "rules:\n  surplus: "+tt.value+"\n")
 		if err != nil {
@@ -334,18 +335,18 @@ func TestBoolSettings(t *testing.T) {
 // on the repositories measured.
 func TestDefaultModes(t *testing.T) {
 	opts := internal.DefaultOptions()
-	if opts.Qualify != internal.QualifyModeNever {
+	if opts.Qualify != rule.QualifyModeNever {
 		t.Errorf("default Qualify = %v, want never", opts.Qualify)
 	}
 	if opts.NameExported {
 		t.Error("default NameExported should be off")
 	}
-	if opts.Boundary != internal.BoundaryModeOn {
+	if opts.Boundary != rule.BoundaryModeOn {
 		t.Errorf("default Boundary = %v, want on: it is the rule this tool exists for", opts.Boundary)
 	}
 	// loose, not strict: an upgrade must not add reports to a repository
 	// whose config did not change.
-	if opts.Surplus != internal.SurplusModeLoose {
+	if opts.Surplus != rule.SurplusModeLoose {
 		t.Errorf("default Surplus = %v, want loose", opts.Surplus)
 	}
 }
@@ -599,7 +600,7 @@ func TestNestedConfigInheritsAndOverrides(t *testing.T) {
 		t.Error("the nested file states exported, so it should be on")
 	}
 	// Stated only at the root, so it survives a nested file that is silent.
-	if opts.Qualify != internal.QualifyModeAlways {
+	if opts.Qualify != rule.QualifyModeAlways {
 		t.Errorf("qualify = %v, want the root's, which the nested file did not restate", opts.Qualify)
 	}
 	// The map merges per namespace rather than the nearer one replacing it.
@@ -634,17 +635,17 @@ func TestSurplusModeComposes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opts.Surplus != internal.SurplusModeStrict {
+	if opts.Surplus != rule.SurplusModeStrict {
 		t.Errorf("Surplus = %v: a nested file that does not state it should keep the root's", opts.Surplus)
 	}
-	if opts.Boundary != internal.BoundaryModeOn {
+	if opts.Boundary != rule.BoundaryModeOn {
 		t.Error("rules.surplus must switch no other rule")
 	}
 	opts, _, err = config.Resolve(stated, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if opts.Surplus != internal.SurplusModeOff {
+	if opts.Surplus != rule.SurplusModeOff {
 		t.Errorf("Surplus = %v: a nested file that states it should win", opts.Surplus)
 	}
 }
@@ -725,7 +726,7 @@ func TestExplicitConfigDoesNotChain(t *testing.T) {
 	if !opts.NameExported {
 		t.Error("the named file should apply")
 	}
-	if opts.Qualify != internal.QualifyModeNever {
+	if opts.Qualify != rule.QualifyModeNever {
 		t.Errorf("qualify = %v, want the built-in default: an explicit config builds no chain", opts.Qualify)
 	}
 }

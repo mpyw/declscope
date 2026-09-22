@@ -466,7 +466,7 @@ func (c *collection) boundaryFindingForReport(pass *analysis.Pass, opts Options,
 // namespace.Contains is the test.
 //
 // Whether it applies at all depends on rules.naming.qualify, which defaults
-// to never: the convention is opt-in. See QualifyMode and DefaultOptions.
+// to never: the convention is opt-in. See rule.QualifyMode and DefaultOptions.
 func (c *collection) qualifyFindingForReport(pass *analysis.Pass, opts Options, t *target) (reportedFinding, bool) {
 	if !c.qualifyExaminesForReport(pass, opts, t) {
 		return reportedFinding{}, false
