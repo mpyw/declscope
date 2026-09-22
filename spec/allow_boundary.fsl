@@ -23,9 +23,9 @@ spec AllowBoundary {
 
   state {
     configured: Bool,
-    // The two switches.
+    // The two switches: allowBoundary, and rules.surplus set to off.
     allowBoundary: Bool,
-    allowSurplus: Bool,
+    surplusOff: Bool,
     // What each rule reads.
     scope: Scope, refs: Refs,
     qualify: Mode, carries: Bool, twoNamespaces: Bool,
@@ -40,7 +40,7 @@ spec AllowBoundary {
 
   init {
     configured = false
-    allowBoundary = false  allowSurplus = false
+    allowBoundary = false  surplusOff = false
     scope = Private  refs = NoRefs
     qualify = Never  carries = false  twoNamespaces = false
     hasPackageDir = false  sawEveryFile = false
@@ -51,7 +51,7 @@ spec AllowBoundary {
                    q: Mode, c: Bool, two: Bool, pd: Bool, saw: Bool) {
     requires not configured
     configured = true
-    allowBoundary = ab  allowSurplus = as_
+    allowBoundary = ab  surplusOff = as_
     scope = sc  refs = r
     qualify = q  carries = c  twoNamespaces = two
     hasPackageDir = pd  sawEveryFile = saw
@@ -82,7 +82,7 @@ spec AllowBoundary {
 
   action reportSurplus() {
     requires configured
-    requires not allowSurplus
+    requires not surplusOff
     requires sawEveryFile
     requires hasPackageDir
     requires refs != CrossNs
@@ -116,12 +116,12 @@ spec AllowBoundary {
     allowBoundary and not boundaryReported and qualifyReported
   }
 
-  // --- allowSurplus stays the other switch ----------------------------------
+  // --- rules.surplus: off stays the other switch ---------------------------
   // It gates surplus and not boundary, so the two keys are independent in both
   // directions rather than one implying the other.
-  invariant SurplusSilencedWhenAllowed { surplusReported => not allowSurplus }
-  reachable BoundaryFiresWhileSurplusAllowed {
-    allowSurplus and not allowBoundary and scope == Private and refs == CrossNs
+  invariant SurplusSilencedWhenOff { surplusReported => not surplusOff }
+  reachable BoundaryFiresWhileSurplusOff {
+    surplusOff and not allowBoundary and scope == Private and refs == CrossNs
     and boundaryReported
   }
 

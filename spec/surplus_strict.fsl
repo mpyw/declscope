@@ -1,0 +1,310 @@
+// surplus under rules.surplus: strict. loose judges a //declscope:package as a
+// whole and stays quiet when any one thing under it is reached. strict also
+// judges each declaration under a directive that is otherwise in use: a field
+// under its type's, a spec under its block's, anything under the file's. The
+// fix inserts //declscope:private on that one declaration.
+//
+// The property is surplus.fsl's. NeverReportsReachable says neither finding
+// is made of a declaration reached from another namespace by any path the
+// rule counts. surplus.fsl enumerates those paths for loose; here they are one
+// variable, because no property reads two at once:
+//
+//   Spelled    another namespace spells it, a composite literal without keys
+//              writes it, or a selection through an embedding or on an
+//              instantiation names it — all of them are in the reference index
+//   Converted  a struct conversion pairs it by name and spells nothing
+//   Linknamed  //go:linkname or //export names it as text
+//   Opaque     generated files, cgo or assembly hold reference sites the
+//              analysis never reads
+//
+// The two findings are about one directive and one declaration under it.
+// otherLive is whether anything else under the directive keeps it alive. When
+// nothing does and this declaration does not either, loose reports the
+// directive, and strict adds nothing: the per-declaration finding would say the
+// same thing again. So strict reports a superset of loose, and the two never
+// both land on the declaration.
+//
+// Four more suppressors are strict's alone. entryMixed: another name in the
+// same entry (a, b int, or var x, y) is reached, and the only directive that
+// could narrow this one narrows that one too. membersKeep: the declaration is
+// a type, and a member that would take the narrowed scope through it is
+// reached or exported. ownerNarrowed: the declaration is a member of a type
+// strict already narrows, whose fix settles it. And the scope must be the
+// enclosing directive's doing: not the declaration's own directive, not
+// exportedness, and not defaults.unexported.
+//
+// The fix must bind, settle the report, start no boundary report on the
+// declaration or on a member it narrows, never make loose fire, and never
+// leave the directive binding nothing. otherDecided is whether something else
+// under the directive still takes a scope it could not have had otherwise.
+// Where nothing does, the fix is withheld and the report is not.
+//
+// ASSUME-1: one declaration and its enclosing directive are enough. Everything
+//   else the directive reaches matters only through otherLive and otherDecided,
+//   and a type's members only through membersKeep (modelling assumption)
+spec SurplusStrict {
+  enum Scope { Package, Private }
+  enum Mode  { Off, Loose, Strict }
+  // Where the enclosing directive is written. The rule treats the three the
+  // same, and a witness per level is what shows it.
+  enum Level { OnFile, OnBlock, OnType }
+  // Why the declaration has the scope it has. Each value other than Enclosed
+  // is one reason the enclosing directive is not what widened it. They are one
+  // variable rather than four flags for the reason Reach is, below.
+  enum Source { Enclosed, Own, Exported, PackageDefault, NoEnclosing }
+  // The reach paths are one variable: reach is a disjunction, so no property
+  // reads two of them at once, and flags would multiply the states the checker
+  // holds where an enum adds to them.
+  enum Reach { Unreached, Spelled, Converted, Linknamed, Opaque }
+  // The shape of the entry, by the same reasoning: each value is one strict
+  // suppressor, or a type whose members are all quiet.
+  enum Shape { Plain, MixedEntry, MembersQuiet, MembersKeep, OwnerNarrowed }
+
+  state {
+    phase: Int,
+    mode: Mode, source: Source, level: Level,
+    seesAllFiles: Bool, reach: Reach, shape: Shape,
+    otherLive: Bool, otherDecided: Bool,
+    looseReported: Bool, strictReported: Bool, fixed: Bool, stalled: Bool
+  }
+
+  init {
+    phase = 0
+    mode = Loose  source = Enclosed  level = OnFile
+    seesAllFiles = true  reach = Unreached  shape = Plain
+    otherLive = false  otherDecided = false
+    looseReported = false  strictReported = false  fixed = false  stalled = false
+  }
+
+  // Two steps rather than one: one action with every parameter is the product
+  // of all of them at every step, which is what the checker holds.
+  action configureScope(m: Mode, src: Source, l: Level, sa: Bool) {
+    requires phase == 0
+    phase = 1  mode = m  source = src  level = l  seesAllFiles = sa
+  }
+  action configureReach(r: Reach, sh: Shape, live: Bool, decided: Bool) {
+    requires phase == 1
+    phase = 2  reach = r  shape = sh
+    otherLive = live  otherDecided = decided
+  }
+
+  def configured() = phase == 2
+
+  def exported() = source == Exported
+  def ownDir() = source == Own
+  def cfgUnexported() = if source == PackageDefault then Package else Private
+  def entryMixed() = shape == MixedEntry
+  def carriesMembers() = shape == MembersQuiet or shape == MembersKeep
+  def membersKeep() = shape == MembersKeep
+  def ownerNarrowed() = shape == OwnerNarrowed
+
+  // A pass that ran and neither reported nor fixed, which may repeat forever.
+  action pass() { requires configured()  stalled = true }
+
+  def enclosing() = source != NoEnclosing
+  def usedOutside() = reach == Spelled
+  def reachable() = reach != Unreached
+
+  // --- loose: the directive as a whole ------------------------------------
+  // The declaration depends on the directive while it states no scope of its
+  // own, and keeps it alive while it is reached or exported.
+  def dependsOnDirective() = enclosing() and not ownDir()
+  def keepsDirective() = dependsOnDirective() and (reachable() or exported())
+  def looseCondition() = enclosing() and seesAllFiles and not otherLive and not keepsDirective()
+  def looseFires() = mode != Off and looseCondition()
+
+  // --- strict: this one declaration ---------------------------------------
+  // The enclosing directive is what made it package-scoped: without it, under
+  // this configuration, the declaration would be private.
+  def widened() = dependsOnDirective() and not exported() and cfgUnexported() == Private
+  def strictFires() =
+    mode == Strict and widened() and seesAllFiles and not reachable()
+    and not entryMixed() and not (carriesMembers() and membersKeep()) and not ownerNarrowed()
+    and not looseCondition()
+  def fixable() = strictFires() and otherDecided
+
+  fair action reportLoose() {
+    requires configured()  requires looseFires()  requires not looseReported
+    looseReported = true
+  }
+  fair action reportStrict() {
+    requires configured()  requires strictFires()  requires not strictReported
+    strictReported = true
+  }
+  fair action fix() {
+    requires strictReported  requires fixable()  requires not fixed
+    fixed = true
+  }
+
+  // --- the source after the run -------------------------------------------
+  def scopeAfter() =
+    if fixed then Private
+    else if dependsOnDirective() then Package
+    else if exported() then Package
+    else cfgUnexported()
+  // directive_effect.fsl's binding test, over the fixed source: the scope the
+  // declaration would take from outside its own directive, and whether that
+  // is the same under every configuration.
+  def outerFixed() = enclosing() or exported()
+  def outerScope() = if enclosing() or exported() then Package else cfgUnexported()
+  def insertedInert() = outerFixed() and Private == outerScope()
+
+  def widenedAfter() = enclosing() and not (ownDir() or fixed) and not exported() and cfgUnexported() == Private
+  def strictAfter() =
+    mode == Strict and widenedAfter() and seesAllFiles and not reachable()
+    and not entryMixed() and not (carriesMembers() and membersKeep()) and not ownerNarrowed()
+    and not looseCondition()
+  def crossesAfter() = scopeAfter() == Private and usedOutside()
+  // A member narrowed with the type crosses when it was reached.
+  def membersCrossAfter() = fixed and carriesMembers() and membersKeep()
+  // Once narrowed, the declaration no longer depends on the directive, so it
+  // no longer keeps it alive either.
+  def looseAfter() =
+    enclosing() and seesAllFiles and not otherLive
+    and (fixed or not keepsDirective())
+  def directiveBindsAfter() = otherDecided or not fixed
+
+  // --- what the rule may say ----------------------------------------------
+  // The property the rule exists to keep, for both findings.
+  invariant NeverReportsReachable {
+    (strictReported => not reachable()) and (looseReported => not keepsDirective())
+  }
+
+  // strict adds to loose and never repeats it.
+  invariant NeverTwiceOnOneDeclaration { not (looseReported and strictReported) }
+  invariant StrictOnlyUnderStrict { strictReported => mode == Strict }
+  invariant LooseUnderEitherMode  { looseReported => mode != Off }
+
+  // Only an enclosing directive may be the reason for a strict finding.
+  invariant StrictImpliesEnclosing          { strictReported => enclosing() }
+  invariant NeverReportsOwnDirective        { strictReported => not ownDir() }
+  invariant NeverReportsExported            { strictReported => not exported() }
+  invariant NeverReportsUnderPackageDefault { strictReported => cfgUnexported() == Private }
+  invariant NeverReportsMixedEntry          { strictReported => not entryMixed() }
+  invariant NeverNarrowsAReachedMember      { strictReported => not (carriesMembers() and membersKeep()) }
+  invariant NeverRepeatsTheOwnersFinding    { strictReported => not ownerNarrowed() }
+
+  // A pass that did not read every file reports nothing.
+  invariant SilentWhenBlind { (strictReported or looseReported) => seesAllFiles }
+
+  // Auxiliary: nothing assigns the inputs once configured, so each guard
+  // still holds of the state the action fired in.
+  invariant PhaseInRange { phase >= 0 and phase <= 2 }
+  invariant LooseRecordsItsGuard  { looseReported => configured() and looseFires() }
+  invariant StrictRecordsItsGuard { strictReported => configured() and strictFires() }
+  invariant FixRecordsItsGuard    { fixed => strictReported and fixable() }
+
+  // --- what the fix leaves -------------------------------------------------
+  invariant InsertedDirectiveBinds     { fixed => not insertedInert() }
+  invariant FixSettlesTheReport        { fixed => not strictAfter() }
+  invariant FixStartsNoBoundary        { fixed => not crossesAfter() and not membersCrossAfter() }
+  invariant FixNeverFiresLoose         { fixed => not looseAfter() }
+  invariant FixKeepsTheDirectiveBound  { fixed => directiveBindsAfter() }
+
+  trans StrictOnlyWhereItFires { not old(strictReported) and strictReported => old(strictFires()) }
+  trans FixOnlyWhereFixable    { not old(fixed) and fixed => old(fixable()) }
+
+  // --- witnesses ------------------------------------------------------------
+  reachable LooseReported { looseReported and mode == Loose }
+  reachable LooseReportedUnderStrict { looseReported and mode == Strict }
+  reachable StrictReportedOnFile  { strictReported and level == OnFile }
+  reachable StrictReportedOnBlock { strictReported and level == OnBlock }
+  reachable StrictReportedOnType  { strictReported and level == OnType }
+  reachable TypeNarrowedWithItsMembers { fixed and shape == MembersQuiet }
+  reachable Fixed { fixed and not strictAfter() }
+  // The fix is withheld, not the report, where narrowing would leave the
+  // directive binding nothing.
+  reachable ReportedWithoutFix { strictReported and not otherDecided and stalled }
+
+  // Under loose, a declaration strict would report goes unreported.
+  reachable LooseLeavesTheDeclaration {
+    configured() and mode == Loose and widened() and seesAllFiles and otherLive
+    and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
+    and not looseFires() and not strictFires()
+  }
+
+  // Each suppressor of the strict finding is witnessed on its own, with every
+  // other one off.
+  reachable SilentOnUseOutside {
+    configured() and mode == Strict and widened() and seesAllFiles and otherLive
+    and reach == Spelled and not entryMixed() and not carriesMembers() and not ownerNarrowed()
+    and not strictFires()
+  }
+  reachable SilentOnConversion {
+    configured() and mode == Strict and widened() and seesAllFiles and otherLive
+    and reach == Converted and not entryMixed() and not carriesMembers() and not ownerNarrowed()
+    and not strictFires()
+  }
+  reachable SilentOnLinkname {
+    configured() and mode == Strict and widened() and seesAllFiles and otherLive
+    and reach == Linknamed and not entryMixed() and not carriesMembers() and not ownerNarrowed()
+    and not strictFires()
+  }
+  reachable SilentOnOpaqueSource {
+    configured() and mode == Strict and widened() and seesAllFiles and otherLive
+    and reach == Opaque and not entryMixed() and not carriesMembers() and not ownerNarrowed()
+    and not strictFires()
+  }
+  reachable SilentOnMixedEntry {
+    configured() and mode == Strict and widened() and seesAllFiles and otherLive
+    and not reachable() and entryMixed() and not carriesMembers() and not ownerNarrowed()
+    and not strictFires()
+  }
+  reachable SilentOnAReachedMember {
+    configured() and mode == Strict and widened() and seesAllFiles and otherLive
+    and not reachable() and shape == MembersKeep and not strictFires()
+  }
+  reachable SilentUnderANarrowedOwner {
+    configured() and mode == Strict and widened() and seesAllFiles and otherLive
+    and not reachable() and not entryMixed() and not carriesMembers() and ownerNarrowed()
+    and not strictFires()
+  }
+  reachable SilentWhereLooseReports {
+    configured() and mode == Strict and widened() and seesAllFiles and not otherLive
+    and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
+    and not strictFires() and looseFires()
+  }
+  reachable SilentWhenNotEveryFileIsRead {
+    configured() and mode == Strict and widened() and not seesAllFiles and otherLive
+    and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
+    and not strictFires()
+  }
+  reachable SilentWhenOff {
+    configured() and mode == Off and widened() and seesAllFiles
+    and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
+    and not strictFires() and not looseFires()
+  }
+
+  // And each reason the scope is not an enclosing directive's doing.
+  reachable SilentOnOwnDirective {
+    configured() and mode == Strict and source == Own
+    and cfgUnexported() == Private and seesAllFiles and otherLive
+    and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
+    and not strictFires()
+  }
+  reachable SilentOnExported {
+    configured() and mode == Strict and source == Exported
+    and cfgUnexported() == Private and seesAllFiles and otherLive
+    and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
+    and not strictFires()
+  }
+  reachable SilentUnderPackageDefault {
+    configured() and mode == Strict and enclosing() and not ownDir() and not exported()
+    and cfgUnexported() == Package and seesAllFiles and otherLive
+    and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
+    and not strictFires()
+  }
+  reachable SilentWithoutEnclosing {
+    configured() and mode == Strict and source == NoEnclosing
+    and cfgUnexported() == Private and seesAllFiles and otherLive
+    and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
+    and not strictFires()
+  }
+
+  // The rule reporting nothing for a pass, which is what the leadsTo escapes.
+  reachable PendingReportSurvivesAPass { stalled and strictFires() and not strictReported }
+
+  leadsTo LooseEventuallyReported  { configured() and looseFires() ~> looseReported }
+  leadsTo StrictEventuallyReported { configured() and strictFires() ~> strictReported }
+  leadsTo EventuallyFixed          { configured() and fixable() ~> fixed }
+}
