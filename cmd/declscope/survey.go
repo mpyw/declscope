@@ -81,27 +81,43 @@ func surveyRun(args []string) {
 // rules, which is also why the report groups by the config chain that applied
 // rather than naming one config for the run.
 func surveyPackages(pkgs []*packages.Package, configPath string, failed []string) (measure.Summary, error) {
+	// A package that did not type-check has nothing to measure. Its row would
+	// be a clean one, which is the reading -allow-errors must not buy:
+	// checks.typeCheck names it instead.
+	pkgs = slices.DeleteFunc(slices.Clone(pkgs), func(pkg *packages.Package) bool { return len(pkg.Errors) > 0 })
+
+	// Each package is resolved and measured on its own, in parallel. Only
+	// the fold below sees more than one, and it runs in package order.
+	type measuredPackage struct {
+		opts     internal.Options
+		measured measure.Package
+		err      error
+	}
+	results := make([]measuredPackage, len(pkgs))
+	loadInParallel(len(pkgs), func(i int) {
+		opts, _, err := config.Resolve(loadedPackageDir(pkgs[i]), configPath)
+		if err != nil {
+			results[i].err = err
+			return
+		}
+		results[i] = measuredPackage{opts: opts, measured: internal.Survey(loadedPass(pkgs[i]), opts)}
+	})
+
 	var measured []measure.Package
 	configs := map[string]*measure.ConfigUse{}
 	var configOrder []string
 	baselines := map[string]measure.BaselineUse{}
 	analyzed := 0
 
-	for _, pkg := range pkgs {
-		if len(pkg.Errors) > 0 {
-			// A package that did not type-check has nothing to measure. Its
-			// row would be a clean one, which is the reading -allow-errors
-			// must not buy: checks.typeCheck names it instead.
-			continue
+	for i, pkg := range pkgs {
+		r := results[i]
+		if r.err != nil {
+			return measure.Summary{}, r.err
 		}
-		dir := loadedPackageDir(pkg)
-		opts, _, err := config.Resolve(dir, configPath)
-		if err != nil {
-			return measure.Summary{}, err
-		}
+		opts := r.opts
 		analyzed++
 
-		chain := config.FindChain(dir)
+		chain := config.FindChain(loadedPackageDir(pkg))
 		if configPath != "" {
 			// An explicit -config builds no chain: the caller named the rules.
 			chain = []string{configPath}
@@ -128,7 +144,7 @@ func surveyPackages(pkgs []*packages.Package, configPath string, failed []string
 			}
 		}
 
-		measured = append(measured, internal.Survey(loadedPass(pkg), opts))
+		measured = append(measured, r.measured)
 	}
 
 	checks := measure.Checks{
