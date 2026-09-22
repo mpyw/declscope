@@ -21,7 +21,9 @@ import (
 //
 //declscope:package
 type filterMatcher struct {
-	re    *regexp.Regexp
+	//declscope:private
+	re *regexp.Regexp
+	//declscope:private
 	bases []string
 }
 

@@ -253,15 +253,17 @@ type collection struct {
 	renameBook
 	surplusBook
 
+	// namespaces is how many distinct namespaces the package's non-test files
+	// declare, which is how many boundaries there are to enforce.
+	namespaces int
+
 	// unseenScan is what the package directory holds that this pass does not
 	// see: in-package _test.go files under the non-test variant, and files the
 	// build configuration excluded. The rename fix and the unused-ignore
 	// report both consult it. It is filled on first use.
+	//
+	//declscope:private
 	unseenScan *unseenFiles
-
-	// namespaces is how many distinct namespaces the package's non-test files
-	// declare, which is how many boundaries there are to enforce.
-	namespaces int
 }
 
 // origin maps an instantiated field or method back to the object declared in

@@ -16,7 +16,9 @@ import (
 // sink writes until the first error and remembers it. Every later write is a
 // no-op, so the caller reports the first failure rather than the last.
 type sink struct {
-	w   io.Writer
+	//declscope:private
+	w io.Writer
+	//declscope:private
 	err error
 }
 
