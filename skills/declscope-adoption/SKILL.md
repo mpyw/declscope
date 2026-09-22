@@ -167,6 +167,71 @@ A baselined finding counts toward it: the baseline defers a decision rather than
 
 That last row is worth its own note. In one repository a single file held three concerns, and splitting it into three cleared every entry in that cluster **without renaming a single declaration**. The file name was the thing that was wrong.
 
+## Shared structs: private fields
+
+When other namespaces use a struct, give each field the smallest scope it needs. The type states the widest one, and each field narrows it only where it can.
+
+| Declaration | Directive |
+| --- | --- |
+| The struct type, spelled from another namespace | `//declscope:package`. Its fields inherit it |
+| A field no other namespace reads | `//declscope:private`, after its doc comment and a `//` line |
+| A field another namespace reads | None |
+| An embedded field | None. It is not a target |
+
+**Do not restate the type's scope on a field.** A `//declscope:package` on a field under a `//declscope:package` type binds nothing. The same goes for any directive on an embedded field. Both are reported:
+
+```text
+unused //declscope:package on callee.shared: nothing it reaches takes a scope
+unused //declscope:private: no checked declaration carries it
+```
+
+**Put the private fields last.** The fields other stages read are the struct's interface, so they come first:
+
+```go
+// callee is a resolved call target.
+//
+//declscope:package
+type callee struct {
+	// obj is the declared function or method, when there is one.
+	obj *types.Func
+	// inputs are the values passed.
+	inputs []ssa.Value
+	// builtin is set for a call to a builtin function.
+	builtin *ssa.Builtin
+	// fn is the function called, when it is known statically.
+	//
+	//declscope:private
+	fn *ssa.Function
+}
+```
+
+> [!WARNING]
+> Do not reorder fields where the order is observable. Add the directives in place instead.
+>
+> | Order is observable through | |
+> | --- | --- |
+> | Unkeyed composite literals | `callee{f, in, b, fn}` binds by position |
+> | Positional or binary encodings | The wire format follows the field order |
+> | `unsafe` offsets | `unsafe.Offsetof` changes |
+> | 64-bit atomics | They rely on first-word alignment on 32-bit platforms |
+
+To find which fields cross, let declscope tell you:
+
+1. Mark every field `//declscope:private`
+2. Run declscope
+3. Remove the directive from each field it reports as `declared private by //declscope:private, but is used from namespace ...`
+4. Move the fields that kept it to the bottom
+
+**A type nobody else spells needs no directive.** Sometimes callers only get it from a constructor, and never spell its name or its fields. Then `//declscope:package` on the type is reported as surplus:
+
+```text
+//declscope:package on hidden, hidden.a: no use from another namespace is visible to declscope
+```
+
+Keep that type and all its fields private. Expose small package-scoped functions or methods that return what the callers need.
+
+Do not reach for `//declscope:core` or a file-level `//declscope:package` to quiet these reports. Both hide the boundaries instead of stating them.
+
 ## Naming
 
 The namespace may sit anywhere in the name and the right edge may fall inside a word. A prefix is one answer, not the answer.
