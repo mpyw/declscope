@@ -4,34 +4,36 @@ import (
 	"strings"
 )
 
-// Mode says when a name must carry its namespace: always, never, or only once
-// a package has a second namespace. Only rules.qualify reads one.
-type Mode int
+// QualifyMode says when a name must carry its namespace: always, never, or
+// only once a package has a second namespace. Only rules.naming.qualify reads
+// one.
+type QualifyMode int
 
 const (
-	// ModeNever disables the rule.
-	ModeNever Mode = iota
+	// QualifyModeNever disables the rule.
+	QualifyModeNever QualifyMode = iota
 
-	// ModeAlways applies the rule to every package. For the naming rule this
-	// means a package gaining its second namespace is not a mass rename.
-	ModeAlways
+	// QualifyModeAlways applies the rule to every package. For the naming
+	// rule this means a package gaining its second namespace is not a mass
+	// rename.
+	QualifyModeAlways
 
-	// ModeOnDemand applies the rule only to a package with more than one
-	// namespace. In a package with one there is no boundary for a prefix to
+	// QualifyModeOnDemand applies the rule only to a package with more than
+	// one namespace. In a package with one there is no boundary for a prefix to
 	// mark: every other rule is structurally inert there, since every
 	// reference is already inside the single namespace, and a prefix repeated
 	// on every declaration would distinguish nothing.
-	ModeOnDemand
+	QualifyModeOnDemand
 )
 
 // String returns the spelling the settings use.
-func (m Mode) String() string {
+func (m QualifyMode) String() string {
 	switch m {
-	case ModeNever:
+	case QualifyModeNever:
 		return "never"
-	case ModeAlways:
+	case QualifyModeAlways:
 		return "always"
-	case ModeOnDemand:
+	case QualifyModeOnDemand:
 		return "ondemand"
 	default:
 		return "unknown"
@@ -40,26 +42,26 @@ func (m Mode) String() string {
 
 // Applies reports whether the rule applies to a package with the given number
 // of namespaces.
-func (m Mode) Applies(namespaces int) bool {
+func (m QualifyMode) Applies(namespaces int) bool {
 	switch m {
-	case ModeAlways:
+	case QualifyModeAlways:
 		return true
-	case ModeOnDemand:
+	case QualifyModeOnDemand:
 		return namespaces > 1
 	default:
 		return false
 	}
 }
 
-// ModeSet is the values one setting accepts, in the order an error message
-// names them. Each setting declares its own, so that a rejected value is
-// answered with what that setting accepts rather than with everything Mode
-// can hold.
-type ModeSet []Mode
+// QualifyModeSet is the values one setting accepts, in the order an error
+// message names them. Each setting declares its own, so that a rejected value
+// is answered with what that setting accepts rather than with everything
+// QualifyMode can hold.
+type QualifyModeSet []QualifyMode
 
 // Parse reads a setting's value: always, never or ondemand, and of those only
 // the members of the set.
-func (s ModeSet) Parse(value string) (Mode, bool) {
+func (s QualifyModeSet) Parse(value string) (QualifyMode, bool) {
 	for _, m := range s {
 		if value == m.String() {
 			return m, true
@@ -70,7 +72,7 @@ func (s ModeSet) Parse(value string) (Mode, bool) {
 
 // String lists the accepted spellings the way an error message names them:
 // "always, never or ondemand".
-func (s ModeSet) String() string {
+func (s QualifyModeSet) String() string {
 	names := make([]string, len(s))
 	for i, m := range s {
 		names[i] = m.String()
@@ -91,10 +93,10 @@ func modeJoin(names []string) string {
 // directive nothing needs, or also each declaration a directive widens for
 // nothing. Only rules.surplus reads one.
 //
-// It is Mode's sibling rather than three more Mode values. Mode carries a
-// predicate, Applies, that asks how many namespaces a package has, and that
-// question means nothing here; a Mode that could hold loose would need an
-// answer for it anyway. What the two share — parse by spelling, and list the
+// It is QualifyMode's sibling rather than three more QualifyMode values.
+// QualifyMode carries a predicate, Applies, that asks how many namespaces a
+// package has, and that question means nothing here; a QualifyMode that could
+// hold loose would need an answer for it anyway. What the two share — parse by spelling, and list the
 // spellings in an error — is small, and modeJoin is where it is shared.
 type SurplusMode int
 

@@ -53,7 +53,7 @@ filter:
 	if opts.Unexported != scope.PackageInternal {
 		t.Errorf("defaults not applied: %+v", opts)
 	}
-	if opts.Qualify != internal.ModeNever || !opts.NameExported {
+	if opts.Qualify != internal.QualifyModeNever || !opts.NameExported {
 		t.Errorf("rules not applied: %+v", opts)
 	}
 	// The pattern arrives as written, together with the directory it is to be
@@ -242,11 +242,11 @@ func apply(t *testing.T, body string) (internal.Options, error) {
 func TestQualifyModes(t *testing.T) {
 	tests := []struct {
 		yaml string
-		want internal.Mode
+		want internal.QualifyMode
 	}{
-		{"rules:\n  naming:\n    qualify: always\n", internal.ModeAlways},
-		{"rules:\n  naming:\n    qualify: never\n", internal.ModeNever},
-		{"rules:\n  naming:\n    qualify: ondemand\n", internal.ModeOnDemand},
+		{"rules:\n  naming:\n    qualify: always\n", internal.QualifyModeAlways},
+		{"rules:\n  naming:\n    qualify: never\n", internal.QualifyModeNever},
+		{"rules:\n  naming:\n    qualify: ondemand\n", internal.QualifyModeOnDemand},
 	}
 	for _, tt := range tests {
 		opts, err := apply(t, tt.yaml)
@@ -311,7 +311,7 @@ func TestBoolSettings(t *testing.T) {
 // on the repositories measured.
 func TestDefaultModes(t *testing.T) {
 	opts := internal.DefaultOptions()
-	if opts.Qualify != internal.ModeNever {
+	if opts.Qualify != internal.QualifyModeNever {
 		t.Errorf("default Qualify = %v, want never", opts.Qualify)
 	}
 	if opts.NameExported {
@@ -571,7 +571,7 @@ func TestNestedConfigInheritsAndOverrides(t *testing.T) {
 		t.Error("the nested file states exported, so it should be on")
 	}
 	// Stated only at the root, so it survives a nested file that is silent.
-	if opts.Qualify != internal.ModeAlways {
+	if opts.Qualify != internal.QualifyModeAlways {
 		t.Errorf("qualify = %v, want the root's, which the nested file did not restate", opts.Qualify)
 	}
 	// The map merges per namespace rather than the nearer one replacing it.
@@ -697,7 +697,7 @@ func TestExplicitConfigDoesNotChain(t *testing.T) {
 	if !opts.NameExported {
 		t.Error("the named file should apply")
 	}
-	if opts.Qualify != internal.ModeNever {
+	if opts.Qualify != internal.QualifyModeNever {
 		t.Errorf("qualify = %v, want the built-in default: an explicit config builds no chain", opts.Qualify)
 	}
 }

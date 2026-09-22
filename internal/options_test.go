@@ -2,25 +2,25 @@ package internal
 
 import "testing"
 
-// TestModeApplies pins the one predicate both naming rules gate on: ModeAlways
-// for every package, ModeNever for none, ModeOnDemand only once a package has a
+// TestQualifyModeApplies pins the one predicate both naming rules gate on: QualifyModeAlways
+// for every package, QualifyModeNever for none, QualifyModeOnDemand only once a package has a
 // second namespace to distinguish.
-func TestModeApplies(t *testing.T) {
+func TestQualifyModeApplies(t *testing.T) {
 	tests := []struct {
-		mode       Mode
+		mode       QualifyMode
 		namespaces int
 		want       bool
 	}{
-		{ModeAlways, 0, true},
-		{ModeAlways, 1, true},
-		{ModeAlways, 2, true},
-		{ModeNever, 0, false},
-		{ModeNever, 1, false},
-		{ModeNever, 2, false},
-		{ModeOnDemand, 0, false},
-		{ModeOnDemand, 1, false},
-		{ModeOnDemand, 2, true},
-		{ModeOnDemand, 3, true},
+		{QualifyModeAlways, 0, true},
+		{QualifyModeAlways, 1, true},
+		{QualifyModeAlways, 2, true},
+		{QualifyModeNever, 0, false},
+		{QualifyModeNever, 1, false},
+		{QualifyModeNever, 2, false},
+		{QualifyModeOnDemand, 0, false},
+		{QualifyModeOnDemand, 1, false},
+		{QualifyModeOnDemand, 2, true},
+		{QualifyModeOnDemand, 3, true},
 	}
 	for _, tt := range tests {
 		if got := tt.mode.Applies(tt.namespaces); got != tt.want {
@@ -31,12 +31,12 @@ func TestModeApplies(t *testing.T) {
 
 // TestModeString pins the spelling a diagnostic or an error would use to the
 // one the settings take, and that it parses back.
-func TestModeString(t *testing.T) {
-	all := ModeSet{ModeAlways, ModeNever, ModeOnDemand}
-	for m, want := range map[Mode]string{
-		ModeAlways:   "always",
-		ModeNever:    "never",
-		ModeOnDemand: "ondemand",
+func TestQualifyModeString(t *testing.T) {
+	all := QualifyModeSet{QualifyModeAlways, QualifyModeNever, QualifyModeOnDemand}
+	for m, want := range map[QualifyMode]string{
+		QualifyModeAlways:   "always",
+		QualifyModeNever:    "never",
+		QualifyModeOnDemand: "ondemand",
 	} {
 		if got := m.String(); got != want {
 			t.Errorf("String() = %q, want %q", got, want)
@@ -49,26 +49,26 @@ func TestModeString(t *testing.T) {
 
 // TestModeSetParse checks that a set accepts its members and nothing else: a
 // mode outside the set is refused the same way as a word that is no mode.
-func TestModeSetParse(t *testing.T) {
-	all := ModeSet{ModeAlways, ModeNever, ModeOnDemand}
-	binary := ModeSet{ModeAlways, ModeNever}
+func TestQualifyModeSetParse(t *testing.T) {
+	all := QualifyModeSet{QualifyModeAlways, QualifyModeNever, QualifyModeOnDemand}
+	binary := QualifyModeSet{QualifyModeAlways, QualifyModeNever}
 	tests := []struct {
-		set   ModeSet
+		set   QualifyModeSet
 		value string
-		want  Mode
+		want  QualifyMode
 		ok    bool
 	}{
-		{all, "always", ModeAlways, true},
-		{all, "never", ModeNever, true},
-		{all, "ondemand", ModeOnDemand, true},
+		{all, "always", QualifyModeAlways, true},
+		{all, "never", QualifyModeNever, true},
+		{all, "ondemand", QualifyModeOnDemand, true},
 		{all, "true", 0, false},
 		{all, "false", 0, false},
 		{all, "sometimes", 0, false},
 		{all, "", 0, false},
-		{binary, "always", ModeAlways, true},
-		{binary, "never", ModeNever, true},
+		{binary, "always", QualifyModeAlways, true},
+		{binary, "never", QualifyModeNever, true},
 		{binary, "ondemand", 0, false},
-		{ModeSet{ModeNever}, "always", 0, false},
+		{QualifyModeSet{QualifyModeNever}, "always", 0, false},
 	}
 	for _, tt := range tests {
 		got, ok := tt.set.Parse(tt.value)
@@ -79,15 +79,15 @@ func TestModeSetParse(t *testing.T) {
 }
 
 // TestModeSetString pins how a set names its members in an error message.
-func TestModeSetString(t *testing.T) {
+func TestQualifyModeSetString(t *testing.T) {
 	tests := []struct {
-		set  ModeSet
+		set  QualifyModeSet
 		want string
 	}{
-		{ModeSet{ModeAlways, ModeNever, ModeOnDemand}, "always, never or ondemand"},
-		{ModeSet{ModeAlways, ModeNever}, "always or never"},
-		{ModeSet{ModeNever}, "never"},
-		{ModeSet{}, ""},
+		{QualifyModeSet{QualifyModeAlways, QualifyModeNever, QualifyModeOnDemand}, "always, never or ondemand"},
+		{QualifyModeSet{QualifyModeAlways, QualifyModeNever}, "always or never"},
+		{QualifyModeSet{QualifyModeNever}, "never"},
+		{QualifyModeSet{}, ""},
 	}
 	for _, tt := range tests {
 		if got := tt.set.String(); got != tt.want {

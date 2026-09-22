@@ -14,7 +14,7 @@ type Options struct {
 
 	// Qualify says when a package-level declaration must carry its namespace
 	// somewhere in its name.
-	Qualify Mode
+	Qualify QualifyMode
 
 	// Vocabulary lists, per namespace, extra words that carry the namespace as
 	// its own spelling would: irregular inflections and domain synonyms that
@@ -102,7 +102,7 @@ type Options struct {
 func DefaultOptions() Options {
 	return Options{
 		Unexported: scope.Private,
-		Qualify:    ModeNever,
+		Qualify:    QualifyModeNever,
 		Surplus:    SurplusModeLoose,
 	}
 }

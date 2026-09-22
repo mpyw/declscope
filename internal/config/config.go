@@ -16,7 +16,7 @@
 //	  allowBoundary: false  # stop checking reach, leaving only the naming rule
 //	  surplus: loose        # off | loose | strict
 //
-// rules.naming.qualify reads an internal.Mode; rules.surplus reads an
+// rules.naming.qualify reads an internal.QualifyMode; rules.surplus reads an
 // internal.SurplusMode; rules.naming.exported is true/false;
 // rules.naming.vocabulary maps a namespace to the extra words that satisfy
 // the naming rule for it. rules.allowBoundary is true/false and defaults to
@@ -53,7 +53,7 @@ var Names = []string{".declscope.yaml", ".declscope.yml"}
 var BaselineNames = []string{".declscope-baseline.yaml", ".declscope-baseline.yml"}
 
 // The values rules.naming.qualify accepts.
-var qualifyModes = internal.ModeSet{internal.ModeAlways, internal.ModeNever, internal.ModeOnDemand}
+var qualifyModes = internal.QualifyModeSet{internal.QualifyModeAlways, internal.QualifyModeNever, internal.QualifyModeOnDemand}
 
 // The values rules.surplus accepts, from reporting least to most.
 var surplusModes = internal.SurplusModeSet{internal.SurplusModeOff, internal.SurplusModeLoose, internal.SurplusModeStrict}
