@@ -1,5 +1,5 @@
 package surplusstrictbaselined
 
-func orderRun(c userCard) int { return c.id }
+func orderRun(c userCard, k boxKind) int { return c.id + int(k) }
 
 var _ = orderRun

@@ -29,6 +29,9 @@ type reportedFinding struct {
 	msg     string
 	related []analysis.RelatedInformation
 	fixes   []analysis.SuggestedFix
+	// settledBy is the type whose own finding stands in for this one, when
+	// that finding is not absorbed by the baseline. See settledInReport.
+	settledBy *target
 }
 
 // pendingReport is one target's surviving findings, held until every target
@@ -93,6 +96,9 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	for _, t := range c.targets {
 		p := pendingReport{t: t}
 		for _, f := range c.findingsForReport(pass, opts, t) {
+			if f.settledInReport(pass, opts) {
+				continue
+			}
 			// Ignores are consulted before the baseline: a suppression the
 			// baseline would also have absorbed still counts as the directive
 			// doing its job.
@@ -210,6 +216,26 @@ func (f *fileInfo) namespaceForReport() string {
 	return "(file " + filepath.Base(f.path) + ")"
 }
 
+// settledInReport reports whether f is strict's finding on a member whose
+// type is reported in its place: the type's fix narrows the member too, so a
+// second report would say the same thing.
+//
+// The type stands in only while its finding is not absorbed by the baseline.
+// A baselined type offers no fix, and a member added to it since must be
+// reported, since a baseline records what a codebase already has and still
+// reports what is new. An ignore needs no test: every ignore that silences the
+// type's finding is on the member's chain too, and silences it there.
+//
+// Regeneration does not ask. It records the members with their type, because
+// the baseline it writes is what absorbs the type.
+func (f reportedFinding) settledInReport(pass *analysis.Pass, opts Options) bool {
+	o := f.settledBy
+	if o == nil {
+		return false
+	}
+	return !opts.Baseline.Has(reportedFinding{rule: rule.Surplus, decl: o.name()}.key(pass, o))
+}
+
 // key identifies the finding for the baseline, independently of position.
 func (f reportedFinding) key(pass *analysis.Pass, t *target) baseline.Key {
 	return baseline.Key{
@@ -254,6 +280,9 @@ func (c *collection) surveyedFindingsForReport(pass *analysis.Pass, opts Options
 	findings := c.findingsForReport(pass, opts, t)
 	out := make([]measure.Finding, 0, len(findings))
 	for _, f := range findings {
+		if f.settledInReport(pass, opts) {
+			continue
+		}
 		state := measure.FindingReported
 		switch {
 		case c.silencedByIgnore(t, f.rule):
@@ -343,8 +372,8 @@ func (c *collection) findingsForReport(pass *analysis.Pass, opts Options, t *tar
 	// strict's finding on one declaration shares the rule's name, so the same
 	// ignore and the same baseline key answer for it. surplus.go words it and
 	// decides the fix.
-	if msg, fix, ok := c.checkSurplusDeclaration(pass, opts, t); ok {
-		f := reportedFinding{rule: rule.Surplus, decl: t.name(), pos: t.ident.Pos(), msg: msg}
+	if msg, fix, settledBy, ok := c.checkSurplusDeclaration(pass, opts, t); ok {
+		f := reportedFinding{rule: rule.Surplus, decl: t.name(), pos: t.ident.Pos(), msg: msg, settledBy: settledBy}
 		if fix != nil {
 			f.fixes = append(f.fixes, *fix)
 		}

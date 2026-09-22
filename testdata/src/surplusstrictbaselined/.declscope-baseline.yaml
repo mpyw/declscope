@@ -1,5 +1,9 @@
 packages:
   surplusstrictbaselined:
     surplus:
+      box:
+        - boxRead
+        - boxed
+        - boxed.n
       user:
         - userCard.old

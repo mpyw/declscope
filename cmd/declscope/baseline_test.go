@@ -380,3 +380,35 @@ func TestBaselineDefaultsToEveryPackage(t *testing.T) {
 
 	assertSuppressed(t, bin, root)
 }
+
+// TestBaselineRecordsSettledMembers checks the round trip for a type strict
+// reports together with its fields. The analysis reports the type alone,
+// since its fix narrows the fields too, but a baselined type offers no fix, so
+// regeneration has to record the fields with it or the next run reports them.
+// A field added afterwards is new, and is reported.
+func TestBaselineRecordsSettledMembers(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
+	writeTree(t, root, ".declscope.yaml", "rules:\n  surplus: strict\n")
+	writeTree(t, root, "order.go", "package x\n\nfunc orderRun(k boxKind) int { return int(k) }\n\nvar _ = orderRun\n")
+	box := "//declscope:package\n\npackage x\n\ntype boxKind int\n\ntype boxed struct {\n\tn int\n%s}\n\nvar _ = boxed{}\n"
+	writeTree(t, root, "box.go", fmt.Sprintf(box, ""))
+
+	out, code := runIn(t, bin, root, "./...")
+	if !strings.Contains(out, "type boxed") || strings.Contains(out, "boxed.n") {
+		t.Fatalf("want the type reported in place of its field: exit %d\n%s", code, out)
+	}
+	if out, code := runIn(t, bin, root, "baseline", "./..."); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	set := load(t, filepath.Join(root, ".declscope-baseline.yaml"))
+	if !set.Has(baseline.Key{Package: "example.com/m", Rule: "surplus", Namespace: "box", Decl: "boxed.n"}) {
+		t.Errorf("the baseline does not record the field its type stood in for")
+	}
+	assertSuppressed(t, bin, root)
+
+	writeTree(t, root, "box.go", fmt.Sprintf(box, "\textra int\n"))
+	if out, _ := runIn(t, bin, root, "./..."); !strings.Contains(out, "field boxed.extra") || strings.Contains(out, "boxed.n") {
+		t.Errorf("want only the new field reported:\n%s", out)
+	}
+}

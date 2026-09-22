@@ -76,6 +76,10 @@ type surplusBook struct {
 type surplusDeclaration struct {
 	msg   string
 	fixed bool
+	// settledBy is the reported type whose fix narrows this member too. The
+	// member is reported only when that type's finding is not, which is
+	// report.go's to decide: whether the baseline absorbs it is known there.
+	settledBy *target
 }
 
 // surplusState is the judgment and the evidence it was made from.
@@ -87,12 +91,17 @@ type surplusDeclaration struct {
 //
 // The rest is kept because strict asks the same questions of one
 // declaration: fired says which directives the judgment condemned, and
-// reached and linknamed are the evidence that no name index holds.
+// reached and linknamed are the evidence that no name index holds. The
+// evidence is gathered on the first question, never before: a package with
+// no //declscope:package asks none under loose, and interface satisfaction
+// is the costly part of it.
 //
 //declscope:private // only the computation below hands it out
 type surplusState struct {
+	pass      *analysis.Pass
 	findings  map[*target]string
 	fired     map[token.Pos]bool
+	gathered  bool
 	reached   map[types.Object]bool
 	linknamed map[string]bool
 	// blind records that this pass does not read every file, so that nothing
@@ -136,6 +145,11 @@ func (s *surplusState) reachesOutside(c *collection, t *target) bool {
 	if s.blind {
 		return true
 	}
+	if !s.gathered {
+		s.gathered = true
+		s.reached = c.surplusReached(s.pass)
+		s.linknamed = surplusLinknamed(s.pass)
+	}
 	return s.reached[t.obj] || s.linknamed[t.obj.Name()] || c.surplusSeesUseOutside(t)
 }
 
@@ -148,7 +162,7 @@ func (s *surplusState) reachesOutside(c *collection, t *target) bool {
 // depend on an outer directive, so it neither keeps that directive alive nor
 // is reported under it.
 func (c *collection) computeSurplus(pass *analysis.Pass) *surplusState {
-	s := &surplusState{findings: make(map[*target]string), fired: make(map[token.Pos]bool)}
+	s := &surplusState{pass: pass, findings: make(map[*target]string), fired: make(map[token.Pos]bool)}
 	if !c.surplusSeesEveryFile(pass) {
 		s.blind = true
 		return s
@@ -160,11 +174,6 @@ func (c *collection) computeSurplus(pass *analysis.Pass) *surplusState {
 			groups[t.boundBy.ScopePos] = append(groups[t.boundBy.ScopePos], t)
 		}
 	}
-	// The evidence is gathered even with no directive to judge: strict asks
-	// it of a member a boundary fix is about to widen, before any directive
-	// the member would take its scope from has been written.
-	s.reached = c.surplusReached(pass)
-	s.linknamed = surplusLinknamed(pass)
 	for pos, group := range groups {
 		fired := true
 		for _, t := range group {
@@ -436,28 +445,29 @@ func surplusLinknamed(pass *analysis.Pass) map[string]bool {
 }
 
 // checkSurplusDeclaration reports whether t is a declaration strict reports on
-// its own, with the message and the fix.
+// its own, with the message, the fix, and the type whose finding settles it
+// (see surplusDeclaration.settledBy).
 //
 //declscope:package // report.go turns it into the finding it reports
-func (c *collection) checkSurplusDeclaration(pass *analysis.Pass, opts Options, t *target) (string, *analysis.SuggestedFix, bool) {
+func (c *collection) checkSurplusDeclaration(pass *analysis.Pass, opts Options, t *target) (string, *analysis.SuggestedFix, *target, bool) {
 	if !opts.Surplus.ReportsDeclarations() {
-		return "", nil, false
+		return "", nil, nil, false
 	}
 	if c.surplusDeclarations == nil {
 		c.surplusDeclarations = c.computeSurplusDeclarations(pass, opts)
 	}
 	f, ok := c.surplusDeclarations[t]
 	if !ok {
-		return "", nil, false
+		return "", nil, nil, false
 	}
 	if !f.fixed {
-		return f.msg, nil, true
+		return f.msg, nil, f.settledBy, true
 	}
 	fix := analysis.SuggestedFix{
 		Message:   fmt.Sprintf("add %s to %s", scope.Private.Directive(), t.name()),
 		TextEdits: []analysis.TextEdit{directiveEditInReport(pass, t, scope.Private, t.doc)},
 	}
-	return f.msg, &fix, true
+	return f.msg, &fix, f.settledBy, true
 }
 
 // surplusEnclosed reports whether t takes package scope from a directive it
@@ -555,10 +565,12 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 		}
 	}
 
-	// Members of a reported type are settled by its fix. They leave the list,
-	// and join what the run narrows.
+	// Members of a reported type are settled by its fix, and join what the
+	// run narrows. They stay findings, marked with the type: a baseline that
+	// absorbs the type's finding offers no fix to settle them, and a member
+	// added since must then be reported in its own right.
 	narrowed := make(map[*target]bool)
-	kept := groups[:0]
+	settledBy := make(map[*target]*target)
 	for _, names := range groups {
 		for _, t := range names {
 			narrowed[t] = true
@@ -567,9 +579,10 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 			}
 		}
 		if owner, ok := c.byObj[names[0].ownerObj]; ok && names[0].contained && reported[owner] {
-			continue
+			for _, t := range names {
+				settledBy[t] = owner
+			}
 		}
-		kept = append(kept, names)
 	}
 
 	// A directive that decides something today and would decide nothing once
@@ -588,12 +601,12 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 			boundAfter[t.boundBy.ScopePos] = true
 		}
 	}
-	for _, names := range kept {
+	for _, names := range groups {
 		slices.SortFunc(names, func(a, b *target) int { return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos()) })
 		pos := names[0].boundBy.ScopePos
 		fixed := !boundBefore[pos] || boundAfter[pos]
 		for i, t := range names {
-			out[t] = surplusDeclaration{msg: surplusDeclarationMessage(t), fixed: fixed && i == 0}
+			out[t] = surplusDeclaration{msg: surplusDeclarationMessage(t), fixed: fixed && i == 0, settledBy: settledBy[t]}
 		}
 	}
 	return out
