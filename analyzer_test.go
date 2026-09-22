@@ -51,6 +51,14 @@ func TestBlankImport(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "blankimport")
 }
 
+// TestIgnoreDirective checks which ignore answers a report about a directive.
+// Such a report hangs on a comment rather than on a declaration, so the file
+// level answers one written where no declaration is, and an ignore naming the
+// rule beside another answers for its neighbour.
+func TestIgnoreDirective(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ignoredirective")
+}
+
 func TestDirectives(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "directives")
 }

@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"strings"
 	"testing"
 
 	"github.com/mpyw/declscope/internal/directive"
@@ -43,6 +44,7 @@ func TestParseDeclScope(t *testing.T) {
 		{"spaced", "// declscope:package", scope.PackageInternal, true},
 		{"block", "/*declscope:package*/", scope.PackageInternal, true},
 		{"with reason", "//declscope:package // shared with the reporter", scope.PackageInternal, true},
+		{"no keyword", "//declscope:", 0, false},
 		{"unrelated", "// an ordinary comment", 0, false},
 		{"other tool", "//nolint:all", 0, false},
 	}
@@ -69,6 +71,7 @@ func TestParseDeclProblems(t *testing.T) {
 		{"argument where none is taken", "//declscope:package user"},
 		{"ignore of an unknown rule", "//declscope:ignore why"},
 		{"namespace on a declaration", "//declscope:namespace user"},
+		{"core on a declaration", "//declscope:core"},
 		{"conflicting scopes", "//declscope:package\n//declscope:private"},
 	}
 	for _, tt := range tests {
@@ -278,6 +281,69 @@ func TestParseFileCore(t *testing.T) {
 	if len(f.Problems) == 0 {
 		t.Error("want a problem for an argument to core")
 	}
+	f = directive.ParseFile(parse(t, "//declscope:core\n//declscope:core\n\npackage repo\n"))
+	if len(f.Problems) == 0 {
+		t.Error("want a problem for a repeated core directive")
+	}
+}
+
+// TestParseFileProblems checks what a file-level directive is answered with
+// when it cannot be honoured. Each message names the directive as written, so
+// that the reader is told which line to change and not merely that one is
+// wrong.
+func TestParseFileProblems(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "argument where none is taken",
+			src:  "//declscope:package everything\n\npackage repo\n",
+			want: "//declscope:package takes no argument",
+		},
+		{
+			name: "two scopes on one file",
+			src:  "//declscope:package\n//declscope:private\n\npackage repo\n",
+			want: "conflicting scope directives: //declscope:package and //declscope:private on one file",
+		},
+		{
+			// A declaration-level keyword written before the package clause
+			// reaches nothing: the file levels are namespace, core, ignore and
+			// a scope, and ignore is the only one a declaration shares.
+			name: "declaration-level keyword",
+			src:  "//declscope:bogus\n\npackage repo\n",
+			want: "declscope:bogus is not a file-level directive",
+		},
+		{
+			name: "ignore of an unknown rule",
+			src:  "//declscope:ignore nosuchrule\n\npackage repo\n",
+			want: "nosuchrule",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := directive.ParseFile(parse(t, tt.src))
+			if len(f.Problems) != 1 {
+				t.Fatalf("got %d problems, want 1: %v", len(f.Problems), f.Problems)
+			}
+			if !strings.Contains(f.Problems[0].Msg, tt.want) {
+				t.Errorf("message is %q, want it to name %q", f.Problems[0].Msg, tt.want)
+			}
+		})
+	}
+}
+
+// TestParseFileScopeSurvivesRepetition checks that the same scope written
+// twice is not a conflict. Only a second scope that disagrees is.
+func TestParseFileScopeSurvivesRepetition(t *testing.T) {
+	f := directive.ParseFile(parse(t, "//declscope:package\n//declscope:package\n\npackage repo\n"))
+	if len(f.Problems) != 0 {
+		t.Errorf("want no problem, got %v", f.Problems)
+	}
+	if !f.Scope.HasScope || f.Scope.Scope != scope.PackageInternal {
+		t.Errorf("Scope = %+v, want package-internal", f.Scope)
+	}
 }
 
 func TestParseFileNamespaceProblems(t *testing.T) {
@@ -322,5 +388,16 @@ func TestParseFileNamespaceKeyword(t *testing.T) {
 		if f.Namespace != word {
 			t.Errorf("namespace = %q, want %q", f.Namespace, word)
 		}
+	}
+}
+
+// TestParseDeclSkipsNilGroups checks that a caller may pass a node's doc and
+// trailing comments together without checking either for nil. Most
+// declarations have one and not the other.
+func TestParseDeclSkipsNilGroups(t *testing.T) {
+	fn := firstFunc(t, "package p\n\n//declscope:private\nfunc f() {}\n")
+	d := directive.ParseDecl(nil, fn.Doc, nil)
+	if !d.HasScope || d.Scope != scope.Private {
+		t.Errorf("Scope = %v, %v, want private, true", d.Scope, d.HasScope)
 	}
 }

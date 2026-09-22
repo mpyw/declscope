@@ -74,7 +74,7 @@ func TestSkillSubcommandLeavesTheOthersAlone(t *testing.T) {
 // runSkill drives the binary built for this package.
 func runSkill(t *testing.T, args ...string) (string, int) {
 	t.Helper()
-	out, err := exec.Command(bin, args...).CombinedOutput()
+	out, err := coverEnv(exec.Command(bin, args...)).CombinedOutput()
 	if err == nil {
 		return string(out), 0
 	}

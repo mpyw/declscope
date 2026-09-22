@@ -238,3 +238,143 @@ func surveyTestRuleRow(out, rule, found string) bool {
 	}
 	return false
 }
+
+// TestSurveyNamesTheChecksInForce covers the header the report opens with: the
+// config chain that governed the packages, the rules it left on, and the
+// baseline the analyzer would have read. A run that measured a package under a
+// baseline and did not say so would report a clean subtree without saying what
+// was suppressing it.
+func TestSurveyNamesTheChecksInForce(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, ".declscope.yaml", "rules:\n  allowSurplus: true\n  naming:\n    qualify: always\n")
+	writeTree(t, dir, ".declscope-baseline.yaml",
+		"packages:\n  example.com/declscopetest/p:\n    boundary:\n      user: [userHelper]\n")
+	writeTree(t, dir, "p/user.go", "package p\n\nfunc userHelper() int { return 1 }\n")
+	writeTree(t, dir, "p/order.go", "package p\n\nfunc orderTotal() int { return userHelper() }\n")
+
+	out, code := runIn(t, bin, dir, "survey", "-format=json", "./...")
+	if code != 0 {
+		t.Fatalf("survey exited %d\n%s", code, out)
+	}
+	var got struct {
+		Checks struct {
+			Configs []struct {
+				Chain    []string `json:"chain"`
+				Packages int      `json:"packages"`
+				Rules    struct {
+					Boundary bool   `json:"boundary"`
+					Qualify  string `json:"qualify"`
+					Surplus  bool   `json:"surplus"`
+				} `json:"rules"`
+			} `json:"configs"`
+			Baselines []struct {
+				Path    string `json:"path"`
+				Entries int    `json:"entries"`
+			} `json:"baselines"`
+		} `json:"checks"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+
+	if len(got.Checks.Configs) != 1 {
+		t.Fatalf("got %d config chains, want 1:\n%s", len(got.Checks.Configs), out)
+	}
+	cfg := got.Checks.Configs[0]
+	if len(cfg.Chain) != 1 || !strings.HasSuffix(cfg.Chain[0], ".declscope.yaml") {
+		t.Errorf("chain = %v, want the one config file", cfg.Chain)
+	}
+	if cfg.Rules.Qualify != "always" || cfg.Rules.Surplus || !cfg.Rules.Boundary {
+		t.Errorf("rules = %+v, want qualify always with surplus off and boundary on", cfg.Rules)
+	}
+
+	if len(got.Checks.Baselines) != 1 {
+		t.Fatalf("got %d baselines, want the one the packages resolve to:\n%s", len(got.Checks.Baselines), out)
+	}
+	if n := got.Checks.Baselines[0].Entries; n != 1 {
+		t.Errorf("the baseline reads as %d entries, want 1", n)
+	}
+}
+
+// TestSurveyRendersTheChecksAsMarkdown checks the default format on the same
+// ground. A rule the config turned off reads as off rather than as absent, and
+// a rule that was never asked prints dashes rather than zeros: zero findings
+// and a rule nobody ran are the two readings a reader must not confuse.
+func TestSurveyRendersTheChecksAsMarkdown(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, ".declscope.yaml", "rules:\n  allowSurplus: true\n")
+	writeTree(t, dir, "p/user.go", "package p\n\nfunc userHelper() int { return 1 }\n")
+	writeTree(t, dir, "p/order.go", "package p\n\nfunc orderTotal() int { return userHelper() }\n")
+
+	// No pattern: the subcommand measures ./... the way the analyzer does.
+	out, code := runIn(t, bin, dir, "survey")
+	if code != 0 {
+		t.Fatalf("survey exited %d\n%s", code, out)
+	}
+	if !strings.Contains(out, "surplus off") {
+		t.Errorf("a rule the config turned off should read as off:\n%s", out)
+	}
+	for _, rule := range []string{"qualify", "surplus"} {
+		if !strings.Contains(out, "`"+rule+"`") {
+			t.Errorf("the findings table does not list %s:\n%s", rule, out)
+		}
+	}
+}
+
+// TestSurveyTakesTheConfigItWasGiven checks that -config replaces the chain
+// rather than adding to it: the caller named the rules to measure under, so
+// the report names that one file and no other.
+func TestSurveyTakesTheConfigItWasGiven(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, ".declscope.yaml", "rules:\n  naming:\n    qualify: always\n")
+	writeTree(t, dir, "chosen.yaml", "rules:\n  naming:\n    qualify: never\n")
+	writeTree(t, dir, "p/user.go", "package p\n\nfunc userHelper() int { return 1 }\n")
+	writeTree(t, dir, "p/order.go", "package p\n\nfunc orderTotal() int { return userHelper() }\n")
+
+	out, code := runIn(t, bin, dir, "survey", "-config=chosen.yaml", "-format=json", "./...")
+	if code != 0 {
+		t.Fatalf("survey exited %d\n%s", code, out)
+	}
+	var got struct {
+		Checks struct {
+			Configs []struct {
+				Chain []string `json:"chain"`
+				Rules struct {
+					Qualify string `json:"qualify"`
+				} `json:"rules"`
+			} `json:"configs"`
+		} `json:"checks"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if len(got.Checks.Configs) != 1 {
+		t.Fatalf("got %d config chains, want 1:\n%s", len(got.Checks.Configs), out)
+	}
+	if chain := got.Checks.Configs[0].Chain; len(chain) != 1 || chain[0] != "chosen.yaml" {
+		t.Errorf("chain = %v, want just the file -config named", chain)
+	}
+	if q := got.Checks.Configs[0].Rules.Qualify; q != "never" {
+		t.Errorf("qualify = %q, want the chosen config's never", q)
+	}
+}
+
+// TestSurveyRefusesAnUnknownFormat checks that a format nobody renders is
+// refused before any package is loaded, rather than falling back to the
+// default and printing something the caller cannot parse.
+func TestSurveyRefusesAnUnknownFormat(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, "p/p.go", "package p\n\nfunc Run() int { return 1 }\n")
+
+	out, code := runIn(t, bin, dir, "survey", "-format=toml", "./...")
+	if code == 0 {
+		t.Fatalf("survey accepted an unknown format:\n%s", out)
+	}
+	if !strings.Contains(out, "toml") {
+		t.Errorf("the refusal does not name the format:\n%s", out)
+	}
+}

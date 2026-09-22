@@ -57,3 +57,13 @@ type UserM struct {
 
 	m int // want `field UserM.m is private to namespace "user", but is used from namespace "order"`
 }
+
+// A namespace directive is answered with where it belongs rather than with the
+// generic misplacement: there is no declaration it could ever bind to, since a
+// namespace is a property of the file.
+func userNamed() int {
+	//declscope:namespace other // want `declscope:namespace must appear before the package clause`
+	return 7
+}
+
+var _ = userNamed

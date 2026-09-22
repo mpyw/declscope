@@ -129,6 +129,26 @@ func TestLoadRejectsUnknownKey(t *testing.T) {
 	}
 }
 
+// TestLoadPassesOtherTypeErrorsThrough checks the other half of the key
+// naming. A YAML error that is not a misspelled key has nothing to rename, so
+// it reaches the caller as go-yaml wrote it rather than being dropped in
+// favour of a message about keys.
+func TestLoadPassesOtherTypeErrorsThrough(t *testing.T) {
+	for _, yaml := range []string{
+		"rules:\n  allowSurplus: [1, 2]\n", // a list where a bool belongs
+		"rules:\n  naming:\n    vocabulary: 7\n",
+	} {
+		path := write(t, t.TempDir(), ".declscope.yaml", yaml)
+		_, err := config.Load(path)
+		if err == nil {
+			t.Fatalf("%q: a value of the wrong shape must not be accepted", yaml)
+		}
+		if strings.Contains(err.Error(), "unknown key") {
+			t.Errorf("%q: got %v, want the error go-yaml reported", yaml, err)
+		}
+	}
+}
+
 // TestApplyRejectsUnknownScope checks that an unknown scope value is refused
 // with an error naming what is accepted.
 func TestApplyRejectsUnknownScope(t *testing.T) {

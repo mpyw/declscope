@@ -3,6 +3,7 @@ package internal
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -33,6 +34,7 @@ func TestFilterAnchoring(t *testing.T) {
 		"vendor/**",    // the one beside the config
 		"/tools/**",    // the same, spelled the way .gitignore anchors
 		"a/b/*.go",     // one named place, one level deep
+		"./build/**",   // one of the ways a person writes "beside this file"
 	)
 	if err := opts.Compile(); err != nil {
 		t.Fatal(err)
@@ -66,6 +68,11 @@ func TestFilterAnchoring(t *testing.T) {
 		{"/repo/a/b/c.go", true},
 		{"/repo/a/b/c/d.go", false},
 		{"/repo/a/b.go", false},
+
+		// A leading ./ names the directory beside the config file, not a
+		// directory called ".", so it anchors exactly as "build/**" does.
+		{"/repo/build/x.go", true},
+		{"/repo/pkg/build/x.go", false},
 	}
 	for _, tt := range tests {
 		if got := opts.Skips(tt.path); got != tt.want {
@@ -216,6 +223,48 @@ func TestFilterOmitBitesInsideOnly(t *testing.T) {
 	} {
 		if got := opts.Skips(path); got != want {
 			t.Errorf("Skips(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
+
+// TestFilterQuestionMarkMatchesOneCharacter checks the third glob
+// metacharacter. ? stops at a separator for the same reason * does: a pattern
+// naming one path segment must not silently reach into another.
+func TestFilterQuestionMarkMatchesOneCharacter(t *testing.T) {
+	opts := DefaultOptions()
+	opts.Omit = filterPatternsAt("/repo", "sub/gen?.go", "a?b/**")
+	if err := opts.Compile(); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]bool{
+		"/repo/sub/gen1.go":  true,
+		"/repo/sub/gen10.go": false, // one character, not any number
+		"/repo/sub/gen.go":   false, // and not zero
+		"/repo/axb/c.go":     true,
+		"/repo/a/b/c.go":     false, // ? does not reach across a separator
+	} {
+		if got := opts.Skips(path); got != want {
+			t.Errorf("Skips(%q) = %v, want %v", path, got, want)
+		}
+	}
+}
+
+// TestFilterRefusesPatternLeavingItsDirectory checks the one pattern that is
+// rejected rather than compiled. A path is matched relative to the directory
+// of the config file that states the pattern and never holds a "..", so such a
+// pattern could only ever match nothing — and a filter that silently matches
+// nothing is the failure a reader has no way to see.
+func TestFilterRefusesPatternLeavingItsDirectory(t *testing.T) {
+	for _, pattern := range []string{"../sibling/**", "sub/../../up.go"} {
+		opts := DefaultOptions()
+		opts.Omit = filterPatternsAt("/repo", pattern)
+		err := opts.Compile()
+		if err == nil {
+			t.Errorf("Compile() accepted %q, want a refusal", pattern)
+			continue
+		}
+		if !strings.Contains(err.Error(), pattern) {
+			t.Errorf("the refusal should quote the pattern: %v", err)
 		}
 	}
 }
