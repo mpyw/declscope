@@ -158,4 +158,61 @@ func (s SurplusModeSet) String() string {
 	return modeJoin(names)
 }
 
+// BoundaryMode says whether the boundary rule reports: on or off. Only
+// rules.boundary reads one.
+//
+// A mode rather than a boolean, so that the key spells the rule's own name:
+// boundary: true would read as "boundary: yes please", which is why the
+// switch used to be named for what it did (allowBoundary). With a mode, the
+// rule's name, its diagnostic category, its baseline key, its ignore target
+// and its configuration key are one word, as they are for surplus.
+type BoundaryMode int
+
+const (
+	// BoundaryModeOn reports a private declaration used from outside its
+	// namespace. It is the default.
+	BoundaryModeOn BoundaryMode = iota
+
+	// BoundaryModeOff reports nothing, leaving only the naming rule.
+	BoundaryModeOff
+)
+
+// String returns the spelling the settings use.
+func (m BoundaryMode) String() string {
+	switch m {
+	case BoundaryModeOn:
+		return "on"
+	case BoundaryModeOff:
+		return "off"
+	default:
+		return "unknown"
+	}
+}
+
+// Reports reports whether the rule says anything at all.
+func (m BoundaryMode) Reports() bool { return m == BoundaryModeOn }
+
+// BoundaryModeSet is the values rules.boundary accepts, in the order an error
+// message names them.
+type BoundaryModeSet []BoundaryMode
+
+// Parse reads a setting's value, of the members of the set only.
+func (s BoundaryModeSet) Parse(value string) (BoundaryMode, bool) {
+	for _, m := range s {
+		if value == m.String() {
+			return m, true
+		}
+	}
+	return 0, false
+}
+
+// String lists the accepted spellings: "off or on".
+func (s BoundaryModeSet) String() string {
+	names := make([]string, len(s))
+	for i, m := range s {
+		names[i] = m.String()
+	}
+	return modeJoin(names)
+}
+
 // Options is the resolved configuration for a run.

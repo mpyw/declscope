@@ -24,11 +24,11 @@ func TestForeignMethod(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "foreignmethod")
 }
 
-// TestAllowBoundary checks that rules.allowBoundary leaves the naming rule
+// TestBoundaryOff checks that rules.boundary: off leaves the naming rule
 // running on its own. A reach that would be reported is not, and a name that
 // does not carry its namespace still is.
-func TestAllowBoundary(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "allowboundary")
+func TestBoundaryOff(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "boundaryoff")
 }
 
 // TestFilterCancelled checks the one filter report. A config beside a package

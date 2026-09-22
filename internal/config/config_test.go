@@ -108,10 +108,11 @@ func TestLoadEmptyFile(t *testing.T) {
 func TestLoadRejectsUnknownKey(t *testing.T) {
 	for _, tt := range []struct{ yaml, want string }{
 		{"nonsense: 1\n", `unknown key "nonsense" (this section takes defaults, rules, filter, baseline)`},
-		{"rules:\n  unqualifyy: always\n", `unknown key "rules.unqualifyy" (this section takes naming, allowBoundary, surplus)`},
-		// The switch rules.surplus replaced is refused the same way, and the
-		// message names the key that replaced it.
-		{"rules:\n  allowSurplus: true\n", `unknown key "rules.allowSurplus" (this section takes naming, allowBoundary, surplus)`},
+		{"rules:\n  unqualifyy: always\n", `unknown key "rules.unqualifyy" (this section takes naming, boundary, surplus)`},
+		// The switches rules.boundary and rules.surplus replaced are refused
+		// the same way, and the message names the keys that replaced them.
+		{"rules:\n  allowBoundary: true\n", `unknown key "rules.allowBoundary" (this section takes naming, boundary, surplus)`},
+		{"rules:\n  allowSurplus: true\n", `unknown key "rules.allowSurplus" (this section takes naming, boundary, surplus)`},
 		{"rules:\n  naming:\n    unqualifyy: always\n", `unknown key "rules.naming.unqualifyy" (this section takes qualify, exported, vocabulary)`},
 		// The removed rule is refused through the same path as any typo, so a
 		// config written for the release that had it fails loudly rather than
@@ -138,8 +139,9 @@ func TestLoadRejectsUnknownKey(t *testing.T) {
 // favour of a message about keys.
 func TestLoadPassesOtherTypeErrorsThrough(t *testing.T) {
 	for _, yaml := range []string{
-		"rules:\n  allowBoundary: [1, 2]\n", // a list where a bool belongs
-		"rules:\n  surplus: [1, 2]\n",       // a list where a mode belongs
+		"rules:\n  naming:\n    exported: [1, 2]\n", // a list where a bool belongs
+		"rules:\n  boundary: [1, 2]\n",              // a list where a mode belongs
+		"rules:\n  surplus: [1, 2]\n",
 		"rules:\n  naming:\n    vocabulary: 7\n",
 	} {
 		path := write(t, t.TempDir(), ".declscope.yaml", yaml)
@@ -259,6 +261,29 @@ func TestQualifyModes(t *testing.T) {
 	}
 }
 
+// TestBoundaryModes checks every value of the rules.boundary setting, and
+// that each spells back the way the config does.
+func TestBoundaryModes(t *testing.T) {
+	for _, tt := range []struct {
+		value string
+		want  internal.BoundaryMode
+	}{
+		{"off", internal.BoundaryModeOff},
+		{"on", internal.BoundaryModeOn},
+	} {
+		opts, err := apply(t, "rules:\n  boundary: "+tt.value+"\n")
+		if err != nil {
+			t.Fatalf("%q: %v", tt.value, err)
+		}
+		if opts.Boundary != tt.want {
+			t.Errorf("%q: Boundary = %v, want %v", tt.value, opts.Boundary, tt.want)
+		}
+		if got := opts.Boundary.String(); got != tt.value {
+			t.Errorf("%q: String() = %q, want the config's own spelling", tt.value, got)
+		}
+	}
+}
+
 // TestSurplusModes checks every value of the rules.surplus setting, and that
 // each spells back the way the config does.
 func TestSurplusModes(t *testing.T) {
@@ -292,8 +317,6 @@ func TestBoolSettings(t *testing.T) {
 	}{
 		{"rules:\n  naming:\n    exported: true\n", func(o internal.Options) bool { return o.NameExported }, true},
 		{"rules:\n  naming:\n    exported: false\n", func(o internal.Options) bool { return o.NameExported }, false},
-		{"rules:\n  allowBoundary: true\n", func(o internal.Options) bool { return o.AllowBoundary }, true},
-		{"rules:\n  allowBoundary: false\n", func(o internal.Options) bool { return o.AllowBoundary }, false},
 	}
 	for _, tt := range tests {
 		opts, err := apply(t, tt.yaml)
@@ -317,8 +340,8 @@ func TestDefaultModes(t *testing.T) {
 	if opts.NameExported {
 		t.Error("default NameExported should be off")
 	}
-	if opts.AllowBoundary {
-		t.Error("the boundary rule has no switch to reach for, so AllowBoundary starts false")
+	if opts.Boundary != internal.BoundaryModeOn {
+		t.Errorf("default Boundary = %v, want on: it is the rule this tool exists for", opts.Boundary)
 	}
 	// loose, not strict: an upgrade must not add reports to a repository
 	// whose config did not change.
@@ -341,6 +364,12 @@ func TestApplyRejectsUnknownMode(t *testing.T) {
 			`rules.naming.qualify: unknown mode "true" (want always, never or ondemand)`},
 		{"rules:\n  naming:\n    qualify: false\n",
 			`rules.naming.qualify: unknown mode "false" (want always, never or ondemand)`},
+		// rules.boundary is answered with its own values. A YAML bool is a
+		// word here, so the old switch's spelling is refused too.
+		{"rules:\n  boundary: true\n",
+			`rules.boundary: unknown mode "true" (want off or on)`},
+		{"rules:\n  boundary: loose\n",
+			`rules.boundary: unknown mode "loose" (want off or on)`},
 		// rules.surplus is answered with its own values, not qualify's.
 		{"rules:\n  surplus: ondemand\n",
 			`rules.surplus: unknown mode "ondemand" (want off, loose or strict)`},
@@ -363,7 +392,6 @@ func TestApplyRejectsUnknownMode(t *testing.T) {
 func TestBoolSettingRejectsAWord(t *testing.T) {
 	for _, yaml := range []string{
 		"rules:\n  naming:\n    exported: ondemand\n",
-		"rules:\n  allowBoundary: ondemand\n",
 	} {
 		err := settingErr(t, yaml)
 		if err == nil {
@@ -609,7 +637,7 @@ func TestSurplusModeComposes(t *testing.T) {
 	if opts.Surplus != internal.SurplusModeStrict {
 		t.Errorf("Surplus = %v: a nested file that does not state it should keep the root's", opts.Surplus)
 	}
-	if opts.AllowBoundary {
+	if opts.Boundary != internal.BoundaryModeOn {
 		t.Error("rules.surplus must switch no other rule")
 	}
 	opts, _, err = config.Resolve(stated, "")

@@ -232,7 +232,7 @@ rules:
     exported: false       # true | false
     vocabulary:
       mouse: [wheel]
-  allowBoundary: false   # true | false
+  boundary: on           # off | on
   surplus: loose         # off | loose | strict
 
 filter:
@@ -249,7 +249,7 @@ baseline: .declscope-baseline.yaml
 | `rules.naming.qualify` | `always`, `never`, `ondemand` | `never` | When a name must carry its namespace. See [the naming rule](#when-it-applies) |
 | `rules.naming.exported` | `true`, `false` | `false` | Whether the naming rule also reaches exported declarations. The rename is never offered there |
 | `rules.naming.vocabulary` | Namespace to a list of words | None | Extra words that carry a namespace. See [what carries a namespace](#what-carries-a-namespace) |
-| `rules.allowBoundary` | `true`, `false` | `false` | Turns the [`boundary`](#boundary) rule off. See [reach without a boundary](#reach-without-a-boundary) |
+| `rules.boundary` | `off`, `on` | `on` | Whether the [`boundary`](#boundary) rule reports. See [reach without a boundary](#reach-without-a-boundary) |
 | `rules.surplus` | `off`, `loose`, `strict` | `loose` | How much the [`surplus`](#surplus) rule reports. See [strict](#strict) |
 | `filter.only` | Path globs | None | When set, no file outside them is read. Empty places no restriction |
 | `filter.omit` | Path globs | None | Files taken back out, whether or not `only` let them through |
@@ -609,7 +609,7 @@ A **rule** is one check. A rule's name is the diagnostic's category, its [baseli
 
 | Rule | Reports | Fix | Configured by | Default |
 | --- | --- | --- | --- | --- |
-| [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:package` | `rules.allowBoundary` | On |
+| [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:package` | `rules.boundary` | `on` |
 | [`qualify`](#the-naming-rule) | A name that does not carry its namespace | Rename to prefix it | `rules.naming.*` | Off |
 | [`surplus`](#surplus) | Package scope with no visible use from another namespace | Under `strict`, insert `//declscope:private` | `rules.surplus` | `loose` |
 | [`directive`](#unused-and-malformed-directives) | A directive that binds nothing, or is malformed | None | No | On |
@@ -640,13 +640,13 @@ Every crossing use site is attached to the diagnostic, and a use from inside the
 
 #### Reach without a boundary
 
-`rules.allowBoundary: true` switches this rule off. What is left is the naming rule, for a repository that wants the ownership mark in a name without the scope behind it.
+`rules.boundary: off` switches this rule off. What is left is the naming rule, for a repository that wants the ownership mark in a name without the scope behind it.
 
 ```yaml
 rules:
   naming:
     qualify: ondemand
-  allowBoundary: true
+  boundary: off
   surplus: off
 ```
 

@@ -1,4 +1,4 @@
-package allowboundary
+package boundaryoff
 
 // orderRun carries its namespace, so the naming rule is quiet about it. It
 // reaches across a boundary that nothing is checking.

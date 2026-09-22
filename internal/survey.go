@@ -210,7 +210,7 @@ func namespacesForSurvey(pass *analysis.Pass, c *collection, opts Options) ([]me
 // tally beside the checks.
 func countsForSurvey(pass *analysis.Pass, c *collection, opts Options) map[rule.Rule]measure.Count {
 	return map[rule.Rule]measure.Count{
-		rule.Boundary: {Asked: !opts.AllowBoundary, Keyable: true},
+		rule.Boundary: {Asked: opts.Boundary.Reports(), Keyable: true},
 		rule.Qualify:  {Asked: opts.Qualify.Applies(c.namespaces), Keyable: true},
 		// Not the mode alone: the rule also stands itself down for a package
 		// this pass cannot see every file of, and a count of zero there is the

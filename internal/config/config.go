@@ -13,14 +13,13 @@
 //	    qualify: ondemand    # always | never | ondemand (only once a package has two namespaces)
 //	    vocabulary:          # per-namespace words that carry the namespace
 //	      mouse: [wheel]
-//	  allowBoundary: false  # stop checking reach, leaving only the naming rule
+//	  boundary: on          # off | on (off stops checking reach, leaving only the naming rule)
 //	  surplus: loose        # off | loose | strict
 //
-// rules.naming.qualify reads an internal.QualifyMode; rules.surplus reads an
-// internal.SurplusMode; rules.naming.exported is true/false;
-// rules.naming.vocabulary maps a namespace to the extra words that satisfy
-// the naming rule for it. rules.allowBoundary is true/false and defaults to
-// false.
+// rules.naming.qualify reads an internal.QualifyMode; rules.boundary reads an
+// internal.BoundaryMode; rules.surplus reads an internal.SurplusMode;
+// rules.naming.exported is true/false; rules.naming.vocabulary maps a
+// namespace to the extra words that satisfy the naming rule for it.
 //
 // Unknown keys are an error, and the message names the key and the keys the
 // section does take.
@@ -54,6 +53,9 @@ var BaselineNames = []string{".declscope-baseline.yaml", ".declscope-baseline.ym
 
 // The values rules.naming.qualify accepts.
 var qualifyModes = internal.QualifyModeSet{internal.QualifyModeAlways, internal.QualifyModeNever, internal.QualifyModeOnDemand}
+
+// The values rules.boundary accepts, from reporting least to most.
+var boundaryModes = internal.BoundaryModeSet{internal.BoundaryModeOff, internal.BoundaryModeOn}
 
 // The values rules.surplus accepts, from reporting least to most.
 var surplusModes = internal.SurplusModeSet{internal.SurplusModeOff, internal.SurplusModeLoose, internal.SurplusModeStrict}
@@ -91,10 +93,10 @@ type filterSection struct {
 type rulesSection struct {
 	Naming namingSection `yaml:"naming"`
 
-	// AllowBoundary turns the boundary rule off, leaving only the naming
-	// rule. The key names what switching it does rather than what the rule
-	// is, since boundary: true would read as "yes please".
-	AllowBoundary boolSetting `yaml:"allowBoundary"`
+	// Boundary says whether the boundary rule reports: off or on. Off leaves
+	// only the naming rule. A mode rather than a switch, so the key spells
+	// the rule's own name.
+	Boundary string `yaml:"boundary"`
 
 	// Surplus says how much the surplus rule reports: off, loose or strict.
 	// A mode rather than a switch, so the key spells the rule's own name.
@@ -443,8 +445,12 @@ func (f *File) Apply(opts *internal.Options) error {
 		}
 		opts.Vocabulary = merged
 	}
-	if f.Rules.AllowBoundary.set {
-		opts.AllowBoundary = f.Rules.AllowBoundary.value
+	if f.Rules.Boundary != "" {
+		m, ok := boundaryModes.Parse(f.Rules.Boundary)
+		if !ok {
+			return fmt.Errorf("rules.boundary: unknown mode %q (want %s)", f.Rules.Boundary, boundaryModes)
+		}
+		opts.Boundary = m
 	}
 	if f.Rules.Surplus != "" {
 		m, ok := surplusModes.Parse(f.Rules.Surplus)

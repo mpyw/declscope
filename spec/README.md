@@ -25,8 +25,8 @@ the binary.
 | `naming_rules.fsl` | No rename is ever applied to an exported declaration | As above |
 | `naming_rules.fsl` | Each naming key bites, and each silence is witnessed with every other reason for silence pinned | As above |
 | `naming_rules.fsl` | The core namespace is outside the rule, whatever is configured | As above |
-| `allow_boundary.fsl` | `rules.allowBoundary` silences `boundary` and nothing else. `qualify` and `surplus` still fire with it on, and `rules.surplus: off` still gates only `surplus` | Every combination of the two switches, the resolved scope, the reference shape, the naming mode and its inputs, and the two surplus inputs |
-| `allow_boundary.fsl` | Each of the three rules keeps its own guards, witnessed by the report each one records rather than by a restatement of its definition | As above |
+| `boundary_off.fsl` | `rules.boundary: off` silences `boundary` and nothing else. `qualify` and `surplus` still fire with it on, and `rules.surplus: off` still gates only `surplus` | Every combination of the two switches, the resolved scope, the reference shape, the naming mode and its inputs, and the two surplus inputs |
+| `boundary_off.fsl` | Each of the three rules keeps its own guards, witnessed by the report each one records rather than by a restatement of its definition | As above |
 | `filter.fsl` | `filter.only` narrows and `filter.omit` subtracts. Either list admits or rejects on any one of its patterns, an empty `only` places no restriction, and `omit` still bites inside `only` | Every combination of which of three patterns each list holds and which of them the file matches |
 | `filter.fsl` | The order of the two lists is not observable: narrowing then subtracting and subtracting then narrowing name the same set | As above |
 | `config_inherit.fsl` | A config file states some keys and leaves the rest alone: the nearest file that states a key wins, and a key no nearer file states still comes from the root | Every combination of what three levels state about one value key, and of what two levels state about two vocabulary namespaces |
@@ -118,7 +118,7 @@ Or one at a time:
 ```console
 fslc check  naming_rules.fsl
 fslc verify naming_rules.fsl      --depth 5
-fslc verify allow_boundary.fsl   --depth 2
+fslc verify boundary_off.fsl     --depth 2
 fslc verify config_inherit.fsl   --depth 2
 fslc verify filter.fsl           --depth 2
 fslc verify filter_chain.fsl     --depth 2
@@ -194,9 +194,9 @@ is a semantics that contradicts the documented one; each was run:
 | `strict` narrows a type one of whose members is reached | `violated` (`NeverNarrowsAReachedMember`) |
 | `strict` reports a member of a type it already narrows | `violated` (`NeverRepeatsTheOwnersFinding`) |
 | The `strict` fix is offered where it would leave the directive binding nothing | `violated` (`FixKeepsTheDirectiveBound`) |
-| `rules.allowBoundary` is wired into `surplus` as well | `reachable_failed` (`SurplusFiresWhileBoundaryAllowed`) |
-| `rules.allowBoundary` is wired into `qualify` as well | `reachable_failed` (`QualifyFiresWhileBoundaryAllowed`) |
-| The `allowBoundary` gate is dropped from the boundary report | `violated` (`BoundarySilencedWhenAllowed`) |
+| `rules.boundary: off` is wired into `surplus` as well | `reachable_failed` (`SurplusFiresWhileBoundaryOff`) |
+| `rules.boundary: off` is wired into `qualify` as well | `reachable_failed` (`QualifyFiresWhileBoundaryOff`) |
+| The `rules.boundary` gate is dropped from the boundary report | `violated` (`BoundarySilencedWhenOff`) |
 | An empty `filter.only` matches nothing rather than placing no restriction | `reachable_failed` (`NoListsAdmitsAFileMatchingNothing`) |
 | `filter.omit` is ignored once `filter.only` is set | `violated` (`DecisionMatchesTheRule`) |
 | `filter.only` is ignored once `filter.omit` is set | `violated` (`DecisionMatchesTheRule`) |
