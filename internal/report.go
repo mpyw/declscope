@@ -2,9 +2,11 @@ package internal
 
 import (
 	"fmt"
+	"go/ast"
 	"go/token"
 	"go/types"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -338,6 +340,16 @@ func (c *collection) findingsForReport(pass *analysis.Pass, opts Options, t *tar
 	if pos, msg, ok := c.checkSurplus(pass, opts, t); ok {
 		out = append(out, reportedFinding{rule: rule.Surplus, decl: t.name(), pos: pos, msg: msg})
 	}
+	// strict's finding on one declaration shares the rule's name, so the same
+	// ignore and the same baseline key answer for it. surplus.go words it and
+	// decides the fix.
+	if msg, fix, ok := c.checkSurplusDeclaration(pass, opts, t); ok {
+		f := reportedFinding{rule: rule.Surplus, decl: t.name(), pos: t.ident.Pos(), msg: msg}
+		if fix != nil {
+			f.fixes = append(f.fixes, *fix)
+		}
+		out = append(out, f)
+	}
 	return out
 }
 
@@ -394,7 +406,23 @@ func (c *collection) boundaryFindingForReport(pass *analysis.Pass, opts Options,
 	if t.boundAt != scopesiteLevelDefault {
 		return f, true
 	}
-	f.fixes = append(f.fixes, directiveFixInReport(pass, t, scope.PackageInternal))
+	fix := directiveFixInReport(pass, t, scope.PackageInternal)
+	// The directive reaches the type's members too, so under strict a member
+	// no other namespace reads would come out of this fix package-scoped, and
+	// surplus would report what -fix had just written. The fix narrows those
+	// members in the same edit, which is the state the two rules agree on;
+	// surplus.go decides which members they are.
+	if t.kind == kindType {
+		var names []string
+		for _, m := range c.surplusNarrowedByTypeFix(pass, opts, t) {
+			fix.TextEdits = append(fix.TextEdits, directiveEditInReport(pass, m, scope.Private, m.doc))
+			names = append(names, m.name())
+		}
+		if len(names) > 0 {
+			fix.Message += ", and " + scope.Private.Directive() + " to " + strings.Join(names, ", ")
+		}
+	}
+	f.fixes = append(f.fixes, fix)
 	return f, true
 }
 
@@ -470,27 +498,49 @@ func (c *collection) qualifyExaminesForReport(pass *analysis.Pass, opts Options,
 }
 
 // directiveFixInReport inserts an explicit scope directive above the declaration.
+func directiveFixInReport(pass *analysis.Pass, t *target, s scope.Scope) analysis.SuggestedFix {
+	return analysis.SuggestedFix{
+		Message:   fmt.Sprintf("add %s to %s", s.Directive(), t.name()),
+		TextEdits: []analysis.TextEdit{directiveEditInReport(pass, t, s, nil)},
+	}
+}
+
+// directiveEditInReport is the insertion itself.
 //
 // A directive only binds to a declaration when it sits on its own line above
 // it, so a declaration that shares a line with something else — a field of a
 // single-line struct, for instance — first has to be broken onto a line of its
 // own. The formatter applied to the fixed file restores the indentation.
-func directiveFixInReport(pass *analysis.Pass, t *target, s scope.Scope) analysis.SuggestedFix {
+//
+// doc is the comment the directive lands under, when the caller wants the
+// house layout: a doc comment, a bare // line, then the directive. go/doc
+// strips a directive from the rendered text either way, but the blank comment
+// line is what keeps the two readable as separate things in the source. A doc
+// comment that already ends in a directive or in a bare // needs no separator.
+//
+//declscope:package // surplus.go narrows a declaration with the same insertion
+func directiveEditInReport(pass *analysis.Pass, t *target, s scope.Scope, doc *ast.CommentGroup) analysis.TextEdit {
 	var text string
 	if atLineStartForReport(pass, t.anchor) {
-		col := pass.Fset.Position(t.anchor).Column
-		text = s.Directive() + "\n" + strings.Repeat("\t", max(col-1, 0))
+		indent := strings.Repeat("\t", max(pass.Fset.Position(t.anchor).Column-1, 0))
+		text = s.Directive() + "\n" + indent
+		if doc != nil && len(doc.List) > 0 && !endsInDirectiveForReport(doc) {
+			text = "//\n" + indent + text
+		}
 	} else {
 		text = "\n" + s.Directive() + "\n"
 	}
-	return analysis.SuggestedFix{
-		Message: fmt.Sprintf("add %s to %s", s.Directive(), t.name()),
-		TextEdits: []analysis.TextEdit{{
-			Pos:     t.anchor,
-			End:     t.anchor,
-			NewText: []byte(text),
-		}},
-	}
+	return analysis.TextEdit{Pos: t.anchor, End: t.anchor, NewText: []byte(text)}
+}
+
+// directiveLineForReport is the shape go/ast recognizes as a directive: no
+// space after the slashes, a lowercase word, and a colon. The three spellings
+// without a colon are the ones cgo and the linker read.
+var directiveLineForReport = regexp.MustCompile(`^//(line |extern |export |[a-z0-9]+:[a-z0-9])`)
+
+func endsInDirectiveForReport(doc *ast.CommentGroup) bool {
+	last := doc.List[len(doc.List)-1].Text
+	return last == "//" || directiveLineForReport.MatchString(last)
 }
 
 // atLineStartForReport reports whether pos is preceded on its line by nothing but

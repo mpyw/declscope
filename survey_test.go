@@ -53,6 +53,11 @@ func TestSurveyAgreesWithTheAnalyzer(t *testing.T) {
 		"surplus",
 		"surplusbaselined",
 		"filtercancelled/sub",
+		// surplus under strict, with ignores, with a baseline, and in a
+		// package whose two variants disagree about whether it may report.
+		"surplusstrict",
+		"surplusstrictbaselined",
+		"surplusstricttests",
 		// The only fixture whose two variants disagree. Everything above has
 		// no _test.go file, so "per variant" goes untested without it.
 		"testonlyignore",

@@ -169,7 +169,7 @@ func (c *collection) addFuncToCollection(pass *analysis.Pass, opts Options, fi *
 		}
 		sc, boundBy, boundAt, decided := c.bindAtScopeSite(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
 		c.addToCollection(&target{
-			obj: obj, ident: d.Name, kind: kindFunc, file: fi, dir: dir, anchor: d.Pos(),
+			obj: obj, ident: d.Name, kind: kindFunc, file: fi, dir: dir, anchor: d.Pos(), doc: d.Doc,
 			scope:      sc,
 			decided:    decided,
 			boundBy:    boundBy,
@@ -193,7 +193,7 @@ func (c *collection) addFuncToCollection(pass *analysis.Pass, opts Options, fi *
 	sc, boundBy, boundAt, decided := c.bindAtScopeSite(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
 	c.addToCollection(&target{
 		obj: obj, ident: d.Name, kind: kindMethod, file: fi,
-		owner: owner, ownerObj: ownerObj, ownerFile: ownerFile, dir: dir, anchor: d.Pos(),
+		owner: owner, ownerObj: ownerObj, ownerFile: ownerFile, dir: dir, anchor: d.Pos(), doc: d.Doc,
 		scope:   sc,
 		decided: decided,
 		boundBy: boundBy,
@@ -220,16 +220,18 @@ func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, f
 	for _, spec := range d.Specs {
 		switch spec := spec.(type) {
 		case *ast.TypeSpec:
-			dir := outer.Merge(c.parseCollectedDecl(commentsForSpec(pass, fi, spec)...))
+			own := c.parseCollectedDecl(commentsForSpec(pass, fi, spec)...)
+			dir := outer.Merge(own)
 			c.shadowedAtScopeSite(outer, dir)
-			anchor := d.Pos()
+			anchor, doc, fromBlock := d.Pos(), d.Doc, false
 			if grouped {
-				anchor = spec.Pos()
+				anchor, doc, fromBlock = spec.Pos(), spec.Doc, outer.HasScope && !own.HasScope
 			}
 			if obj, ok := pass.TypesInfo.Defs[spec.Name]; ok && spec.Name.Name != "_" {
 				sc, boundBy, boundAt, decided := c.bindAtScopeSite(opts, spec.Name.Name, dir, directive.Decl{}, fi.scope)
 				c.addToCollection(&target{
 					obj: obj, ident: spec.Name, kind: kindType, file: fi, dir: dir, anchor: anchor,
+					doc: doc, fromBlock: fromBlock,
 					scope:      sc,
 					decided:    decided,
 					boundBy:    boundBy,
@@ -240,11 +242,12 @@ func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, f
 			c.addMembersToCollection(pass, opts, fi, spec, pass.TypesInfo.Defs[spec.Name], dir)
 
 		case *ast.ValueSpec:
-			dir := outer.Merge(c.parseCollectedDecl(commentsForSpec(pass, fi, spec)...))
+			own := c.parseCollectedDecl(commentsForSpec(pass, fi, spec)...)
+			dir := outer.Merge(own)
 			c.shadowedAtScopeSite(outer, dir)
-			anchor := d.Pos()
+			anchor, doc, fromBlock := d.Pos(), d.Doc, false
 			if grouped {
-				anchor = spec.Pos()
+				anchor, doc, fromBlock = spec.Pos(), spec.Doc, outer.HasScope && !own.HasScope
 			}
 			k := kindVar
 			if d.Tok == token.CONST {
@@ -258,6 +261,7 @@ func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, f
 				sc, boundBy, boundAt, decided := c.bindAtScopeSite(opts, name.Name, dir, directive.Decl{}, fi.scope)
 				c.addToCollection(&target{
 					obj: obj, ident: name, kind: k, file: fi, dir: dir, anchor: anchor,
+					doc: doc, fromBlock: fromBlock,
 					scope:      sc,
 					decided:    decided,
 					boundBy:    boundBy,
@@ -322,6 +326,7 @@ func (c *collection) addMembersToCollection(pass *analysis.Pass, opts Options, f
 				contained: true,
 				owner:     spec.Name.Name, ownerObj: ownerObj, dir: dir,
 				anchor:  m.Pos(),
+				doc:     m.Doc,
 				scope:   sc,
 				decided: decided,
 				boundBy: boundBy,

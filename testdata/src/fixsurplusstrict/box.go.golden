@@ -1,0 +1,23 @@
+package fixsurplusstrict
+
+// boxItem takes private from the default and crosses, so the boundary fix
+// widens it. The same fix narrows count, which nothing outside reads, and
+// leaves shared, which order.go reads, and memo, whose author asked this rule
+// to stay out.
+//
+//declscope:package
+type boxItem struct { // want `type boxItem is private to namespace "box", but is used from namespace "order"`
+	shared int // want `field boxItem.shared is private to namespace "box", but is used from namespace "order"`
+
+	// count is read here only.
+	//
+	//declscope:private
+	count int
+
+	//declscope:ignore surplus // want `unused //declscope:ignore surplus on boxItem.memo`
+	memo int
+}
+
+func boxLocal(b boxItem) int { return b.count + b.memo }
+
+var _ = boxLocal

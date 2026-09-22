@@ -4,4 +4,4 @@
 rules:
   naming:
     qualify: ondemand
-  allowSurplus: true
+  surplus: off

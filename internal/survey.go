@@ -212,11 +212,11 @@ func countsForSurvey(pass *analysis.Pass, c *collection, opts Options) map[rule.
 	return map[rule.Rule]measure.Count{
 		rule.Boundary: {Asked: !opts.AllowBoundary, Keyable: true},
 		rule.Qualify:  {Asked: opts.Qualify.Applies(c.namespaces), Keyable: true},
-		// Not !opts.AllowSurplus: the rule also stands itself down for a
-		// package this pass cannot see every file of, and a count of zero
-		// there is the "zero for a reason that is not the code" this column
-		// exists to rule out.
-		rule.Surplus: {Asked: !opts.AllowSurplus && c.surplusSeesEveryFile(pass), Keyable: true},
+		// Not the mode alone: the rule also stands itself down for a package
+		// this pass cannot see every file of, and a count of zero there is the
+		// "zero for a reason that is not the code" this column exists to rule
+		// out.
+		rule.Surplus: {Asked: opts.Surplus.Reports() && c.surplusSeesEveryFile(pass), Keyable: true},
 	}
 }
 

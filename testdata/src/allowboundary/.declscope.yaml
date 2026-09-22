@@ -5,4 +5,4 @@ rules:
   naming:
     qualify: ondemand
   allowBoundary: true
-  allowSurplus: true
+  surplus: off

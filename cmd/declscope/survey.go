@@ -112,7 +112,7 @@ func surveyPackages(pkgs []*packages.Package, configPath string, failed []string
 			use = &measure.ConfigUse{
 				Chain:    chain,
 				Boundary: !opts.AllowBoundary,
-				Surplus:  !opts.AllowSurplus,
+				Surplus:  opts.Surplus.String(),
 				Qualify:  opts.Qualify.String(),
 				Exported: opts.NameExported,
 			}

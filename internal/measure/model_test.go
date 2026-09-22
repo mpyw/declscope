@@ -73,7 +73,7 @@ func fixtureSummary() Summary {
 	}}, Checks{
 		Configs: []ConfigUse{{
 			Chain: []string{".declscope.yaml"}, Packages: 2,
-			Boundary: true, Surplus: true, Qualify: "ondemand", Exported: true,
+			Boundary: true, Surplus: "loose", Qualify: "ondemand", Exported: true,
 		}},
 		Baselines: []BaselineUse{{Path: ".declscope-baseline.yaml", Entries: 12}},
 		TypeCheck: TypeCheck{Packages: 2},

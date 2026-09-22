@@ -25,9 +25,20 @@
 // seesAllFiles is separate: with -test=false, in the non-test variant of a
 // package with in-package tests, or with build-excluded files, some file that
 // may hold the use was never read, and the rule switches off rather than guess.
+//
+// Under rules.surplus: strict the rule also judges one declaration at a time.
+// A directive stays quiet as a whole when any one thing under it is reached,
+// so a file-level //declscope:package over one helper another file calls and
+// one it does not says nothing about the second. strict reports that one, on
+// the same evidence, and offers //declscope:private above it. That fix cannot
+// break a build: a directive is a comment. What it could do is turn a use
+// nobody saw into a boundary report somewhere else, which is the harm the
+// checks above exist to prevent, so they are the same checks.
+// spec/surplus_strict.fsl is the model for that half.
 package internal
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -36,6 +47,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
@@ -44,21 +56,48 @@ import (
 //declscope:package // collection embeds it, and collection lives in the core
 type surplusBook struct {
 	// surplus is the judgment over every //declscope:package directive in the
-	// package. It is computed on first use, so a run that allows surplus, or
-	// one that cannot see every file, never pays for it.
+	// package. It is computed on first use, so a run that asks nothing of this
+	// rule, or one that cannot see every file, never pays for it.
 	//
 	//declscope:private // the type is widened only so the core can embed it
 	surplus *surplusState
+
+	// surplusDeclarations is the strict half of the judgment: each
+	// declaration reported on its own, with whether its diagnostic carries the
+	// fix. Computed on first use, and only under strict.
+	//
+	//declscope:private // the type is widened only so the core can embed it
+	surplusDeclarations map[*target]surplusDeclaration
 }
 
-// surplusState maps each fired directive to the target the finding is
-// reported through: the first declaration the directive binds, in source
-// order. The directive is judged as a whole — one physical comment, however
-// many declarations take their scope from it — so one target answers for it.
+// surplusDeclaration is one strict finding.
+//
+//declscope:private // only the computation below hands it out
+type surplusDeclaration struct {
+	msg   string
+	fixed bool
+}
+
+// surplusState is the judgment and the evidence it was made from.
+//
+// findings maps each fired directive to the target the finding is reported
+// through: the first declaration the directive binds, in source order. The
+// directive is judged as a whole — one physical comment, however many
+// declarations take their scope from it — so one target answers for it.
+//
+// The rest is kept because strict asks the same questions of one
+// declaration: fired says which directives the judgment condemned, and
+// reached and linknamed are the evidence that no name index holds.
 //
 //declscope:private // only the computation below hands it out
 type surplusState struct {
-	findings map[*target]string
+	findings  map[*target]string
+	fired     map[token.Pos]bool
+	reached   map[types.Object]bool
+	linknamed map[string]bool
+	// blind records that this pass does not read every file, so that nothing
+	// above was computed and nothing may be concluded from it.
+	blind bool
 }
 
 // checkSurplus reports whether t is the declaration a fired
@@ -68,14 +107,36 @@ type surplusState struct {
 //
 //declscope:package // report.go turns it into the finding it reports
 func (c *collection) checkSurplus(pass *analysis.Pass, opts Options, t *target) (token.Pos, string, bool) {
-	if c.surplus == nil {
-		c.surplus = c.computeSurplus(pass, opts)
+	if !opts.Surplus.Reports() {
+		return token.NoPos, "", false
 	}
-	msg, ok := c.surplus.findings[t]
+	msg, ok := c.surplusJudged(pass).findings[t]
 	if !ok {
 		return token.NoPos, "", false
 	}
 	return t.boundBy.ScopePos, msg, true
+}
+
+// surplusJudged computes the judgment once per pass. It reads no
+// configuration: the mode decides what is reported, never what is true, and
+// the strict half is built on this one whatever the mode.
+func (c *collection) surplusJudged(pass *analysis.Pass) *surplusState {
+	if c.surplus == nil {
+		c.surplus = c.computeSurplus(pass)
+	}
+	return c.surplus
+}
+
+// reachesOutside reports whether t is reached from another namespace by any
+// path the rule counts, exportedness aside: another namespace spells it,
+// something reaches it without spelling it, or a directive names it as text.
+// A pass that does not read every file answers true, since it cannot rule
+// anything out.
+func (s *surplusState) reachesOutside(c *collection, t *target) bool {
+	if s.blind {
+		return true
+	}
+	return s.reached[t.obj] || s.linknamed[t.obj.Name()] || c.surplusSeesUseOutside(t)
 }
 
 // computeSurplus judges every //declscope:package directive in the package.
@@ -86,9 +147,10 @@ func (c *collection) checkSurplus(pass *analysis.Pass, opts Options, t *target) 
 // scope from it is reached. A declaration that states its own scope does not
 // depend on an outer directive, so it neither keeps that directive alive nor
 // is reported under it.
-func (c *collection) computeSurplus(pass *analysis.Pass, opts Options) *surplusState {
-	s := &surplusState{findings: make(map[*target]string)}
-	if opts.AllowSurplus || !c.surplusSeesEveryFile(pass) {
+func (c *collection) computeSurplus(pass *analysis.Pass) *surplusState {
+	s := &surplusState{findings: make(map[*target]string), fired: make(map[token.Pos]bool)}
+	if !c.surplusSeesEveryFile(pass) {
+		s.blind = true
 		return s
 	}
 
@@ -98,19 +160,18 @@ func (c *collection) computeSurplus(pass *analysis.Pass, opts Options) *surplusS
 			groups[t.boundBy.ScopePos] = append(groups[t.boundBy.ScopePos], t)
 		}
 	}
-	if len(groups) == 0 {
-		return s
-	}
-
-	reached := c.surplusReached(pass)
-	linknamed := surplusLinknamed(pass)
-	for _, group := range groups {
+	// The evidence is gathered even with no directive to judge: strict asks
+	// it of a member a boundary fix is about to widen, before any directive
+	// the member would take its scope from has been written.
+	s.reached = c.surplusReached(pass)
+	s.linknamed = surplusLinknamed(pass)
+	for pos, group := range groups {
 		fired := true
 		for _, t := range group {
 			// An exported name is reached by every importer, which no
 			// single-package analysis can see, so it keeps its directive and
 			// everything sharing the comment.
-			if isExported(t.obj.Name()) || reached[t.obj] || linknamed[t.obj.Name()] || c.surplusSeesUseOutside(t) {
+			if isExported(t.obj.Name()) || s.reachesOutside(c, t) {
 				fired = false
 				break
 			}
@@ -118,6 +179,7 @@ func (c *collection) computeSurplus(pass *analysis.Pass, opts Options) *surplusS
 		if !fired {
 			continue
 		}
+		s.fired[pos] = true
 		// The finding is keyed to the first declaration in source order, not in
 		// c.targets order: the analysis sorts the targets before reporting,
 		// but the baseline regeneration does not, and the two must agree on
@@ -371,4 +433,243 @@ func surplusLinknamed(pass *analysis.Pass) map[string]bool {
 		}
 	}
 	return names
+}
+
+// checkSurplusDeclaration reports whether t is a declaration strict reports on
+// its own, with the message and the fix.
+//
+//declscope:package // report.go turns it into the finding it reports
+func (c *collection) checkSurplusDeclaration(pass *analysis.Pass, opts Options, t *target) (string, *analysis.SuggestedFix, bool) {
+	if !opts.Surplus.ReportsDeclarations() {
+		return "", nil, false
+	}
+	if c.surplusDeclarations == nil {
+		c.surplusDeclarations = c.computeSurplusDeclarations(pass, opts)
+	}
+	f, ok := c.surplusDeclarations[t]
+	if !ok {
+		return "", nil, false
+	}
+	if !f.fixed {
+		return f.msg, nil, true
+	}
+	fix := analysis.SuggestedFix{
+		Message:   fmt.Sprintf("add %s to %s", scope.Private.Directive(), t.name()),
+		TextEdits: []analysis.TextEdit{directiveEditInReport(pass, t, scope.Private, t.doc)},
+	}
+	return f.msg, &fix, true
+}
+
+// surplusEnclosed reports whether t takes package scope from a directive it
+// did not write itself — its type's, its block's, or its file's — and would be
+// private without it, under the configuration in force.
+//
+// Four things each settle it the other way, and none of them is an enclosing
+// directive's doing:
+//
+//   - An exported declaration is package-scoped by exportedness alone.
+//   - A declaration that states its own scope answers for itself. A redundant
+//     //declscope:package there is the directive rule's report, not this one.
+//   - A declaration whose scope comes from defaults.unexported took no
+//     directive.
+//   - Under defaults.unexported: package it would be package-scoped with no
+//     directive at all, so the directive widened nothing.
+//
+// The last one reads the configuration, which the directive rule's binding
+// test deliberately does not. The two questions differ. That test decides
+// whether a comment may be deleted, and must hold under every configuration,
+// because the comment outlives any one of them. This one asks whether the
+// directive is what widened the declaration today. The fix binds under every
+// configuration regardless: the enclosing directive fixes the scope the
+// declaration would otherwise take, so //declscope:private under it differs.
+func surplusEnclosed(opts Options, t *target) bool {
+	if isExported(t.obj.Name()) || t.scope != scope.PackageInternal || opts.Unexported != scope.Private {
+		return false
+	}
+	switch t.boundAt {
+	case scopesiteLevelContainer, scopesiteLevelFile:
+		return true
+	case scopesiteLevelDecl:
+		return t.fromBlock
+	default:
+		return false
+	}
+}
+
+// computeSurplusDeclarations judges each declaration under a directive that is
+// otherwise in use. A directive nothing needs is loose's finding, reported
+// once through the directive, and one finding per declaration under it would
+// say the same thing again.
+//
+// Declarations are judged per anchor, never per name. var a, b and a, b int
+// are one entry each, and the only directive that can narrow b is one written
+// above it, which narrows a too. So the entry is reported only when every name
+// in it is: a report on b alone could be cleared only by splitting the
+// declaration, which is the author's call. Each name still gets its own
+// diagnostic, so that a baseline or an ignore can name it, and the first
+// carries the one fix.
+//
+// A type is judged with what it contains. Narrowing it narrows every member
+// that takes its scope through it, so a type is reported only when each such
+// member is unexported and unreached as well, and those members are then not
+// reported again: the type's fix settles them.
+func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Options) map[*target]surplusDeclaration {
+	out := make(map[*target]surplusDeclaration)
+	s := c.surplusJudged(pass)
+	if s.blind {
+		return out
+	}
+	wide := func(t *target) bool {
+		return surplusEnclosed(opts, t) && !s.fired[t.boundBy.ScopePos] &&
+			!s.reachesOutside(c, t) && !surplusToolchainNamed(pass, t)
+	}
+
+	inheriting := make(map[types.Object][]*target)
+	entries := make(map[token.Pos][]*target)
+	var anchors []token.Pos
+	for _, t := range c.targets {
+		if t.contained && t.boundAt != scopesiteLevelDecl {
+			inheriting[t.ownerObj] = append(inheriting[t.ownerObj], t)
+		}
+		if _, seen := entries[t.anchor]; !seen {
+			anchors = append(anchors, t.anchor)
+		}
+		entries[t.anchor] = append(entries[t.anchor], t)
+	}
+	carriesOnlyQuiet := func(t *target) bool {
+		return t.kind != kindType || !slices.ContainsFunc(inheriting[t.obj], func(m *target) bool {
+			return isExported(m.obj.Name()) || s.reachesOutside(c, m)
+		})
+	}
+
+	reported := make(map[*target]bool)
+	var groups [][]*target
+	for _, a := range anchors {
+		names := entries[a]
+		if slices.ContainsFunc(names, func(t *target) bool { return !wide(t) || !carriesOnlyQuiet(t) }) {
+			continue
+		}
+		groups = append(groups, names)
+		for _, t := range names {
+			reported[t] = true
+		}
+	}
+
+	// Members of a reported type are settled by its fix. They leave the list,
+	// and join what the run narrows.
+	narrowed := make(map[*target]bool)
+	kept := groups[:0]
+	for _, names := range groups {
+		for _, t := range names {
+			narrowed[t] = true
+			for _, m := range inheriting[t.obj] {
+				narrowed[m] = true
+			}
+		}
+		if owner, ok := c.byObj[names[0].ownerObj]; ok && names[0].contained && reported[owner] {
+			continue
+		}
+		kept = append(kept, names)
+	}
+
+	// A directive that decides something today and would decide nothing once
+	// everything it widens is narrowed is one the fixes would leave unused,
+	// and the directive rule would report what -fix had just written. Its
+	// advice is to delete the directive, which no fix does, so what is under
+	// it is reported without one. A directive that already decides nothing is
+	// already reported, and narrowing under it changes nothing about that.
+	boundBefore, boundAfter := make(map[token.Pos]bool), make(map[token.Pos]bool)
+	for _, t := range c.targets {
+		if !t.decided {
+			continue
+		}
+		boundBefore[t.boundBy.ScopePos] = true
+		if !narrowed[t] {
+			boundAfter[t.boundBy.ScopePos] = true
+		}
+	}
+	for _, names := range kept {
+		slices.SortFunc(names, func(a, b *target) int { return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos()) })
+		pos := names[0].boundBy.ScopePos
+		fixed := !boundBefore[pos] || boundAfter[pos]
+		for i, t := range names {
+			out[t] = surplusDeclaration{msg: surplusDeclarationMessage(t), fixed: fixed && i == 0}
+		}
+	}
+	return out
+}
+
+// surplusToolchainNamed reports whether the toolchain finds the declaration by
+// name, so that no directive on it says anything: main in package main.
+func surplusToolchainNamed(pass *analysis.Pass, t *target) bool {
+	return t.kind == kindFunc && t.obj.Name() == "main" && pass.Pkg.Name() == "main"
+}
+
+// surplusDeclarationMessage names the level that supplied the scope, as the
+// boundary report does, and claims only what the analysis did: it saw no use.
+func surplusDeclarationMessage(t *target) string {
+	var from string
+	switch t.boundAt {
+	case scopesiteLevelFile:
+		from = "the file's " + scope.PackageInternal.Directive()
+	case scopesiteLevelContainer:
+		from = scope.PackageInternal.Directive() + " on " + t.owner
+	default:
+		from = "the " + scope.PackageInternal.Directive() + " on its block"
+	}
+	return fmt.Sprintf("%s %s takes package scope from %s, but no use from another namespace is visible to declscope",
+		t.kind, t.name(), from)
+}
+
+// surplusNarrowedByTypeFix names the members a boundary fix on typ has to
+// narrow in the same edit, under strict.
+//
+// That fix writes //declscope:package on a type that took its private scope
+// from defaults.unexported, and the directive reaches every member. A member
+// no other namespace reads would then be exactly what strict reports, so the
+// run would end with a diagnostic it did not start with. The answer is the one
+// the two rules agree on: the type widens, and each such member is narrowed.
+//
+// The judgment is the one computeSurplusDeclarations would make of the fixed
+// source, predicted from this one. The type's new directive decides for the
+// type itself, which is unexported, so it can never be left binding nothing,
+// and the type crosses, so loose can never condemn it. What is left is the
+// per-entry test, and an ignore the author already wrote for this rule, which
+// is consulted without being marked used: nothing in this run is silenced by
+// it.
+//
+//declscope:package // report.go's boundary fix on a type asks it
+func (c *collection) surplusNarrowedByTypeFix(pass *analysis.Pass, opts Options, typ *target) []*target {
+	if !opts.Surplus.ReportsDeclarations() || opts.Unexported != scope.Private {
+		return nil
+	}
+	s := c.surplusJudged(pass)
+	if s.blind {
+		return nil
+	}
+	entries := make(map[token.Pos][]*target)
+	var anchors []token.Pos
+	for _, t := range c.targets {
+		if !t.contained || t.ownerObj != typ.obj {
+			continue
+		}
+		if _, seen := entries[t.anchor]; !seen {
+			anchors = append(anchors, t.anchor)
+		}
+		entries[t.anchor] = append(entries[t.anchor], t)
+	}
+	wide := func(t *target) bool {
+		return !isExported(t.obj.Name()) && t.boundAt == scopesiteLevelDefault &&
+			!s.reachesOutside(c, t) && !c.ignoreWouldSilence(t, rule.Surplus)
+	}
+	var out []*target
+	for _, a := range anchors {
+		names := entries[a]
+		if !slices.ContainsFunc(names, func(t *target) bool { return !wide(t) }) {
+			slices.SortFunc(names, func(a, b *target) int { return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos()) })
+			out = append(out, names[0])
+		}
+	}
+	slices.SortFunc(out, func(a, b *target) int { return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos()) })
+	return out
 }

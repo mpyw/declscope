@@ -137,6 +137,14 @@ type target struct {
 
 	// anchor is where a scope directive would be inserted.
 	anchor token.Pos
+	// doc is the doc comment an inserted directive lands under, nil when there
+	// is none. Several targets can share an anchor — a, b int, or var x, y —
+	// and a directive written there binds every one of them.
+	doc *ast.CommentGroup
+	// fromBlock records that the scope directive in dir was written on the
+	// enclosing var, const or type block rather than on this spec. dir holds
+	// the two merged, and only here is the difference still known.
+	fromBlock bool
 	// renameable is false for members, whose fix is never a rename.
 	renameable bool
 }

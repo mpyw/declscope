@@ -275,7 +275,9 @@ type ConfigUse struct {
 	Packages int
 
 	Boundary bool
-	Surplus  bool
+
+	// Surplus is the mode as the config spells it: off, loose, strict.
+	Surplus string
 
 	// Qualify is the mode as the config spells it: always, ondemand, never.
 	Qualify string

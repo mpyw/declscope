@@ -18,10 +18,13 @@ const (
 	// Qualify: a package-level declaration whose name does not carry its
 	// namespace, which namespace.Qualify fixes by prefixing.
 	Qualify Rule = "qualify"
-	// Surplus: a //declscope:package directive with no use from another
-	// namespace visible to declscope. It reports from an absence, so it has no
-	// fix — every remaining false positive would be an automatic edit deleting
-	// a load-bearing directive — and it is off by default.
+	// Surplus: package scope wider than any use visible to declscope. It
+	// reports from an absence, in two shapes that share the name. Under
+	// rules.surplus: loose, a //declscope:package whose every dependent is
+	// unreached, with no fix — every remaining false positive would be an
+	// automatic edit deleting a load-bearing directive. Under strict, also
+	// each unreached dependent of a directive that is otherwise in use, fixed
+	// by narrowing that one declaration.
 	Surplus Rule = "surplus"
 	// Directive: a directive that binds nothing, or that is malformed or
 	// misplaced. It has no fix and no configuration; it carries a name so that

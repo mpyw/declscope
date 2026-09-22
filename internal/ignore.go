@@ -105,6 +105,29 @@ func (c *collection) silencedByIgnore(t *target, r rule.Rule) bool {
 	return c.ignored(t.file.ignores, r) || hit
 }
 
+// ignoreWouldSilence reports whether some ignore covering t silences r, on the
+// same chain silencedByIgnore walks, without marking anything used.
+//
+// A fix that has to predict a finding the next run would make asks this. The
+// finding does not exist in this run, so no directive has done any work yet,
+// and marking one would hide the unused-ignore report this run owes.
+//
+//declscope:package // surplus.go predicts what a boundary fix leaves behind
+func (c *collection) ignoreWouldSilence(t *target, r rule.Rule) bool {
+	covers := func(ignores []directive.Ignore) bool {
+		return slices.ContainsFunc(ignores, func(ig directive.Ignore) bool { return ig.Covers(r) })
+	}
+	if covers(t.dir.Ignores) || covers(t.file.ignores) {
+		return true
+	}
+	if t.contained {
+		if owner, ok := c.byObj[t.ownerObj]; ok && owner != t && covers(owner.dir.Ignores) {
+			return true
+		}
+	}
+	return false
+}
+
 // ignoreSilencesFile reports whether the file stands r down for everything it holds,
 // and marks the ignore that did it used.
 //

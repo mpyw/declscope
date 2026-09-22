@@ -14,12 +14,13 @@
 //	    vocabulary:          # per-namespace words that carry the namespace
 //	      mouse: [wheel]
 //	  allowBoundary: false  # stop checking reach, leaving only the naming rule
-//	  allowSurplus: false   # keep //declscope:package with no visible outside use
+//	  surplus: loose        # off | loose | strict
 //
-// rules.naming.qualify reads an internal.Mode; rules.naming.exported is
-// true/false; rules.naming.vocabulary maps a namespace to the extra words
-// that satisfy the naming rule for it. rules.allowBoundary and
-// rules.allowSurplus are true/false and default to false.
+// rules.naming.qualify reads an internal.Mode; rules.surplus reads an
+// internal.SurplusMode; rules.naming.exported is true/false;
+// rules.naming.vocabulary maps a namespace to the extra words that satisfy
+// the naming rule for it. rules.allowBoundary is true/false and defaults to
+// false.
 //
 // Unknown keys are an error, and the message names the key and the keys the
 // section does take.
@@ -53,6 +54,9 @@ var BaselineNames = []string{".declscope-baseline.yaml", ".declscope-baseline.ym
 
 // The values rules.naming.qualify accepts.
 var qualifyModes = internal.ModeSet{internal.ModeAlways, internal.ModeNever, internal.ModeOnDemand}
+
+// The values rules.surplus accepts, from reporting least to most.
+var surplusModes = internal.SurplusModeSet{internal.SurplusModeOff, internal.SurplusModeLoose, internal.SurplusModeStrict}
 
 // boolSetting is a true/false key, with its own error naming the two values it
 // takes rather than the parser's "cannot unmarshal".
@@ -88,12 +92,13 @@ type rulesSection struct {
 	Naming namingSection `yaml:"naming"`
 
 	// AllowBoundary turns the boundary rule off, leaving only the naming
-	// rule. The key names what switching it does, as allowSurplus does.
+	// rule. The key names what switching it does rather than what the rule
+	// is, since boundary: true would read as "yes please".
 	AllowBoundary boolSetting `yaml:"allowBoundary"`
 
-	// AllowSurplus turns the surplus rule off. The rule is on by default, so
-	// the key names what switching it does rather than what the rule is.
-	AllowSurplus boolSetting `yaml:"allowSurplus"`
+	// Surplus says how much the surplus rule reports: off, loose or strict.
+	// A mode rather than a switch, so the key spells the rule's own name.
+	Surplus string `yaml:"surplus"`
 }
 
 // namingSection holds the naming rule and its reach. exported decides which
@@ -441,8 +446,12 @@ func (f *File) Apply(opts *internal.Options) error {
 	if f.Rules.AllowBoundary.set {
 		opts.AllowBoundary = f.Rules.AllowBoundary.value
 	}
-	if f.Rules.AllowSurplus.set {
-		opts.AllowSurplus = f.Rules.AllowSurplus.value
+	if f.Rules.Surplus != "" {
+		m, ok := surplusModes.Parse(f.Rules.Surplus)
+		if !ok {
+			return fmt.Errorf("rules.surplus: unknown mode %q (want %s)", f.Rules.Surplus, surplusModes)
+		}
+		opts.Surplus = m
 	}
 	// only intersects and omit unions, so each stating file adds to what is
 	// already there rather than replacing it. A config file can narrow what is

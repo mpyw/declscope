@@ -1,0 +1,39 @@
+package fixsurplusstrict
+
+//declscope:package
+type userAccount struct {
+	id int
+
+	// balance is read only here, so it is narrowed, and the directive lands
+	// under its doc comment after a bare comment line.
+	//
+	//declscope:private
+	balance int // want `field userAccount.balance takes package scope from //declscope:package on userAccount, but no use from another namespace is visible to declscope`
+
+	// A doc comment that already ends in a bare line takes no second one.
+	//
+	//declscope:private
+	limit int // want `field userAccount.limit takes package scope`
+
+	//declscope:private
+	plain int // want `field userAccount.plain takes package scope`
+
+	// Two names in one entry take one directive, written once.
+	//
+	//declscope:private
+	left, right int // want `field userAccount.left takes package scope` `field userAccount.right takes package scope`
+}
+
+// A field that shares its line with the type is broken onto its own.
+//
+//declscope:package
+type userTiny struct {
+	//declscope:private
+	n int
+} // want `field userTiny.n takes package scope`
+
+func userLocal(a userAccount, t userTiny) int {
+	return a.balance + a.limit + a.plain + a.left + a.right + t.n
+}
+
+var _ = userLocal
