@@ -22,7 +22,7 @@ Two of the three rules are off unless the repository asks for them. A count of z
 | --- | --- | --- |
 | `rules.naming.qualify` | `never` | The naming rule is **off** |
 | `rules.naming.exported` | `false` | Even when on, it skips exported declarations |
-| `rules.allowSurplus` | `false` | The surplus rule is **on** |
+| `rules.surplus` | `loose` | The surplus rule is **on**. `strict` also judges each declaration a directive widens; `off` turns it off |
 | `rules.allowBoundary` | `false` | The boundary rule is **on**. Set, it leaves only the naming rule |
 | `filter.only` | None | When set anywhere in the chain, files outside it are never read |
 
@@ -221,6 +221,9 @@ To find which fields cross, let declscope tell you:
 2. Run declscope
 3. Remove the directive from each field it reports as `declared private by //declscope:private, but is used from namespace ...`
 4. Move the fields that kept it to the bottom
+
+> [!TIP]
+> Under `rules.surplus: strict`, declscope reports these fields itself. It also reports each declaration under a file-level `//declscope:package` that no other namespace uses. One `declscope -fix` run inserts every `//declscope:private`. Step 4 stays manual, because the fix never moves a field.
 
 **A type nobody else spells needs no directive.** Sometimes callers only get it from a constructor, and never spell its name or its fields. Then `//declscope:package` on the type is reported as surplus:
 

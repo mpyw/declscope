@@ -242,7 +242,7 @@ rules:
     vocabulary:
       mouse: [wheel]
   allowBoundary: false   # true | false
-  allowSurplus: false    # true | false
+  surplus: loose         # off | loose | strict
 
 filter:
   only: []              # nothing outside these, when set
@@ -259,7 +259,7 @@ baseline: .declscope-baseline.yaml
 | `rules.naming.exported` | `true`, `false` | `false` | Whether the naming rule also reaches exported declarations. The rename is never offered there |
 | `rules.naming.vocabulary` | Namespace to a list of words | None | Extra words that carry a namespace. See [what carries a namespace](#what-carries-a-namespace) |
 | `rules.allowBoundary` | `true`, `false` | `false` | Turns the [`boundary`](#boundary) rule off, leaving only the naming rule. See [reach without a boundary](#reach-without-a-boundary) |
-| `rules.allowSurplus` | `true`, `false` | `false` | Turns the [`surplus`](#surplus) rule off. The rule is on, so the key names what switching it does |
+| `rules.surplus` | `off`, `loose`, `strict` | `loose` | How much the [`surplus`](#surplus) rule reports. See [strict](#strict) |
 | `filter.only` | Path globs, read against the config file's own directory | None | When set, no file outside them is read. Empty places no restriction |
 | `filter.omit` | The same globs | None | Files taken back out, whether or not `only` let them through |
 | `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` | The [baseline](#adopting-on-an-existing-codebase) to consult |
@@ -642,13 +642,13 @@ What a member lacks in Go is encapsulation. Every unexported field is visible to
 
 ## Rules
 
-A **rule** is one check. There are four. A rule's name is the diagnostic's category, its [baseline](#adopting-on-an-existing-codebase) key, and what [`//declscope:ignore`](#directives) targets. It is also the configuration key, except where a key reads better named for what it switches: `rules.allowSurplus` turns off `surplus`.
+A **rule** is one check. There are five. A rule's name is the diagnostic's category, its [baseline](#adopting-on-an-existing-codebase) key, and what [`//declscope:ignore`](#directives) targets. It is also the configuration key, except where a key reads better named for what it switches: `rules.allowBoundary` turns off `boundary`.
 
 | Rule | Reports | Fix | Configurable |
 | --- | --- | --- | --- |
 | [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:package` | `rules.allowBoundary` |
 | [`qualify`](#the-naming-rule) | A name that does not carry its namespace | Rename to prefix it | `rules.naming.*` |
-| [`surplus`](#surplus) | A `//declscope:package` with no visible use from another namespace | None | `rules.allowSurplus` |
+| [`surplus`](#surplus) | Package scope with no visible use from another namespace | None under `loose`. Insert `//declscope:private` under `strict` | `rules.surplus` |
 | [`directive`](#unused-and-malformed-directives) | A directive that binds nothing, or is malformed | None | No |
 | [`filter`](#the-filter-rule) | A `filter.only` that an `only` above it cancels | None | No |
 
@@ -698,10 +698,10 @@ rules:
   naming:
     qualify: ondemand
   allowBoundary: true
-  allowSurplus: true
+  surplus: off
 ```
 
-Set `allowSurplus` alongside it. `surplus` audits `//declscope:package`, and that directive stops meaning anything once nothing checks reach, so the audit would report directives that no longer have a job.
+Set `surplus: off` alongside it. `surplus` audits `//declscope:package`, and that directive stops meaning anything once nothing checks reach, so the audit would report directives that no longer have a job.
 
 > [!TIP]
 > This is not how to adopt declscope gradually. A [baseline](#adopting-on-an-existing-codebase) records what a codebase already has and still reports what is new. A switch reports nothing, and a repository that means to turn it on later never finds out how much it would cost.
@@ -842,7 +842,13 @@ A doubt withholds the fix, never the diagnostic.
 
 ### `surplus`
 
-**On by default.** Turn it off with `rules.allowSurplus: true`.
+**On by default, as `loose`.** Set `rules.surplus` to change how much it reports.
+
+| `rules.surplus` | Reports |
+| --- | --- |
+| `off` | Nothing |
+| `loose` *(default)* | A `//declscope:package` that nothing it reaches needs. No fix |
+| `strict` | What `loose` reports. Also each declaration a directive in use widens for nothing, with a fix |
 
 `surplus` is the converse of `boundary`. It reports a `//declscope:package` directive when declscope sees no use of what it widens from another namespace. The scope is wider than any visible use justifies.
 
@@ -886,6 +892,95 @@ The rule also switches off for a whole package when some reference site was neve
 > [!NOTE]
 > Reach that spells no name and leaves no trace, such as reflection, is invisible here as everywhere. Adopt the rule where the package's reach is expressed in source.
 
+#### `strict`
+
+A directive stays quiet as a whole when any one thing it reaches is used from another namespace. The rest of what it reaches can still be wider than it needs. `strict` reports each of those on its own.
+
+```go
+// account.go
+package bank
+
+//declscope:package
+type account struct {
+	id      int
+	balance int
+}
+
+func accountDeposit(a *account, n int) { a.balance += n }
+```
+
+```go
+// ledger.go
+package bank
+
+func ledgerKey(a account) int { return a.id }
+```
+
+```console
+$ declscope ./...
+account.go:7:2: field account.balance takes package scope from //declscope:package on account, but no use from another namespace is visible to declscope
+```
+
+`-fix` narrows the declaration in place.
+
+```go
+//declscope:package
+type account struct {
+	id int
+	//declscope:private
+	balance int
+}
+```
+
+Every level a directive can enclose a declaration from is judged the same way.
+
+| The directive is on | What strict judges |
+| --- | --- |
+| A struct or interface type | Each field, or each method name |
+| A `var`, `const` or `type` block | Each spec |
+| The file | Each declaration in the file, and each member of a type that states no scope |
+
+It leaves one scope per declaration: the smallest it needs.
+
+| Declaration | Directive |
+| --- | --- |
+| Used from another namespace | None. It takes the enclosing one |
+| Used only in its own namespace | `//declscope:private` |
+
+A declaration is reported only when the enclosing directive is what widened it.
+
+| Stays quiet on | Why |
+| --- | --- |
+| An exported declaration | It is package-scoped by exportedness alone |
+| A declaration that states its own scope | It answers for itself. A redundant `//declscope:package` there is a [`directive`](#unused-and-malformed-directives) report |
+| An embedded field | It has no name of its own |
+| Anything under `defaults.unexported: package` | It would be package-scoped with no directive at all |
+| Anything under a directive `loose` reports | Nothing under that directive is needed. Deleting it is the advice, and one report per declaration would repeat it |
+| One name of `a, b int` or `var x, y` when the other is used outside | One directive above the entry would narrow both. Splitting the line is your call |
+| A type with a member that is exported or used outside | Narrowing the type narrows each member that states no scope |
+| A member of a type strict already reports | The type's fix narrows it |
+
+It reads the same evidence `loose` reads, and stays quiet wherever `loose` would. See the two tables above.
+
+The fix has limits of its own.
+
+| Shape | Fix |
+| --- | --- |
+| A declaration with a doc comment | The directive goes under it, after a bare `//` line |
+| `a, b int` or `var x, y` | One directive, on the first name's diagnostic |
+| A field that shares its line with another, as in a single-line struct | The field is broken onto its own line first |
+| Everything the directive decides for would be narrowed | Withheld. The directive would then bind nothing, and deleting it is the edit to make |
+
+> [!NOTE]
+> A [`boundary`](#boundary) fix on a type widens its members too. Under `strict`, the same fix narrows each member no other namespace uses, so a single `-fix` run leaves nothing for `strict` to report.
+
+> [!TIP]
+> Convention puts a type's private fields last, after the fields other namespaces read. Those come first because they are the type's interface.
+>
+> The fix never reorders fields. Order is observable through unkeyed composite literals, positional encodings, `unsafe` offsets and 64-bit atomic alignment. Move them yourself where none of those apply.
+
+`strict` is not the default. A new release must not add reports to a repository whose config did not change.
+
 ## Measuring what is there
 
 Two subcommands report what the analyzer found, folded into the two questions adopting it raises. Neither decides anything: the exit status is zero whatever the counts say, and gating is what the analyzer and a baseline are for.
@@ -901,11 +996,11 @@ Both take `-test=false`. On a large package it changes what you are looking at: 
 $ declscope survey -config .declscope-strict.yaml ./internal/measure/...
 ## Checks in force
 
-| check      | value                                               | packages |
-| ---------- | --------------------------------------------------- | -------: |
-| config     | `.declscope-strict.yaml`                            |        1 |
-| rules      | boundary on, qualify ondemand, exported, surplus on |        1 |
-| type check | 1 package ok, 0 failed                              |          |
+| check      | value                                                   | packages |
+| ---------- | ------------------------------------------------------- | -------: |
+| config     | `.declscope-strict.yaml`                                |        1 |
+| rules      | boundary on, qualify ondemand, exported, surplus strict |        1 |
+| type check | 1 package ok, 0 failed                                  |          |
 
 ## Findings
 
@@ -928,7 +1023,7 @@ That is one package of this repository, which holds itself to `.declscope-strict
 
 **The state of the checks comes before any count**, because a count means nothing without it. A zero from a rule that was switched off, from a package that did not compile, or from a baseline that absorbed everything reads exactly like a zero from clean code.
 
-A rule prints `-` rather than `0` wherever it was not asked — switched off in the config, or standing itself down as `surplus` does for a package holding a file it cannot read as a reference site. A package that does not type-check stops the run rather than contributing a zero; `-allow-errors` continues and names it under `type check` instead of giving it a row.
+A rule prints `-` rather than `0` wherever it was not asked. It may be switched off in the config. It may also stand itself down, as `surplus` does for a package holding a file it cannot read as a reference site. A package that does not type-check stops the run rather than contributing a zero; `-allow-errors` continues and names it under `type check` instead of giving it a row.
 
 Rows are ordered by how much is undecided, reported and baselined together, so the package at the top is the one with the most outstanding — not necessarily the one where it is most concentrated. Concentration is what `largest crossing` names.
 
