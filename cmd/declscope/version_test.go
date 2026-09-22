@@ -19,7 +19,7 @@ import (
 
 func TestVersionFlagReportsTheStampedRelease(t *testing.T) {
 	stamped := filepath.Join(t.TempDir(), "declscope")
-	build := exec.Command("go", "build", "-ldflags", "-X main.version=v9.9.9", "-o", stamped, ".")
+	build := coverBuild("-ldflags", "-X main.version=v9.9.9", "-o", stamped)
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("building a stamped binary: %v\n%s", err, out)
 	}
@@ -45,7 +45,7 @@ func TestVersionFlagKeepsTheToolIDProtocol(t *testing.T) {
 // having checked everything the go command checks about its shape.
 func versionFields(t *testing.T, path string) []string {
 	t.Helper()
-	out, err := exec.Command(path, "-V=full").Output()
+	out, err := coverEnv(exec.Command(path, "-V=full")).Output()
 	if err != nil {
 		t.Fatalf("running -V=full: %v", err)
 	}
@@ -61,4 +61,18 @@ func versionFields(t *testing.T, path string) []string {
 		t.Errorf("last field is %q, want a buildID: %s", fields[len(fields)-1], line)
 	}
 	return fields
+}
+
+// TestVersionFlagRefusesAnotherValue checks the other half of the protocol.
+// -V is a boolean flag whose only value is full, and the go command sends
+// nothing else; a binary that accepted -V=short and printed something would
+// be answering a question nobody asked.
+func TestVersionFlagRefusesAnotherValue(t *testing.T) {
+	out, err := coverEnv(exec.Command(bin, "-V=short")).CombinedOutput()
+	if err == nil {
+		t.Fatalf("-V=short was accepted:\n%s", out)
+	}
+	if !strings.Contains(string(out), "-V=full") {
+		t.Errorf("the refusal should name the value it takes:\n%s", out)
+	}
 }

@@ -244,6 +244,12 @@ func ParseFile(file *ast.File) File {
 			if !found {
 				continue
 			}
+			// scope.Parse is asked first, so that the keywords naming a
+			// scope are listed in one place rather than restated here.
+			if sc, ok := scope.Parse(keyword); ok {
+				f.scope(c.Pos(), sc, keyword, arg)
+				continue
+			}
 			switch keyword {
 			case "namespace":
 				f.namespace(c.Pos(), arg)
@@ -251,8 +257,6 @@ func ParseFile(file *ast.File) File {
 				f.core(c.Pos(), arg)
 			case "ignore":
 				f.ignore(c.Pos(), arg)
-			case "package", "private":
-				f.scope(c.Pos(), keyword, arg)
 			default:
 				f.problem(c.Pos(), fmt.Sprintf("declscope:%s is not a file-level directive", keyword))
 			}
@@ -294,12 +298,10 @@ func (f *File) core(pos token.Pos, arg string) {
 }
 
 // scope reads a file-level scope directive, the default for what the file
-// declares.
-func (f *File) scope(pos token.Pos, keyword, arg string) {
-	sc, ok := scope.Parse(keyword)
+// declares. The caller has already resolved the keyword, which is why there is
+// no branch here for one that names no scope.
+func (f *File) scope(pos token.Pos, sc scope.Scope, keyword, arg string) {
 	switch {
-	case !ok:
-		f.problem(pos, fmt.Sprintf("declscope:%s is not a scope", keyword))
 	case arg != "":
 		f.problem(pos, fmt.Sprintf("//declscope:%s takes no argument", keyword))
 	case f.Scope.HasScope && f.Scope.Scope != sc:

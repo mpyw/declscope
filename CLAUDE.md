@@ -277,6 +277,14 @@ mise x -- ./test_all.sh   # tests, golangci-lint, dogfooding and the specs
 - `testdata/src/baselined` carries its own `.declscope-baseline.yaml`, which also exercises the lookup end to end.
 - `testdata/src/braceignore/user.go` is deliberately not gofmt-clean; it is fixture data for comment placement, so exclude it when checking `gofmt -l .`.
 
+### Coverage
+
+The subcommand tests drive the **built binary** as a subprocess, because what they assert is the handshake between a subcommand and the analyzer. `go test -coverprofile` therefore counts none of the statements they run, and `cmd/declscope` read as 1% covered while being the most thoroughly exercised package in the tree.
+
+`DECLSCOPE_COVERDIR` closes that without turning the tests into unit tests of halves: `cmd/declscope/cover_test.go` builds the binary with `go build -cover` and points every run at that directory, and the caller converts what lands there with `go tool covdata textfmt` into a second profile. Both are uploaded. Name the directory by an **absolute** path — `go test` runs each test binary in its own package directory. Without the variable the binary is built and run exactly as before, so a plain `go test ./...` pays nothing for it.
+
+`codecov.yml` therefore excludes nothing. `main.go` was excluded while no test could reach it; with the counters it is covered like the rest, and an ignore list nothing needs is one that quietly grows.
+
 > [!WARNING]
 > Do not add a `.declscope.yaml` or `.declscope-baseline.yaml` at the repository root. Both are found by an upward lookup from each analyzed package, so a default-named file at the root would reach every `testdata` package and change what the tests assert. The settings declscope holds itself to live in `.declscope-strict.yaml` and are applied with an explicit `-config` in CI and `test_all.sh`.
 

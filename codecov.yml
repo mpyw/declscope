@@ -1,9 +1,2 @@
 codecov:
   require_ci_to_pass: true
-
-# The entrypoint. main dispatches the subcommands, then hands the process to
-# singlechecker, which parses the command line and exits by itself: there is no
-# seam a test could call it behind. Excluded so it does not drag the
-# denominator — every subcommand body it dispatches to is tested on its own.
-ignore:
-  - "cmd/declscope/main.go"

@@ -1,0 +1,7 @@
+# Focused on which ignore answers a report about a directive. The naming rule
+# is stated off so that the ignores here silence nothing by accident: an ignore
+# that did silence something would not be judged unused, which is the whole
+# subject.
+rules:
+  naming:
+    qualify: never

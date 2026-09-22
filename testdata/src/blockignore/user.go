@@ -39,3 +39,9 @@ var (
 	//declscope:ignore qualify // want `unused //declscope:ignore qualify on userH`
 	userH = 8
 )
+
+// Written where nothing checked can carry it. The report has no declaration to
+// name, so it says that rather than printing an empty list.
+//
+//declscope:ignore boundary // want `unused //declscope:ignore boundary: no checked declaration carries it`
+func init() {}

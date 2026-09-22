@@ -257,6 +257,7 @@ func runIn(t *testing.T, bin, dir string, args ...string) (string, int) {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
+	coverEnv(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		exit, ok := err.(*exec.ExitError)
@@ -276,13 +277,17 @@ func runIn(t *testing.T, bin, dir string, args ...string) (string, int) {
 var bin string
 
 func TestMain(m *testing.M) {
+	if err := coverSetUp(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	dir, err := os.MkdirTemp("", "declscope-baseline-test")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	bin = filepath.Join(dir, "declscope")
-	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+	if out, err := coverBuild("-o", bin).CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "building the linter: %v\n%s", err, out)
 		_ = os.RemoveAll(dir)
 		os.Exit(1)
@@ -347,4 +352,31 @@ func TestBaselineDoesNotSurviveAMove(t *testing.T) {
 	if !strings.Contains(out, `is private to namespace "order"`) {
 		t.Errorf("want the report to name the namespace it crosses now, got:\n%s", out)
 	}
+}
+
+// TestBaselineDefaultsToEveryPackage checks the pattern the subcommand assumes
+// when given none. Recording what a run finds is the whole of what a baseline
+// is for, so the default is the one the analyzer itself is usually pointed at.
+func TestBaselineDefaultsToEveryPackage(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
+	writeTree(t, root, ".declscope.yaml", qualifyOn)
+	for _, pkg := range []string{"", "sub"} {
+		for name, body := range twoFiles {
+			writeTree(t, root, filepath.Join(pkg, name), body)
+		}
+	}
+
+	out, code := runIn(t, bin, root, "baseline")
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	set := load(t, filepath.Join(root, ".declscope-baseline.yaml"))
+	for _, pkg := range []string{"example.com/m", "example.com/m/sub"} {
+		if !set.Has(baseline.Key{Package: pkg, Rule: "boundary", Namespace: "user", Decl: "helper"}) {
+			t.Errorf("no entry for %s, so the default did not reach it:\n%s", pkg, out)
+		}
+	}
+
+	assertSuppressed(t, bin, root)
 }
