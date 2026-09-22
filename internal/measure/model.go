@@ -36,7 +36,7 @@ import (
 // The four states that matter are Declared, Baselined, Reported and Open: a
 // decision recorded, a decision deferred, a decision outstanding, and no
 // decision asked for. Ignored and Unchecked exist because the data has them —
-// a crossing can be silenced by a directive, and rules.allowBoundary switches
+// a crossing can be silenced by a directive, and rules.boundary: off switches
 // the question off entirely — and folding either into one of the four would
 // report a state nobody is in.
 type EdgeState string
@@ -63,7 +63,7 @@ const (
 	// defaults.unexported. It is a default, not a decision.
 	EdgeOpen EdgeState = "open"
 
-	// EdgeUnchecked is a crossing in a package where rules.allowBoundary
+	// EdgeUnchecked is a crossing in a package where rules.boundary: off
 	// switched the rule off. The crossing is real and nobody asked about it.
 	EdgeUnchecked EdgeState = "unchecked"
 )
@@ -205,7 +205,7 @@ type Count struct {
 	Baselined int
 	Reported  int
 
-	// Asked is false when the rule was not in force: rules.allowBoundary, or
+	// Asked is false when the rule was not in force: rules.boundary: off, or
 	// a qualify mode that does not apply to this package. Every number above
 	// is then zero for a reason that has nothing to do with the code, so a
 	// renderer prints them as "-" rather than as a clean result.
@@ -275,7 +275,9 @@ type ConfigUse struct {
 	Packages int
 
 	Boundary bool
-	Surplus  bool
+
+	// Surplus is the mode as the config spells it: off, loose, strict.
+	Surplus string
 
 	// Qualify is the mode as the config spells it: always, ondemand, never.
 	Qualify string

@@ -89,3 +89,13 @@ func TestSuggestedFixExcluded(t *testing.T) {
 func TestSuggestedFixMembers(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixmembers")
 }
+
+// TestSuggestedFixSurplusStrict checks strict's fix: //declscope:private above
+// the declaration, after a bare comment line under a doc comment, once for an
+// entry holding two names, and on a line of its own for a field that shared
+// one. A directive that narrowing would leave binding nothing withholds the
+// fix, so that file takes no edit. And a boundary fix on a type narrows, in
+// the same edit, each member the widened type would otherwise leave wide.
+func TestSuggestedFixSurplusStrict(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixsurplusstrict")
+}

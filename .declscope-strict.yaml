@@ -14,3 +14,7 @@ rules:
     # this module an exported name is read as bare as any other, so the
     # namespace is wanted in the name at exactly the same call sites.
     exported: true
+  # off | loose | strict. The built-in default is loose. declscope holds itself
+  # to strict: each declaration a directive widens, not only the directive as a
+  # whole, is asked whether anything outside its namespace needs it.
+  surplus: strict

@@ -1,0 +1,13 @@
+package fixsurplusstrict
+
+// crateItem crosses, so the boundary fix widens it. Its own ignore reaches
+// weight through the type, so the fix leaves weight alone.
+//
+//declscope:ignore surplus // want `unused //declscope:ignore surplus on crateItem`
+type crateItem struct { // want `type crateItem is private to namespace "crate", but is used from namespace "order"`
+	weight int
+}
+
+func crateLocal(c crateItem) int { return c.weight }
+
+var _ = crateLocal

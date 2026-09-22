@@ -1,0 +1,5 @@
+# strict, but under defaults.unexported: package the directive widens nothing.
+defaults:
+  unexported: package
+rules:
+  surplus: strict

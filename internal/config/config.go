@@ -13,13 +13,13 @@
 //	    qualify: ondemand    # always | never | ondemand (only once a package has two namespaces)
 //	    vocabulary:          # per-namespace words that carry the namespace
 //	      mouse: [wheel]
-//	  allowBoundary: false  # stop checking reach, leaving only the naming rule
-//	  allowSurplus: false   # keep //declscope:package with no visible outside use
+//	  boundary: on          # off | on (off stops checking reach, leaving only the naming rule)
+//	  surplus: loose        # off | loose | strict
 //
-// rules.naming.qualify reads an internal.Mode; rules.naming.exported is
-// true/false; rules.naming.vocabulary maps a namespace to the extra words
-// that satisfy the naming rule for it. rules.allowBoundary and
-// rules.allowSurplus are true/false and default to false.
+// rules.naming.qualify reads an rule.QualifyMode; rules.boundary reads an
+// rule.BoundaryMode; rules.surplus reads an rule.SurplusMode;
+// rules.naming.exported is true/false; rules.naming.vocabulary maps a
+// namespace to the extra words that satisfy the naming rule for it.
 //
 // Unknown keys are an error, and the message names the key and the keys the
 // section does take.
@@ -41,6 +41,7 @@ import (
 
 	"github.com/mpyw/declscope/internal"
 	"github.com/mpyw/declscope/internal/baseline"
+	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
@@ -52,7 +53,13 @@ var Names = []string{".declscope.yaml", ".declscope.yml"}
 var BaselineNames = []string{".declscope-baseline.yaml", ".declscope-baseline.yml"}
 
 // The values rules.naming.qualify accepts.
-var qualifyModes = internal.ModeSet{internal.ModeAlways, internal.ModeNever, internal.ModeOnDemand}
+var qualifyModes = rule.QualifyModeSet{rule.QualifyModeAlways, rule.QualifyModeNever, rule.QualifyModeOnDemand}
+
+// The values rules.boundary accepts, from reporting least to most.
+var boundaryModes = rule.BoundaryModeSet{rule.BoundaryModeOff, rule.BoundaryModeOn}
+
+// The values rules.surplus accepts, from reporting least to most.
+var surplusModes = rule.SurplusModeSet{rule.SurplusModeOff, rule.SurplusModeLoose, rule.SurplusModeStrict}
 
 // boolSetting is a true/false key, with its own error naming the two values it
 // takes rather than the parser's "cannot unmarshal".
@@ -87,13 +94,14 @@ type filterSection struct {
 type rulesSection struct {
 	Naming namingSection `yaml:"naming"`
 
-	// AllowBoundary turns the boundary rule off, leaving only the naming
-	// rule. The key names what switching it does, as allowSurplus does.
-	AllowBoundary boolSetting `yaml:"allowBoundary"`
+	// Boundary says whether the boundary rule reports: off or on. Off leaves
+	// only the naming rule. A mode rather than a switch, so the key spells
+	// the rule's own name.
+	Boundary string `yaml:"boundary"`
 
-	// AllowSurplus turns the surplus rule off. The rule is on by default, so
-	// the key names what switching it does rather than what the rule is.
-	AllowSurplus boolSetting `yaml:"allowSurplus"`
+	// Surplus says how much the surplus rule reports: off, loose or strict.
+	// A mode rather than a switch, so the key spells the rule's own name.
+	Surplus string `yaml:"surplus"`
 }
 
 // namingSection holds the naming rule and its reach. exported decides which
@@ -438,11 +446,19 @@ func (f *File) Apply(opts *internal.Options) error {
 		}
 		opts.Vocabulary = merged
 	}
-	if f.Rules.AllowBoundary.set {
-		opts.AllowBoundary = f.Rules.AllowBoundary.value
+	if f.Rules.Boundary != "" {
+		m, ok := boundaryModes.Parse(f.Rules.Boundary)
+		if !ok {
+			return fmt.Errorf("rules.boundary: unknown mode %q (want %s)", f.Rules.Boundary, boundaryModes)
+		}
+		opts.Boundary = m
 	}
-	if f.Rules.AllowSurplus.set {
-		opts.AllowSurplus = f.Rules.AllowSurplus.value
+	if f.Rules.Surplus != "" {
+		m, ok := surplusModes.Parse(f.Rules.Surplus)
+		if !ok {
+			return fmt.Errorf("rules.surplus: unknown mode %q (want %s)", f.Rules.Surplus, surplusModes)
+		}
+		opts.Surplus = m
 	}
 	// only intersects and omit unions, so each stating file adds to what is
 	// already there rather than replacing it. A config file can narrow what is

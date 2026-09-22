@@ -164,7 +164,7 @@ type jsonRules struct {
 	Boundary bool   `json:"boundary"`
 	Qualify  string `json:"qualify"`
 	Exported bool   `json:"exported"`
-	Surplus  bool   `json:"surplus"`
+	Surplus  string `json:"surplus"`
 }
 
 type jsonBaseline struct {

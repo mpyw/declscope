@@ -40,7 +40,7 @@ func TestSurveyAgreesWithTheAnalyzer(t *testing.T) {
 		"baselined",
 		"ignorescope",
 		"qualifyrule",
-		"allowboundary",
+		"boundaryoff",
 		"corens",
 		// Directive problems are settled in a second pass, after every other
 		// finding: a misplaced directive, and a block-level ignore judged once
@@ -53,6 +53,11 @@ func TestSurveyAgreesWithTheAnalyzer(t *testing.T) {
 		"surplus",
 		"surplusbaselined",
 		"filtercancelled/sub",
+		// surplus under strict, with ignores, with a baseline, and in a
+		// package whose two variants disagree about whether it may report.
+		"surplusstrict",
+		"surplusstrictbaselined",
+		"surplusstricttests",
 		// The only fixture whose two variants disagree. Everything above has
 		// no _test.go file, so "per variant" goes untested without it.
 		"testonlyignore",
@@ -91,7 +96,7 @@ func TestSurveyAgreesWithTheAnalyzer(t *testing.T) {
 // empties both the crossing table and the most-reached table, since open
 // crossings are left out of each.
 func TestSurveyEdgesAgreeWithTheCounts(t *testing.T) {
-	for _, pkg := range []string{"pkglevel", "baselined", "ignorescope", "allowboundary", "surplus"} {
+	for _, pkg := range []string{"pkglevel", "baselined", "ignorescope", "boundaryoff", "surplus"} {
 		t.Run(pkg, func(t *testing.T) {
 			for _, res := range surveyTestRun(t, pkg) {
 				surveyed := surveyTestMeasure(t, res.Pass)
@@ -125,7 +130,7 @@ func TestSurveyEdgesAgreeWithTheCounts(t *testing.T) {
 // and by whom".
 func TestSurveyProducesEveryEdgeState(t *testing.T) {
 	seen := map[measure.EdgeState]string{}
-	for _, pkg := range []string{"pkglevel", "baselined", "ignorescope", "allowboundary", "surplus", "exportedscope"} {
+	for _, pkg := range []string{"pkglevel", "baselined", "ignorescope", "boundaryoff", "surplus", "exportedscope"} {
 		for _, res := range surveyTestRun(t, pkg) {
 			for _, e := range surveyTestMeasure(t, res.Pass).Edges {
 				seen[e.State] = pkg

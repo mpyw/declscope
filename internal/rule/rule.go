@@ -1,9 +1,18 @@
-// Package rule names declscope's checks.
+// Package rule names declscope's checks, and the modes their settings are
+// spelled in.
 //
 // The same names are used everywhere a check has to be referred to: the
 // category of a diagnostic, the key of a baseline entry, and the target of an
 // ignore directive. One vocabulary means that whatever a diagnostic calls
 // itself is exactly what can be written to silence or record it.
+//
+// This file is the package's core, and mode.go is its own namespace: the
+// rule names are what every caller spells, and a named namespace would spell
+// itself into each of them (rule.RuleBoundary). Everything here is exported
+// and already package-scoped, so the core states no scope.
+//
+//declscope:core
+
 package rule
 
 import "slices"
@@ -18,10 +27,13 @@ const (
 	// Qualify: a package-level declaration whose name does not carry its
 	// namespace, which namespace.Qualify fixes by prefixing.
 	Qualify Rule = "qualify"
-	// Surplus: a //declscope:package directive with no use from another
-	// namespace visible to declscope. It reports from an absence, so it has no
-	// fix — every remaining false positive would be an automatic edit deleting
-	// a load-bearing directive — and it is off by default.
+	// Surplus: package scope wider than any use visible to declscope. It
+	// reports from an absence, in two shapes that share the name. Under
+	// rules.surplus: loose, a //declscope:package whose every dependent is
+	// unreached, with no fix — every remaining false positive would be an
+	// automatic edit deleting a load-bearing directive. Under strict, also
+	// each unreached dependent of a directive that is otherwise in use, fixed
+	// by narrowing that one declaration.
 	Surplus Rule = "surplus"
 	// Directive: a directive that binds nothing, or that is malformed or
 	// misplaced. It has no fix and no configuration; it carries a name so that

@@ -185,7 +185,7 @@ func (s Summary) writeMarkdown(w io.Writer) error {
 		rows = append(rows,
 			[]string{"config", chain, fmt.Sprint(c.Packages)},
 			[]string{"rules", fmt.Sprintf("boundary %s, qualify %s, surplus %s",
-				cellOnOff(c.Boundary), qualify, cellOnOff(c.Surplus)), fmt.Sprint(c.Packages)})
+				cellOnOff(c.Boundary), qualify, c.Surplus), fmt.Sprint(c.Packages)})
 	}
 	for _, b := range s.Checks.Baselines {
 		rows = append(rows, []string{"baseline",

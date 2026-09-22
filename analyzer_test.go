@@ -24,11 +24,11 @@ func TestForeignMethod(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "foreignmethod")
 }
 
-// TestAllowBoundary checks that rules.allowBoundary leaves the naming rule
+// TestBoundaryOff checks that rules.boundary: off leaves the naming rule
 // running on its own. A reach that would be reported is not, and a name that
 // does not carry its namespace still is.
-func TestAllowBoundary(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "allowboundary")
+func TestBoundaryOff(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "boundaryoff")
 }
 
 // TestFilterCancelled checks the one filter report. A config beside a package
@@ -395,4 +395,60 @@ func TestSurplusDefaultOff(t *testing.T) {
 // while a new one is still reported, through the same lookup as every rule.
 func TestSurplusBaseline(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusbaselined")
+}
+
+// TestSurplusStrict checks strict's reporting shapes, at every level a
+// directive encloses a declaration: a field under its type's directive, a
+// declaration under its file's, a spec under its block's. Each is reported one
+// per name when nothing outside reaches it, while its directive is otherwise in
+// use. An entry holding a name that is read outside is not; neither is an
+// exported declaration, one stating its own scope, an embedded field or a
+// directive loose already reports. A type is reported with the members it
+// would narrow, and not when one of them is reached. An ignore for surplus
+// silences it, with the unused-ignore accounting.
+func TestSurplusStrict(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusstrict")
+}
+
+// TestSurplusStrictReach checks every way a field is reached without its name
+// being spelled from outside: a composite literal without keys, a selection
+// promoted through an embedding, a selection on an instantiated generic type,
+// a struct conversion, and a method written in another namespace. Each keeps
+// the type's scope, and a field reached by none of them is still reported.
+func TestSurplusStrictReach(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusstrictreach")
+}
+
+// TestSurplusStrictDefaults checks that under defaults.unexported: package
+// strict adds nothing: the declaration would be package-scoped with no
+// directive, so the directive widened nothing.
+func TestSurplusStrictDefaults(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusstrictdefaults")
+}
+
+// TestSurplusLoose checks the default: a directive in use says nothing about
+// the declarations under it that nothing outside reaches.
+func TestSurplusLoose(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusloose")
+}
+
+// TestSurplusStrictSeesAllFiles checks that only a pass reading every file may
+// report: the ordinary variant of a package with in-package tests switches the
+// rule off, and the test variant sees the use a test file makes. What the
+// test variant alone reports is pinned from a _test.go file.
+func TestSurplusStrictSeesAllFiles(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusstricttests")
+}
+
+// TestSurplusStrictOpaqueSource checks that a package holding a generated
+// file, whose reference sites the analysis excludes, gets no report.
+func TestSurplusStrictOpaqueSource(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusstrictopaque")
+}
+
+// TestSurplusStrictBaseline checks that a recorded strict finding is
+// suppressed while a new one is still reported, keyed like any surplus
+// finding by the declaration's name.
+func TestSurplusStrictBaseline(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusstrictbaselined")
 }

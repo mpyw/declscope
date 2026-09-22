@@ -23,6 +23,10 @@ import (
 // for a field of a single-line struct binds to the struct instead of the
 // field.
 
+// strictConfig puts surplus's per-declaration judgment in force, which the
+// default leaves off.
+const strictConfig = "rules:\n  surplus: strict\n"
+
 type fixCase struct {
 	name   string
 	config string
@@ -112,6 +116,57 @@ var fixCases = []fixCase{
 		files: map[string]string{
 			"user.go":  "package x\n\n//declscope:private\nfunc userForced() int { return 1 }\n",
 			"order.go": "package x\n\nfunc orderRun() int { return userForced() }\n\nvar _ = orderRun\n",
+		},
+	},
+
+	// strict's fix narrows a declaration with //declscope:private. It must
+	// bind, and it must not leave the enclosing directive binding nothing.
+	{
+		name:   "fields a type's directive widens for nothing, under strict",
+		config: strictConfig,
+		files: map[string]string{
+			"user.go": "package x\n\n//declscope:package\ntype account struct {\n\tid int\n\n" +
+				"\t// balance is local.\n\tbalance int\n\tleft, right int\n}\n\n" +
+				"//declscope:package\ntype tiny struct{ id int; n int }\n\n" +
+				"func userLocal(a account, t tiny) int { return a.balance + a.left + a.right + t.n }\n\nvar _ = userLocal\n",
+			"order.go": "package x\n\nfunc orderRun(a account, t tiny) int { return a.id + t.id }\n\nvar _ = orderRun\n",
+		},
+	},
+	{
+		// A type under the file's directive is narrowed with its fields, and a
+		// type one of whose fields is read outside keeps its scope while its
+		// other field is narrowed alone.
+		name:   "declarations a file's directive widens for nothing, under strict",
+		config: strictConfig,
+		files: map[string]string{
+			"user.go": "//declscope:package\n\npackage x\n\n// userShared is called from order.go.\nfunc userShared() int { return userLocal() }\n\n" +
+				"// userLocal is not.\nfunc userLocal() int { return 1 }\n\nvar userA, userB = 1, 2\n\n" +
+				"type box struct {\n\tn int\n}\n\ntype pair struct {\n\tx int\n\ty int\n}\n\n" +
+				"func userPair() pair { return pair{} }\n\nvar _ = userA + userB + box{}.n + userPair().y\n",
+			"order.go": "package x\n\nfunc orderRun() int { return userShared() + userPair().x }\n\nvar _ = orderRun\n",
+		},
+	},
+	{
+		// Narrowing the field would leave the directive deciding nothing,
+		// which the directive rule would report, so it gets no fix.
+		name:   "a field whose narrowing would leave the directive unused, under strict",
+		config: strictConfig,
+		files: map[string]string{
+			"user.go": "package x\n\n//declscope:package\ntype DTO struct {\n\tName string\n\tseq  int\n}\n\n" +
+				"func userSeq(d DTO) int { return d.seq }\n\nvar _ = userSeq\n",
+		},
+	},
+	{
+		// A boundary fix on a type widens its fields as well, and under strict
+		// the ones no other namespace reads would then be reported. The same
+		// fix narrows them, in both variants of a package with a test file.
+		name:   "boundary fix on a type whose fields nobody else reads, under strict",
+		config: strictConfig,
+		files: map[string]string{
+			"user.go": "package x\n\ntype item struct {\n\tshared int\n\n\t// count is local.\n\tcount int\n}\n\n" +
+				"func userCount(i item) int { return i.count }\n\nvar _ = userCount\n",
+			"order.go":     "package x\n\nfunc orderRun(i item) int { return i.shared }\n\nvar _ = orderRun\n",
+			"user_test.go": "package x\n\nimport \"testing\"\n\nfunc TestItem(t *testing.T) {\n\tif userCount(item{count: 1}) != 1 {\n\t\tt.Fatal(\"no\")\n\t}\n}\n",
 		},
 	},
 

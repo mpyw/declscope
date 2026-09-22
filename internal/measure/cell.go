@@ -51,6 +51,7 @@ func cellTypeCheck(t TypeCheck) string {
 	return fmt.Sprintf("%s ok, %d failed", cellPackages(t.Packages-len(t.Failed)), len(t.Failed))
 }
 
+//declscope:private // only cellTypeCheck spells a package count
 func cellPackages(n int) string { return cellPlural(n, "package", "packages") }
 
 func cellPlural(n int, one, many string) string {
@@ -105,6 +106,8 @@ func cellTable(rows [][]string) []string {
 
 // cellColumnIsNumeric reports whether every value in a column is a figure: a
 // count, a "3 of 7" ratio, or the dash that stands for a question not asked.
+//
+//declscope:private // cellTable's own step; the renderers call cellTable
 func cellColumnIsNumeric(rows [][]string, i int) bool {
 	for _, row := range rows {
 		if i >= len(row) {
@@ -125,6 +128,8 @@ func cellColumnIsNumeric(rows [][]string, i int) bool {
 
 // cellRule is the alignment row, widened like the cells above it and carrying
 // the same alignment.
+//
+//declscope:private // cellTable's own step; the renderers call cellTable
 func cellRule(widths []int, numeric []bool) string {
 	line := ""
 	for i, width := range widths {

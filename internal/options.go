@@ -2,6 +2,7 @@ package internal
 
 import (
 	"github.com/mpyw/declscope/internal/baseline"
+	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
@@ -14,7 +15,7 @@ type Options struct {
 
 	// Qualify says when a package-level declaration must carry its namespace
 	// somewhere in its name.
-	Qualify Mode
+	Qualify rule.QualifyMode
 
 	// Vocabulary lists, per namespace, extra words that carry the namespace as
 	// its own spelling would: irregular inflections and domain synonyms that
@@ -23,33 +24,33 @@ type Options struct {
 	// with the right edge free — so it is a spelling, never a scope.
 	Vocabulary map[string][]string
 
-	// AllowBoundary turns the boundary rule off. The rule reports a private
-	// declaration used from outside its namespace, and is the one this tool
-	// exists for, so switching it off leaves only the naming rule.
+	// Boundary says whether the boundary rule reports. The rule reports a
+	// private declaration used from outside its namespace, and is the one
+	// this tool exists for, so turning it off leaves only the naming rule.
 	//
 	// It is here for the repository that wants the ownership mark in a name
 	// without the scope behind it. Reach stays unchecked, //declscope:package
 	// stops meaning anything, and surplus keeps auditing directives that no
-	// longer do a job -- set allowSurplus alongside it.
+	// longer do a job -- set surplus: off alongside it.
 	//
 	// This is not the way to adopt declscope gradually. A baseline records
 	// what a codebase already has and still reports what is new, which a
 	// switch cannot do.
-	AllowBoundary bool
+	Boundary rule.BoundaryMode
 
-	// AllowSurplus turns the surplus rule off. The rule reports a
-	// //declscope:package directive when no use from another namespace is
-	// visible to declscope, and is on by default: a directive nobody needed is
-	// a thing the author would want told.
+	// Surplus says how much the surplus rule reports. Loose, the default,
+	// reports a //declscope:package when declscope sees no use of anything
+	// that takes its scope from it. Strict also reports each declaration a
+	// directive in use widens for nothing, and offers to narrow it. Off
+	// reports nothing.
 	//
-	// The polarity is stated rather than inverted in the reader's head. A key
-	// named surplus would have read as "surplus: yes please", which is the
-	// opposite of what setting it to true would do.
+	// The default is loose, not strict: an upgrade must not add reports to a
+	// repository whose config did not change. strict is opt-in.
 	//
-	// The rule never has a fix. It concludes from an absence, so every case it
-	// cannot see is one where the directive stays and the advice would be to
-	// delete it.
-	AllowSurplus bool
+	// Neither shape has a way to break a build, but loose's advice is to
+	// delete a directive, so it never has a fix: every case it cannot see is
+	// one where the directive stays and the advice would be to delete it.
+	Surplus rule.SurplusMode
 
 	// NameExported widens the naming rule to exported declarations. Inside
 	// the package an exported name is read as bare as any other, so the package
@@ -102,7 +103,9 @@ type Options struct {
 func DefaultOptions() Options {
 	return Options{
 		Unexported: scope.Private,
-		Qualify:    ModeNever,
+		Qualify:    rule.QualifyModeNever,
+		Boundary:   rule.BoundaryModeOn,
+		Surplus:    rule.SurplusModeLoose,
 	}
 }
 

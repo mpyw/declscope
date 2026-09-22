@@ -4,5 +4,5 @@
 rules:
   naming:
     qualify: ondemand
-  allowBoundary: true
-  allowSurplus: true
+  boundary: off
+  surplus: off

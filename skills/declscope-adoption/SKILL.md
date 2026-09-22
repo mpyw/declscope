@@ -22,8 +22,8 @@ Two of the three rules are off unless the repository asks for them. A count of z
 | --- | --- | --- |
 | `rules.naming.qualify` | `never` | The naming rule is **off** |
 | `rules.naming.exported` | `false` | Even when on, it skips exported declarations |
-| `rules.allowSurplus` | `false` | The surplus rule is **on** |
-| `rules.allowBoundary` | `false` | The boundary rule is **on**. Set, it leaves only the naming rule |
+| `rules.surplus` | `loose` | The surplus rule is **on**. `strict` also judges each declaration a directive widens; `off` turns it off |
+| `rules.boundary` | `on` | The boundary rule is **on**. `off` leaves only the naming rule |
 | `filter.only` | None | When set anywhere in the chain, files outside it are never read |
 
 The config is looked up from each analyzed package's directory **upwards**, so a subtree can carry its own and a repository can have several. Find them all, and do not read the root alone:
@@ -39,7 +39,7 @@ find . -name '.declscope.y*ml' -not -path './.git/*' \
   -exec sh -c 'echo "== $1"; cat "$1"' _ {} \;
 ```
 
-Finding none means the naming rule is off everywhere, and the other two are on. Finding one is not the answer on its own. A config that never sets `qualify` leaves that rule off, and one that sets `allowBoundary` leaves off the rule this tool exists for.
+Finding none means the naming rule is off everywhere, and the other two are on. Finding one is not the answer on its own. A config that never sets `qualify` leaves that rule off, and one that sets `boundary: off` leaves off the rule this tool exists for.
 
 **The files compose, so the nearest one does not tell you what applies.** Every file between the package and the module root is read, outermost first. A nearer file owns the keys it states and inherits the rest.
 
@@ -52,6 +52,15 @@ Each file's patterns are read against **its own** directory, and anchor there wh
 **The configuration is the repository owner's decision, not yours.** Ask, and wait for an answer, before writing a config file or changing any code.
 
 **The minimum is no config file at all.** `boundary` and `surplus` are on. Those two answer a question about the code, where the naming rule answers one about a convention. Most repositories report a handful. Adopting this much is a complete adoption.
+
+**Once `boundary` is settled, recommend `rules.surplus: strict` where the repository can take it.** `loose` judges a `//declscope:package` as a whole, so one reached declaration keeps the whole directive quiet. `strict` also reports each declaration the directive widens for nothing, and one `declscope -fix` run inserts every `//declscope:private` it asks for. It adds reports that `loose` does not, so size it first, and ask before writing it, the same as any other config change:
+
+```bash
+printf 'rules:\n  surplus: strict\n' > /tmp/s.yaml
+declscope survey -config /tmp/s.yaml -format=json ./... | jq .totals.surplus
+```
+
+A throwaway `-config` replaces the repository's own config. Copy its keys in first, or the count is taken under the defaults.
 
 **If the goal is a tidier codebase, offer the naming rule on top.** It is a convention. It fires where nothing is wrong, and it costs real work. Size it before offering, with a throwaway config rather than by counting message fragments:
 
@@ -129,7 +138,7 @@ That removes three steps this skill used to require. Do **not** move the baselin
 
 **`edges[]` does not count findings.** One declaration reached from three namespaces is three rows and one finding, so the rows always outnumber `findings.boundary.reported`. Count distinct `declaration` values, or read `crossings[]`, or read the tally.
 
-A crossing's `state` is one of six. Three are outcomes of a finding — `reported`, `baselined`, `ignored` — and three say why there was no finding: `declared` (a `//declscope:package` says it is shared), `open` (package-scoped because nothing says otherwise, which is most exported API), and `unchecked` (`rules.allowBoundary` is on).
+A crossing's `state` is one of six. Three are outcomes of a finding — `reported`, `baselined`, `ignored` — and three say why there was no finding: `declared` (a `//declscope:package` says it is shared), `open` (package-scoped because nothing says otherwise, which is most exported API), and `unchecked` (`rules.boundary` is `off`).
 
 **A package with nothing reported, much baselined and nothing declared has never been decided about.** It reads as clean under the analyzer alone, which is why `declared` is a column.
 
@@ -222,6 +231,9 @@ To find which fields cross, let declscope tell you:
 3. Remove the directive from each field it reports as `declared private by //declscope:private, but is used from namespace ...`
 4. Move the fields that kept it to the bottom
 
+> [!TIP]
+> Under `rules.surplus: strict`, declscope reports these fields itself. It also reports each declaration under a file-level `//declscope:package` that no other namespace uses. One `declscope -fix` run inserts every `//declscope:private`. Step 4 stays manual, because the fix never moves a field.
+
 **A type nobody else spells needs no directive.** Sometimes callers only get it from a constructor, and never spell its name or its fields. Then `//declscope:package` on the type is reported as surplus:
 
 ```text
@@ -255,7 +267,7 @@ rules:
 
 ## Do not turn the check off
 
-**Never set `rules.allowBoundary` to reach zero.** It silences the rule this tool exists for, and every count after it is meaningless. It is the repository owner's choice, for a repository that wants the ownership mark in a name without the scope behind it. It is never a step in an adoption. A baseline is one, because it records what the code already has and still reports what is new. Ask before writing it, the same as any other config change, and never propose it as a way past a diagnostic you could not resolve.
+**Never set `rules.boundary: off` to reach zero.** It silences the rule this tool exists for, and every count after it is meaningless. It is the repository owner's choice, for a repository that wants the ownership mark in a name without the scope behind it. It is never a step in an adoption. A baseline is one, because it records what the code already has and still reports what is new. Ask before writing it, the same as any other config change, and never propose it as a way past a diagnostic you could not resolve.
 
 `//declscope:core` exempts a file from the naming rule and merges it into one namespace. Marking every file in a package core means declscope checks nothing there.
 
@@ -290,7 +302,7 @@ go build ./... && declscope ./...   # never read a bare count without this
 
 **A zero may be the filter, not the code.** A `filter.only` anywhere in the chain can leave a package with nothing to read. A package nothing was read from reports nothing. `declscope` says so only when a nested `only` was cancelled by one above it, so the quiet cases stay quiet. `declscope inspect` lists the files each namespace was built from (`namespaces[].files`); a package whose files are missing from it is one the filter removed.
 
-**A zero from `boundary` may be the switch, not the code.** `rules.allowBoundary: true` silences the rule entirely, and the run looks like a clean repository. Read every config before reporting a count, the same way you would for `qualify`.
+**A zero from `boundary` may be the switch, not the code.** `rules.boundary: off` silences the rule entirely, and the run looks like a clean repository. Read every config before reporting a count, the same way you would for `qualify`.
 
 **`-fix` widens; it does not draw boundaries.** On a codebase with boundary findings, `declscope -fix ./...` inserts `//declscope:package` above every crossed declaration — the wholesale widening step 2 of the order of work exists to avoid. Run `-fix -diff` first and read it. Its place in an adoption is renaming, after the structure is settled, and only where `names[].fixable` is true.
 

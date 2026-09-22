@@ -25,8 +25,8 @@ the binary.
 | `naming_rules.fsl` | No rename is ever applied to an exported declaration | As above |
 | `naming_rules.fsl` | Each naming key bites, and each silence is witnessed with every other reason for silence pinned | As above |
 | `naming_rules.fsl` | The core namespace is outside the rule, whatever is configured | As above |
-| `allow_boundary.fsl` | `rules.allowBoundary` silences `boundary` and nothing else. `qualify` and `surplus` still fire with it on, and `allowSurplus` still gates only `surplus` | Every combination of the two switches, the resolved scope, the reference shape, the naming mode and its inputs, and the two surplus inputs |
-| `allow_boundary.fsl` | Each of the three rules keeps its own guards, witnessed by the report each one records rather than by a restatement of its definition | As above |
+| `boundary_off.fsl` | `rules.boundary: off` silences `boundary` and nothing else. `qualify` and `surplus` still fire with it on, and `rules.surplus: off` still gates only `surplus` | Every combination of the two switches, the resolved scope, the reference shape, the naming mode and its inputs, and the two surplus inputs |
+| `boundary_off.fsl` | Each of the three rules keeps its own guards, witnessed by the report each one records rather than by a restatement of its definition | As above |
 | `filter.fsl` | `filter.only` narrows and `filter.omit` subtracts. Either list admits or rejects on any one of its patterns, an empty `only` places no restriction, and `omit` still bites inside `only` | Every combination of which of three patterns each list holds and which of them the file matches |
 | `filter.fsl` | The order of the two lists is not observable: narrowing then subtracting and subtracting then narrowing name the same set | As above |
 | `config_inherit.fsl` | A config file states some keys and leaves the rest alone: the nearest file that states a key wins, and a key no nearer file states still comes from the root | Every combination of what three levels state about one value key, and of what two levels state about two vocabulary namespaces |
@@ -51,6 +51,9 @@ the binary.
 | `rename_reach.fsl` | The build-excluded guard is no broader than it needs to be: a rename beside an excluded file that writes neither name is still offered | As above |
 | `surplus.fsl` | `surplus` never reports a declaration reachable by any path: a spelled use, an interface satisfaction, an exported carrier, a linkname, or an opaque source | Every combination of the rule switch, the directive, the five reach paths, and whether the pass read every file |
 | `surplus.fsl` | A pass that did not read every file reports nothing, and each suppressor is witnessed alone, with every other one off | As above |
+| `surplus_strict.fsl` | Neither `surplus` finding is made of a declaration reachable by any path the rule counts: a spelled use, a struct conversion, a linkname, or an opaque source | Every combination of `rules.surplus`, why the declaration has its scope (the enclosing directive, its own, exportedness, `defaults.unexported`, no enclosing directive), the level the directive is written at, the reach path, the shape of the entry, what else the directive reaches, and whether the pass read every file |
+| `surplus_strict.fsl` | `strict` reports a superset of `loose` and never lands on the declaration `loose` already covers. It reports only where an enclosing directive widened the declaration, at the file, block and type level alike, and never a type whose narrowing would narrow a reached member | As above |
+| `surplus_strict.fsl` | The inserted `//declscope:private` binds, settles the report, starts no boundary report on the declaration or a member it narrows, never makes `loose` fire, and never leaves the enclosing directive binding nothing. Where it would, the fix is withheld and the report is not | As above |
 | `rename_sound.fsl` | **Fails** — models a guard that checks package scope only, and enumerates what a sound guard must check beyond it | As above |
 | `rename_siblings.fsl` | **Fails** — models fixes that check their target against the pre-fix names only, and shows two of them converging on one name | Every pair of rename targets |
 
@@ -107,7 +110,7 @@ step and needs gigabytes for the same claims these prove in single-digit
 megabytes.
 
 ```console
-./spec/verify.sh     # what CI runs: twelve proved, two violated
+./spec/verify.sh     # what CI runs: thirteen proved, two violated
 ```
 
 Or one at a time:
@@ -115,7 +118,7 @@ Or one at a time:
 ```console
 fslc check  naming_rules.fsl
 fslc verify naming_rules.fsl      --depth 5
-fslc verify allow_boundary.fsl   --depth 2
+fslc verify boundary_off.fsl     --depth 2
 fslc verify config_inherit.fsl   --depth 2
 fslc verify filter.fsl           --depth 2
 fslc verify filter_chain.fsl     --depth 2
@@ -126,18 +129,21 @@ fslc verify directive_effect.fsl --depth 4
 fslc verify rename_guarded.fsl   --depth 4
 fslc verify rename_reach.fsl     --depth 3
 fslc verify surplus.fsl         --depth 2
+fslc verify surplus_strict.fsl  --depth 4
 fslc verify rename_sound.fsl     --depth 2   # expected: violated
 fslc verify rename_siblings.fsl  --depth 3   # expected: violated
 ```
 
 `knobs.fsl`, `directive_effect.fsl` and `surplus.fsl` configure once and then
 have only the actions that record a report, so their reachables are witnessed at
-step 1 or 2; the others add a fix action and witness at step 2. The deadlock warning a bounded
+step 1 or 2; the others add a fix action and witness at step 2.
+`surplus_strict.fsl` configures in two steps, so that no one action carries the
+product of every parameter, and witnesses by step 4. The deadlock warning a bounded
 run prints is the shape of the model, not a failure, and `rename_guarded.fsl`
 also reports a vacuous antecedent — which is the guard working, and is stated as
 `NothingResolvedNewName` rather than left as a warning.
 
-The twelve that pass are `proved` under `--engine induction`, which is what
+The thirteen that pass are `proved` under `--engine induction`, which is what
 `verify.sh` and CI assert. Bounded verification alone would let an invariant be
 true to a depth without being inductive, and reading the exit code alone would
 let a spec that stopped parsing pass as "violated, as intended" — `fslc` exits
@@ -181,9 +187,16 @@ is a semantics that contradicts the documented one; each was run:
 | An unseen in-package test file does not withhold the rename | `violated` |
 | Both directive insertions fire, so a member is fixed under a type fixed in the same run | `violated` (`InsertedMemberDirectiveBinds`) |
 | The narrower insertion wins, so the type's fix is dropped instead of the member's | `reachable_failed` (`OnlyTheWiderFixIsWritten`) |
-| `rules.allowBoundary` is wired into `surplus` as well | `reachable_failed` (`SurplusFiresWhileBoundaryAllowed`) |
-| `rules.allowBoundary` is wired into `qualify` as well | `reachable_failed` (`QualifyFiresWhileBoundaryAllowed`) |
-| The `allowBoundary` gate is dropped from the boundary report | `violated` (`BoundarySilencedWhenAllowed`) |
+| `strict` reports without checking reach | `violated` (`NeverReportsReachable`) |
+| `strict` also reports where `loose` already reports the directive | `violated` (`NeverTwiceOnOneDeclaration`) |
+| `strict` reports under `loose` | `violated` (`StrictOnlyUnderStrict`) |
+| `strict` ignores `defaults.unexported` | `violated` (`NeverReportsUnderPackageDefault`) |
+| `strict` narrows a type one of whose members is reached | `violated` (`NeverNarrowsAReachedMember`) |
+| `strict` reports a member of a type it already narrows | `violated` (`NeverRepeatsTheOwnersFinding`) |
+| The `strict` fix is offered where it would leave the directive binding nothing | `violated` (`FixKeepsTheDirectiveBound`) |
+| `rules.boundary: off` is wired into `surplus` as well | `reachable_failed` (`SurplusFiresWhileBoundaryOff`) |
+| `rules.boundary: off` is wired into `qualify` as well | `reachable_failed` (`QualifyFiresWhileBoundaryOff`) |
+| The `rules.boundary` gate is dropped from the boundary report | `violated` (`BoundarySilencedWhenOff`) |
 | An empty `filter.only` matches nothing rather than placing no restriction | `reachable_failed` (`NoListsAdmitsAFileMatchingNothing`) |
 | `filter.omit` is ignored once `filter.only` is set | `violated` (`DecisionMatchesTheRule`) |
 | `filter.only` is ignored once `filter.omit` is set | `violated` (`DecisionMatchesTheRule`) |

@@ -33,6 +33,10 @@
 //
 // There is no fix. Every remaining false positive would be an automatic edit
 // that deletes a load-bearing directive.
+//
+// ruleOn is rules.surplus set to loose or strict. This spec is the directive
+// as a whole, which both modes report; surplus_strict.fsl is what strict adds
+// one declaration at a time.
 spec Surplus {
   state {
     configured: Bool, ruleOn: Bool,
