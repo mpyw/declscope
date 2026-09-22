@@ -53,6 +53,15 @@ Each file's patterns are read against **its own** directory, and anchor there wh
 
 **The minimum is no config file at all.** `boundary` and `surplus` are on. Those two answer a question about the code, where the naming rule answers one about a convention. Most repositories report a handful. Adopting this much is a complete adoption.
 
+**Once `boundary` is settled, recommend `rules.surplus: strict` where the repository can take it.** `loose` judges a `//declscope:package` as a whole, so one reached declaration keeps the whole directive quiet. `strict` also reports each declaration the directive widens for nothing, and one `declscope -fix` run inserts every `//declscope:private` it asks for. It adds reports that `loose` does not, so size it first, and ask before writing it, the same as any other config change:
+
+```bash
+printf 'rules:\n  surplus: strict\n' > /tmp/s.yaml
+declscope survey -config /tmp/s.yaml -format=json ./... | jq .totals.surplus
+```
+
+A throwaway `-config` replaces the repository's own config. Copy its keys in first, or the count is taken under the defaults.
+
 **If the goal is a tidier codebase, offer the naming rule on top.** It is a convention. It fires where nothing is wrong, and it costs real work. Size it before offering, with a throwaway config rather than by counting message fragments:
 
 ```bash
