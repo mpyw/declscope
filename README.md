@@ -328,7 +328,11 @@ The report is that narrow on purpose. A package that reads nothing is usually th
 
 ## Directives
 
-A **directive** is a comment beginning `//declscope:`. The form `/*declscope: ... */` also works.
+A **directive** is a comment of the form `//declscope:name`, with any argument after a space. The name follows the colon directly, with no space between them. A space after `//` is allowed, and so is the block form `/*declscope:name*/`. A trailing `// reason` is ignored.
+
+```go
+//declscope:package // shared with the reporting code
+```
 
 | Directive | Level | Effect |
 | --- | --- | --- |
@@ -378,7 +382,7 @@ A directive on a type reaches its fields and its interface method names. It does
 Go excludes a `//tool:name` comment from a doc comment, so none of them reaches the rendered documentation.
 
 > [!WARNING]
-> On a file, use the `//` form. Go does not exclude `/*declscope: ... */` from a doc comment.
+> On a file, use the `//` form. Go does not exclude `/*declscope:name*/` from a doc comment.
 >
 > ```go
 > /*declscope:namespace shared*/
