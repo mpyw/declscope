@@ -155,7 +155,7 @@ The three compose. `depguard` keeps the package graph honest, declscope keeps ea
 
 | Method | Command | Needs |
 | --- | --- | --- |
-| **[mise](https://mise.jdx.dev/)** *(recommended)* | `mise use -g "github:mpyw/declscope"` | Nothing. Installs the prebuilt binary |
+| **[mise](https://mise.jdx.dev/)** *(recommended)* | `mise use "github:mpyw/declscope@0.10.1"` | Nothing. Installs the prebuilt binary |
 | `go tool` | `go get -tool github.com/mpyw/declscope/cmd/declscope@latest` | Go 1.24+ |
 | `go install` | `go install github.com/mpyw/declscope/cmd/declscope@latest` | A Go toolchain |
 | Release archive | See below | Nothing |
@@ -167,7 +167,7 @@ declscope ./...
 <details>
 <summary>Pin a version, run through <code>go vet</code>, or install from an archive</summary>
 
-Pin it per project in `mise.toml`:
+`mise use` pins the version in the project's `mise.toml`, so every checkout and CI run the same one. Add `-g` to install it for every project on your machine instead.
 
 ```toml
 [tools]
