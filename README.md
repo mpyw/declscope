@@ -328,7 +328,7 @@ The report is that narrow on purpose. A package that reads nothing is usually th
 
 ## Directives
 
-A **directive** is a comment of the form `//declscope:name`, with any argument after a space. The name follows the colon directly, with no space between them. A space after `//` is allowed, and so is the block form `/*declscope:name*/`. A trailing `// reason` is ignored.
+A **directive** is a comment in Go's directive form, `//declscope:name`, with any argument after a space. There is no space after `//` and none after the colon, and a block comment is not a directive. Any other spelling is [reported](#unused-and-malformed-directives) and has no effect. A trailing `// reason` is ignored.
 
 ```go
 //declscope:package // shared with the reporting code
@@ -369,7 +369,7 @@ var (
 A directive on a type reaches its fields and its interface method names. It does not reach its methods, which take their own file's level.
 
 <details>
-<summary>Where a file-level directive may sit, and why the <code>//</code> form</summary>
+<summary>Where a file-level directive may sit</summary>
 
 `//declscope:namespace` must come before the package clause. Three placements are accepted there.
 
@@ -380,22 +380,6 @@ A directive on a type reaches its fields and its interface method names. It does
 | At the bottom of the package doc comment, after a blank `//` line | Go's own convention for a directive in a doc comment |
 
 Go excludes a `//tool:name` comment from a doc comment, so none of them reaches the rendered documentation.
-
-> [!WARNING]
-> On a file, use the `//` form. Go does not exclude `/*declscope:name*/` from a doc comment.
->
-> ```go
-> /*declscope:namespace shared*/
-> package blk
-> ```
-> ```console
-> $ go doc .
-> package blk // import "example.com/blk"
->
-> declscope:namespace shared
-> ```
->
-> The directive still takes effect. It also becomes the package comment, and pkg.go.dev shows it.
 
 </details>
 
@@ -441,6 +425,7 @@ These reports carry the `directive` rule, so `//declscope:ignore directive` sile
 | Directive | Report |
 | --- | --- |
 | `//declscope:foo` | `unknown directive declscope:foo` |
+| `// declscope:package`, `//declscope: package` or `/*declscope:package*/` | `malformed directive: write //declscope:package` |
 | `//declscope:package x` | `//declscope:package takes no argument` |
 | `//declscope:private` and `//declscope:package` together | `conflicting scope directives: ...` |
 | `//declscope:core` and `//declscope:namespace` together | `conflicting namespace directives: a core file's namespace is the core` |

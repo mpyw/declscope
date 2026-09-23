@@ -41,12 +41,8 @@ func TestParseDeclScope(t *testing.T) {
 	}{
 		{"package", "//declscope:package", scope.PackageInternal, true},
 		{"private", "//declscope:private", scope.Private, true},
-		{"spaced", "// declscope:package", scope.PackageInternal, true},
-		{"block", "/*declscope:package*/", scope.PackageInternal, true},
 		{"with reason", "//declscope:package // shared with the reporter", scope.PackageInternal, true},
 		{"reason flush against it", "//declscope:package// shared", scope.PackageInternal, true},
-		{"spaced with reason", "//  declscope:private // why", scope.Private, true},
-		{"block with reason", "/* declscope:private // why */", scope.Private, true},
 		{"no keyword", "//declscope:", 0, false},
 		{"unrelated", "// an ordinary comment", 0, false},
 		{"other tool", "//nolint:all", 0, false},
@@ -77,12 +73,9 @@ func TestParseDeclProblems(t *testing.T) {
 		{"core on a declaration", "//declscope:core"},
 		{"conflicting scopes", "//declscope:package\n//declscope:private"},
 		{"keyword with a suffix", "//declscope:packagex"},
-		{"block keyword with a suffix", "/*declscope:packagex*/"},
 		// Go's directive syntax opens a name with [a-z0-9]. A name that does
-		// not is still addressed to declscope, and is reported rather than
-		// dropped or read as the keyword it resembles.
+		// not is reported rather than dropped.
 		{"uppercase keyword", "//declscope:Package"},
-		{"space after the colon", "//declscope: package"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -144,18 +137,6 @@ func TestParseDeclIgnore(t *testing.T) {
 			comment: "//declscope:ignore boundary, qualify",
 			covers:  []rule.Rule{rule.Boundary, rule.Qualify},
 			misses:  []rule.Rule{rule.Directive},
-		},
-		{
-			name:    "block form",
-			comment: "/*declscope:ignore boundary, qualify*/",
-			covers:  []rule.Rule{rule.Boundary, rule.Qualify},
-			misses:  []rule.Rule{rule.Directive},
-		},
-		{
-			name:    "spaced form",
-			comment: "// declscope:ignore qualify",
-			covers:  []rule.Rule{rule.Qualify},
-			misses:  []rule.Rule{rule.Boundary},
 		},
 		{
 			name:    "with a reason",
@@ -450,43 +431,82 @@ func TestParseDeclSkipsNilGroups(t *testing.T) {
 	}
 }
 
-// TestParseFileForms checks that a file-level directive is read in each form a
-// declaration-level one is.
-func TestParseFileForms(t *testing.T) {
-	for _, comment := range []string{
-		"//declscope:namespace user",
-		"// declscope:namespace user",
-		"/*declscope:namespace user*/",
-		"//declscope:namespace user // pinned against a rename",
-	} {
-		t.Run(comment, func(t *testing.T) {
-			f := directive.ParseFile(parse(t, comment+"\n\npackage repo\n"))
-			if len(f.Problems) != 0 || f.Namespace != "user" {
-				t.Errorf("namespace = %q, problems = %v, want user and none", f.Namespace, f.Problems)
+// TestMalformed checks that a comment addressed to declscope in any form but
+// Go's canonical //tool:name is reported at every level, with the canonical
+// spelling, and has no effect.
+func TestMalformed(t *testing.T) {
+	tests := []struct {
+		comment string
+		want    string
+	}{
+		{"// declscope:package", "//declscope:package"},
+		{"//\tdeclscope:package", "//declscope:package"},
+		{"//declscope: package", "//declscope:package"},
+		{"// declscope: private // why", "//declscope:private"},
+		{"/*declscope:package*/", "//declscope:package"},
+		{"/* declscope:ignore boundary, qualify */", "//declscope:ignore boundary, qualify"},
+		{"/*declscope:namespace user // why*/", "//declscope:namespace user"},
+	}
+	for _, tt := range tests {
+		want := "malformed directive: write " + tt.want
+		t.Run(tt.comment, func(t *testing.T) {
+			check := func(level string, problems []directive.Problem) {
+				t.Helper()
+				if len(problems) != 1 || problems[0].Msg != want {
+					t.Errorf("%s: got %v, want one %q", level, problems, want)
+				}
 			}
+
+			d := directive.ParseDecl(firstFunc(t, "package p\n\n"+tt.comment+"\nfunc f() {}\n").Doc)
+			check("declaration", d.Problems)
+			if d.HasScope || len(d.Ignores) != 0 {
+				t.Errorf("declaration: took effect: %+v", d)
+			}
+
+			f := directive.ParseFile(parse(t, tt.comment+"\n\npackage repo\n"))
+			check("file", f.Problems)
+			if f.HasNamespace || f.Scope.HasScope || len(f.Ignores) != 0 {
+				t.Errorf("file: took effect: %+v", f)
+			}
+
+			check("stray", directive.Stray(&ast.CommentGroup{List: []*ast.Comment{{Text: tt.comment}}}))
 		})
 	}
 }
 
-// TestStray checks that a misplaced directive is reported in every form it is
-// read in, and that a lookalike for another tool is left alone.
+// TestParseFileWithReason checks that a file-level directive may carry a
+// trailing reason, as a declaration-level one may.
+func TestParseFileWithReason(t *testing.T) {
+	f := directive.ParseFile(parse(t, "//declscope:namespace user // pinned against a rename\n\npackage repo\n"))
+	if len(f.Problems) != 0 || f.Namespace != "user" {
+		t.Errorf("namespace = %q, problems = %v, want user and none", f.Namespace, f.Problems)
+	}
+}
+
+// TestStray checks that a misplaced directive is reported, with or without a
+// reason, and that a lookalike for another tool is left alone.
 func TestStray(t *testing.T) {
 	tests := []struct {
 		comment string
 		want    int
 	}{
 		{"//declscope:ignore", 1},
-		{"// declscope:ignore", 1},
-		{"/*declscope:ignore*/", 1},
 		{"//declscope:ignore // reason", 1},
 		{"//declscopex:ignore", 0},
+		{"// see declscope:ignore", 0},
 		{"// an ordinary comment", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.comment, func(t *testing.T) {
 			g := &ast.CommentGroup{List: []*ast.Comment{{Text: tt.comment}}}
-			if got := directive.Stray(g); len(got) != tt.want {
+			got := directive.Stray(g)
+			if len(got) != tt.want {
 				t.Errorf("got %d problems, want %d: %v", len(got), tt.want, got)
+			}
+			for _, p := range got {
+				if !strings.HasPrefix(p.Msg, "misplaced declscope:ignore") {
+					t.Errorf("message is %q, want a misplaced report", p.Msg)
+				}
 			}
 		})
 	}

@@ -211,6 +211,8 @@ The renames went to natural word order rather than a prefix: `addFuncToCollectio
 | `//declscope:core` | File, before the package clause | Join the package's core namespace; conflicts with `//declscope:namespace` |
 | `//declscope:namespace <name>` | File, before the package clause | Override the namespace derived from the file name |
 
+**Only Go's canonical directive form is a directive.** `directive.split` hands `//declscope:name args` to `ast.ParseDirective` unchanged, after dropping a trailing `// reason`. A comment addressed to declscope in any other form — a space after `//` or after the colon, or a block comment — is reported as `malformed directive: write //declscope:...` at every level, including `Stray`, and takes no effect. Accepting such forms would hide the directive from Go's own tooling, which reads only the canonical form; ignoring them would leave the author believing something is stated. Only a comment whose body opens with `declscope:` counts, so prose that mentions a directive is never reported.
+
 `parseIgnore` is shared by both levels, so `//declscope:ignore` cannot come to mean different things depending on where it is written. File-level directives live on `fileInfo.ignores`; declaration-level ones on `Decl.Ignores`. A file-level ignore is scoped to its **file**, not to its namespace, so files sharing a namespace each need their own — one file silently changing another's diagnostics would be much harder to trace back.
 
 ### The suppression chain

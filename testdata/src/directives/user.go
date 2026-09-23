@@ -15,6 +15,18 @@ func userNeverLeaks() int { return 4 }
 //declscope:bogus // want `unknown directive declscope:bogus`
 func userTypo() int { return 5 }
 
+// Only Go's canonical //tool:name form is a directive. Anything else
+// addressed to declscope is reported and takes no effect.
+
+// declscope:package // want `malformed directive: write //declscope:package`
+func userSpaced() int { return 7 }
+
+//declscope: package // want `malformed directive: write //declscope:package`
+func userSpacedName() int { return 8 }
+
+/*declscope:package*/ // want `malformed directive: write //declscope:package`
+func userBlock() int { return 9 }
+
 func userTrailing() int { return 6 } //declscope:package // shared with the reporting code
 
 var (
