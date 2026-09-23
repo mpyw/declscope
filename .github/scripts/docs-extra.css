@@ -1,0 +1,31 @@
+/* Extra site styles, copied into the assembled docs and wired via mkdocs.yml
+   extra_css. Kept minimal — overrides only what the Material defaults get wrong
+   for this project's content. Rules use CSS custom properties so they track the
+   light/dark theme. */
+
+/* The left sidebar repeats `site_name` ("declscope") as a drawer header, duplicating
+   the site title already shown in the top header bar. Hide just that top-level
+   title; nested section titles are deeper .md-nav__title nodes and are left
+   alone by the direct-child selector. */
+.md-nav--primary > .md-nav__title {
+  display: none;
+}
+
+/* The home page's banner title: the README's decorative <h1>, demoted to a
+   non-heading <p class="hero-title"> on the site by build-docs-site.py so
+   MkDocs' toc gives it no id/permalink. Restore the large, heading-like look
+   (the surrounding <div align="center"> handles centering). */
+.md-typeset .hero-title {
+  margin: 0.5rem 0 0;
+  font-size: 2.5rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+/* Because the home page has no in-content <h1> (its banner is .hero-title, not a
+   heading), Material synthesizes a page-title <h1>Home</h1> from the nav entry —
+   a bare, id-less heading. Every other page has a real content heading (which
+   carries an id), so hiding id-less <h1>s drops just that synthesized "Home". */
+.md-typeset h1:not([id]) {
+  display: none;
+}

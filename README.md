@@ -1,8 +1,18 @@
-# declscope
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+    <img src="docs/assets/logo-light.svg" alt="" width="128" height="128">
+  </picture>
+  <h1>declscope</h1>
 
-[![CI](https://github.com/mpyw/declscope/actions/workflows/ci.yml/badge.svg)](https://github.com/mpyw/declscope/actions/workflows/ci.yml)
-[![Codecov](https://codecov.io/gh/mpyw/declscope/graph/badge.svg)](https://codecov.io/gh/mpyw/declscope)
-[![Go Reference](https://pkg.go.dev/badge/github.com/mpyw/declscope.svg)](https://pkg.go.dev/github.com/mpyw/declscope)
+  [![CI](https://github.com/mpyw/declscope/actions/workflows/ci.yml/badge.svg)](https://github.com/mpyw/declscope/actions/workflows/ci.yml)
+  [![Codecov](https://codecov.io/gh/mpyw/declscope/graph/badge.svg)](https://codecov.io/gh/mpyw/declscope)
+  [![Go Reference](https://pkg.go.dev/badge/github.com/mpyw/declscope.svg)](https://pkg.go.dev/github.com/mpyw/declscope)
+
+  <!-- site:skip -->
+  <p><a href="https://mpyw.me/declscope/"><strong>Documentation</strong></a></p>
+  <!-- /site:skip -->
+</div>
 
 Keep your Go packages **flat** without letting them turn into a free-for-all.
 

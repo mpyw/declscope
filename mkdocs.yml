@@ -1,0 +1,97 @@
+site_name: declscope
+site_description: A visibility level below unexported. Keep Go packages flat without losing their boundaries.
+site_url: https://mpyw.github.io/declscope/
+repo_url: https://github.com/mpyw/declscope
+repo_name: mpyw/declscope
+
+# The source tree is assembled by .github/scripts/build-docs-site.py (README split
+# into per-section pages + docs/*.md), and the built site goes to .site/out.
+# Neither directory is committed; both are produced fresh by `mise docs-build` / CI.
+docs_dir: .site/src
+site_dir: .site/out
+
+# Small style overrides (see .github/scripts/docs-extra.css); the assembler copies
+# the file into the docs source at assets/docs-extra.css.
+extra_css:
+  - assets/docs-extra.css
+
+# literate-nav reads SUMMARY.md for the nav; keep it out of the built pages.
+exclude_docs: |
+  SUMMARY.md
+
+# Promote every link/anchor/nav problem to a warning; the build runs with
+# --strict (see the Pages workflow and `mise docs-build`), which turns these
+# warnings into a non-zero exit, so a doc restructuring that breaks a Markdown
+# link or cross-page #anchor fails CI. Raw-HTML links and assets, which MkDocs
+# does not validate, are covered by .github/scripts/check-site-links.py.
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+    absolute_links: warn
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: warn
+    unrecognized_links: warn
+
+theme:
+  name: material
+  # Template override (extends base.html) that injects Open Graph / Twitter Card
+  # meta tags, so links to the site unfurl with docs/assets/social-preview.png.
+  custom_dir: .github/scripts/overrides
+  # The header bar is black in both schemes, so the header logo is the variant
+  # drawn for a dark background. The favicon switches with the browser's own
+  # scheme through a media query inside the SVG.
+  logo: docs/assets/logo-dark.svg
+  favicon: docs/assets/logo.svg
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+
+plugins:
+  # Converts GitHub callouts (> [!NOTE]/[!TIP]/…) into Material admonitions;
+  # runs before rendering.
+  - callouts
+  - search
+  - literate-nav:
+      nav_file: SUMMARY.md
+
+markdown_extensions:
+  # GitHub-compatible heading slugs, so the README's existing #anchor links keep
+  # resolving after the split (build-docs-site.py uses the same slugifier).
+  - toc:
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+      permalink: true
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
