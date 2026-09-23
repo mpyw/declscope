@@ -56,8 +56,9 @@
 // nothing and is reported as misplaced rather than dropped.
 //
 // Only Go's directive form is read: no space after the // or after the colon,
-// and no block comment. A comment addressed to declscope in any other form is
-// reported as malformed, with the canonical spelling.
+// no block comment, and a lowercase name. A comment addressed to declscope in
+// any other form is reported as malformed, with the canonical spelling when
+// that spelling is itself a directive.
 //
 // A trailing "// reason" is allowed after any directive:
 //
@@ -75,6 +76,7 @@ import (
 	"go/token"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
@@ -152,7 +154,7 @@ func ParseDecl(groups ...*ast.CommentGroup) Decl {
 			switch {
 			case !ok:
 			case malformed != "":
-				d.problem(c.Pos(), malformedMessage(malformed))
+				d.problem(c.Pos(), malformed)
 			default:
 				d.consume(c.Pos(), keyword, arg)
 			}
@@ -212,7 +214,7 @@ func Stray(g *ast.CommentGroup) []Problem {
 			continue
 		}
 		if malformed != "" {
-			out = append(out, Problem{Pos: c.Pos(), Msg: malformedMessage(malformed)})
+			out = append(out, Problem{Pos: c.Pos(), Msg: malformed})
 			continue
 		}
 		msg := fmt.Sprintf("misplaced declscope:%s: no declaration here for it to bind to; "+
@@ -262,7 +264,7 @@ func ParseFile(file *ast.File) File {
 				continue
 			}
 			if malformed != "" {
-				f.problem(c.Pos(), malformedMessage(malformed))
+				f.problem(c.Pos(), malformed)
 				continue
 			}
 			// scope.Parse is asked first, so that the keywords naming a
@@ -369,12 +371,13 @@ func (f *File) problem(pos token.Pos, msg string) {
 // split extracts the keyword and argument from a comment holding a declscope
 // directive.
 //
-// A directive is Go's canonical //tool:name args form, read by
-// ast.ParseDirective, and an explanatory trailing comment is dropped first:
-// //declscope:package // reason. A comment addressed to declscope in any other
-// form, with space after the // or after the colon or as a block comment, is
-// no directive. It is returned with malformed set to the canonical spelling,
-// so that it is reported rather than silently doing nothing.
+// A comment is addressed to declscope when its body, after the // or /*,
+// opens with declscope: once any space is skipped. It is a directive when
+// ast.ParseDirective reads it as it stands, once an explanatory trailing
+// comment is dropped: //declscope:package // reason. Any other addressed
+// comment, whether spaced, a block comment, an uppercase name or no name at
+// all, is no directive. It is returned with malformed set to the report, so
+// that it is reported rather than silently doing nothing.
 func split(text string) (keyword, arg, malformed string, ok bool) {
 	body, line := strings.CutPrefix(text, "//")
 	if !line {
@@ -387,28 +390,27 @@ func split(text string) (keyword, arg, malformed string, ok bool) {
 	if !addressed {
 		return "", "", "", false
 	}
-	fields := strings.Fields(rest)
-	if len(fields) == 0 {
-		return "", "", "", false
-	}
 	if line {
 		if d, parsed := ast.ParseDirective(token.NoPos, "//"+body); parsed && d.Tool == tool {
 			return d.Name, strings.Join(strings.Fields(d.Args), " "), "", true
 		}
-		// ParseDirective also refuses a name that does not open with
-		// [a-z0-9], as in //declscope:Package. The form is right and the name
-		// is wrong, so it is returned as a keyword and reported as unknown.
-		if name, canonical := strings.CutPrefix(body, tool+":"); canonical && strings.HasPrefix(name, fields[0]) {
-			return fields[0], strings.Join(fields[1:], " "), "", true
-		}
 	}
-	return "", "", "//" + tool + ":" + strings.Join(fields, " "), true
+	return "", "", malformedMessage(text, body, line, rest), true
 }
 
-// malformedMessage is the report on a comment addressed to declscope in a form
-// that is no directive.
-func malformedMessage(canonical string) string {
-	return "malformed directive: write " + canonical
+// malformedMessage is the report on a comment addressed to declscope that is
+// no directive. It suggests the canonical spelling only when that spelling is
+// itself a directive; a name is never guessed, so otherwise the comment is
+// named as written, without its trailing reason.
+func malformedMessage(text, body string, line bool, rest string) string {
+	canonical := "//" + tool + ":" + strings.Join(strings.Fields(rest), " ")
+	if d, ok := ast.ParseDirective(token.NoPos, canonical); ok && d.Tool == tool {
+		return "malformed directive: write " + canonical
+	}
+	if line {
+		text = strings.TrimRightFunc("//"+body, unicode.IsSpace)
+	}
+	return "malformed directive: " + text
 }
 
 // Linknamed returns every local name that a //go:linkname or cgo //export

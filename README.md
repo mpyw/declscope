@@ -328,7 +328,7 @@ The report is that narrow on purpose. A package that reads nothing is usually th
 
 ## Directives
 
-A **directive** is a comment in Go's directive form, `//declscope:name`, with any argument after a space. There is no space after `//` and none after the colon, and a block comment is not a directive. Any other spelling is [reported](#unused-and-malformed-directives) and has no effect. A trailing `// reason` is ignored.
+A **directive** is a comment in Go's directive form, `//declscope:name`, with any argument after a space. The name is lowercase, there is no space after `//` and none after the colon, and a block comment is not a directive. Any other spelling is [reported](#unused-and-malformed-directives) and has no effect. A trailing `// reason` is ignored.
 
 ```go
 //declscope:package // shared with the reporting code
@@ -426,6 +426,7 @@ These reports carry the `directive` rule, so `//declscope:ignore directive` sile
 | --- | --- |
 | `//declscope:foo` | `unknown directive declscope:foo` |
 | `// declscope:package`, `//declscope: package` or `/*declscope:package*/` | `malformed directive: write //declscope:package` |
+| `//declscope:Package` or `//declscope:` | `malformed directive: //declscope:Package`, naming the comment as written |
 | `//declscope:package x` | `//declscope:package takes no argument` |
 | `//declscope:private` and `//declscope:package` together | `conflicting scope directives: ...` |
 | `//declscope:core` and `//declscope:namespace` together | `conflicting namespace directives: a core file's namespace is the core` |

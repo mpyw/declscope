@@ -43,7 +43,6 @@ func TestParseDeclScope(t *testing.T) {
 		{"private", "//declscope:private", scope.Private, true},
 		{"with reason", "//declscope:package // shared with the reporter", scope.PackageInternal, true},
 		{"reason flush against it", "//declscope:package// shared", scope.PackageInternal, true},
-		{"no keyword", "//declscope:", 0, false},
 		{"unrelated", "// an ordinary comment", 0, false},
 		{"other tool", "//nolint:all", 0, false},
 	}
@@ -73,9 +72,6 @@ func TestParseDeclProblems(t *testing.T) {
 		{"core on a declaration", "//declscope:core"},
 		{"conflicting scopes", "//declscope:package\n//declscope:private"},
 		{"keyword with a suffix", "//declscope:packagex"},
-		// Go's directive syntax opens a name with [a-z0-9]. A name that does
-		// not is reported rather than dropped.
-		{"uppercase keyword", "//declscope:Package"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -94,8 +90,6 @@ func TestParseDeclNotADirective(t *testing.T) {
 		"//declscopex:package",
 		"//xdeclscope:package",
 		"// see declscope:package for why",
-		"//declscope:",
-		"//declscope: // reason",
 		"//go:generate declscope:package",
 	} {
 		t.Run(comment, func(t *testing.T) {
@@ -439,16 +433,27 @@ func TestMalformed(t *testing.T) {
 		comment string
 		want    string
 	}{
-		{"// declscope:package", "//declscope:package"},
-		{"//\tdeclscope:package", "//declscope:package"},
-		{"//declscope: package", "//declscope:package"},
-		{"// declscope: private // why", "//declscope:private"},
-		{"/*declscope:package*/", "//declscope:package"},
-		{"/* declscope:ignore boundary, qualify */", "//declscope:ignore boundary, qualify"},
-		{"/*declscope:namespace user // why*/", "//declscope:namespace user"},
+		{"// declscope:package", "write //declscope:package"},
+		{"//\tdeclscope:package", "write //declscope:package"},
+		{"//declscope: package", "write //declscope:package"},
+		{"// declscope: private // why", "write //declscope:private"},
+		{"/*declscope:package*/", "write //declscope:package"},
+		{"/* declscope:ignore boundary, qualify */", "write //declscope:ignore boundary, qualify"},
+		{"/*declscope:namespace user // why*/", "write //declscope:namespace user"},
+		// Directive names are lowercase. The name is never guessed, so the
+		// comment is named as written, without its reason.
+		{"//declscope:Package", "//declscope:Package"},
+		{"//declscope:Package // why", "//declscope:Package"},
+		{"// declscope:Package", "// declscope:Package"},
+		{"/*declscope:Package*/", "/*declscope:Package*/"},
+		// A comment addressed to declscope with no name is reported too.
+		{"//declscope:", "//declscope:"},
+		{"//declscope: // reason", "//declscope:"},
+		{"// declscope:", "// declscope:"},
+		{"/*declscope:*/", "/*declscope:*/"},
 	}
 	for _, tt := range tests {
-		want := "malformed directive: write " + tt.want
+		want := "malformed directive: " + tt.want
 		t.Run(tt.comment, func(t *testing.T) {
 			check := func(level string, problems []directive.Problem) {
 				t.Helper()

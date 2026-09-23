@@ -27,6 +27,9 @@ func userSpacedName() int { return 8 }
 /*declscope:package*/ // want `malformed directive: write //declscope:package`
 func userBlock() int { return 9 }
 
+//declscope:Package // want `malformed directive: //declscope:Package$`
+func userUppercase() int { return 10 }
+
 func userTrailing() int { return 6 } //declscope:package // shared with the reporting code
 
 var (
