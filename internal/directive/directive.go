@@ -58,6 +58,11 @@
 // A trailing "// reason" is allowed after any directive:
 //
 //	//declscope:package // shared with the reporting code
+//
+// # Linkname
+//
+// [Linknamed] reads the other directives that bear on a declaration's name:
+// //go:linkname and cgo's //export, which name it as text.
 package directive
 
 import (
@@ -71,7 +76,8 @@ import (
 	"github.com/mpyw/declscope/internal/scope"
 )
 
-const prefix = "declscope:"
+// tool is the tool part of a declscope directive, //tool:name args.
+const tool = "declscope"
 
 // Problem is a malformed or contradictory directive.
 type Problem struct {
@@ -346,27 +352,74 @@ func (f *File) problem(pos token.Pos, msg string) {
 }
 
 // split extracts the keyword and argument from a comment holding a declscope
-// directive. Both line and block comments are accepted; without the block form
-// a /*declscope:package*/ comment would be a silent no-op rather than an error.
+// directive. ast.ParseDirective reads the canonical //tool:name args form
+// only, so a comment is first brought into it: a block comment loses its
+// markers, since without the block form a /*declscope:package*/ comment would
+// be a silent no-op rather than an error; space after the // is trimmed; and
+// an explanatory trailing comment, //declscope:package // reason, is dropped.
 func split(text string) (keyword, arg string, ok bool) {
 	if after, cut := strings.CutPrefix(text, "/*"); cut {
 		text = strings.TrimSuffix(after, "*/")
 	} else {
 		text = strings.TrimPrefix(text, "//")
 	}
-	body, ok := strings.CutPrefix(strings.TrimSpace(text), prefix)
+	if i := strings.Index(text, "//"); i >= 0 {
+		text = text[:i]
+	}
+	text = "//" + strings.TrimSpace(text)
+	d, ok := ast.ParseDirective(token.NoPos, text)
 	if !ok {
+		// ParseDirective refuses a name that does not open with [a-z0-9], as in
+		// //declscope:Package or //declscope: package. The comment is still
+		// addressed to declscope, so it is returned whole as the keyword and
+		// reported as unknown rather than dropped.
+		rest, cut := strings.CutPrefix(text, "//"+tool+":")
+		if !cut || rest == "" {
+			return "", "", false
+		}
+		return rest, "", true
+	}
+	if d.Tool != tool {
 		return "", "", false
 	}
-	// Drop an explanatory trailing comment: //declscope:package // reason
-	if i := strings.Index(body, "//"); i >= 0 {
-		body = body[:i]
+	return d.Name, strings.Join(strings.Fields(d.Args), " "), true
+}
+
+// Linknamed returns every local name that a //go:linkname or cgo //export
+// directive in files binds. Either directive names a declaration as text, from
+// code the analysis does not read, so a rename cannot follow it and a use
+// through it is never spelled.
+func Linknamed(files []*ast.File) map[string]bool {
+	names := make(map[string]bool)
+	for _, f := range files {
+		for _, g := range f.Comments {
+			for _, c := range g.List {
+				if name, ok := linknameLocal(c.Text); ok {
+					names[name] = true
+				}
+			}
+		}
 	}
-	fields := strings.Fields(body)
+	return names
+}
+
+// linknameLocal returns the local name a //go:linkname local target or an
+// //export Name comment binds. //export predates the tool:name form, so
+// ast.ParseDirective does not read it and it is matched by prefix.
+func linknameLocal(text string) (string, bool) {
+	args, ok := strings.CutPrefix(text, "//export ")
+	if !ok {
+		d, isDirective := ast.ParseDirective(token.NoPos, text)
+		if !isDirective || d.Tool != "go" || d.Name != "linkname" {
+			return "", false
+		}
+		args = d.Args
+	}
+	fields := strings.Fields(args)
 	if len(fields) == 0 {
-		return "", "", false
+		return "", false
 	}
-	return fields[0], strings.Join(fields[1:], " "), true
+	return fields[0], true
 }
 
 // isLowerIdent reports whether a namespace may be spelled this way.

@@ -92,7 +92,8 @@ internal/
                           and SurplusMode, the vocabularies each rule's setting is spelled in
   namespace/              file name -> namespace, containment matching, qualify
   scope/                  the two-level Scope enum
-  directive/              //declscope:... comment parsing
+  directive/              //declscope:... comment parsing, and the names that
+                          //go:linkname and //export bind
   config/                 YAML loading and lookup
   baseline/               baseline file format, lookup and regeneration
   measure/                what survey and inspect report: the model, the folds
