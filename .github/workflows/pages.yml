@@ -1,0 +1,92 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    # Only rebuild when something the site is generated from changes.
+    # (GitHub Actions does not support YAML anchors, so the list is repeated.)
+    paths:
+      - README.md
+      - docs/**
+      - mkdocs.yml
+      - .github/scripts/**
+      - .github/workflows/pages.yml
+  # Build and validate, without deploying, on PRs that touch the site.
+  pull_request:
+    paths:
+      - README.md
+      - docs/**
+      - mkdocs.yml
+      - .github/scripts/**
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Silence the MkDocs 2 upgrade notice in the build log.
+  DISABLE_MKDOCS_2_WARNING: "true"
+
+jobs:
+  # Needs no Pages permission. Any broken local link, missing anchor, output
+  # collision, missing asset or unmapped README anchor fails it.
+  validate:
+    name: Build & validate site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up docs toolchain
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet -r .github/scripts/docs-requirements.txt
+
+      - name: Unit-test the pipeline
+        run: .venv/bin/python .github/scripts/test-docs-pipeline.py
+
+      - name: Assemble the site source
+        run: .venv/bin/python .github/scripts/build-docs-site.py
+
+      - name: Build with MkDocs (strict)
+        run: .venv/bin/mkdocs build --strict
+
+      - name: Validate rendered links, anchors and assets
+        run: .venv/bin/python .github/scripts/check-site-links.py
+
+      # The deploy job ships this artifact as is, so what is deployed is exactly
+      # what passed the checks above. On a PR the deploy job is skipped and the
+      # artifact expires.
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: .site/out
+          retention-days: 1
+
+  # Main only, and the only job with the Pages write scopes. It does not rebuild.
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: validate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        # enablement: true turns Pages on, with GitHub Actions as the source, on the first run.
+        uses: actions/configure-pages@v6
+        with:
+          enablement: true
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

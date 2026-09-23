@@ -7,3 +7,25 @@
 [tools]
 go = "1.27.0"
 golangci-lint = "2.13.1"
+
+# The Pages site. Each task keeps its own Python venv under .site/, which is
+# ignored, so building the site installs nothing outside this checkout.
+[tasks.docs-build]
+description = "Assemble, build and validate the docs site into .site/out"
+run = """
+python3 -m venv .site/venv
+.site/venv/bin/pip install --quiet -r .github/scripts/docs-requirements.txt
+.site/venv/bin/python .github/scripts/test-docs-pipeline.py
+.site/venv/bin/python .github/scripts/build-docs-site.py
+DISABLE_MKDOCS_2_WARNING=true .site/venv/bin/mkdocs build --strict
+.site/venv/bin/python .github/scripts/check-site-links.py
+"""
+
+[tasks.docs-serve]
+description = "Assemble and serve the docs site locally at http://127.0.0.1:8000"
+run = """
+python3 -m venv .site/venv
+.site/venv/bin/pip install --quiet -r .github/scripts/docs-requirements.txt
+.site/venv/bin/python .github/scripts/build-docs-site.py
+DISABLE_MKDOCS_2_WARNING=true .site/venv/bin/mkdocs serve --strict
+"""

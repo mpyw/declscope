@@ -336,6 +336,16 @@ The subcommand tests drive the **built binary** as a subprocess, because what th
 > [!CAUTION]
 > `fslc verify` is a bounded model checker that holds the whole reachable state space in memory. A spec that models the full product in one action with many parameters needs gigabytes for the same claims the split specs prove in single-digit megabytes. Keep each spec to the variables its own properties read, keep the depths given in `spec/README.md`, and do not run `fslc verify` on a machine that cannot spare the memory.
 
+## Documentation site
+
+The GitHub Pages site is generated from `README.md` and `docs/`, the same way as `mpyw/suve`; nothing generated is committed. `.github/scripts/build-docs-site.py` splits the README into one page per `##` section and rewrites every `#anchor` to the page it landed on, MkDocs Material builds it with `--strict`, and `check-site-links.py` validates the rendered HTML. `.github/workflows/pages.yml` runs all three on every PR that touches them and deploys from `main`. `mise run docs-build` runs the same steps locally, and `mise run docs-serve` previews the site.
+
+- **The build fails rather than ship a broken link.** An unmapped anchor, a missing asset, or a README link to a repository file that does not exist is an error. A README link to a file the site does not carry (`skills/…/SKILL.md`) is rewritten to that file on GitHub.
+- **Keep headings unique when they are linked.** A `#anchor` whose slug occurs on two headings is ambiguous after the split and fails the build.
+- **`<!-- site:skip -->` … `<!-- /site:skip -->` is GitHub-only.** The README's link to the site sits in one, since it would point at itself there.
+- **The logo is drawn on a 16×16 grid** (`docs/assets/logo*.svg`) so that the favicon stays sharp at 16px. `logo-light.svg` is for a light background, `logo-dark.svg` for a dark one, and `logo.svg` switches between them by `prefers-color-scheme`. Keep new coordinates on whole units.
+- **`docs/assets/social-preview.png` is captured from `social-preview.html`** at 1280×640 in a headless browser. Edit the HTML and capture again rather than editing the PNG. GitHub's own social preview is uploaded by hand in the repository settings, so it has to be uploaded again after a change.
+
 ## Conventions
 
 - Module: `github.com/mpyw/declscope`, matching the layout of `mpyw/gormreuse` and `mpyw/zerologlintctx`.

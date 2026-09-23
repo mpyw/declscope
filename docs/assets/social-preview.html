@@ -1,0 +1,33 @@
+<!doctype html>
+<!--
+  The source of social-preview.png. Capture it at 1280x640 after an edit:
+
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
+      --hide-scrollbars --window-size=1280,640 --virtual-time-budget=5000 \
+      --screenshot="$PWD/social-preview.png" "file://$PWD/social-preview.html"
+
+  The logo is inlined from logo-dark.svg; keep the two in step.
+-->
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;800&family=JetBrains+Mono:wght@500&display=block" rel="stylesheet">
+<style>
+html,body{margin:0;width:1280px;height:640px;background:#0D1117;overflow:hidden}
+.wrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:80px}
+svg{width:272px;height:272px;flex:none}
+h1{font:800 104px/1 Inter,sans-serif;letter-spacing:-0.035em;color:#E6E8EB;margin:0 0 28px}
+p{font:500 34px/1.35 Inter,sans-serif;color:#9BA3AE;margin:0;letter-spacing:-0.01em}
+p b{color:#E6E8EB;font-weight:500}
+code{display:inline-block;margin-top:36px;font:500 26px/1 "JetBrains Mono",monospace;color:#00ADD8}
+code span{color:#5C6470}
+</style></head><body><div class="wrap">
+<svg viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <path fill="#E6E8EB" d="M0 0H9V5H5V9H0Z"/>
+  <rect fill="#E6E8EB" x="0" y="10" width="9" height="6"/>
+  <rect fill="#E6E8EB" x="10" y="0" width="6" height="16"/>
+  <rect fill="#00ADD8" x="6" y="6" width="3" height="3"/>
+</svg>
+<div>
+<h1>declscope</h1>
+<p><b>A visibility level below unexported.</b><br>Keep Go packages flat without<br>losing their boundaries.</p>
+<code><span>//</span>declscope:private</code>
+</div></div></body></html>

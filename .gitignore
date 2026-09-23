@@ -26,3 +26,9 @@ Thumbs.db
 
 # Task tracking (session-specific, not committed)
 TASKS.md
+
+# Generated GitHub Pages site (assembled source, build output, and local venv)
+/.site/
+
+# Python bytecode from the docs-site scripts
+__pycache__/
