@@ -127,8 +127,12 @@ func compileFilter(pattern string, bases []string) (filterMatcher, error) {
 	b.WriteString("$")
 
 	// Every piece written above is a fixed expression or QuoteMeta's output,
-	// so the result always compiles.
-	re := regexp.MustCompile(b.String())
+	// so only regexp's size limit refuses it, for a pattern megabytes long.
+	// The pattern is not quoted: it is as long as that.
+	re, err := regexp.Compile(b.String())
+	if err != nil {
+		return filterMatcher{}, fmt.Errorf("filter pattern of %d bytes: too large to compile", len(pattern))
+	}
 	if floats {
 		return filterMatcher{re: re}, nil
 	}

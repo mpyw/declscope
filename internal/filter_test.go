@@ -269,6 +269,23 @@ func TestFilterRefusesPatternLeavingItsDirectory(t *testing.T) {
 	}
 }
 
+// TestFilterRefusesPatternTooLargeToCompile checks that a pattern regexp's
+// size limit refuses is answered with an error, not a panic. Every piece of
+// the expression is valid, but a few megabytes of wildcards still exceed what
+// regexp compiles.
+func TestFilterRefusesPatternTooLargeToCompile(t *testing.T) {
+	t.Parallel() // seconds of regexp parsing, under -race most of all
+	opts := DefaultOptions()
+	opts.Omit = filterPatternsAt("/repo", strings.Repeat("*?", 1_500_000))
+	err := opts.Compile()
+	if err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("Compile() = %v, want a refusal naming the size", err)
+	}
+	if len(err.Error()) > 200 {
+		t.Errorf("the refusal quotes the pattern, %d bytes of it", len(err.Error()))
+	}
+}
+
 // TestFilterAnchoredPatternSkipsARelativePath checks that an anchored pattern
 // does not match a path it cannot place. filepath.Rel refuses to relate a
 // relative path to the absolute base, and a pattern matching everything
