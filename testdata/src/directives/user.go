@@ -18,16 +18,16 @@ func userTypo() int { return 5 }
 // Only Go's canonical //tool:name form is a directive. Anything else
 // addressed to declscope is reported and takes no effect.
 
-// declscope:package // want `malformed directive: write //declscope:package`
+// declscope:package // want `malformed declscope directive: write it as //declscope:name`
 func userSpaced() int { return 7 }
 
-//declscope: package // want `malformed directive: write //declscope:package`
+//declscope: package // want `malformed declscope directive: write it as //declscope:name`
 func userSpacedName() int { return 8 }
 
-/*declscope:package*/ // want `malformed directive: write //declscope:package`
+/*declscope:package*/ // want `malformed declscope directive: write it as //declscope:name`
 func userBlock() int { return 9 }
 
-//declscope:Package // want `malformed directive: //declscope:Package$`
+//declscope:Package // want `malformed declscope directive: write it as //declscope:name`
 func userUppercase() int { return 10 }
 
 func userTrailing() int { return 6 } //declscope:package // shared with the reporting code

@@ -426,35 +426,18 @@ func TestParseDeclSkipsNilGroups(t *testing.T) {
 }
 
 // TestMalformed checks that a comment addressed to declscope in any form but
-// Go's canonical //tool:name is reported at every level, with the canonical
-// spelling, and has no effect.
+// Go's canonical //tool:name is reported at every level, with one message, and
+// has no effect.
 func TestMalformed(t *testing.T) {
-	tests := []struct {
-		comment string
-		want    string
-	}{
-		{"// declscope:package", "write //declscope:package"},
-		{"//\tdeclscope:package", "write //declscope:package"},
-		{"//declscope: package", "write //declscope:package"},
-		{"// declscope: private // why", "write //declscope:private"},
-		{"/*declscope:package*/", "write //declscope:package"},
-		{"/* declscope:ignore boundary, qualify */", "write //declscope:ignore boundary, qualify"},
-		{"/*declscope:namespace user // why*/", "write //declscope:namespace user"},
-		// Directive names are lowercase. The name is never guessed, so the
-		// comment is named as written, without its reason.
-		{"//declscope:Package", "//declscope:Package"},
-		{"//declscope:Package // why", "//declscope:Package"},
-		{"// declscope:Package", "// declscope:Package"},
-		{"/*declscope:Package*/", "/*declscope:Package*/"},
-		// A comment addressed to declscope with no name is reported too.
-		{"//declscope:", "//declscope:"},
-		{"//declscope: // reason", "//declscope:"},
-		{"// declscope:", "// declscope:"},
-		{"/*declscope:*/", "/*declscope:*/"},
-	}
-	for _, tt := range tests {
-		want := "malformed directive: " + tt.want
-		t.Run(tt.comment, func(t *testing.T) {
+	const want = "malformed declscope directive: write it as //declscope:name"
+	for _, comment := range []string{
+		"// declscope:package",
+		"//declscope: package",
+		"/*declscope:package*/",
+		"//declscope:Package",
+		"//declscope:",
+	} {
+		t.Run(comment, func(t *testing.T) {
 			check := func(level string, problems []directive.Problem) {
 				t.Helper()
 				if len(problems) != 1 || problems[0].Msg != want {
@@ -462,19 +445,19 @@ func TestMalformed(t *testing.T) {
 				}
 			}
 
-			d := directive.ParseDecl(firstFunc(t, "package p\n\n"+tt.comment+"\nfunc f() {}\n").Doc)
+			d := directive.ParseDecl(firstFunc(t, "package p\n\n"+comment+"\nfunc f() {}\n").Doc)
 			check("declaration", d.Problems)
 			if d.HasScope || len(d.Ignores) != 0 {
 				t.Errorf("declaration: took effect: %+v", d)
 			}
 
-			f := directive.ParseFile(parse(t, tt.comment+"\n\npackage repo\n"))
+			f := directive.ParseFile(parse(t, comment+"\n\npackage repo\n"))
 			check("file", f.Problems)
 			if f.HasNamespace || f.Scope.HasScope || len(f.Ignores) != 0 {
 				t.Errorf("file: took effect: %+v", f)
 			}
 
-			check("stray", directive.Stray(&ast.CommentGroup{List: []*ast.Comment{{Text: tt.comment}}}))
+			check("stray", directive.Stray(&ast.CommentGroup{List: []*ast.Comment{{Text: comment}}}))
 		})
 	}
 }
