@@ -136,7 +136,7 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	// Unused directives are reported only once every finding has been seen,
 	// since a type's directive may be used up by one of its members, which is
 	// reached later in the loop above.
-	c.reportUnusedScopeSites(pass)
+	c.reportUnusedScopeSites(pass, opts, widened)
 
 	// Directive hygiene carries a rule like every other check, so that
 	// //declscope:ignore directive can silence one. A report with no rule is
@@ -181,9 +181,10 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 
 	for _, p := range c.problems {
 		pass.Report(analysis.Diagnostic{
-			Pos:      p.Pos,
-			Category: string(rule.Directive),
-			Message:  p.Msg,
+			Pos:            p.Pos,
+			Category:       string(rule.Directive),
+			Message:        p.Msg,
+			SuggestedFixes: p.Fixes,
 		})
 	}
 	if w := c.filterWarning; w != nil {
@@ -315,10 +316,10 @@ func (c *collection) surveyedFindingsForReport(pass *analysis.Pass, opts Options
 // job.
 //
 //declscope:package // the survey's second entry, driven from survey.go
-func (c *collection) surveyedProblemsForReport(pass *analysis.Pass) (measure.Count, measure.Count) {
+func (c *collection) surveyedProblemsForReport(pass *analysis.Pass, opts Options) (measure.Count, measure.Count) {
 	count := measure.Count{Asked: true}
 
-	c.reportUnusedScopeSites(pass)
+	c.reportUnusedScopeSites(pass, opts, nil)
 	count.Found = len(c.problems)
 	c.problems = c.silencedProblemsForReport(pass)
 

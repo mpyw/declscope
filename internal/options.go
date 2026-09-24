@@ -52,6 +52,18 @@ type Options struct {
 	// one where the directive stays and the advice would be to delete it.
 	Surplus rule.SurplusMode
 
+	// Directive says when a scope directive is reported unused. Loose, the
+	// default, reports one only when the scope it names is one the
+	// declarations it reaches would have under every configuration. Strict
+	// also reports one that names the scope they would have without it under
+	// this configuration, and offers to delete it.
+	//
+	// The default is loose: an upgrade must not add reports to a repository
+	// whose config did not change, and under strict a change of
+	// defaults.unexported reports every directive that restates the new
+	// default.
+	Directive rule.DirectiveMode
+
 	// NameExported widens the naming rule to exported declarations. Inside
 	// the package an exported name is read as bare as any other, so the package
 	// qualifier that explains an external use is absent exactly where the
@@ -106,6 +118,7 @@ func DefaultOptions() Options {
 		Qualify:    rule.QualifyModeNever,
 		Boundary:   rule.BoundaryModeOn,
 		Surplus:    rule.SurplusModeLoose,
+		Directive:  rule.DirectiveModeLoose,
 	}
 }
 

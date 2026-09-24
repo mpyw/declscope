@@ -109,11 +109,11 @@ func TestLoadEmptyFile(t *testing.T) {
 func TestLoadRejectsUnknownKey(t *testing.T) {
 	for _, tt := range []struct{ yaml, want string }{
 		{"nonsense: 1\n", `unknown key "nonsense" (this section takes defaults, rules, filter, baseline)`},
-		{"rules:\n  unqualifyy: always\n", `unknown key "rules.unqualifyy" (this section takes naming, boundary, surplus)`},
+		{"rules:\n  unqualifyy: always\n", `unknown key "rules.unqualifyy" (this section takes naming, boundary, surplus, directive)`},
 		// The switches rules.boundary and rules.surplus replaced are refused
 		// the same way, and the message names the keys that replaced them.
-		{"rules:\n  allowBoundary: true\n", `unknown key "rules.allowBoundary" (this section takes naming, boundary, surplus)`},
-		{"rules:\n  allowSurplus: true\n", `unknown key "rules.allowSurplus" (this section takes naming, boundary, surplus)`},
+		{"rules:\n  allowBoundary: true\n", `unknown key "rules.allowBoundary" (this section takes naming, boundary, surplus, directive)`},
+		{"rules:\n  allowSurplus: true\n", `unknown key "rules.allowSurplus" (this section takes naming, boundary, surplus, directive)`},
 		{"rules:\n  naming:\n    unqualifyy: always\n", `unknown key "rules.naming.unqualifyy" (this section takes qualify, exported, vocabulary)`},
 		// The removed rule is refused through the same path as any typo, so a
 		// config written for the release that had it fails loudly rather than
@@ -143,6 +143,7 @@ func TestLoadPassesOtherTypeErrorsThrough(t *testing.T) {
 		"rules:\n  naming:\n    exported: [1, 2]\n", // a list where a bool belongs
 		"rules:\n  boundary: [1, 2]\n",              // a list where a mode belongs
 		"rules:\n  surplus: [1, 2]\n",
+		"rules:\n  directive: [1, 2]\n",
 		"rules:\n  naming:\n    vocabulary: 7\n",
 	} {
 		path := write(t, t.TempDir(), ".declscope.yaml", yaml)
@@ -309,6 +310,63 @@ func TestSurplusModes(t *testing.T) {
 	}
 }
 
+// TestDirectiveModes checks every value of the rules.directive setting, that
+// each spells back the way the config does, and that the default is loose.
+func TestDirectiveModes(t *testing.T) {
+	if got := internal.DefaultOptions().Directive; got != rule.DirectiveModeLoose {
+		t.Errorf("default Directive = %v, want loose", got)
+	}
+	for _, tt := range []struct {
+		value string
+		want  rule.DirectiveMode
+	}{
+		{"loose", rule.DirectiveModeLoose},
+		{"strict", rule.DirectiveModeStrict},
+	} {
+		opts, err := apply(t, "rules:\n  directive: "+tt.value+"\n")
+		if err != nil {
+			t.Fatalf("%q: %v", tt.value, err)
+		}
+		if opts.Directive != tt.want {
+			t.Errorf("%q: Directive = %v, want %v", tt.value, opts.Directive, tt.want)
+		}
+		if got := opts.Directive.String(); got != tt.value {
+			t.Errorf("%q: String() = %q, want the config's own spelling", tt.value, got)
+		}
+		if opts.Surplus != rule.SurplusModeLoose || opts.Boundary != rule.BoundaryModeOn {
+			t.Errorf("%q: rules.directive must switch no other rule", tt.value)
+		}
+	}
+}
+
+// TestDirectiveModeComposes checks that rules.directive composes like every
+// other key: a nested file that states it wins, one that is silent keeps the
+// root's.
+func TestDirectiveModeComposes(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "go.mod", "module example.com/m\n")
+	write(t, root, ".declscope.yaml", "rules:\n  directive: strict\n")
+	silent := filepath.Join(root, "silent")
+	write(t, silent, ".declscope.yaml", "rules:\n  surplus: off\n")
+	stated := filepath.Join(root, "stated")
+	write(t, stated, ".declscope.yaml", "rules:\n  directive: loose\n")
+
+	opts, _, err := config.Resolve(silent, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.Directive != rule.DirectiveModeStrict {
+		t.Errorf("Directive = %v: a nested file that does not state it should keep the root's", opts.Directive)
+	}
+	opts, _, err = config.Resolve(stated, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.Directive != rule.DirectiveModeLoose {
+		t.Errorf("Directive = %v: a nested file that states it should win", opts.Directive)
+	}
+}
+
 // TestBoolSettings checks both values of every boolean setting.
 func TestBoolSettings(t *testing.T) {
 	tests := []struct {
@@ -376,6 +434,14 @@ func TestApplyRejectsUnknownMode(t *testing.T) {
 			`rules.surplus: unknown mode "ondemand" (want off, loose or strict)`},
 		{"rules:\n  surplus: true\n",
 			`rules.surplus: unknown mode "true" (want off, loose or strict)`},
+		// rules.directive has no off: the rule also carries the malformed and
+		// conflicting directive reports, which must not be silenced wholesale.
+		{"rules:\n  directive: off\n",
+			`rules.directive: unknown mode "off" (want loose or strict)`},
+		{"rules:\n  directive: ondemand\n",
+			`rules.directive: unknown mode "ondemand" (want loose or strict)`},
+		{"rules:\n  directive: false\n",
+			`rules.directive: unknown mode "false" (want loose or strict)`},
 	}
 	for _, tt := range tests {
 		_, err := apply(t, tt.yaml)

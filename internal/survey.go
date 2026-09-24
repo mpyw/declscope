@@ -54,7 +54,7 @@ func (c *collection) surveyed(pass *analysis.Pass, opts Options) measure.Package
 
 	// The directive and filter rules are settled once every other finding has
 	// been seen, exactly as the report settles them.
-	out.Findings[rule.Directive], out.Findings[rule.Filter] = c.surveyedProblemsForReport(pass)
+	out.Findings[rule.Directive], out.Findings[rule.Filter] = c.surveyedProblemsForReport(pass, opts)
 
 	out.Namespaces, out.AllCore = namespacesForSurvey(pass, c, opts)
 	return out.Sorted()

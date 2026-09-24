@@ -15,9 +15,11 @@
 //	      mouse: [wheel]
 //	  boundary: on          # off | on (off stops checking reach, leaving only the naming rule)
 //	  surplus: loose        # off | loose | strict
+//	  directive: loose      # loose | strict
 //
 // rules.naming.qualify reads an rule.QualifyMode; rules.boundary reads an
 // rule.BoundaryMode; rules.surplus reads an rule.SurplusMode;
+// rules.directive reads an rule.DirectiveMode;
 // rules.naming.exported is true/false; rules.naming.vocabulary maps a
 // namespace to the extra words that satisfy the naming rule for it.
 //
@@ -61,6 +63,10 @@ var boundaryModes = rule.BoundaryModeSet{rule.BoundaryModeOff, rule.BoundaryMode
 // The values rules.surplus accepts, from reporting least to most.
 var surplusModes = rule.SurplusModeSet{rule.SurplusModeOff, rule.SurplusModeLoose, rule.SurplusModeStrict}
 
+// The values rules.directive accepts, from reporting least to most. There is
+// no off: the rule also reports malformed and conflicting directives.
+var directiveModes = rule.DirectiveModeSet{rule.DirectiveModeLoose, rule.DirectiveModeStrict}
+
 // boolSetting is a true/false key, with its own error naming the two values it
 // takes rather than the parser's "cannot unmarshal".
 type boolSetting struct {
@@ -102,6 +108,11 @@ type rulesSection struct {
 	// Surplus says how much the surplus rule reports: off, loose or strict.
 	// A mode rather than a switch, so the key spells the rule's own name.
 	Surplus string `yaml:"surplus"`
+
+	// Directive says when a scope directive counts as unused: loose or
+	// strict. A mode rather than a switch, so the key spells the rule's own
+	// name.
+	Directive string `yaml:"directive"`
 }
 
 // namingSection holds the naming rule and its reach. exported decides which
@@ -459,6 +470,13 @@ func (f *File) Apply(opts *internal.Options) error {
 			return fmt.Errorf("rules.surplus: unknown mode %q (want %s)", f.Rules.Surplus, surplusModes)
 		}
 		opts.Surplus = m
+	}
+	if f.Rules.Directive != "" {
+		m, ok := directiveModes.Parse(f.Rules.Directive)
+		if !ok {
+			return fmt.Errorf("rules.directive: unknown mode %q (want %s)", f.Rules.Directive, directiveModes)
+		}
+		opts.Directive = m
 	}
 	// only intersects and omit unions, so each stating file adds to what is
 	// already there rather than replacing it. A config file can narrow what is

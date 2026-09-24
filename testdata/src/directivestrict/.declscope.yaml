@@ -1,0 +1,5 @@
+rules:
+  directive: strict
+  # surplus would report the package directives kept here as widening for
+  # nothing; this package is about the directive rule alone.
+  surplus: off

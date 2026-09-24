@@ -214,3 +214,64 @@ func (s BoundaryModeSet) String() string {
 	}
 	return modeJoin(names)
 }
+
+// DirectiveMode says when the directive rule calls a scope directive unused:
+// only when no configuration could make it bind, or also when it names the
+// scope the declaration would have without it under this one. Only
+// rules.directive reads one.
+//
+// There is no off. The rule also reports malformed, unknown, conflicting and
+// misplaced directives, which a switch would silence along with the rest;
+// //declscope:ignore directive answers one case at a time.
+type DirectiveMode int
+
+const (
+	// DirectiveModeLoose reports a scope directive only when the scope it
+	// names is one every declaration it reaches would have under every
+	// configuration. It is the default.
+	DirectiveModeLoose DirectiveMode = iota
+
+	// DirectiveModeStrict also reports a scope directive that names, for
+	// everything it reaches, the scope that declaration would have without it
+	// under the configuration in force, and offers to delete it.
+	DirectiveModeStrict
+)
+
+// String returns the spelling the settings use.
+func (m DirectiveMode) String() string {
+	switch m {
+	case DirectiveModeLoose:
+		return "loose"
+	case DirectiveModeStrict:
+		return "strict"
+	default:
+		return "unknown"
+	}
+}
+
+// ReportsRedundant reports whether a directive restating the scope the
+// configuration already gives is reported.
+func (m DirectiveMode) ReportsRedundant() bool { return m == DirectiveModeStrict }
+
+// DirectiveModeSet is the values rules.directive accepts, in the order an
+// error message names them.
+type DirectiveModeSet []DirectiveMode
+
+// Parse reads a setting's value, of the members of the set only.
+func (s DirectiveModeSet) Parse(value string) (DirectiveMode, bool) {
+	for _, m := range s {
+		if value == m.String() {
+			return m, true
+		}
+	}
+	return 0, false
+}
+
+// String lists the accepted spellings: "loose or strict".
+func (s DirectiveModeSet) String() string {
+	names := make([]string, len(s))
+	for i, m := range s {
+		names[i] = m.String()
+	}
+	return modeJoin(names)
+}

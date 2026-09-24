@@ -99,9 +99,37 @@ func TestQualifyModeSetString(t *testing.T) {
 // TestModeStringUnknown pins what a value outside every mode spells, so that
 // a mode added without its spelling reads as a bug rather than as a setting.
 func TestModeStringUnknown(t *testing.T) {
-	for _, got := range []string{QualifyMode(-1).String(), SurplusMode(-1).String(), BoundaryMode(-1).String()} {
+	for _, got := range []string{QualifyMode(-1).String(), SurplusMode(-1).String(), BoundaryMode(-1).String(), DirectiveMode(-1).String()} {
 		if got != "unknown" {
 			t.Errorf("String() = %q, want unknown", got)
 		}
+	}
+}
+
+// TestDirectiveMode pins the spelling of each rules.directive value, that it
+// parses back, and that only strict reports a redundant directive.
+func TestDirectiveMode(t *testing.T) {
+	all := DirectiveModeSet{DirectiveModeLoose, DirectiveModeStrict}
+	for m, want := range map[DirectiveMode]string{
+		DirectiveModeLoose:  "loose",
+		DirectiveModeStrict: "strict",
+	} {
+		if got := m.String(); got != want {
+			t.Errorf("String() = %q, want %q", got, want)
+		}
+		if back, ok := all.Parse(want); !ok || back != m {
+			t.Errorf("Parse(%q) = %v, %v; want %v", want, back, ok, m)
+		}
+		if got := m.ReportsRedundant(); got != (m == DirectiveModeStrict) {
+			t.Errorf("%v.ReportsRedundant() = %v", m, got)
+		}
+	}
+	for _, v := range []string{"off", "on", "", "true"} {
+		if _, ok := all.Parse(v); ok {
+			t.Errorf("Parse(%q) accepted a value rules.directive does not take", v)
+		}
+	}
+	if got := all.String(); got != "loose or strict" {
+		t.Errorf("String() = %q, want %q", got, "loose or strict")
 	}
 }

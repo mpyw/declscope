@@ -27,6 +27,10 @@ import (
 // default leaves off.
 const strictConfig = "rules:\n  surplus: strict\n"
 
+// directiveStrictConfig puts the directive rule's strict judgment in force,
+// whose fix deletes a directive that restates the scope in force.
+const directiveStrictConfig = "rules:\n  directive: strict\n"
+
 type fixCase struct {
 	name   string
 	config string
@@ -167,6 +171,82 @@ var fixCases = []fixCase{
 				"func userCount(i item) int { return i.count }\n\nvar _ = userCount\n",
 			"order.go":     "package x\n\nfunc orderRun(i item) int { return i.shared }\n\nvar _ = orderRun\n",
 			"user_test.go": "package x\n\nimport \"testing\"\n\nfunc TestItem(t *testing.T) {\n\tif userCount(item{count: 1}) != 1 {\n\t\tt.Fatal(\"no\")\n\t}\n}\n",
+		},
+	},
+
+	// rules.directive: strict deletes a directive naming the scope its
+	// declarations would have without it. Deleting several in one run must
+	// leave every scope where it was, and change no other report.
+	{
+		name:   "redundant directives at every level, under directive strict",
+		config: directiveStrictConfig,
+		files: map[string]string{
+			"user.go": "//declscope:private\n\npackage x\n\n// userDoc is documented.\n//\n//declscope:private\nfunc userDoc() int { return 1 }\n\n" +
+				"//declscope:private\ntype userShape struct {\n\t//declscope:private\n\tside int\n\tedge int //declscope:private\n}\n\n" +
+				"//declscope:private\nvar (\n\t//declscope:private\n\tuserSeed = 1\n\tuserLimit = 2\n)\n\n" +
+				"var _ = userDoc() + userShape{}.side + userShape{}.edge + userSeed + userLimit\n",
+			"order.go": "package x\n\nfunc OrderRun() int { return 1 }\n",
+		},
+	},
+	{
+		// The spec's private narrows its block's package, so it is kept, and
+		// the file's private, which the spec's shadows, is judged against it.
+		name:   "a spec narrowing its block, under directive strict",
+		config: directiveStrictConfig,
+		files: map[string]string{
+			"user.go": "//declscope:private\n\npackage x\n\n//declscope:package\nvar (\n\t//declscope:private\n\tuserA = 1\n)\n\nvar _ = userA\n",
+		},
+	},
+	{
+		// A redundant directive on a declaration used elsewhere keeps it: the
+		// boundary report names the level that decided.
+		name:   "a redundant directive on a crossing declaration, under directive strict",
+		config: directiveStrictConfig,
+		files: map[string]string{
+			"user.go":  "package x\n\n//declscope:private\nfunc userShared() int { return 1 }\n\n//declscope:private\ntype userBox struct {\n\tn int\n}\n",
+			"order.go": "package x\n\nfunc OrderRun() int { return userShared() + userBox{}.n }\n",
+		},
+	},
+	{
+		// The boundary fix widens the type, so the field would take the new
+		// directive if its own were deleted in the same run, and surplus
+		// strict would report it widened for nothing.
+		name:   "a field's redundant directive under a type the boundary fix widens, under directive strict",
+		config: "rules:\n  directive: strict\n  surplus: strict\n",
+		files: map[string]string{
+			"user.go":  "package x\n\ntype entry struct {\n\t//declscope:private\n\tkey string\n}\n\nfunc userKey(e entry) string { return e.key }\n\nvar _ = userKey\n",
+			"order.go": "package x\n\nfunc OrderRun() entry { return entry{} }\n",
+		},
+	},
+	{
+		// Every spec overrides the block, whose report an ignore answers. One
+		// spec restates the block, and deleting its directive would hand the
+		// spec to the block, which would bind, and leave the ignore unused.
+		name:   "a block every spec overrides, under directive strict",
+		config: directiveStrictConfig,
+		files: map[string]string{
+			"user.go": "package x\n\n//declscope:private\n//declscope:ignore directive\nvar (\n\t//declscope:private\n\tuserA = 1\n\t//declscope:package\n\tUserB = 2\n)\n\nvar _ = userA\n",
+		},
+	},
+	{
+		// Under the package default surplus reports the same directive; the
+		// deletion settles both. Where an ignore answers surplus, the fix is
+		// withheld, or the ignore would be left answering nothing.
+		name:   "a package directive restating the package default, under directive strict",
+		config: "defaults:\n  unexported: package\nrules:\n  directive: strict\n",
+		files: map[string]string{
+			"user.go": "package x\n\n//declscope:package\nfunc userHelper() int { return 1 }\n\n" +
+				"//declscope:package\n//declscope:ignore surplus\nfunc userQuiet() int { return 2 }\n\nvar _ = userHelper() + userQuiet()\n",
+		},
+	},
+	{
+		// Deleting the member's directive would make it a dependent of the
+		// file's, which surplus strict judges one declaration at a time.
+		name:   "a package directive restating the file's, under directive and surplus strict",
+		config: "rules:\n  directive: strict\n  surplus: strict\n",
+		files: map[string]string{
+			"user.go":  "//declscope:package\n\npackage x\n\nfunc userShared() int { return 1 }\n\n//declscope:package\nfunc userLocal() int { return 2 }\n\nvar _ = userLocal()\n",
+			"order.go": "package x\n\nfunc OrderRun() int { return userShared() }\n",
 		},
 	},
 

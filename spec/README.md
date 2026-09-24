@@ -44,6 +44,8 @@ the binary.
 | `knobs.fsl` | A reference from inside the namespace never crosses a boundary | As above |
 | `directive_effect.fsl` | A scope directive is used when anything in its reach binds to it, and reported when nothing does | Every combination of stated scope, enclosing directive, `defaults.unexported`, target presence and exportedness, and two enclosed declarations by exportedness and shadowing |
 | `directive_effect.fsl` | Binding is quantified over configurations *and* over enclosing directives — so restating the default of the day never counts, and `//declscope:package` under an enclosing `private` always does | As above |
+| `directive_strict.fsl` | Under `rules.directive: strict` a scope directive is also reported when everything it reaches, shadowed or not, would have the scope it names without it under the configuration in force. `loose` reports exactly what `directive_effect.fsl` does, and `strict` keeps every `loose` report | Every combination of `rules.directive`, stated scope, `defaults.unexported`, a declaration taking the directive's scope and one a nearer directive shadows, each by exportedness and next level out, and the four reasons the fix is withheld |
+| `directive_strict.fsl` | The fix that deletes the directive leaves the declaration's scope where it was, and leaves the nearer directive judged against the scope it was judged against. It is offered only under `strict`, and never where it would change another report | As above |
 | `knobs.fsl` | A boundary is reported only for a private scope and only across a namespace, and on an exported declaration only where a directive narrowed it — each guard witnessed by an invariant its removal breaks | As above |
 | `naming_rules.fsl` | A fix is eventually applied wherever one is offered, which is what the `fair` on the fix actions claims | As above, plus whether a rename is offered at all |
 | `rename_guarded.fsl` | The guard `renameSafe` applies — every scope Go resolves through — makes the rename sound, and dropping any one of the four checks breaks it | Every binding environment at the reference site |
@@ -110,7 +112,7 @@ step and needs gigabytes for the same claims these prove in single-digit
 megabytes.
 
 ```console
-./spec/verify.sh     # what CI runs: thirteen proved, two violated
+./spec/verify.sh     # what CI runs: fourteen proved, two violated
 ```
 
 Or one at a time:
@@ -126,6 +128,7 @@ fslc verify boundary_fix.fsl     --depth 4
 fslc verify fix_members.fsl      --depth 4
 fslc verify knobs.fsl            --depth 4
 fslc verify directive_effect.fsl --depth 4
+fslc verify directive_strict.fsl --depth 6
 fslc verify rename_guarded.fsl   --depth 4
 fslc verify rename_reach.fsl     --depth 3
 fslc verify surplus.fsl         --depth 2
@@ -138,12 +141,14 @@ fslc verify rename_siblings.fsl  --depth 3   # expected: violated
 have only the actions that record a report, so their reachables are witnessed at
 step 1 or 2; the others add a fix action and witness at step 2.
 `surplus_strict.fsl` configures in two steps, so that no one action carries the
-product of every parameter, and witnesses by step 4. The deadlock warning a bounded
+product of every parameter, and witnesses by step 4. `directive_strict.fsl`
+configures in four steps for the same reason, judges, and fixes, so it witnesses
+by step 6. The deadlock warning a bounded
 run prints is the shape of the model, not a failure, and `rename_guarded.fsl`
 also reports a vacuous antecedent — which is the guard working, and is stated as
 `NothingResolvedNewName` rather than left as a warning.
 
-The thirteen that pass are `proved` under `--engine induction`, which is what
+The fourteen that pass are `proved` under `--engine induction`, which is what
 `verify.sh` and CI assert. Bounded verification alone would let an invariant be
 true to a depth without being inductive, and reading the exit code alone would
 let a spec that stopped parsing pass as "violated, as intended" — `fslc` exits
@@ -194,6 +199,11 @@ is a semantics that contradicts the documented one; each was run:
 | `strict` narrows a type one of whose members is reached | `violated` (`NeverNarrowsAReachedMember`) |
 | `strict` reports a member of a type it already narrows | `violated` (`NeverRepeatsTheOwnersFinding`) |
 | The `strict` fix is offered where it would leave the directive binding nothing | `violated` (`FixKeepsTheDirectiveBound`) |
+| `strict` ignores the declarations a nearer directive shadows | `violated` (`StrictAddsOnlyRedundant`) |
+| The `strict` fix is offered on a declaration another namespace uses | `violated` (`FixKeepsOtherReports`) |
+| `strict` keeps `loose`'s quantifier over configurations | `reachable_failed` |
+| `strict` reports under `loose` | `violated` (`LooseIsDirectiveEffect`) |
+| `strict` drops the reports `loose` makes | `violated` (`LooseIsDirectiveEffect`) |
 | `rules.boundary: off` is wired into `surplus` as well | `reachable_failed` (`SurplusFiresWhileBoundaryOff`) |
 | `rules.boundary: off` is wired into `qualify` as well | `reachable_failed` (`QualifyFiresWhileBoundaryOff`) |
 | The `rules.boundary` gate is dropped from the boundary report | `violated` (`BoundarySilencedWhenOff`) |

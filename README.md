@@ -244,6 +244,7 @@ rules:
       mouse: [wheel]
   boundary: on           # off | on
   surplus: loose         # off | loose | strict
+  directive: loose       # loose | strict
 
 filter:
   only: []              # nothing outside these, when set
@@ -261,6 +262,7 @@ baseline: .declscope-baseline.yaml
 | `rules.naming.vocabulary` | Namespace to a list of words | None | Extra words that carry a namespace. See [what carries a namespace](#what-carries-a-namespace) |
 | `rules.boundary` | `off`, `on` | `on` | Whether the [`boundary`](#boundary) rule reports. See [reach without a boundary](#reach-without-a-boundary) |
 | `rules.surplus` | `off`, `loose`, `strict` | `loose` | How much the [`surplus`](#surplus) rule reports. See [strict](#strict) |
+| `rules.directive` | `loose`, `strict` | `loose` | When the [`directive`](#unused-and-malformed-directives) rule calls a scope directive unused. See [loose and strict](#loose-and-strict) |
 | `filter.only` | Path globs | None | When set, no file outside them is read. Empty places no restriction |
 | `filter.omit` | Path globs | None | Files taken back out, whether or not `only` let them through |
 | `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` | The [baseline](#adopting-on-an-existing-codebase) to consult |
@@ -401,6 +403,45 @@ A **scope** directive binds a declaration when the scope it names is one the dec
 
 Because the test covers every configuration, a directive that names today's default is never reported. One line of `.declscope.yaml` never turns into hundreds of diagnostics.
 
+#### Loose and strict
+
+`rules.directive` decides how far that test goes. It has no `off`. The rule also reports malformed and conflicting directives, and those must stay visible.
+
+| `rules.directive` | A scope directive is unused when | Fix |
+| --- | --- | --- |
+| `loose` (default) | No configuration could make it bind | None |
+| `strict` | Also, every declaration it reaches would have the scope it names without it, under the configuration in force | Delete the directive |
+
+Under `strict`, the scope a declaration would have without the directive comes from the same resolution as always. That is the enclosing type's directive for a field, the block's for a spec, then the file's, then exportedness, then `defaults.unexported`.
+
+```go
+type implicit struct {
+	//declscope:private
+	x int
+}
+```
+
+```text
+unused //declscope:private on implicit.x: it already has private scope
+```
+
+`loose` says nothing here, because `defaults.unexported: package` would make the directive bind. `strict` reports it under the default `private`, and `-fix` deletes the line.
+
+A declaration that a nearer directive overrides is judged too. Deleting the outer directive must leave the nearer one as it was. So the outer directive stays when that declaration would take another scope without it.
+
+`-fix` deletes the line, and the bare `//` above it when that line only separated it from a doc comment. The fix is withheld, and the report kept, where deleting the directive would change another report:
+
+| Situation | Why the fix is withheld |
+| --- | --- |
+| Another namespace uses a declaration that takes the directive's scope | The [`boundary`](#boundary) message names the level that decided, and that level would move |
+| A field, when the boundary fix widens its type in the same run | The field would take the type's new directive |
+| A `//declscope:package` that restates an enclosing one, while [`surplus`](#surplus) is on | The declaration would become the enclosing directive's dependent |
+| A `//declscope:package` under an ignore for `surplus` | The ignore would be left answering nothing |
+| The next level out is a directive that keeps its own report | That report would change |
+
+> [!WARNING]
+> Under `strict`, a change of `defaults.unexported` is a change to the reports. Switching the default to `package` reports every `//declscope:package` on an unexported declaration that nothing else widens. One `-fix` run deletes them. `loose` exists so that the default can change without touching the tree.
+
 Accounting is **per physical directive**. One written on a `var (...)` block counts as used as soon as any spec needed it, and is reported once when none did.
 
 These reports carry the `directive` rule, so `//declscope:ignore directive` silences one. A bare `//declscope:ignore` covers it at the file level, but not on the declaration carrying it. An ignore must not exempt itself from the report written to catch it.
@@ -416,6 +457,8 @@ These reports carry the `directive` rule, so `//declscope:ignore directive` sile
 | `unused //declscope:package: every declaration it reaches states its own scope` | A block's directive that every spec overrode |
 | `unused //declscope:package on Helper: nothing it reaches takes a scope` | Everything it reaches is exported |
 | `unused file-level //declscope:package` | Every declaration in the file states its own scope, or is out of the subject |
+| `unused //declscope:private on implicit.x: it already has private scope` | Under `strict`, it names the scope the declaration would have without it |
+| `unused file-level //declscope:private: every declaration it reaches already has private scope` | Under `strict`, the same for everything in the file |
 
 </details>
 
@@ -611,7 +654,7 @@ A **rule** is one check. A rule's name is the diagnostic's category, its [baseli
 | [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:package` | `rules.boundary` | `on` |
 | [`qualify`](#the-naming-rule) | A name that does not carry its namespace | Rename to prefix it | `rules.naming.*` | Off |
 | [`surplus`](#surplus) | Package scope with no visible use from another namespace | Under `strict`, insert `//declscope:private` | `rules.surplus` | `loose` |
-| [`directive`](#unused-and-malformed-directives) | A directive that binds nothing, or is malformed | None | No | On |
+| [`directive`](#unused-and-malformed-directives) | A directive that binds nothing, or is malformed | Under `strict`, delete a redundant scope directive | `rules.directive` | `loose` |
 | [`filter`](#the-filter-rule) | A `filter.only` that an `only` above it cancels | None | No | On |
 
 Every diagnostic carries **at most one** fix, so `-fix` never has to choose.

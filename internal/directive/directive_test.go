@@ -184,6 +184,25 @@ func TestMerge(t *testing.T) {
 	}
 }
 
+// TestMergeKeepsBeneath pins that the block's scope directive a spec replaces
+// is kept beneath the spec's: the strict directive rule asks what the spec
+// would take if its own directive were deleted.
+func TestMergeKeepsBeneath(t *testing.T) {
+	outer := directive.Decl{Scope: scope.PackageInternal, HasScope: true, ScopePos: 10}
+	inner := directive.Decl{Scope: scope.Private, HasScope: true, ScopePos: 20}
+
+	got := outer.Merge(inner).BeneathScope()
+	if !got.HasScope || got.Scope != scope.PackageInternal || got.ScopePos != 10 {
+		t.Errorf("BeneathScope() = %+v, want the block's directive", got)
+	}
+	if got := outer.Merge(directive.Decl{}).BeneathScope(); got.HasScope {
+		t.Errorf("a spec with no directive replaces nothing, got %+v", got)
+	}
+	if got := (directive.Decl{}).Merge(inner).BeneathScope(); got.HasScope {
+		t.Errorf("a block with no directive leaves nothing beneath, got %+v", got)
+	}
+}
+
 // TestMergeAccumulatesIgnores pins the half of Merge that differs from scope:
 // ignores are unioned, not replaced, so a narrower directive on a spec cannot
 // silently re-enable a rule the enclosing block turned off. The README and

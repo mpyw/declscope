@@ -99,3 +99,13 @@ func TestSuggestedFixMembers(t *testing.T) {
 func TestSuggestedFixSurplusStrict(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixsurplusstrict")
 }
+
+// TestSuggestedFixDirectiveStrict checks the fix rules.directive: strict
+// offers: it deletes the redundant directive, whether it stands on its own
+// line or trails a field, with the bare // that separated it from a doc
+// comment, and with the blank line after a file-level one. A directive on a
+// declaration another namespace uses is reported without a fix, so that file
+// takes no edit.
+func TestSuggestedFixDirectiveStrict(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixdirectivestrict")
+}

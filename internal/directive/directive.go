@@ -76,6 +76,8 @@ import (
 	"slices"
 	"strings"
 
+	"golang.org/x/tools/go/analysis"
+
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
@@ -83,10 +85,15 @@ import (
 // tool is the tool part of a declscope directive, //tool:name args.
 const tool = "declscope"
 
-// Problem is a malformed or contradictory directive.
+// Problem is a malformed or contradictory directive, or one that decides
+// nothing.
 type Problem struct {
 	Pos token.Pos
 	Msg string
+
+	// Fixes is at most one suggested fix. Only a redundant scope directive
+	// under rules.directive: strict carries one, which deletes it.
+	Fixes []analysis.SuggestedFix
 }
 
 // Ignore is one ignore directive. An empty Rules silences every rule.
@@ -121,6 +128,20 @@ type Decl struct {
 	Ignores []Ignore
 
 	Problems []Problem
+
+	// Beneath is the scope directive Merge replaced: a block's, when the spec
+	// states its own. Resolution never reads it, since the spec's wins. It is
+	// kept for the one question that does: what the spec would take if its
+	// own directive were deleted.
+	Beneath *Decl
+}
+
+// BeneathScope returns the scope directive Merge replaced, or the zero Decl.
+func (d Decl) BeneathScope() Decl {
+	if d.Beneath == nil {
+		return Decl{}
+	}
+	return *d.Beneath
 }
 
 // Merge layers a more specific Decl over a broader one, as for a spec inside a
@@ -131,6 +152,9 @@ type Decl struct {
 func (d Decl) Merge(inner Decl) Decl {
 	out := d
 	if inner.HasScope {
+		if d.HasScope {
+			out.Beneath = &Decl{Scope: d.Scope, HasScope: true, ScopePos: d.ScopePos}
+		}
 		out.Scope, out.HasScope, out.ScopePos = inner.Scope, true, inner.ScopePos
 	}
 	out.Ignores = append(append([]Ignore(nil), d.Ignores...), inner.Ignores...)

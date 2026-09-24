@@ -30,8 +30,6 @@ type ignoreBook struct {
 // is judged once: unused only if it silencedByIgnore nothing for any of them. Judged
 // per target, it would be reported unused whenever any sibling did not need
 // it, and a wholly unused one would be reported once per sibling.
-//
-//declscope:private // only site hands it out, and no caller spells the type
 type ignoreSite struct {
 	ig directive.Ignore
 	// decls names the declarations the directive reaches, in source order,

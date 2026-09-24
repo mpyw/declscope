@@ -72,8 +72,6 @@ type surplusBook struct {
 }
 
 // surplusDeclaration is one strict finding.
-//
-//declscope:private // only the computation below hands it out
 type surplusDeclaration struct {
 	msg   string
 	fixed bool
@@ -96,8 +94,6 @@ type surplusDeclaration struct {
 // evidence is gathered on the first question, never before: a package with
 // no //declscope:package asks none under loose, and interface satisfaction
 // is the costly part of it.
-//
-//declscope:private // only the computation below hands it out
 type surplusState struct {
 	pass      *analysis.Pass
 	findings  map[*target]string

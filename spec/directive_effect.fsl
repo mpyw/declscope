@@ -10,6 +10,8 @@
 //   - Read off the current configuration instead, and one line of YAML flips
 //     every directive in a tree, and recording a deliberate `private` becomes
 //     an error.
+//     rules.directive: strict makes that trade on purpose, and
+//     directive_strict.fsl models it beside this one.
 //   - Ask only whether the name is exported, and //declscope:package under an
 //     enclosing `private` — the one thing that widens an exported declaration
 //     back — is called inert, so a codebase can narrow and never widen again.

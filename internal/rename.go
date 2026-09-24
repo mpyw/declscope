@@ -29,8 +29,6 @@ type renameBook struct {
 // already claimed, and whether the package has test files this pass cannot
 // see. Everything but the reservation set is derived lazily, since most passes
 // offer no rename at all.
-//
-//declscope:private // renameBook's field spells it here, and no other file touches it
 type renameState struct {
 	// reserved holds every new name a fix emitted in this pass has claimed.
 	// Fixes are generated from one pre-fix state and cannot see each other,

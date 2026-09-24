@@ -452,3 +452,28 @@ func TestSurplusStrictOpaqueSource(t *testing.T) {
 func TestSurplusStrictBaseline(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusstrictbaselined")
 }
+
+// TestDirectiveLoose checks the default rules.directive: a scope directive
+// naming the scope defaults.unexported gives today is kept, since another
+// configuration could make it bind, and one restating an enclosing directive
+// is reported as before.
+func TestDirectiveLoose(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "directiveloose")
+}
+
+// TestDirectiveStrict checks rules.directive: strict under the private
+// default. A directive naming the scope its declarations would have without
+// it is reported, at the field, type, block, spec and file levels, and one
+// that widens, narrows, or is overridden to another effect is not. A block's
+// directive judged only through the specs that override it is reported when
+// they agree with it.
+func TestDirectiveStrict(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "directivestrict")
+}
+
+// TestDirectiveStrictPackageDefault checks strict under defaults.unexported:
+// package, where the same private field binds and a package directive on an
+// unexported declaration is the redundant one.
+func TestDirectiveStrictPackageDefault(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "directivestrictpkg")
+}
