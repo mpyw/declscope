@@ -198,3 +198,32 @@ func TestCoreNamespaceRoundTrips(t *testing.T) {
 		t.Error("a namespace named core is not the core namespace")
 	}
 }
+
+// TestLoadReportsAnUnreadableFile checks that only a missing file reads as an
+// empty baseline. One that exists and cannot be read is an error, or a
+// baseline that suppressed everything would silently suppress nothing.
+func TestLoadReportsAnUnreadableFile(t *testing.T) {
+	if _, err := baseline.Load(t.TempDir()); err == nil {
+		t.Error("loading a directory as a baseline succeeded, want an error")
+	}
+}
+
+// TestSaveReportsWhereItCannotWrite checks both ways a write can fail: the
+// directory cannot be made, because a file stands where it would go, or the
+// path itself is a directory.
+func TestSaveReportsWhereItCannotWrite(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "file")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	keys := []baseline.Key{{Package: "p", Rule: "boundary", Namespace: "user", Decl: "helper"}}
+	for name, path := range map[string]string{
+		"a file in the way of the directory": filepath.Join(blocker, "sub", ".declscope-baseline.yaml"),
+		"a directory at the path":            dir,
+	} {
+		if _, err := baseline.Save(path, keys); err == nil {
+			t.Errorf("%s: Save succeeded, want an error", name)
+		}
+	}
+}
