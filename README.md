@@ -467,16 +467,14 @@ user.go:4:1: unused //declscope:private on normalize: it already has private sco
 user.go:7:1: unused //declscope:private on trim: it already has private scope
 ```
 
-After `-fix`:
+`-fix` changes `user.go`:
 
-```go
-// user.go
-package app
-
-//declscope:private
-func normalize() {}
-
-func trim() {}
+```diff
+ //declscope:private
+ func normalize() {}
+ 
+-//declscope:private
+ func trim() {}
 ```
 
 Both directives are reported. Only `trim`'s is deleted. The [`boundary`](#boundary) report on `normalize` names its directive, so deleting it would change that report. There the fix is **withheld**: the report stays, with no fix.
@@ -1033,15 +1031,16 @@ $ declscope ./...
 account.go:7:2: field account.balance takes package scope from //declscope:package on account, but no use from another namespace is visible to declscope
 ```
 
-After `-fix`:
+`-fix` changes `account.go`:
 
-```go
-//declscope:package
-type account struct {
-	id int
-	//declscope:private
-	balance int
-}
+```diff
+ //declscope:package
+ type account struct {
+-	id      int
++	id int
++	//declscope:private
+ 	balance int
+ }
 ```
 
 Every enclosing directive is judged the same way.
