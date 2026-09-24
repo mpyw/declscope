@@ -262,7 +262,6 @@ func (c *collection) reportUnusedScopeSites(pass *analysis.Pass, opts Options, w
 	strict := opts.Directive.ReportsRedundant()
 	unused := func(s *scopeSite) bool { return !s.bound || strict && s.redundant() }
 	sites := make([]*scopeSite, 0, len(c.scopes))
-	silenced := make(map[*scopeSite]bool)
 	for _, s := range c.scopes {
 		if !unused(s) {
 			continue
@@ -271,7 +270,6 @@ func (c *collection) reportUnusedScopeSites(pass *analysis.Pass, opts Options, w
 		// that carries it: the scope directive and the ignore were written on
 		// the same declaration, so the author already answered.
 		if c.ignored(s.dir.Ignores, rule.Directive) {
-			silenced[s] = true
 			continue
 		}
 		sites = append(sites, s)
@@ -281,7 +279,7 @@ func (c *collection) reportUnusedScopeSites(pass *analysis.Pass, opts Options, w
 	})
 	var removals *scopesiteRemovals
 	if strict {
-		removals = &scopesiteRemovals{c: c, pass: pass, opts: opts, widened: widened, unused: unused, silenced: silenced}
+		removals = &scopesiteRemovals{c: c, pass: pass, opts: opts, widened: widened, unused: unused}
 	}
 	for _, s := range sites {
 		var msg string
@@ -354,14 +352,13 @@ func redundantMessageOfScopeSite(s *scopeSite) string {
 //     with in-package tests, or a file the build excludes. A crossing may sit
 //     where it cannot look, and the driver applies what any variant offers.
 type scopesiteRemovals struct {
-	c        *collection
-	pass     *analysis.Pass
-	opts     Options
-	widened  map[types.Object]bool
-	unused   func(*scopeSite) bool
-	silenced map[*scopeSite]bool
-	takers   map[token.Pos][]*target
-	memo     map[*scopeSite]bool
+	c       *collection
+	pass    *analysis.Pass
+	opts    Options
+	widened map[types.Object]bool
+	unused  func(*scopeSite) bool
+	takers  map[token.Pos][]*target
+	memo    map[*scopeSite]bool
 }
 
 // fix returns the deletion for a strict report, when it may be offered.
@@ -403,7 +400,11 @@ func (r *scopesiteRemovals) fixable(s *scopeSite) bool {
 }
 
 func (r *scopesiteRemovals) decide(s *scopeSite) bool {
-	if !s.redundant() || r.silenced[s] {
+	// Only an outer directive can fail this: loose may be what reports it.
+	// One an ignore answers is judged like any other. If it is redundant it
+	// stays redundant, and answered, once it gains a declaration, so nothing
+	// shows; if it is not, this withholds.
+	if !s.redundant() {
 		return false
 	}
 	// A pass that does not read every file cannot see every crossing, and the

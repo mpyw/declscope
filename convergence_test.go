@@ -219,13 +219,23 @@ var fixCases = []fixCase{
 		},
 	},
 	{
-		// Every spec overrides the block, whose report an ignore answers. One
-		// spec restates the block, and deleting its directive would hand the
-		// spec to the block, which would bind, and leave the ignore unused.
+		// Every spec overrides the block, whose report an ignore answers.
+		// userA's directive restates the block and is deleted. The block then
+		// binds userA, but is still redundant and still answered.
 		name:   "a block every spec overrides, under directive strict",
 		config: directiveStrictConfig,
 		files: map[string]string{
 			"user.go": "package x\n\n//declscope:private\n//declscope:ignore directive\nvar (\n\t//declscope:private\n\tuserA = 1\n\t//declscope:package\n\tUserB = 2\n)\n\nvar _ = userA\n",
+		},
+	},
+	{
+		// The block narrows UserA, so it is not redundant, and a bare ignore
+		// answers its loose report. Deleting UserA's directive would make the
+		// block bind, and leave the ignore answering nothing.
+		name:   "a spec restating a block a bare ignore answers, under directive strict",
+		config: directiveStrictConfig,
+		files: map[string]string{
+			"user.go": "package x\n\n//declscope:private\n//declscope:ignore\nvar (\n\t//declscope:private\n\tUserA = 1\n)\n",
 		},
 	},
 	{
