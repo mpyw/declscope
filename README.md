@@ -521,6 +521,11 @@ declscope reports nothing here. For `seed`, the block's `//declscope:private` re
 
 #### Silencing an unused report
 
+Write `//declscope:ignore unused` on the declaration that carries the directive, or above the package clause for the whole file. An ignore on a type or a block does not reach an unused report inside it, and no ignore silences its own unused report.
+
+<details>
+<summary>Which ignore silences what, with an example</summary>
+
 ```go
 package app
 
@@ -569,6 +574,8 @@ For every other rule, an ignore on a type or a block reaches what is inside it. 
 | --- | --- |
 | Bare `//declscope:ignore` on the declaration | The scope directive beside it. Not other ignores beside it, so a group of ignores cannot excuse one another |
 | `//declscope:ignore unused`, or a bare one, above the package clause | Every directive in the file |
+
+</details>
 
 <details>
 <summary>What each unused-directive report means</summary>
