@@ -345,7 +345,7 @@ The subcommand tests drive the **built binary** as a subprocess, because what th
 
 `DECLSCOPE_COVERDIR` closes that without turning the tests into unit tests of halves: `cmd/declscope/cover_test.go` builds the binary with `go build -cover` and points every run at that directory. `coverage.sh` sets it, converts what lands there with `go tool covdata textfmt`, merges it with `go test`'s profile into `coverage-merged.txt`, and prints the coverage per package. `test_all.sh` and CI both run it, and CI uploads the merged profile. Name the directory by an **absolute** path — `go test` runs each test binary in its own package directory. Without the variable the binary is built and run exactly as before, so a plain `go test ./...` pays nothing for it.
 
-`convergence_test.go` builds its own binary without `-cover`, so what it runs counts nowhere. A path only it reaches needs an analysistest fixture too, which is how `fixsurplusnarrow` came about.
+`convergence_test.go` builds its own binary without `-cover`, so what it runs counts nowhere. A path only it reaches needs an analysistest fixture too, as `fixsurplusnarrow` is for the members a type fix narrows.
 
 The statements left uncovered are defensive: I/O errors (`os.Executable`, `os.Getwd`, `filepath.Abs`, a directory that cannot be read, a write to stdout), go/types and go/parser contracts (a nil field list, a method with no receiver type, a position in no collected file), the yaml encoder failing on a struct of strings, a cgo file a driver shows unprocessed, the go command's older `_testmain.go` answer, and the rename guards `renameSafe` keeps as a contract independent of its caller. Anything else uncovered is a missing test or dead code.
 
