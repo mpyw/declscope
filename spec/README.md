@@ -44,7 +44,7 @@ the binary.
 | `knobs.fsl` | A reference from inside the namespace never crosses a boundary | As above |
 | `directive_effect.fsl` | A scope directive is used when anything in its reach binds to it, and reported when nothing does | Every combination of stated scope, enclosing directive, `defaults.unexported`, target presence and exportedness, and two enclosed declarations by exportedness and shadowing |
 | `directive_effect.fsl` | Binding is quantified over configurations *and* over enclosing directives — so restating the default of the day never counts, and `//declscope:package` under an enclosing `private` always does | As above |
-| `directive_strict.fsl` | Under `rules.directive: strict` a scope directive is also reported when everything it reaches, shadowed or not, would have the scope it names without it under the configuration in force. `loose` reports exactly what `directive_effect.fsl` does, and `strict` keeps every `loose` report | Every combination of `rules.directive`, stated scope, `defaults.unexported`, a declaration taking the directive's scope and one a nearer directive shadows, each by exportedness and next level out, and the four reasons the fix is withheld |
+| `directive_strict.fsl` | Under `rules.directive: strict` a scope directive is also reported when everything it reaches, shadowed or not, would have the scope it names without it under the configuration in force. `loose` reports exactly what `directive_effect.fsl` does, and `strict` keeps every `loose` report | Every combination of `rules.directive`, stated scope, `defaults.unexported`, a declaration taking the directive's scope and one a nearer directive shadows, each by exportedness and next level out, and the five reasons the fix is withheld, one of them a pass that cannot see every crossing |
 | `directive_strict.fsl` | The fix that deletes the directive leaves the declaration's scope where it was, and leaves the nearer directive judged against the scope it was judged against. It is offered only under `strict`, and never where it would change another report | As above |
 | `knobs.fsl` | A boundary is reported only for a private scope and only across a namespace, and on an exported declaration only where a directive narrowed it — each guard witnessed by an invariant its removal breaks | As above |
 | `naming_rules.fsl` | A fix is eventually applied wherever one is offered, which is what the `fair` on the fix actions claims | As above, plus whether a rename is offered at all |
@@ -201,6 +201,7 @@ is a semantics that contradicts the documented one; each was run:
 | The `strict` fix is offered where it would leave the directive binding nothing | `violated` (`FixKeepsTheDirectiveBound`) |
 | `strict` ignores the declarations a nearer directive shadows | `violated` (`StrictAddsOnlyRedundant`) |
 | The `strict` fix is offered on a declaration another namespace uses | `violated` (`FixKeepsOtherReports`) |
+| The `strict` fix is offered by a pass that does not read every file | `violated` (`FixKeepsOtherReports`) |
 | `strict` keeps `loose`'s quantifier over configurations | `reachable_failed` |
 | `strict` reports under `loose` | `violated` (`LooseIsDirectiveEffect`) |
 | `strict` drops the reports `loose` makes | `violated` (`LooseIsDirectiveEffect`) |

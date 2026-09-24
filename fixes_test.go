@@ -1,6 +1,8 @@
 package declscope_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"golang.org/x/tools/go/analysis/analysistest"
@@ -108,4 +110,43 @@ func TestSuggestedFixSurplusStrict(t *testing.T) {
 // takes no edit.
 func TestSuggestedFixDirectiveStrict(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixdirectivestrict")
+}
+
+// fixesWantless collects what analysistest reports instead of failing, for a
+// fixture no single set of want comments describes: its variants disagree by
+// design.
+type fixesWantless struct{ errors []string }
+
+func (w *fixesWantless) Errorf(format string, args ...any) {
+	w.errors = append(w.errors, fmt.Sprintf(format, args...))
+}
+
+// TestSuggestedFixDirectiveStrictUnseenTests checks that the ordinary variant
+// of a package with in-package tests offers no deletion. Only the test
+// variant sees order_test.go use userShared from another namespace, and it
+// withholds the fix, since the boundary report names the directive. The
+// driver applies the fixes of both variants, so an offer from the ordinary
+// one would be applied anyway.
+//
+// The boundary report exists in the test variant alone, and a want in
+// user.go must hold in both, so the diagnostics are read here directly.
+func TestSuggestedFixDirectiveStrictUnseenTests(t *testing.T) {
+	var w fixesWantless
+	results := analysistest.Run(&w, analysistest.TestData(), declscope.Analyzer, "directivestricttests")
+	const want = "unused //declscope:private on userShared: it already has private scope"
+	variants := 0
+	for _, r := range results {
+		for _, d := range r.Diagnostics {
+			if d.Message != want {
+				continue
+			}
+			variants++
+			if len(d.SuggestedFixes) > 0 {
+				t.Errorf("%s offers a fix in %s, which cannot see every use", want, r.Pass.Pkg.Path())
+			}
+		}
+	}
+	if variants != 2 {
+		t.Errorf("reported in %d variants, want both; analysistest said:\n%s", variants, strings.Join(w.errors, "\n"))
+	}
 }

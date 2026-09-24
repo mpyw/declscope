@@ -249,6 +249,17 @@ var fixCases = []fixCase{
 			"order.go": "package x\n\nfunc OrderRun() int { return userShared() }\n",
 		},
 	},
+	{
+		// Only the test variant sees the crossing. The ordinary variant must
+		// not offer the deletion the test variant withholds, since the driver
+		// applies the fixes of both.
+		name:   "a redundant directive on a declaration only a test uses from elsewhere, under directive strict",
+		config: directiveStrictConfig,
+		files: map[string]string{
+			"user.go":       "package x\n\n//declscope:private\nfunc userShared() int { return 1 }\n",
+			"order_test.go": "package x\n\nimport \"testing\"\n\nfunc TestOrder(t *testing.T) { _ = userShared() }\n",
+		},
+	},
 
 	// A rename is offered only when it provably changes nothing but the
 	// spelling. Each case below is one way a rename that checks only package

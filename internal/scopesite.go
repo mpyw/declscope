@@ -350,6 +350,9 @@ func redundantMessageOfScopeSite(s *scopeSite) string {
 //   - The level beyond it is a directive that is reported and keeps its
 //     report. The declaration would join that one, and its report would
 //     change or vanish under an ignore still answering it.
+//   - The pass does not read every file: the ordinary variant of a package
+//     with in-package tests, or a file the build excludes. A crossing may sit
+//     where it cannot look, and the driver applies what any variant offers.
 type scopesiteRemovals struct {
 	c        *collection
 	pass     *analysis.Pass
@@ -403,6 +406,11 @@ func (r *scopesiteRemovals) decide(s *scopeSite) bool {
 	if !s.redundant() || r.silenced[s] {
 		return false
 	}
+	// A pass that does not read every file cannot see every crossing, and the
+	// driver applies what any variant offers. The test variant decides.
+	if r.c.unseen(r.pass).all {
+		return false
+	}
 	surplusReads := s.dir.Scope == scope.PackageInternal && r.opts.Surplus.Reports()
 	if surplusReads && s.restatesOuter {
 		return false
@@ -428,8 +436,12 @@ func (r *scopesiteRemovals) decide(s *scopeSite) bool {
 }
 
 // crosses reports whether another namespace spells t, the test the boundary
-// rule reports on.
+// rule reports on. A file the build excludes may spell it from anywhere, and
+// is read for its names alone, so a name it writes counts as a crossing.
 func (r *scopesiteRemovals) crosses(t *target) bool {
+	if r.c.unseen(r.pass).names[t.obj.Name()] {
+		return true
+	}
 	for _, ref := range r.c.refs[t.obj] {
 		if ref.file.key() != t.file.key() {
 			return true

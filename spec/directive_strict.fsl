@@ -40,7 +40,14 @@
 //                  surplus report and would be left answering nothing.
 //   outerStuck     a's next level out is a directive that is itself reported
 //                  and keeps its report. a would join it, and its report
-//                  would change.
+//                  would change. One an ignore answers is not reported: it
+//                  stays redundant and answered, so nothing shows.
+//   blind          the pass does not read every file of the package: the
+//                  ordinary variant of a package with in-package tests, or a
+//                  file the build excludes. A crossing in such a file
+//                  (crossUnseen) is one aCrosses the pass cannot see, and the
+//                  driver applies the fixes of every variant, so a deletion
+//                  one variant offers is made whatever the other withholds.
 //
 // ASSUME-1: one declaration of each kind is enough. Reach is a conjunction
 //   here where it is a disjunction in directive_effect.fsl, and a conjunction
@@ -56,6 +63,7 @@ spec DirectiveStrict {
     aPresent: Bool, aExported: Bool, aOuter: Dir,
     bPresent: Bool, bExported: Bool, bOuter: Dir,
     aCrosses: Bool, ownerWidened: Bool, surplusHolds: Bool, outerStuck: Bool,
+    blind: Bool, crossUnseen: Bool,
     reported: Bool, fixed: Bool,
     // What the fix left: a's scope, and what the directive shadowing b is
     // judged against.
@@ -68,6 +76,7 @@ spec DirectiveStrict {
     aPresent = false  aExported = false  aOuter = NoDir
     bPresent = false  bExported = false  bOuter = NoDir
     aCrosses = false  ownerWidened = false  surplusHolds = false  outerStuck = false
+    blind = false  crossUnseen = false
     reported = false  fixed = false
     aAfter = Package  bAfter = Package
   }
@@ -86,10 +95,13 @@ spec DirectiveStrict {
     requires phase == 2
     phase = 3  bPresent = bp  bExported = bx  bOuter = bo
   }
-  action configureOthers(cr: Bool, ow: Bool, sh: Bool, os: Bool) {
+  action configureOthers(cr: Bool, ow: Bool, sh: Bool, os: Bool, bl: Bool, cu: Bool) {
     requires phase == 3
+    // A crossing the pass cannot see is a crossing, in a file it does not read.
+    requires not cu or (cr and bl)
     phase = 4
     aCrosses = cr  ownerWidened = ow  surplusHolds = sh  outerStuck = os
+    blind = bl  crossUnseen = cu
   }
 
   // The scope from the next level out, and whether it is the same under every
@@ -110,9 +122,13 @@ spec DirectiveStrict {
     (aPresent or bPresent)
     and (not aPresent or stated == outerScope(aOuter, aExported))
     and (not bPresent or stated == outerScope(bOuter, bExported))
+  // The pass sees a crossing only in a file it reads, so the crossing guard
+  // reads what it sees, and blind covers the rest.
+  def seesCrossing() = aCrosses and not crossUnseen
   def fixable() =
     mode == Strict and redundant()
-    and not aCrosses and not ownerWidened and not surplusHolds and not outerStuck
+    and not seesCrossing() and not ownerWidened and not surplusHolds and not outerStuck
+    and not blind
 
   fair action judge() {
     requires phase == 4
@@ -148,6 +164,7 @@ spec DirectiveStrict {
   invariant PhaseInRange { phase >= 0 and phase <= 5 }
   invariant JudgedLast   { (reported or fixed) => phase == 5 }
   invariant FixRecordsItsGuard { fixed => fixable() }
+  invariant UnseenIsACrossing  { crossUnseen => aCrosses and blind }
 
   // --- the case this mode exists for ------------------------------------------
   // //declscope:private on a field of a type that states nothing, under the
@@ -191,19 +208,28 @@ spec DirectiveStrict {
   // Each withholding reason is witnessed with the others off.
   reachable CrossingWithholds {
     phase == 5 and mode == Strict and reported and redundant() and aCrosses
-    and not ownerWidened and not surplusHolds and not outerStuck and not fixed
+    and not ownerWidened and not surplusHolds and not outerStuck and not blind and not fixed
   }
   reachable OwnerWidenedWithholds {
     phase == 5 and mode == Strict and reported and redundant() and ownerWidened
-    and not aCrosses and not surplusHolds and not outerStuck and not fixed
+    and not aCrosses and not surplusHolds and not outerStuck and not blind and not fixed
   }
   reachable SurplusWithholds {
     phase == 5 and mode == Strict and reported and redundant() and surplusHolds
-    and not aCrosses and not ownerWidened and not outerStuck and not fixed
+    and not aCrosses and not ownerWidened and not outerStuck and not blind and not fixed
   }
   reachable OuterStuckWithholds {
     phase == 5 and mode == Strict and reported and redundant() and outerStuck
-    and not aCrosses and not ownerWidened and not surplusHolds and not fixed
+    and not aCrosses and not ownerWidened and not surplusHolds and not blind and not fixed
+  }
+  reachable BlindWithholds {
+    phase == 5 and mode == Strict and reported and redundant() and blind
+    and not aCrosses and not ownerWidened and not surplusHolds and not outerStuck and not fixed
+  }
+  // The case blind exists for: a crossing only the test variant sees.
+  reachable UnseenCrossingWithholds {
+    phase == 5 and mode == Strict and reported and redundant() and aCrosses and crossUnseen
+    and not ownerWidened and not surplusHolds and not outerStuck and not fixed
   }
   // An exported declaration takes package whatever the default says, so
   // //declscope:private on it binds in both modes.

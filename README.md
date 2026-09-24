@@ -438,6 +438,7 @@ A declaration that a nearer directive overrides is judged too. Deleting the oute
 | A `//declscope:package` that restates an enclosing one, while [`surplus`](#surplus) is on | The declaration would become the enclosing directive's dependent |
 | A `//declscope:package` under an ignore for `surplus` | The ignore would be left answering nothing |
 | The next level out is a directive that keeps its own report | That report would change |
+| The pass does not read every file. That is the ordinary variant of a package with in-package tests, or any pass when a file the build excludes names the declaration | A use in the unread file may be one the boundary report names. The test variant decides for its package, so `-test=false` offers no deletion there |
 
 > [!WARNING]
 > Under `strict`, a change of `defaults.unexported` is a change to the reports. Switching the default to `package` reports every `//declscope:package` on an unexported declaration that nothing else widens. One `-fix` run deletes them. `loose` exists so that the default can change without touching the tree.
@@ -480,7 +481,7 @@ These reports carry the `directive` rule, so `//declscope:ignore directive` sile
 <details>
 <summary>Which variant reports an unused directive</summary>
 
-An **ignore** is called unused only by a pass that sees **every** reference in the package. An ignore needed only by a test would otherwise be unused in one variant and necessary in another. A **scope** directive reads no references, so it is judged in every variant.
+An **ignore** is called unused only by a pass that sees **every** reference in the package. An ignore needed only by a test would otherwise be unused in one variant and necessary in another. A **scope** directive reads no references, so it is judged in every variant. Under `rules.directive: strict`, the fix that deletes one is offered only by a pass that sees every file, for the reason above.
 
 | Variant | Unused-**ignore** reports | Unused-**scope** reports |
 | --- | --- | --- |
