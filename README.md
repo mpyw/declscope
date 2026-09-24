@@ -392,106 +392,208 @@ Go excludes a `//tool:name` comment from a doc comment, so none of them reaches 
 
 ### Unused directives
 
-A directive that decides nothing is reported by the `unused` rule. Neither a suppression nor a claim of intent should outlive what justified it.
+The `unused` rule reports a directive that changes nothing. Neither a suppression nor a claim of intent should outlive what justified it. A directive that declscope cannot read is a different rule, `directive`.
 
-An **ignore** is unused when it silenced nothing.
+| Rule | Reports | Example | Switch | Silenced by |
+| --- | --- | --- | --- | --- |
+| `unused` | A directive that changes nothing | `unused //declscope:ignore boundary on greet` | `rules.unused` | `//declscope:ignore unused` |
+| [`directive`](#malformed-directives) | A directive that is malformed, unknown, conflicting or misplaced | `unknown directive declscope:privat` | None. Always on | `//declscope:ignore directive` |
 
-A **scope** directive binds a declaration when the scope it names is one the declaration could not have had **under any configuration**.
-
-| The declaration | `//declscope:package` | `//declscope:private` |
-| --- | --- | --- |
-| Unexported | Binds. The default may be either scope | Binds, for the same reason |
-| Exported | Inert. It has no boundary under any configuration | Binds. It narrows something nothing else would |
-
-Under `loose`, the default, the test covers every configuration, so a directive that names today's default is not reported. One line of `.declscope.yaml` never turns into hundreds of diagnostics. `strict` reads the configuration in force instead, and reports such a directive.
+An ignore is unused when it silenced no report. A scope directive is unused when it changes no scope. What that means depends on `rules.unused`.
 
 #### Off, loose and strict
 
-`rules.unused` decides how far the rule goes. It reaches unused directives only. The [`directive`](#malformed-directives) rule has no switch.
-
-| `rules.unused` | Reported | Fix |
-| --- | --- | --- |
-| `off` | Nothing | None |
-| `loose` (default) | An ignore that silenced nothing, and a scope directive no configuration could make bind | None |
-| `strict` | Also, a scope directive when every declaration it reaches would have the scope it names without it, under the configuration in force | Delete the scope directive |
-
-Under `strict`, the scope a declaration would have without the directive comes from the same resolution as always. That is the enclosing type's directive for a field, the block's for a spec, then the file's, then exportedness, then `defaults.unexported`.
-
 ```go
-type implicit struct {
+package app
+
+type user struct {
 	//declscope:private
-	x int
+	name string
 }
+
+//declscope:package
+func Helper() {}
+
+//declscope:ignore boundary
+func greet(u user) string { return u.name }
 ```
 
-```text
-unused //declscope:private on implicit.x: it already has private scope
-```
+| Line | `off` | `loose` (default) | `strict` |
+| --- | --- | --- | --- |
+| 4 | Nothing | Nothing | `unused //declscope:private on user.name: it already has private scope` |
+| 8 | Nothing | `unused //declscope:package on Helper: nothing it reaches takes a scope` | `unused //declscope:package on Helper: it already has package scope` |
+| 11 | Nothing | `unused //declscope:ignore boundary on greet` | `unused //declscope:ignore boundary on greet` |
 
-`loose` says nothing here, because `defaults.unexported: package` would make the directive bind. `strict` reports it under the default `private`, and `-fix` deletes the line.
+| `rules.unused` | A scope directive is reported when | `-fix` |
+| --- | --- | --- |
+| `off` | Never. No `unused` report of any kind is made. The [`directive`](#malformed-directives) rule still reports | None |
+| `loose` | No configuration could make it change the scope, as on line 8. `Helper` is exported, so it has package scope under any config | None |
+| `strict` | The declaration would have the same scope without it, under the current config, as on line 4 | Deletes the scope directive. An unused ignore gets no fix |
 
-A declaration that a nearer directive overrides is judged too. Deleting the outer directive must leave the nearer one as it was. So the outer directive stays when that declaration would take another scope without it.
+Line 4 is the difference. `user.name` is unexported, so without the directive it takes `defaults.unexported`. `loose` stays quiet, because `defaults.unexported: package` would make the directive matter. `strict` reads the current default, `private`.
 
-`-fix` deletes the line, and the bare `//` above it when that line only separated it from a doc comment. The fix is withheld, and the report kept, where deleting the directive would change another report:
+Without the directive, a declaration takes the first of these that applies: its type's directive, for a field. The block's, for a spec. The file's. Exportedness. `defaults.unexported`. This is ordinary [scope resolution](#scope-resolution).
 
-| Situation | Why the fix is withheld |
-| --- | --- |
-| Another namespace uses a declaration that takes the directive's scope | The [`boundary`](#boundary) message names the level that decided, and that level would move |
-| A field, when the boundary fix widens its type in the same run | The field would take the type's new directive |
-| A `//declscope:package` that restates an enclosing one, while [`surplus`](#surplus) is on | The declaration would become the enclosing directive's dependent |
-| A `//declscope:package` under an ignore for `surplus` | The ignore would be left answering nothing |
-| The next level out is a directive that keeps its own report | That report would change |
-| The pass does not read every file. That is the ordinary variant of a package with in-package tests, or any pass when a file the build excludes names the declaration | A use in the unread file may be one the boundary report names. The test variant decides for its package, so `-test=false` offers no deletion there |
+Accounting is **per physical directive**. A directive on a `var (...)` block is used when any spec needs it. When none does, it is reported once, as `unused //declscope:private on seed, limit: each already has private scope`.
 
 > [!WARNING]
-> Under `strict`, a change of `defaults.unexported` is a change to the reports. Switching the default to `package` reports every `//declscope:package` on an unexported declaration that nothing else widens. One `-fix` run deletes them. `loose` exists so that the default can change without touching the tree.
+> Under `strict`, changing `defaults.unexported` changes the reports. With `unexported: package`, every `//declscope:package` on an unexported declaration that nothing else widens is reported, and one `-fix` run deletes them. `loose` never reports a directive only because it names the current default.
 
-Accounting is **per physical directive**. One written on a `var (...)` block counts as used as soon as any spec needed it, and is reported once when none did.
+#### The strict fix
+
+```go
+// user.go
+package app
+
+//declscope:private
+func normalize() {}
+
+//declscope:private
+func trim() {}
+```
+
+```go
+// order.go
+package app
+
+var _ = normalize
+```
+
+```console
+$ declscope ./...    # with rules.unused: strict
+user.go:5:6: func normalize is declared private by //declscope:private, but is used from namespace "order"
+order.go:4:9:   used here, in namespace "order"
+user.go:4:1: unused //declscope:private on normalize: it already has private scope
+user.go:7:1: unused //declscope:private on trim: it already has private scope
+```
+
+After `-fix`:
+
+```go
+// user.go
+package app
+
+//declscope:private
+func normalize() {}
+
+func trim() {}
+```
+
+Both directives are reported. Only `trim`'s is deleted. The [`boundary`](#boundary) report on `normalize` names its directive, so deleting it would change that report. There the fix is **withheld**: the report stays, with no fix.
+
+`-fix` deletes the directive's line. It also deletes a bare `//` line left above it, when that line only separated the directive from a doc comment.
+
+<details>
+<summary>Every case where the strict fix is withheld</summary>
+
+In each case, deleting the directive would change another report.
+
+| Situation | What would change |
+| --- | --- |
+| Another namespace uses a declaration that takes its scope from the directive | The `boundary` report names the directive, as for `normalize` above |
+| A field whose type the `boundary` fix widens in the same run | The field would take the type's new `//declscope:package` |
+| A `//declscope:package` that repeats an enclosing one, while [`surplus`](#surplus) is on | `surplus` would judge the declaration under the enclosing directive |
+| A `//declscope:package` under `//declscope:ignore surplus` | The ignore would silence nothing |
+| The enclosing directive has its own report | The declaration would move under that report |
+| The pass does not read every file | A use in the unread file may be one a `boundary` report names |
+
+The last row covers the ordinary variant of a package with in-package tests, and any pass where a file the build excludes names the declaration. The test variant decides for its package, so `-test=false` deletes nothing there.
+
+</details>
+
+<details>
+<summary>An outer directive that <code>strict</code> keeps</summary>
+
+A directive is not reported when deleting it would change a nearer directive inside it.
+
+```go
+package app
+
+//declscope:private
+var (
+	//declscope:package
+	Limit = 2
+	seed  = 3
+)
+```
+
+declscope reports nothing here. For `seed`, the block's `//declscope:private` repeats the default. But without the block, `Limit`'s `//declscope:package` would repeat what exportedness gives, and would become unused itself.
+
+</details>
 
 #### Silencing an unused report
 
-These reports carry the `unused` rule, so `//declscope:ignore unused` silences one. An ignore naming `directive` does not, and is itself reported as unused when that is all it was written for.
-
-| The ignore | Silences an unused report |
-| --- | --- |
-| `//declscope:ignore unused` on the declaration | For the scope directive and the other ignores beside it |
-| Bare `//declscope:ignore` on the declaration | For the scope directive beside it. Not for the other ignores, which would let a group of ignores exempt one another |
-| `//declscope:ignore unused`, or a bare one, above the package clause | For every directive in the file |
-| `//declscope:ignore unused` on a block or a type | Not for the specs or fields inside it |
-
-An ignore on a block or a type reaches the declarations inside it for every other rule. An unused report is about one directive, not about a declaration, so only an ignore beside that directive, or one for the whole file, answers it. One ignore on a block cannot hide every stale directive under it.
-
-**No ignore silences the report that it is itself unused**, whatever it names. One that could would never be called unused, and that report is written to catch it. An ignore that silences another's report has done its job, and is not reported.
-
 ```go
-//declscope:ignore qualify // silenced nothing, but its report is silenced
-//declscope:ignore unused  // silences that report, so it is used
-func helper() {}
+package app
 
-//declscope:ignore unused // reported: the only report it could silence is its own
-func other() {}
+//declscope:package
+//declscope:ignore unused
+func A() {}
+
+//declscope:package
+//declscope:ignore directive
+func B() {}
+
+//declscope:ignore unused
+type T struct {
+	//declscope:package
+	F int
+}
+
+//declscope:ignore qualify
+//declscope:ignore unused
+func C() {}
+
+//declscope:ignore unused
+func D() {}
 ```
+
+```console
+$ declscope ./...
+user.go:7:1: unused //declscope:package on B: nothing it reaches takes a scope
+user.go:13:2: unused //declscope:package on T.F: nothing it reaches takes a scope
+user.go:8:1: unused //declscope:ignore directive on B
+user.go:11:1: unused //declscope:ignore unused on T
+user.go:21:1: unused //declscope:ignore unused on D
+```
+
+| Declaration | Result | Why |
+| --- | --- | --- |
+| `A` | Quiet | `ignore unused` beside the directive silences its report |
+| `B` | Both reported | `ignore directive` names another rule. It silenced nothing, so it is unused too |
+| `T` | Both reported | An ignore on a type or a block does not reach an unused report on a field or spec inside it |
+| `C` | Quiet | `ignore qualify` silenced nothing. `ignore unused` silences that report, so both are used |
+| `D` | Reported | The only report it could silence is its own. **No ignore silences its own unused report** |
+
+For every other rule, an ignore on a type or a block reaches what is inside it. For `unused` it does not, so that one ignore cannot hide every stale directive under it.
+
+| Other ignores | Silences an unused report for |
+| --- | --- |
+| Bare `//declscope:ignore` on the declaration | The scope directive beside it. Not other ignores beside it, so a group of ignores cannot excuse one another |
+| `//declscope:ignore unused`, or a bare one, above the package clause | Every directive in the file |
 
 <details>
 <summary>What each unused-directive report means</summary>
 
-| Report | Meaning |
-| --- | --- |
-| `unused //declscope:ignore boundary on userSeed, limit` | No named declaration needed it |
-| `unused file-level //declscope:ignore qualify` | Nothing in the file needed it |
-| `unused //declscope:ignore: no checked declaration carries it` | Written on something declscope does not check, such as `init` or `_` |
-| `unused //declscope:package: every declaration it reaches states its own scope` | A block's directive that every spec overrode |
-| `unused //declscope:package on Helper: nothing it reaches takes a scope` | The named declarations would have that scope under every configuration. They are exported, or restate an enclosing directive. On a block, the other specs override it |
-| `unused file-level //declscope:package` | No declaration in the file takes its scope from it. Each states its own, or would have that scope under every configuration |
-| `unused //declscope:private on implicit.x: it already has private scope` | Under `strict`, it names the scope the declaration would have without it |
-| `unused file-level //declscope:private: every declaration it reaches already has private scope` | Under `strict`, the same for everything in the file |
+| Report | Mode | Meaning |
+| --- | --- | --- |
+| `unused //declscope:ignore boundary on greet` | Both | No named declaration needed it |
+| `unused file-level //declscope:ignore qualify` | Both | Nothing in the file needed it |
+| `unused //declscope:ignore: no checked declaration carries it` | Both | Written on something declscope does not check, such as `init` or `_` |
+| `unused //declscope:package: every declaration it reaches states its own scope` | Both | A block's directive that every spec overrides |
+| `unused file-level //declscope:package` | Both | No declaration in the file takes its scope from it |
+| `unused //declscope:package on Helper: nothing it reaches takes a scope` | `loose` | The named declarations have that scope under every config. They are exported, or repeat an enclosing directive |
+| `unused //declscope:private on user.name: it already has private scope` | `strict` | The declaration has that scope without it |
+| `unused //declscope:private on seed, limit: each already has private scope` | `strict` | The same, for a block |
+| `unused //declscope:private: every declaration it reaches already has private scope` | `strict` | The same, for a block whose specs repeat it |
+| `unused file-level //declscope:private: every declaration it reaches already has private scope` | `strict` | The same, for everything in the file |
 
 </details>
 
 <details>
 <summary>Which variant reports an unused directive</summary>
 
-An **ignore** is called unused only by a pass that sees **every** reference in the package. An ignore needed only by a test would otherwise be unused in one variant and necessary in another. A **scope** directive reads no references, so it is judged in every variant. Under `rules.unused: strict`, the fix that deletes one is offered only by a pass that sees every file, for the reason above.
+An **ignore** is called unused only by a pass that sees **every** reference in the package. An ignore needed only by a test would otherwise be unused in one variant and necessary in another. A **scope** directive reads no references, so it is judged in every variant. The strict fix is still offered only by a pass that reads every file.
 
 | Variant | Unused-**ignore** reports | Unused-**scope** reports |
 | --- | --- | --- |
@@ -680,7 +782,7 @@ A **rule** is one check. A rule's name is the diagnostic's category, its [baseli
 | [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:package` | `rules.boundary` | `on` |
 | [`qualify`](#the-naming-rule) | A name that does not carry its namespace | Rename to prefix it | `rules.naming.*` | Off |
 | [`surplus`](#surplus) | Package scope with no visible use from another namespace | Under `strict`, insert `//declscope:private` | `rules.surplus` | `loose` |
-| [`unused`](#unused-directives) | A directive that decides nothing: an ignore that silenced nothing, or a scope directive that binds nothing | Under `strict`, delete a redundant scope directive | `rules.unused` | `loose` |
+| [`unused`](#unused-directives) | A directive that changes nothing: an ignore that silenced nothing, or a scope directive that changes no scope | Under `strict`, delete a redundant scope directive | `rules.unused` | `loose` |
 | [`directive`](#malformed-directives) | A directive that is malformed, unknown, conflicting or misplaced | None | No | On |
 | [`filter`](#the-filter-rule) | A `filter.only` that an `only` above it cancels | None | No | On |
 
