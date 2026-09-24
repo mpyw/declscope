@@ -214,6 +214,10 @@ func TestContainsCases(t *testing.T) {
 		{"v2user", "user", true},
 		// A name shorter than the namespace cannot hold it.
 		{"use", "user", false},
+		// A vocabulary word comes from YAML unchecked, so it may end in
+		// U+FFFD, the rune an exhausted name decodes as. The name must still
+		// run out before the word does.
+		{"user", "user\uFFFD", false},
 	}
 	for _, tt := range tests {
 		if got := namespace.Contains(tt.name, tt.ns); got != tt.want {
