@@ -67,6 +67,13 @@ type scopeSite struct {
 	// written somewhere it can never bindAtScopeSite.
 	shadowed bool
 
+	// taken records that something in its reach took this directive's scope,
+	// and overridden that something took the other scope from a nearer one.
+	// They keep a report from saying a declaration has a scope it does not.
+	// A file-level report names no declaration, so it reads these alone.
+	taken      bool
+	overridden bool
+
 	// reached and needed are the strict judgment, made over everything in the
 	// directive's reach, shadowed or not. reached records that anything was
 	// judged; needed that something would take another scope without the
@@ -211,7 +218,7 @@ func isInertScopeSite(opts Options, name string, stated scope.Scope, rest []dire
 // scope today and against those levels once this one is deleted, so the two
 // must agree for the deletion to leave that judgment where it was.
 func (c *collection) redundantAtScopeSite(opts Options, name string, chain []directive.Decl) {
-	first := true
+	var first *directive.Decl
 	for i, d := range chain {
 		if !d.HasScope {
 			continue
@@ -222,13 +229,17 @@ func (c *collection) redundantAtScopeSite(opts Options, name string, chain []dir
 		if d.Scope != outer {
 			s.needed = true
 		}
-		if first {
-			if next, ok := nextScopeSite(chain[i+1:]); ok {
-				s.outers = append(s.outers, next.ScopePos)
-				s.restatesOuter = s.restatesOuter || next.Scope == d.Scope
-			}
+		if first != nil {
+			s.shadowed = true
+			s.overridden = s.overridden || first.Scope != d.Scope
+			continue
 		}
-		first = false
+		first = &chain[i]
+		s.taken = true
+		if next, ok := nextScopeSite(chain[i+1:]); ok {
+			s.outers = append(s.outers, next.ScopePos)
+			s.restatesOuter = s.restatesOuter || next.Scope == d.Scope
+		}
 	}
 }
 
@@ -288,49 +299,64 @@ func (c *collection) reportUnusedScopeSites(pass *analysis.Pass, opts Options, w
 		removals = &scopesiteRemovals{c: c, pass: pass, opts: opts, widened: widened, unused: unused}
 	}
 	for _, s := range sites {
-		var msg string
+		redundant := strict && s.redundant()
 		var fixes []analysis.SuggestedFix
-		switch {
-		case strict && s.redundant():
-			msg = redundantMessageOfScopeSite(s)
+		if redundant {
 			if fix, ok := removals.fix(s); ok {
 				fixes = []analysis.SuggestedFix{fix}
 			}
-		case s.fileLevel:
-			msg = "unused file-level " + s.dir.Scope.Directive()
-		// Only a directive no declaration takes as written was overridden by
-		// every one. Where some spec states no scope, it is judged by the
-		// default message, which names those specs: a block overridden by one
-		// spec and restating the file for another is not overridden by all.
-		case s.shadowed && len(s.decls) == 0:
-			msg = "unused " + s.dir.Scope.Directive() +
-				": every declaration it reaches states its own scope"
-		case len(s.decls) == 0:
-			msg = "unused " + s.dir.Scope.Directive() + ": no checked declaration carries it"
-		default:
-			msg = "unused " + s.dir.Scope.Directive() + " on " + strings.Join(s.decls, ", ") +
-				": nothing it reaches takes a scope"
 		}
+		msg := messageOfScopeSite(s, redundant)
 		c.problems = append(c.problems, directive.Problem{Pos: s.dir.ScopePos, Msg: msg, Rule: rule.Unused, Fixes: fixes})
 	}
 }
 
-// redundantMessageOfScopeSite words a strict report. It says what the
-// declarations already have and not where it comes from: deleting an outer
-// directive in the same run can move the source, and a report that survives
-// the run must read the same after it.
-func redundantMessageOfScopeSite(s *scopeSite) string {
+// messageOfScopeSite words the report on an unused scope directive, under
+// either mode. redundant says that strict reports it, where loose may not.
+//
+// Each reason is chosen to be true of everything the directive reaches. A
+// declaration that states its own scope is never said to have the directive's:
+// it may name the other scope. Only the declarations that take the directive's
+// scope are named, and a file-level report, which names none, says which of
+// the two kinds it reached.
+//
+// A strict reason says what the declarations already have and not where it
+// comes from: deleting an outer directive in the same run can move the source,
+// and a report that survives the run must read the same after it.
+func messageOfScopeSite(s *scopeSite, redundant bool) string {
 	d := s.dir.Scope.Directive()
-	word := strings.TrimPrefix(d, "//declscope:")
+	has := "already has " + strings.TrimPrefix(d, "//declscope:") + " scope"
+	if s.fileLevel {
+		const nearer = "takes a nearer directive's scope"
+		switch {
+		case !redundant:
+			return "unused file-level " + d
+		case !s.overridden:
+			return "unused file-level " + d + ": every declaration it reaches " + has
+		case !s.taken:
+			return "unused file-level " + d + ": every declaration it reaches " + nearer
+		default:
+			return "unused file-level " + d + ": every declaration it reaches " + nearer + " or " + has
+		}
+	}
 	switch {
-	case s.fileLevel:
-		return "unused file-level " + d + ": every declaration it reaches already has " + word + " scope"
+	// A spec restating its block, or a field of a type that declares no name.
+	case len(s.decls) == 0 && redundant && !s.overridden:
+		return "unused " + d + ": every declaration it reaches " + has
+	// Only a directive no declaration takes as written was overridden by
+	// every one. Where some spec states no scope, the report names those
+	// specs: a block overridden by one spec and restating the file for
+	// another is not overridden by all.
+	case len(s.decls) == 0 && s.shadowed:
+		return "unused " + d + ": every declaration it reaches states its own scope"
 	case len(s.decls) == 0:
-		return "unused " + d + ": every declaration it reaches already has " + word + " scope"
+		return "unused " + d + ": no checked declaration carries it"
+	case !redundant:
+		return "unused " + d + " on " + strings.Join(s.decls, ", ") + ": nothing it reaches takes a scope"
 	case len(s.decls) == 1:
-		return "unused " + d + " on " + s.decls[0] + ": it already has " + word + " scope"
+		return "unused " + d + " on " + s.decls[0] + ": it " + has
 	default:
-		return "unused " + d + " on " + strings.Join(s.decls, ", ") + ": each already has " + word + " scope"
+		return "unused " + d + " on " + strings.Join(s.decls, ", ") + ": each " + has
 	}
 }
 

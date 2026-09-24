@@ -291,6 +291,19 @@ var fixCases = []fixCase{
 			"user.go": "package x\n\n//declscope:package\nvar (\n\t//declscope:package\n\tExported = 1\n\t//declscope:private\n\tnarrowed = 2\n)\n\nvar _ = narrowed\n",
 		},
 	},
+	{
+		// The file's package restates the default. userNarrow states private
+		// and userOwn restates the file. Deleting userOwn's directive hands
+		// userOwn to the file, whose report would then change from "takes a
+		// nearer directive's scope" to name package scope too. The two are
+		// deleted in one run, or neither is.
+		name:   "a file-level directive one declaration overrides and one restates, under unused strict",
+		config: "defaults:\n  unexported: package\nrules:\n  unused: strict\n  surplus: off\n",
+		files: map[string]string{
+			"user.go": "//declscope:package\n\npackage x\n\n//declscope:private\nfunc userNarrow() int { return 1 }\n\n" +
+				"//declscope:package\nfunc userOwn() int { return 2 }\n\nvar _ = userNarrow() + userOwn()\n",
+		},
+	},
 
 	// A rename is offered only when it provably changes nothing but the
 	// spelling. Each case below is one way a rename that checks only package

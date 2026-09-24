@@ -1,4 +1,4 @@
-//declscope:private // want `unused file-level //declscope:private`
+//declscope:private // want `unused file-level //declscope:private$`
 
 package unusedloose
 
