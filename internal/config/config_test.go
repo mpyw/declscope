@@ -120,6 +120,8 @@ func TestLoadRejectsUnknownKey(t *testing.T) {
 		// silently dropping the setting.
 		{"rules:\n  naming:\n    unqualify: true\n", `unknown key "rules.naming.unqualify" (this section takes qualify, exported, vocabulary)`},
 		{"defaults:\n  unexpected: private\n", `unknown key "defaults.unexpected" (this section takes unexported)`},
+		// exclude was replaced by only and omit, and is refused the same way.
+		{"filter:\n  exclude: [gen]\n", `unknown key "filter.exclude" (this section takes only, omit)`},
 	} {
 		path := write(t, t.TempDir(), ".declscope.yaml", tt.yaml)
 		_, err := config.Load(path)

@@ -381,6 +381,7 @@ var sections = map[string]struct {
 	"config.defaultsSection": {"defaults.", defaultsSection{}},
 	"config.rulesSection":    {"rules.", rulesSection{}},
 	"config.namingSection":   {"rules.naming.", namingSection{}},
+	"config.filterSection":   {"filter.", filterSection{}},
 }
 
 var unknownField = regexp.MustCompile(`^line (\d+): field (\S+) not found in type (\S+)$`)
