@@ -231,11 +231,10 @@ func loadedPass(pkg *packages.Package) *analysis.Pass {
 //
 //declscope:package // both subcommands resolve options per package
 func loadedPackageDir(pkg *packages.Package) string {
-	for _, f := range pkg.GoFiles {
+	for _, f := range slices.Concat(pkg.GoFiles, pkg.CompiledGoFiles) {
 		return filepath.Dir(f)
 	}
-	for _, f := range pkg.CompiledGoFiles {
-		return filepath.Dir(f)
-	}
+	// A package with no file at all. go list reports one only with an error,
+	// and every caller drops those first.
 	return ""
 }
