@@ -11,3 +11,7 @@ type snapshot struct {
 func snapshotOf() snapshot { return snapshot(modelNew()) }
 
 var _ = snapshotOf
+
+func snapshotLedger(l Ledger) Ledger { return Ledger(l) }
+
+var _ = snapshotLedger

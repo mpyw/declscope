@@ -3,3 +3,5 @@
 package fixoutside
 
 func Gen() int { return helper() }
+
+func GenBox(h UserHolder) int { return h.box.n }

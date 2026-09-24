@@ -477,3 +477,15 @@ func TestDirectiveStrict(t *testing.T) {
 func TestDirectiveStrictPackageDefault(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "directivestrictpkg")
 }
+
+// TestSymbolFileName checks a file whose name yields no namespace, such as
+// ★.go. It is its own unit, and a report names the file.
+func TestSymbolFileName(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "symbolfile")
+}
+
+// TestMethodOnGeneratedType checks a method whose receiver is declared in a
+// generated file, which the pass does not read.
+func TestMethodOnGeneratedType(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "generatedowner")
+}

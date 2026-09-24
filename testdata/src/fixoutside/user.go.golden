@@ -15,3 +15,10 @@ func aux() int { return 2 } // want `func aux does not carry namespace "user" an
 func userLocal() int { return 3 } // want `func local does not carry namespace "user" anywhere in its name; rename it to userLocal, or to another name that carries "user"`
 
 var _ = userLocal
+
+// box is named from gen.go only through the field embedding it, which is
+// spelled with the type's name, so the rename would leave that use dangling.
+type box struct{ n int } // want `type box does not carry namespace "user" anywhere in its name; rename it to userBox, or to another name that carries "user"`
+
+// UserHolder embeds box.
+type UserHolder struct{ box }

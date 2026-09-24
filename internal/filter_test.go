@@ -268,3 +268,38 @@ func TestFilterRefusesPatternLeavingItsDirectory(t *testing.T) {
 		}
 	}
 }
+
+// TestFilterAnchoredPatternSkipsARelativePath checks that an anchored pattern
+// does not match a path it cannot place. filepath.Rel refuses to relate a
+// relative path to the absolute base, and a pattern matching everything
+// beside the config must not read that refusal as a match.
+func TestFilterAnchoredPatternSkipsARelativePath(t *testing.T) {
+	base := t.TempDir()
+	m, err := compileFilter("/**", []string{base})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.match(filepath.Join(base, "gen", "a.go")) {
+		t.Fatal("the pattern does not match a file beside its config")
+	}
+	if m.match(filepath.Join("gen", "a.go")) {
+		t.Error("an anchored pattern matched a relative path it cannot place")
+	}
+}
+
+// TestNearestOnly checks the answer with no only in the chain, and with a
+// nearest group that holds no pattern.
+func TestNearestOnly(t *testing.T) {
+	if _, ok := DefaultOptions().NearestOnly(); ok {
+		t.Error("NearestOnly found a group in a chain with no only")
+	}
+	opts := DefaultOptions()
+	opts.Only = [][]FilterPattern{filterPatternsAt("/a", "x/**"), nil}
+	if _, ok := opts.NearestOnly(); ok {
+		t.Error("NearestOnly found a pattern in an empty nearest group")
+	}
+	opts.Only = filterOnlyAt("/a", "x/**", "y/**")
+	if p, ok := opts.NearestOnly(); !ok || p.Pattern != "x/**" {
+		t.Errorf("NearestOnly = %+v, %v; want the nearest group's first pattern", p, ok)
+	}
+}

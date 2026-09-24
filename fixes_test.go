@@ -194,3 +194,17 @@ func TestSuggestedFixDirectiveStrictUnreadable(t *testing.T) {
 		}
 	}
 }
+
+// TestSuggestedFixUnparsableExcludedFile checks that a file the build excludes
+// and the pass cannot parse withholds every rename, whether its package
+// clause or its body is what fails: the pass cannot tell what it names.
+func TestSuggestedFixUnparsableExcludedFile(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixunseenclause", "fixunseenbody")
+}
+
+// TestSuggestedFixSurplusNarrowsWithTypeFix checks that under surplus strict a
+// boundary fix on a type narrows, in the same edit, the members no other
+// namespace reads.
+func TestSuggestedFixSurplusNarrowsWithTypeFix(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixsurplusnarrow")
+}
