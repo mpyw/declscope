@@ -81,7 +81,7 @@ func compileFilter(pattern string, bases []string) (filterMatcher, error) {
 			// A pattern is matched against a path taken from the config
 			// directory, which never contains a "..". Accepting one would
 			// mean accepting a pattern that can never match anything.
-			return filterMatcher{}, fmt.Errorf("exclude %q: a pattern cannot leave the directory of the config file that states it", pattern)
+			return filterMatcher{}, fmt.Errorf("filter %q: a pattern cannot leave the directory of the config file that states it", pattern)
 		}
 	}
 	floats := strings.HasPrefix(p, "**/") || !strings.Contains(strings.TrimSuffix(p, "/"), "/")

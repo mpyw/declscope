@@ -201,9 +201,6 @@ func resolve(dir, explicit string) (internal.Options, string, error) {
 	// Outermost first, so a nearer file overrides the keys it states and
 	// leaves the rest as the file above set them.
 	for _, p := range chain {
-		if p == "" {
-			continue
-		}
 		f, err := Load(p)
 		if err != nil {
 			return opts, p, err
@@ -335,15 +332,9 @@ func sameDir(a, b string) bool {
 	if a == b {
 		return true
 	}
-	sa, err := os.Stat(a)
-	if err != nil {
-		return false
-	}
-	sb, err := os.Stat(b)
-	if err != nil {
-		return false
-	}
-	return os.SameFile(sa, sb)
+	sa, errA := os.Stat(a)
+	sb, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(sa, sb)
 }
 
 // Load reads and parses a config file.

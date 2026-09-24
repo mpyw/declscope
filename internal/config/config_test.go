@@ -576,6 +576,12 @@ func TestDefaultBaseline(t *testing.T) {
 		{"stops at the working directory", filepath.Join(root, "store", "inner"), filepath.Join(root, "store"), filepath.Join(root, "store", ".declscope-baseline.yaml"), true},
 		{"module boundary before the working directory", filepath.Join(root, "nested", "pkg"), root, "", false},
 		{"package outside the working directory", filepath.Join(root, "a"), filepath.Join(root, "b"), "", false},
+		// A directory that does not exist is compared by spelling alone.
+		{"a package directory not on disk", filepath.Join(root, "missing", "pkg"), root, rootDefault, true},
+		{"a working directory not on disk", filepath.Join(root, "a"), filepath.Join(root, "gone"), "", false},
+		// A package with no files has no directory. Nothing can find a file
+		// written for it.
+		{"no package directory", "", root, "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -796,5 +802,92 @@ func TestExplicitConfigDoesNotChain(t *testing.T) {
 	}
 	if opts.Qualify != rule.QualifyModeNever {
 		t.Errorf("qualify = %v, want the built-in default: an explicit config builds no chain", opts.Qualify)
+	}
+}
+
+// TestDefaultBaselineRefusesOutsideAnyModule checks a walk that meets neither
+// the working directory nor a module root, and runs out at the filesystem
+// root instead. No file written in the working directory would be found from
+// there.
+func TestDefaultBaselineRefusesOutsideAnyModule(t *testing.T) {
+	dir := t.TempDir()
+	if got, ok := config.DefaultBaseline(dir, t.TempDir()); ok {
+		t.Errorf("DefaultBaseline = %q, true; want a refusal", got)
+	}
+	if got := config.FindBaseline(dir); got != "" {
+		t.Errorf("FindBaseline = %q, want none", got)
+	}
+}
+
+// TestFindWithNoDirectory checks the lookups for a package with no files,
+// which has no directory to start from. They find nothing rather than the
+// working directory's files.
+func TestFindWithNoDirectory(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, ".declscope.yaml", "")
+	write(t, dir, ".declscope-baseline.yaml", "")
+	t.Chdir(dir)
+	if got := config.Find(""); got != "" {
+		t.Errorf("Find(\"\") = %q, want none", got)
+	}
+	if got := config.FindBaseline(""); got != "" {
+		t.Errorf("FindBaseline(\"\") = %q, want none", got)
+	}
+	if got := config.FindChain(""); len(got) != 0 {
+		t.Errorf("FindChain(\"\") = %q, want none", got)
+	}
+}
+
+// TestResolveReportsWhatItCannotUse checks the ways a config chain can fail
+// to resolve: an explicit -config that is not there, a
+// value no mode takes, and a filter pattern that leaves its config's
+// directory.
+func TestResolveReportsWhatItCannotUse(t *testing.T) {
+	dir := t.TempDir()
+	if _, _, err := config.Resolve(dir, filepath.Join(dir, "absent.yaml")); err == nil {
+		t.Error("an explicit config that does not exist resolved, want an error")
+	}
+	write(t, dir, ".declscope.yaml", "rules:\n  surplus: sometimes\n")
+	if _, _, err := config.Resolve(dir, ""); err == nil || !strings.Contains(err.Error(), ".declscope.yaml: rules.surplus") {
+		t.Errorf("err = %v, want the bad value named with its file", err)
+	}
+	write(t, dir, ".declscope.yaml", "filter:\n  only: [\"../elsewhere/**\"]\n")
+	_, _, err := config.Resolve(dir, "")
+	if err == nil || !strings.Contains(err.Error(), `filter "../elsewhere/**": a pattern cannot leave`) {
+		t.Errorf("err = %v, want the pattern refused by name", err)
+	}
+}
+
+// TestBaselinePathResolution checks where a configured baseline is read from:
+// an absolute path as written, a relative one from the config's directory,
+// and, for a File that did not come from disk, the path as written, since it
+// has no directory to resolve against. Its filter patterns have no base
+// either, so they float.
+func TestBaselinePathResolution(t *testing.T) {
+	dir := t.TempDir()
+	abs := filepath.Join(t.TempDir(), "b.yaml")
+	f, err := config.Load(write(t, dir, ".declscope.yaml", "baseline: "+abs+"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.BaselinePath(); got != abs {
+		t.Errorf("an absolute baseline resolved to %q, want %q", got, abs)
+	}
+
+	var mem config.File
+	if got := mem.BaselinePath(); got != "" {
+		t.Errorf("no baseline resolved to %q, want none", got)
+	}
+	mem.Baseline = "b.yaml"
+	mem.Filter.Only = []string{"gen/**"}
+	opts := internal.DefaultOptions()
+	if err := mem.Apply(&opts); err != nil {
+		t.Fatal(err)
+	}
+	if opts.BaselinePath != "b.yaml" {
+		t.Errorf("a baseline in a File not from disk resolved to %q, want it as written", opts.BaselinePath)
+	}
+	if len(opts.Only) != 1 || opts.Only[0][0].Base != "" {
+		t.Errorf("only = %+v, want one pattern with no base", opts.Only)
 	}
 }
