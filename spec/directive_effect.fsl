@@ -1,5 +1,5 @@
-// A scope directive that binds nothing is reported, on the same principle as an
-// unused ignore: a directive that decides nothing should not sit in the source
+// A scope directive that binds nothing is reported by the unused rule, on the
+// same principle as an unused ignore: a directive that decides nothing should not sit in the source
 // claiming to.
 //
 // A directive binds a declaration when the scope it names is one that
@@ -10,8 +10,8 @@
 //   - Read off the current configuration instead, and one line of YAML flips
 //     every directive in a tree, and recording a deliberate `private` becomes
 //     an error.
-//     rules.directive: strict makes that trade on purpose, and
-//     directive_strict.fsl models it beside this one.
+//     rules.unused: strict makes that trade on purpose, and
+//     unused_modes.fsl models it beside this one, with off.
 //   - Ask only whether the name is exported, and //declscope:package under an
 //     enclosing `private` — the one thing that widens an exported declaration
 //     back — is called inert, so a codebase can narrow and never widen again.

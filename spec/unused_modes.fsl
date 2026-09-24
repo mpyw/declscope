@@ -1,6 +1,7 @@
-// The directive rule under rules.directive: strict. directive_effect.fsl is
-// loose: a scope directive is unused only when it names a scope the
-// declaration could not have had under ANY configuration. strict also reports
+// The unused rule on a scope directive, under each of rules.unused's modes.
+// off reports nothing and offers no fix. directive_effect.fsl is loose: a
+// scope directive is unused only when it names a scope the declaration could
+// not have had under ANY configuration. strict also reports
 // a directive that names the scope the declaration would have without it
 // under THIS configuration: //declscope:private on an unexported field of a
 // type that states nothing, while defaults.unexported is private.
@@ -52,10 +53,10 @@
 // ASSUME-1: one declaration of each kind is enough. Reach is a conjunction
 //   here where it is a disjunction in directive_effect.fsl, and a conjunction
 //   of two is what shows each half is read (modelling assumption)
-spec DirectiveStrict {
+spec UnusedModes {
   enum Scope { Package, Private }
   enum Dir   { NoDir, DirPackage, DirPrivate }
-  enum Mode  { Loose, Strict }
+  enum Mode  { Off, Loose, Strict }
 
   state {
     phase: Int,
@@ -133,7 +134,7 @@ spec DirectiveStrict {
   fair action judge() {
     requires phase == 4
     phase = 5
-    reported = not looseBound() or (mode == Strict and redundant())
+    reported = mode != Off and (not looseBound() or (mode == Strict and redundant()))
   }
   fair action fix() {
     requires phase == 5  requires reported  requires fixable()  requires not fixed
@@ -142,9 +143,10 @@ spec DirectiveStrict {
     bAfter = outerScope(bOuter, bExported)
   }
 
-  // --- loose is unchanged, and strict only adds ------------------------------
+  // --- off says nothing, loose is unchanged, and strict only adds ------------
+  invariant OffReportsNothing      { mode == Off => not reported and not fixed }
   invariant LooseIsDirectiveEffect { (phase == 5 and mode == Loose) => (reported == not looseBound()) }
-  invariant StrictKeepsLoose       { (phase == 5 and not looseBound()) => reported }
+  invariant StrictKeepsLoose       { (phase == 5 and mode != Off and not looseBound()) => reported }
   invariant StrictAddsOnlyRedundant {
     reported => not looseBound()
                 or (mode == Strict
@@ -166,7 +168,15 @@ spec DirectiveStrict {
   invariant FixRecordsItsGuard { fixed => fixable() }
   invariant UnseenIsACrossing  { crossUnseen => aCrosses and blind }
 
-  // --- the case this mode exists for ------------------------------------------
+  // --- off ---------------------------------------------------------------------
+  // A directive every mode but off reports is silent under off: restating the
+  // type's directive, which loose reports and strict would delete.
+  reachable RestatingSilentUnderOff {
+    phase == 5 and mode == Off and aPresent and aOuter == DirPrivate
+    and stated == Private and not bPresent and not reported and not fixed
+  }
+
+  // --- the case strict exists for ---------------------------------------------
   // //declscope:private on a field of a type that states nothing, under the
   // private default: loose binds it, strict reports it and deletes it.
   reachable ImplicitBindsUnderLoose {

@@ -4,7 +4,7 @@
 // what another is about to write — the shape rename_siblings.fsl already holds
 // for renames. The insertions have their own way of converging: a directive
 // written on a type reaches the type's members, so a member fixed in the same
-// run is left carrying a directive that binds nothing, and the `directive` rule
+// run is left carrying a directive that binds nothing, and the `unused` rule
 // reports what -fix has just written. That rule carries no fix, so a second
 // -fix does not clear it.
 //
