@@ -1,0 +1,15 @@
+package fixdirectivestrictwithheld
+
+// aBare restates the default, and nothing withholds its fix.
+func aBare() int { return 1 }
+
+// An ignore answers the block's report. The block is redundant, so it stays
+// redundant and answered once aSpec takes it, and aSpec's directive goes.
+//
+//declscope:private
+//declscope:ignore directive
+var (
+	aSpec = 2
+)
+
+var _ = aBare() + aSpec

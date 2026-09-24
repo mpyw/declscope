@@ -5,9 +5,11 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/analysistest"
 
 	"github.com/mpyw/declscope"
+	"github.com/mpyw/declscope/internal/rule"
 )
 
 func TestSuggestedFixes(t *testing.T) {
@@ -112,6 +114,26 @@ func TestSuggestedFixDirectiveStrict(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixdirectivestrict")
 }
 
+// TestSuggestedFixDirectiveStrictWithheld checks each reason the directive
+// rule's strict fix is withheld, with the report kept: a field whose type the
+// boundary fix widens (b.go), a spec whose block keeps a report the deletion
+// would change (d.go, and f.go where loose alone reports the block), and a
+// declaration a file the build excludes names (g.go). Only a.go and the
+// boundary fix in b.go take edits; an outer directive an ignore answers does
+// not withhold.
+func TestSuggestedFixDirectiveStrictWithheld(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixdirectivestrictwithheld")
+}
+
+// TestSuggestedFixDirectiveStrictSurplus checks the reasons the directive
+// rule's strict fix is withheld while surplus reads a //declscope:package: an
+// ignore answering surplus (b.go), and a directive restating an enclosing one
+// (c.go). Only a.go, where the deletion settles surplus's report too, takes
+// an edit.
+func TestSuggestedFixDirectiveStrictSurplus(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixdirectivestrictsurplus")
+}
+
 // fixesWantless collects what analysistest reports instead of failing, for a
 // fixture no single set of want comments describes: its variants disagree by
 // design.
@@ -148,5 +170,27 @@ func TestSuggestedFixDirectiveStrictUnseenTests(t *testing.T) {
 	}
 	if variants != 2 {
 		t.Errorf("reported in %d variants, want both; analysistest said:\n%s", variants, strings.Join(w.errors, "\n"))
+	}
+}
+
+// TestSuggestedFixDirectiveStrictUnreadable checks that a pass with no
+// ReadFile, as the subcommands build one, still makes the strict reports and
+// offers no deletion, since it cannot see the lines it would delete.
+func TestSuggestedFixDirectiveStrictUnreadable(t *testing.T) {
+	blind := &analysis.Analyzer{
+		Name: declscope.Analyzer.Name,
+		Doc:  declscope.Analyzer.Doc,
+		Run: func(pass *analysis.Pass) (any, error) {
+			unreadable := *pass
+			unreadable.Analyzer, unreadable.ReadFile = declscope.Analyzer, nil
+			return declscope.Analyzer.Run(&unreadable)
+		},
+	}
+	for _, r := range analysistest.Run(t, analysistest.TestData(), blind, "fixdirectivestrict") {
+		for _, d := range r.Diagnostics {
+			if d.Category == string(rule.Directive) && len(d.SuggestedFixes) > 0 {
+				t.Errorf("%q offers a fix it could not have read", d.Message)
+			}
+		}
 	}
 }

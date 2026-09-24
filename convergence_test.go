@@ -270,6 +270,27 @@ var fixCases = []fixCase{
 			"order_test.go": "package x\n\nimport \"testing\"\n\nfunc TestOrder(t *testing.T) { _ = userShared() }\n",
 		},
 	},
+	{
+		// The block keeps its report, since another namespace uses userA.
+		// Deleting userB's directive would hand userB to the block, and the
+		// block's report would name it too.
+		name:   "a spec restating a block that keeps its report, under directive strict",
+		config: directiveStrictConfig,
+		files: map[string]string{
+			"user.go":  "package x\n\n//declscope:private\nvar (\n\tuserA = 1\n\t//declscope:private\n\tuserB = 2\n)\n\nvar _ = userB\n",
+			"order.go": "package x\n\nvar _ = userA\n",
+		},
+	},
+	{
+		// The block binds nothing, but narrowed needs it, so it is reported
+		// by loose alone. Deleting Exported's directive would hand Exported
+		// to the block, and the block's report would name it.
+		name:   "a spec restating a block that is reported but not redundant, under directive strict",
+		config: "rules:\n  directive: strict\n  surplus: off\n",
+		files: map[string]string{
+			"user.go": "package x\n\n//declscope:package\nvar (\n\t//declscope:package\n\tExported = 1\n\t//declscope:private\n\tnarrowed = 2\n)\n\nvar _ = narrowed\n",
+		},
+	},
 
 	// A rename is offered only when it provably changes nothing but the
 	// spelling. Each case below is one way a rename that checks only package
