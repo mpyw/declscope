@@ -32,17 +32,19 @@ type scopesiteBook struct {
 //
 // A directive binds a declaration when the scope it names is one that
 // declaration could not have had anyway — under ANY configuration. That
-// quantifier is what keeps the test out of the trap a plain comparison falls
-// into: comparing against defaults.unexported would flip every directive in a
-// tree when one line of YAML changes, or when a config file appears two
-// directories up, and would make recording a deliberate private an error.
+// quantifier is what rules.unused: loose, the default, judges by. Comparing
+// against defaults.unexported instead changes the judgment of every directive
+// in a tree when one line of YAML changes, or when a config file appears two
+// directories up, and reports a directive recording a deliberate private.
+// rules.unused: strict is the opt-in that makes that comparison
+// (redundantAtScopeSite) and accepts the trade.
 //
-// Quantified instead, the answer cannot depend on configuration at all:
+// Quantified, the answer cannot depend on configuration at all:
 //
 //   - An UNEXPORTED declaration takes defaults.unexported, which may be either
 //     scope, so neither //declscope:private nor //declscope:package is ever
-//     inert on one. Recording an intent that matches today's default stays
-//     legal, because tomorrow's default may differ.
+//     inert on one. Under loose, recording an intent that matches today's
+//     default is not reported, because tomorrow's default may differ.
 //   - An EXPORTED declaration has no boundary unless a directive gives it one,
 //     under every configuration. //declscope:package is the scope it already
 //     has, so it is provably inert; //declscope:private narrows it, so it is

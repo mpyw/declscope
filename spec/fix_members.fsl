@@ -112,7 +112,7 @@ spec FixMembers {
 
   // The scope the member takes from the levels outside its own directive, and
   // whether that scope is the same under every configuration — it is not when
-  // defaults.unexported decides it. This is directive_effect.fsl's binding
+  // defaults.unexported decides it. This is unused_bind.fsl's binding
   // test, over the source the run leaves behind rather than the one it read.
   def memberOuterFixed() =
     typeDirAfter() != NoDir or fileDir != NoDir or memberExported

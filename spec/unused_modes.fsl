@@ -1,10 +1,11 @@
 // The unused rule on a scope directive, under each of rules.unused's modes.
-// off reports nothing and offers no fix. directive_effect.fsl is loose: a
-// scope directive is unused only when it names a scope the declaration could
-// not have had under ANY configuration. strict also reports
-// a directive that names the scope the declaration would have without it
-// under THIS configuration: //declscope:private on an unexported field of a
-// type that states nothing, while defaults.unexported is private.
+// off reports nothing and offers no fix. loose, the default, is
+// unused_bind.fsl: a scope directive is unused only when nothing it reaches
+// takes a scope it could not have had under ANY configuration. strict, the
+// opt-in, also reports a directive that names the scope the declaration
+// would have without it under THIS configuration: //declscope:private on an
+// unexported field of a type that states nothing, while defaults.unexported
+// is private.
 //
 // loose's quantifier is what keeps one line of YAML from flipping every
 // directive in a tree. strict gives that up on purpose, for the repository
@@ -51,7 +52,7 @@
 //                  one variant offers is made whatever the other withholds.
 //
 // ASSUME-1: one declaration of each kind is enough. Reach is a conjunction
-//   here where it is a disjunction in directive_effect.fsl, and a conjunction
+//   here where it is a disjunction in unused_bind.fsl, and a conjunction
 //   of two is what shows each half is read (modelling assumption)
 spec UnusedModes {
   enum Scope { Package, Private }
@@ -106,7 +107,7 @@ spec UnusedModes {
   }
 
   // The scope from the next level out, and whether it is the same under every
-  // configuration. directive_effect.fsl's outerFixed and outerScope.
+  // configuration. unused_bind.fsl's outerFixed and outerScope.
   def outerFixed(o: Dir, x: Bool) = o != NoDir or x
   def outerScope(o: Dir, x: Bool) =
     if o == DirPackage then Package
@@ -145,7 +146,7 @@ spec UnusedModes {
 
   // --- off says nothing, loose is unchanged, and strict only adds ------------
   invariant OffReportsNothing      { mode == Off => not reported and not fixed }
-  invariant LooseIsDirectiveEffect { (phase == 5 and mode == Loose) => (reported == not looseBound()) }
+  invariant LooseIsUnusedBind { (phase == 5 and mode == Loose) => (reported == not looseBound()) }
   invariant StrictKeepsLoose       { (phase == 5 and mode != Off and not looseBound()) => reported }
   invariant StrictAddsOnlyRedundant {
     reported => not looseBound()

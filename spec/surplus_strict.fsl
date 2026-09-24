@@ -142,7 +142,7 @@ spec SurplusStrict {
     else if dependsOnDirective() then Package
     else if exported() then Package
     else cfgUnexported()
-  // directive_effect.fsl's binding test, over the fixed source: the scope the
+  // unused_bind.fsl's binding test, over the fixed source: the scope the
   // declaration would take from outside its own directive, and whether that
   // is the same under every configuration.
   def outerFixed() = enclosing() or exported()

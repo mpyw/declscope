@@ -403,7 +403,7 @@ A **scope** directive binds a declaration when the scope it names is one the dec
 | Unexported | Binds. The default may be either scope | Binds, for the same reason |
 | Exported | Inert. It has no boundary under any configuration | Binds. It narrows something nothing else would |
 
-Because the test covers every configuration, a directive that names today's default is never reported. One line of `.declscope.yaml` never turns into hundreds of diagnostics.
+Under `loose`, the default, the test covers every configuration, so a directive that names today's default is not reported. One line of `.declscope.yaml` never turns into hundreds of diagnostics. `strict` reads the configuration in force instead, and reports such a directive.
 
 #### Off, loose and strict
 

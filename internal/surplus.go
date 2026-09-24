@@ -458,9 +458,9 @@ func (c *collection) checkSurplusDeclaration(pass *analysis.Pass, opts Options, 
 //     directive at all, so the directive widened nothing.
 //
 // The last one reads the configuration, which the unused rule's binding
-// test deliberately does not. The two questions differ. That test decides
-// whether a comment may be deleted, and must hold under every configuration,
-// because the comment outlives any one of them. This one asks whether the
+// test under loose deliberately does not. The two questions differ. That test
+// decides whether a comment is unused under every configuration, because the
+// comment outlives any one of them. This one asks whether the
 // directive is what widened the declaration today. The fix binds under every
 // configuration regardless: the enclosing directive fixes the scope the
 // declaration would otherwise take, so //declscope:private under it differs.
