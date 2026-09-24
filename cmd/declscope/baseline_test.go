@@ -432,3 +432,89 @@ func TestBaselineRefusesABrokenConfig(t *testing.T) {
 		t.Error("a refused run wrote a baseline")
 	}
 }
+
+// TestSubcommandsRefuseAnUnknownFlag checks that each subcommand answers a
+// flag it does not take with its own usage and exit status 2, the way the
+// flag package's other users do.
+func TestSubcommandsRefuseAnUnknownFlag(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	for _, sub := range []string{"baseline", "survey", "inspect"} {
+		out, code := runIn(t, bin, dir, sub, "-bogus")
+		if code != 2 || !strings.Contains(out, "Usage: declscope "+sub) {
+			t.Errorf("%s -bogus exited %d, want 2 with its usage:\n%s", sub, code, out)
+		}
+	}
+}
+
+// TestSubcommandsReportALoadFailure checks that a go command which cannot list
+// the packages at all stops each subcommand with its error, rather than
+// reading as a module with nothing in it.
+func TestSubcommandsReportALoadFailure(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, "p/p.go", "package p\n")
+	t.Setenv("GOFLAGS", "-mod=bogus")
+	for _, sub := range []string{"baseline", "survey", "inspect"} {
+		out, code := runIn(t, bin, dir, sub, "./p")
+		if code != 1 || !strings.Contains(out, "declscope "+sub+":") || !strings.Contains(out, "-mod=bogus") {
+			t.Errorf("%s exited %d, want 1 with the go command's error:\n%s", sub, code, out)
+		}
+	}
+}
+
+// TestBaselineWithNothingToRecord checks a module with no package: the run
+// says so and writes no file, since an empty baseline would read as a clean
+// codebase.
+func TestBaselineWithNothingToRecord(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", testModule)
+	out, code := runIn(t, bin, root, "baseline", "./...")
+	if code != 0 || !strings.Contains(out, "no packages matched, nothing recorded") {
+		t.Errorf("exited %d, want 0 and the notice:\n%s", code, out)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".declscope-baseline.yaml")); err == nil {
+		t.Error("a run with nothing to record wrote a baseline")
+	}
+}
+
+// TestBaselineReportsAFileItCannotWrite checks that a baseline that cannot be
+// written fails the run.
+func TestBaselineReportsAFileItCannotWrite(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", testModule)
+	writeTree(t, root, "p/user.go", "package p\n\nfunc helper() int { return 1 }\n")
+	writeTree(t, root, "p/order.go", "package p\n\nfunc orderRun() int { return helper() }\n\nvar _ = orderRun\n")
+	writeTree(t, root, "blocker", "")
+	out, code := runIn(t, bin, root, "baseline", "-o", filepath.Join(root, "blocker", "b.yaml"), "./...")
+	if code != 1 || !strings.Contains(out, "declscope baseline:") {
+		t.Errorf("exited %d, want 1 with the write error:\n%s", code, out)
+	}
+}
+
+// TestBaselineRefusesAPackageThatDoesNotCompile checks that a package with a
+// type error stops the run. Its findings would be missing for a reason that is
+// not the code, and the baseline written without them would be wrong.
+func TestBaselineRefusesAPackageThatDoesNotCompile(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", testModule)
+	writeTree(t, root, "p/p.go", "package p\n\nfunc broken() int { return \"x\" }\n")
+	out, code := runIn(t, bin, root, "baseline", "./...")
+	if code != 1 || !strings.Contains(out, "packages contain errors") {
+		t.Errorf("exited %d, want 1 with the refusal:\n%s", code, out)
+	}
+}
+
+// TestBaselineLeavesOutWhatAnIgnoreAnswers checks that a finding an ignore
+// directive silences is not recorded. The ignore already answers it, and an
+// entry would outlive the directive.
+func TestBaselineLeavesOutWhatAnIgnoreAnswers(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", testModule)
+	writeTree(t, root, "p/user.go", "package p\n\n//declscope:ignore boundary\nfunc helper() int { return 1 }\n")
+	writeTree(t, root, "p/order.go", "package p\n\nfunc orderRun() int { return helper() }\n\nvar _ = orderRun\n")
+	out, code := runIn(t, bin, root, "baseline", "./...")
+	if code != 0 || !strings.Contains(out, "recorded 0 violation(s)") {
+		t.Errorf("exited %d, want 0 with nothing recorded:\n%s", code, out)
+	}
+}
