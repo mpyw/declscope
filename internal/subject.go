@@ -145,8 +145,6 @@ type target struct {
 	// enclosing var, const or type block rather than on this spec. dir holds
 	// the two merged, and only here is the difference still known.
 	fromBlock bool
-	// renameable is false for members, whose fix is never a rename.
-	renameable bool
 }
 
 // foreignMethod reports whether this is a method with a receiver whose type is

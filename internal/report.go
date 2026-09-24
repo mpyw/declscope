@@ -592,14 +592,13 @@ func atLineStartForReport(pass *analysis.Pass, pos token.Pos) bool {
 	return strings.TrimLeft(string(prefix), " \t") == ""
 }
 
+// namespaceInReport names a file's namespace, or the file itself when its stem
+// yields none (★.go). Every file has a path, taken from the file set.
 func namespaceInReport(ns, path string) string {
 	if ns != "" {
 		return fmt.Sprintf("namespace %q", ns)
 	}
-	if path != "" {
-		return fmt.Sprintf("file %s", filepath.Base(path))
-	}
-	return "its namespace"
+	return fmt.Sprintf("file %s", filepath.Base(path))
 }
 
 func fileInReport(f *fileInfo) string {
@@ -641,8 +640,6 @@ func (t *target) reportsName(opts Options) bool {
 		if !t.foreignMethod() {
 			return false
 		}
-	case !t.renameable:
-		return false
 	}
 	return !isExported(t.obj.Name()) || opts.NameExported
 }

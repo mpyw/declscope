@@ -136,12 +136,9 @@ func (c *collection) surplusJudged(pass *analysis.Pass) *surplusState {
 // reachesOutside reports whether t is reached from another namespace by any
 // path the rule counts, exportedness aside: another namespace spells it,
 // something reaches it without spelling it, or a directive names it as text.
-// A pass that does not read every file answers true, since it cannot rule
-// anything out.
+// It is never asked of a blind state: a pass that does not read every file
+// cannot rule anything out, and every caller returns before asking.
 func (s *surplusState) reachesOutside(c *collection, t *target) bool {
-	if s.blind {
-		return true
-	}
 	if !s.gathered {
 		s.gathered = true
 		s.reached = c.surplusReached(s.pass)
@@ -469,14 +466,10 @@ func surplusEnclosed(opts Options, t *target) bool {
 	if isExported(t.obj.Name()) || t.scope != scope.PackageInternal || opts.Unexported != scope.Private {
 		return false
 	}
-	switch t.boundAt {
-	case scopesiteLevelContainer, scopesiteLevelFile:
-		return true
-	case scopesiteLevelDecl:
-		return t.fromBlock
-	default:
-		return false
-	}
+	// Package scope on an unexported name under a private default came from
+	// a directive, so the level is never the default here.
+	return t.boundAt == scopesiteLevelContainer || t.boundAt == scopesiteLevelFile ||
+		t.boundAt == scopesiteLevelDecl && t.fromBlock
 }
 
 // computeSurplusDeclarations judges each declaration under a directive that is

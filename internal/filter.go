@@ -126,10 +126,9 @@ func compileFilter(pattern string, bases []string) (filterMatcher, error) {
 	}
 	b.WriteString("$")
 
-	re, err := regexp.Compile(b.String())
-	if err != nil {
-		return filterMatcher{}, err
-	}
+	// Every piece written above is a fixed expression or QuoteMeta's output,
+	// so the result always compiles.
+	re := regexp.MustCompile(b.String())
 	if floats {
 		return filterMatcher{re: re}, nil
 	}
