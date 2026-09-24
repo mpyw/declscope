@@ -1,6 +1,8 @@
 package declscope_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"golang.org/x/tools/go/analysis/analysistest"
@@ -503,8 +505,26 @@ func TestUnusedStrictPackageDefault(t *testing.T) {
 
 // TestSymbolFileName checks a file whose name yields no namespace, such as
 // ★.go. It is its own unit, and a report names the file.
+//
+// The module zip refuses such a name, and go install with it, so the fixture
+// lives outside testdata/src and is written to a temporary tree here.
 func TestSymbolFileName(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "symbolfile")
+	src := filepath.Join(analysistest.TestData(), "symbolfile")
+	root := t.TempDir()
+	dir := filepath.Join(root, "src", "symbolfile")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for from, to := range map[string]string{"order.go": "order.go", "star.go.in": "★.go"} {
+		b, err := os.ReadFile(filepath.Join(src, from))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, to), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	analysistest.Run(t, root, declscope.Analyzer, "symbolfile")
 }
 
 // TestMethodOnGeneratedType checks a method whose receiver is declared in a
