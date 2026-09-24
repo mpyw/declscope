@@ -481,8 +481,13 @@ func scopesiteRemoval(pass *analysis.Pass, pos token.Pos) (analysis.TextEdit, bo
 		lineEnd = off + i
 	}
 	if lead := strings.TrimRight(string(content[lineStart:off]), " \t"); lead != "" {
-		// Trailing a declaration: the comment goes, the code stays.
-		return analysis.TextEdit{Pos: tf.Pos(lineStart + len(lead)), End: tf.Pos(lineEnd)}, true
+		// Trailing a declaration: the comment goes, the code and the line
+		// ending stay, a CRLF one included.
+		end := lineEnd
+		if end > off && content[end-1] == '\r' {
+			end--
+		}
+		return analysis.TextEdit{Pos: tf.Pos(lineStart + len(lead)), End: tf.Pos(end)}, true
 	}
 	start, end := lineStart, min(lineEnd+1, len(content))
 	prevStart, prev := scopesiteLine(content, lineStart, -1)
@@ -509,9 +514,6 @@ func scopesiteLine(content []byte, off, dir int) (int, string) {
 		}
 		start := strings.LastIndexByte(string(content[:off-1]), '\n') + 1
 		return start, strings.TrimSpace(string(content[start : off-1]))
-	}
-	if off >= len(content) {
-		return off, ""
 	}
 	end := len(content)
 	if i := strings.IndexByte(string(content[off:]), '\n'); i >= 0 {
