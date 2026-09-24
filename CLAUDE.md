@@ -92,7 +92,8 @@ internal/
                           and SurplusMode, the vocabularies each rule's setting is spelled in
   namespace/              file name -> namespace, containment matching, qualify
   scope/                  the two-level Scope enum
-  directive/              //declscope:... comment parsing
+  directive/              //declscope:... comment parsing, and the names that
+                          //go:linkname and //export bind
   config/                 YAML loading and lookup
   baseline/               baseline file format, lookup and regeneration
   measure/                what survey and inspect report: the model, the folds
@@ -209,6 +210,8 @@ The renames went to natural word order rather than a prefix: `addFuncToCollectio
 | `//declscope:ignore <rules>` | Declaration or file | Silence only the named rules (`boundary`, `qualify`, `surplus`, `directive`) |
 | `//declscope:core` | File, before the package clause | Join the package's core namespace; conflicts with `//declscope:namespace` |
 | `//declscope:namespace <name>` | File, before the package clause | Override the namespace derived from the file name |
+
+**Only Go's canonical directive form is a directive.** `directive.split` hands the comment to `ast.ParseDirective` unchanged, after dropping a trailing `// reason`, so only `//declscope:name` (lowercase name, no spaces, line comment) is read. Any other comment whose body opens with `declscope:` is reported at every level, including `Stray`, with the one message `malformed declscope directive: write it as //declscope:name`, and takes no effect. Ignoring it would leave the author believing something is stated. Prose that mentions a directive does not open with `declscope:` and is never reported.
 
 `parseIgnore` is shared by both levels, so `//declscope:ignore` cannot come to mean different things depending on where it is written. File-level directives live on `fileInfo.ignores`; declaration-level ones on `Decl.Ignores`. A file-level ignore is scoped to its **file**, not to its namespace, so files sharing a namespace each need their own — one file silently changing another's diagnostics would be much harder to trace back.
 

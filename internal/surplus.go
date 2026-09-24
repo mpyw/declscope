@@ -47,6 +47,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
@@ -148,7 +149,7 @@ func (s *surplusState) reachesOutside(c *collection, t *target) bool {
 	if !s.gathered {
 		s.gathered = true
 		s.reached = c.surplusReached(s.pass)
-		s.linknamed = surplusLinknamed(s.pass)
+		s.linknamed = directive.Linknamed(s.pass.Files)
 	}
 	return s.reached[t.obj] || s.linknamed[t.obj.Name()] || c.surplusSeesUseOutside(t)
 }
@@ -418,30 +419,6 @@ func (c *collection) surplusConversions(pass *analysis.Pass, reached map[types.O
 			return true
 		})
 	}
-}
-
-// surplusLinknamed collects every local name a //go:linkname or //export
-// directive binds, in every file of the pass. The directive names the
-// declaration as text, from code the analysis does not read.
-func surplusLinknamed(pass *analysis.Pass) map[string]bool {
-	names := make(map[string]bool)
-	for _, f := range pass.Files {
-		for _, g := range f.Comments {
-			for _, cmt := range g.List {
-				rest, ok := strings.CutPrefix(cmt.Text, "//go:linkname ")
-				if !ok {
-					rest, ok = strings.CutPrefix(cmt.Text, "//export ")
-				}
-				if !ok {
-					continue
-				}
-				if fields := strings.Fields(rest); len(fields) > 0 {
-					names[fields[0]] = true
-				}
-			}
-		}
-	}
-	return names
 }
 
 // checkSurplusDeclaration reports whether t is a declaration strict reports on

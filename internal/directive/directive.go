@@ -55,9 +55,18 @@
 // its declaration by a blank line, or inside a function body — binds to
 // nothing and is reported as misplaced rather than dropped.
 //
+// Only Go's directive form, //declscope:name with a lowercase name and no
+// spaces, on a line comment, is read. Any other comment whose text opens
+// with the tool's prefix is reported as malformed.
+//
 // A trailing "// reason" is allowed after any directive:
 //
 //	//declscope:package // shared with the reporting code
+//
+// # Linkname
+//
+// [Linknamed] reads the other directives that bear on a declaration's name:
+// //go:linkname and cgo's //export, which name it as text.
 package directive
 
 import (
@@ -71,7 +80,8 @@ import (
 	"github.com/mpyw/declscope/internal/scope"
 )
 
-const prefix = "declscope:"
+// tool is the tool part of a declscope directive, //tool:name args.
+const tool = "declscope"
 
 // Problem is a malformed or contradictory directive.
 type Problem struct {
@@ -138,11 +148,14 @@ func ParseDecl(groups ...*ast.CommentGroup) Decl {
 			continue
 		}
 		for _, c := range g.List {
-			keyword, arg, ok := split(c.Text)
-			if !ok {
-				continue
+			keyword, arg, malformed, ok := split(c.Text)
+			switch {
+			case !ok:
+			case malformed:
+				d.problem(c.Pos(), malformedMessage)
+			default:
+				d.consume(c.Pos(), keyword, arg)
 			}
-			d.consume(c.Pos(), keyword, arg)
 		}
 	}
 	return d
@@ -194,8 +207,12 @@ func (d *Decl) problem(pos token.Pos, msg string) {
 func Stray(g *ast.CommentGroup) []Problem {
 	var out []Problem
 	for _, c := range g.List {
-		keyword, _, ok := split(c.Text)
+		keyword, _, malformed, ok := split(c.Text)
 		if !ok {
+			continue
+		}
+		if malformed {
+			out = append(out, Problem{Pos: c.Pos(), Msg: malformedMessage})
 			continue
 		}
 		msg := fmt.Sprintf("misplaced declscope:%s: no declaration here for it to bind to; "+
@@ -240,8 +257,12 @@ func ParseFile(file *ast.File) File {
 			break
 		}
 		for _, c := range g.List {
-			keyword, arg, found := split(c.Text)
+			keyword, arg, malformed, found := split(c.Text)
 			if !found {
+				continue
+			}
+			if malformed {
+				f.problem(c.Pos(), malformedMessage)
 				continue
 			}
 			// scope.Parse is asked first, so that the keywords naming a
@@ -346,27 +367,69 @@ func (f *File) problem(pos token.Pos, msg string) {
 }
 
 // split extracts the keyword and argument from a comment holding a declscope
-// directive. Both line and block comments are accepted; without the block form
-// a /*declscope:package*/ comment would be a silent no-op rather than an error.
-func split(text string) (keyword, arg string, ok bool) {
-	if after, cut := strings.CutPrefix(text, "/*"); cut {
-		text = strings.TrimSuffix(after, "*/")
-	} else {
-		text = strings.TrimPrefix(text, "//")
+// directive.
+//
+// A comment is addressed to declscope when its body, after the // or /*,
+// opens with declscope: once any space is skipped. It is a directive when
+// ast.ParseDirective reads it as it stands, once an explanatory trailing
+// comment is dropped: //declscope:package // reason. Any other addressed
+// comment is malformed, and is reported rather than silently doing nothing.
+func split(text string) (keyword, arg string, malformed, ok bool) {
+	body, line := strings.CutPrefix(text, "//")
+	if !line {
+		body = strings.TrimSuffix(strings.TrimPrefix(text, "/*"), "*/")
 	}
-	body, ok := strings.CutPrefix(strings.TrimSpace(text), prefix)
-	if !ok {
-		return "", "", false
-	}
-	// Drop an explanatory trailing comment: //declscope:package // reason
 	if i := strings.Index(body, "//"); i >= 0 {
 		body = body[:i]
 	}
-	fields := strings.Fields(body)
-	if len(fields) == 0 {
-		return "", "", false
+	if !strings.HasPrefix(strings.TrimSpace(body), tool+":") {
+		return "", "", false, false
 	}
-	return fields[0], strings.Join(fields[1:], " "), true
+	if d, parsed := ast.ParseDirective(token.NoPos, "//"+body); line && parsed && d.Tool == tool {
+		return d.Name, strings.Join(strings.Fields(d.Args), " "), false, true
+	}
+	return "", "", true, true
+}
+
+// malformedMessage is the report on a comment addressed to declscope that is
+// no directive.
+const malformedMessage = "malformed declscope directive: write it as //declscope:name"
+
+// Linknamed returns every local name that a //go:linkname or cgo //export
+// directive in files binds. Either directive names a declaration as text, from
+// code the analysis does not read, so a rename cannot follow it and a use
+// through it is never spelled.
+func Linknamed(files []*ast.File) map[string]bool {
+	names := make(map[string]bool)
+	for _, f := range files {
+		for _, g := range f.Comments {
+			for _, c := range g.List {
+				if name, ok := linknameLocal(c.Text); ok {
+					names[name] = true
+				}
+			}
+		}
+	}
+	return names
+}
+
+// linknameLocal returns the local name a //go:linkname local target or an
+// //export Name comment binds. //export predates the tool:name form, so
+// ast.ParseDirective does not read it and it is matched by prefix.
+func linknameLocal(text string) (string, bool) {
+	args, ok := strings.CutPrefix(text, "//export ")
+	if !ok {
+		d, isDirective := ast.ParseDirective(token.NoPos, text)
+		if !isDirective || d.Tool != "go" || d.Name != "linkname" {
+			return "", false
+		}
+		args = d.Args
+	}
+	fields := strings.Fields(args)
+	if len(fields) == 0 {
+		return "", false
+	}
+	return fields[0], true
 }
 
 // isLowerIdent reports whether a namespace may be spelled this way.
