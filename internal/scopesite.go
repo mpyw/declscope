@@ -294,7 +294,11 @@ func (c *collection) reportUnusedScopeSites(pass *analysis.Pass, opts Options, w
 			}
 		case s.fileLevel:
 			msg = "unused file-level " + s.dir.Scope.Directive()
-		case s.shadowed:
+		// Only a directive no declaration takes as written was overridden by
+		// every one. Where some spec states no scope, it is judged by the
+		// default message, which names those specs: a block overridden by one
+		// spec and restating the file for another is not overridden by all.
+		case s.shadowed && len(s.decls) == 0:
 			msg = "unused " + s.dir.Scope.Directive() +
 				": every declaration it reaches states its own scope"
 		case len(s.decls) == 0:

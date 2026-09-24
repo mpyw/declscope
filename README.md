@@ -455,8 +455,8 @@ These reports carry the `directive` rule, so `//declscope:ignore directive` sile
 | `unused file-level //declscope:ignore qualify` | Nothing in the file needed it |
 | `unused //declscope:ignore: no checked declaration carries it` | Written on something declscope does not check, such as `init` or `_` |
 | `unused //declscope:package: every declaration it reaches states its own scope` | A block's directive that every spec overrode |
-| `unused //declscope:package on Helper: nothing it reaches takes a scope` | Everything it reaches is exported |
-| `unused file-level //declscope:package` | Every declaration in the file states its own scope, or is out of the subject |
+| `unused //declscope:package on Helper: nothing it reaches takes a scope` | The named declarations would have that scope under every configuration. They are exported, or restate an enclosing directive. On a block, the other specs override it |
+| `unused file-level //declscope:package` | No declaration in the file takes its scope from it. Each states its own, or would have that scope under every configuration |
 | `unused //declscope:private on implicit.x: it already has private scope` | Under `strict`, it names the scope the declaration would have without it |
 | `unused file-level //declscope:private: every declaration it reaches already has private scope` | Under `strict`, the same for everything in the file |
 
