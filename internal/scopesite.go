@@ -132,17 +132,23 @@ const (
 //
 //declscope:package // the one scope resolution, shared with the collector
 func (c *collection) bindAtScopeSite(opts Options, name string, dir, container, file directive.Decl) (scope.Scope, directive.Decl, scopesiteLevel, bool) {
-	c.redundantAtScopeSite(opts, name, []directive.Decl{dir, dir.BeneathScope(), container, container.BeneathScope(), file})
-	levels := []directive.Decl{dir, container, file}
-	for i, d := range levels {
+	// The chain as written: a merge hides the block's directive beneath a spec
+	// that states its own, and both judgments need it back. Without it, a
+	// spec's //declscope:private under a //declscope:package block would be
+	// judged against the file, and called inert where deleting it widens the
+	// spec. Resolution is unaffected: a hidden directive is never the first.
+	chain := []directive.Decl{dir, dir.BeneathScope(), container, container.BeneathScope(), file}
+	levels := []scopesiteLevel{scopesiteLevelDecl, scopesiteLevelDecl, scopesiteLevelContainer, scopesiteLevelContainer, scopesiteLevelFile}
+	c.redundantAtScopeSite(opts, name, chain)
+	for i, d := range chain {
 		if !d.HasScope {
 			continue
 		}
-		decided := !isInertScopeSite(opts, name, d.Scope, levels[i+1:])
+		decided := !isInertScopeSite(opts, name, d.Scope, chain[i+1:])
 		if decided {
 			c.scopeSite(d).bound = true
 		}
-		return d.Scope, d, scopesiteLevel(i + 1), decided
+		return d.Scope, d, levels[i], decided
 	}
 	outer, _ := outerScopeOfScopeSite(opts, name, nil)
 	return outer, directive.Decl{}, scopesiteLevelDefault, false

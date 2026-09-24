@@ -16,6 +16,13 @@
 //     enclosing `private` — the one thing that widens an exported declaration
 //     back — is called inert, so a codebase can narrow and never widen again.
 //
+// "The levels outside" are every level a deletion would fall through to. For a
+// spec that states its own scope, the first of them is the block's directive
+// the spec overrides, then the type's for a field, then the file's. Skipping
+// the block judges a spec's private under a package block against the file,
+// and calls it inert where deleting it widens the spec. outerDir is the
+// nearest of them, whichever level that is.
+//
 // So: the scope outside this directive is FIXED when an outer level states one,
 // or when the declaration is exported and nothing does (exported carries no
 // boundary under every configuration). It is not fixed when defaults.unexported
@@ -126,6 +133,12 @@ spec DirectiveEffect {
   }
   reachable ExportedNarrowedByPrivateBinds {
     configured and hasTarget and targetExported and outerDir == NoDir
+    and stated == Private and not aPresent and not bPresent and bound
+  }
+  // A spec's private under a package block binds, whatever the file says:
+  // the block is the level a deletion falls through to.
+  reachable SpecNarrowingItsBlockBinds {
+    configured and hasTarget and not targetExported and outerDir == DirPackage
     and stated == Private and not aPresent and not bPresent and bound
   }
   // Restating what the enclosing level already said decides nothing either.
