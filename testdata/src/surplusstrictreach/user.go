@@ -26,11 +26,27 @@ type userList[T any] struct {
 	items []T
 }
 
+// The same for an instantiation of a generic struct, whose fields are mapped
+// back to the declared ones.
+//
+//declscope:package
+type userPair[T any] struct {
+	k int
+	v T
+}
+
 // A struct conversion pairs every field by name and spells none of them.
 //
 //declscope:package
 type userModel struct {
 	rev int
+}
+
+// The same for a conversion from an instantiation of a generic struct.
+//
+//declscope:package
+type userGenModel[T any] struct {
+	gen T
 }
 
 // A method written in order.go reads the field from there.

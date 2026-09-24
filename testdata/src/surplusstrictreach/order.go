@@ -4,6 +4,8 @@ type orderOuter struct{ userInner }
 
 type orderSnap struct{ rev int }
 
+type orderGenSnap struct{ gen int }
+
 func (b *userBox) orderBump() { b.v++ }
 
 func orderRun() int {
@@ -11,9 +13,11 @@ func orderRun() int {
 	o := orderOuter{}
 	l := userList[int]{}
 	s := orderSnap(userModel{})
+	p := userPair[string]{1, "x"}
+	g := orderGenSnap(userGenModel[int]{})
 	var b userBox
 	b.orderBump()
-	return len([]any{r}) + o.n + len(l.items) + s.rev
+	return len([]any{r, p}) + o.n + len(l.items) + s.rev + g.gen
 }
 
 var _ = orderRun

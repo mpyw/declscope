@@ -433,9 +433,11 @@ func (c *collection) collectUnkeyedFields(pass *analysis.Pass, fi *fileInfo, lit
 	}
 	// A field that is not a target, such as an embedded one or one declared
 	// in another package, is recorded too. refs is only ever read for a
-	// target, so the entry is never asked for.
+	// target, so the entry is never asked for. The literal of an instantiated
+	// generic struct holds the instantiated fields, and refs is keyed by the
+	// declared ones, which origin maps them back to.
 	for i, elt := range lit.Elts {
-		f := st.Field(i)
+		f := origin(st.Field(i))
 		c.refs[f] = append(c.refs[f], ref{node: elt, file: fi})
 	}
 }

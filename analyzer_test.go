@@ -185,6 +185,13 @@ func TestDefaultsReachMembers(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "defaultsmembers")
 }
 
+// TestUnkeyedLiteral checks that a composite literal without keys uses every
+// field it writes, though it names none of them, and that a literal of a
+// generic struct's instantiation uses the declared fields.
+func TestUnkeyedLiteral(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unkeyed")
+}
+
 // TestGenerics checks that the members of a generic type are bounded like
 // those of any other type. go/types records the instantiated field or method
 // for a selection on List[int], and on List[T] inside the type's own methods,

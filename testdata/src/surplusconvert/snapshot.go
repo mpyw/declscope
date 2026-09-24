@@ -12,6 +12,15 @@ func snapshotOf() snapshot { return snapshot(modelNew()) }
 
 var _ = snapshotOf
 
+type genSnapshot struct {
+	ID  int
+	rev int
+}
+
+func snapshotOfGen() genSnapshot { return genSnapshot(genModelNew()) }
+
+var _ = snapshotOfGen
+
 func snapshotLedger(l Ledger) Ledger { return Ledger(l) }
 
 var _ = snapshotLedger

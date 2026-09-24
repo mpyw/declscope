@@ -378,7 +378,9 @@ func surplusCarried(pass *analysis.Pass, reached map[types.Object]bool) {
 // snapshot(user) pairs every field of both types by name and spells none of
 // them, so a field reached only this way looks unused to the reference index.
 // Both sides are marked: the conversion reads one and writes the other, and
-// either type's fields may be the ones another namespace declared.
+// either type's fields may be the ones another namespace declared. An
+// instantiated generic struct holds the instantiated fields, which origin maps
+// back to the declared ones byObj is keyed by.
 func (c *collection) surplusConversions(pass *analysis.Pass, reached map[types.Object]bool) {
 	mark := func(t types.Type, fi *fileInfo) {
 		st, ok := types.Unalias(t).Underlying().(*types.Struct)
@@ -386,7 +388,7 @@ func (c *collection) surplusConversions(pass *analysis.Pass, reached map[types.O
 			return
 		}
 		for i := range st.NumFields() {
-			f := st.Field(i)
+			f := origin(st.Field(i))
 			target, tracked := c.byObj[f]
 			if tracked && target.file.key() != fi.key() {
 				reached[f] = true
