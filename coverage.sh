@@ -21,8 +21,13 @@ cd "$(dirname "$0")"
 covdir="$(mktemp -d)"
 trap 'rm -rf "$covdir"' EXIT
 
+# -count=1 turns off go test's result cache. A cached package runs no test, so
+# the subcommand tests start no binary, the counter directory stays empty, and
+# cmd/declscope reads as about 1% covered. The cache also cannot help here: the
+# counter directory is new on every run.
+#
 # shellcheck disable=SC2086 # GOTESTFLAGS is a list of flags
-DECLSCOPE_COVERDIR="$covdir" go test ${GOTESTFLAGS:-} \
+DECLSCOPE_COVERDIR="$covdir" go test -count=1 ${GOTESTFLAGS:-} \
     -covermode=atomic -coverpkg=./... -coverprofile=coverage.txt ./...
 go tool covdata textfmt -i="$covdir" -o=coverage-bin.txt
 
