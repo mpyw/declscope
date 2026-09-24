@@ -39,6 +39,15 @@
 // under the directive still takes a scope it could not have had otherwise.
 // Where nothing does, the fix is withheld and the report is not.
 //
+// One directive binds nothing before the fix: restated, one that names the
+// scope an enclosing directive already gives, so nothing under it takes a
+// scope it could not have had otherwise. The unused rule already reports it,
+// and narrowing under it cannot leave it binding nothing. The fix is withheld
+// there only where it would reword that report: rewords is whether the unused
+// rule is on and the narrowed declaration is one the report reads, as a
+// block's report names each spec that takes its scope. A type's report names
+// the type and never its fields, so a field narrowed under it rewords nothing.
+//
 // ASSUME-1: one declaration and its enclosing directive are enough. Everything
 //   else the directive reaches matters only through otherLive and otherDecided,
 //   and a type's members only through membersKeep (modelling assumption)
@@ -64,7 +73,7 @@ spec SurplusStrict {
     phase: Int,
     mode: Mode, source: Source, level: Level,
     seesAllFiles: Bool, reach: Reach, shape: Shape,
-    otherLive: Bool, otherDecided: Bool,
+    otherLive: Bool, otherDecided: Bool, restated: Bool, rewords: Bool,
     looseReported: Bool, strictReported: Bool, fixed: Bool, stalled: Bool
   }
 
@@ -72,7 +81,7 @@ spec SurplusStrict {
     phase = 0
     mode = Loose  source = Enclosed  level = OnFile
     seesAllFiles = true  reach = Unreached  shape = Plain
-    otherLive = false  otherDecided = false
+    otherLive = false  otherDecided = false  restated = false  rewords = false
     looseReported = false  strictReported = false  fixed = false  stalled = false
   }
 
@@ -82,10 +91,15 @@ spec SurplusStrict {
     requires phase == 0
     phase = 1  mode = m  source = src  level = l  seesAllFiles = sa
   }
-  action configureReach(r: Reach, sh: Shape, live: Bool, decided: Bool) {
+  action configureReach(r: Reach, sh: Shape, live: Bool, decided: Bool, rs: Bool, rw: Bool) {
     requires phase == 1
+    // A restated directive has something enclosing it to restate, so it is
+    // never the file's, and nothing under it decides. Only its report can be
+    // reworded.
+    requires not (rs and (level == OnFile or source == NoEnclosing or decided))
+    requires not (rw and not rs)
     phase = 2  reach = r  shape = sh
-    otherLive = live  otherDecided = decided
+    otherLive = live  otherDecided = decided  restated = rs  rewords = rw
   }
 
   def configured() = phase == 2
@@ -121,7 +135,7 @@ spec SurplusStrict {
     mode == Strict and widened() and seesAllFiles and not reachable()
     and not entryMixed() and not (carriesMembers() and membersKeep()) and not ownerNarrowed()
     and not looseCondition()
-  def fixable() = strictFires() and otherDecided
+  def fixable() = strictFires() and (otherDecided or restated and not rewords)
 
   fair action reportLoose() {
     requires configured()  requires looseFires()  requires not looseReported
@@ -193,13 +207,19 @@ spec SurplusStrict {
   invariant LooseRecordsItsGuard  { looseReported => configured() and looseFires() }
   invariant StrictRecordsItsGuard { strictReported => configured() and strictFires() }
   invariant FixRecordsItsGuard    { fixed => strictReported and fixable() }
+  invariant RestatedRecordsItsGuard {
+    (restated => configured() and level != OnFile and source != NoEnclosing and not otherDecided)
+    and (rewords => restated)
+  }
 
   // --- what the fix leaves -------------------------------------------------
   invariant InsertedDirectiveBinds     { fixed => not insertedInert() }
   invariant FixSettlesTheReport        { fixed => not strictAfter() }
   invariant FixStartsNoBoundary        { fixed => not crossesAfter() and not membersCrossAfter() }
   invariant FixNeverFiresLoose         { fixed => not looseAfter() }
-  invariant FixKeepsTheDirectiveBound  { fixed => directiveBindsAfter() }
+  // A directive the fix leaves binding nothing bound nothing before it.
+  invariant FixKeepsTheDirectiveBound  { fixed => directiveBindsAfter() or restated }
+  invariant FixNeverRewordsUnused      { fixed => not rewords }
 
   trans StrictOnlyWhereItFires { not old(strictReported) and strictReported => old(strictFires()) }
   trans FixOnlyWhereFixable    { not old(fixed) and fixed => old(fixable()) }
@@ -214,7 +234,11 @@ spec SurplusStrict {
   reachable Fixed { fixed and not strictAfter() }
   // The fix is withheld, not the report, where narrowing would leave the
   // directive binding nothing.
-  reachable ReportedWithoutFix { strictReported and not otherDecided and stalled }
+  reachable ReportedWithoutFix { strictReported and not otherDecided and not restated and stalled }
+  // Under a directive that already binds nothing, the fix is offered where
+  // the unused report reads the same after it, and withheld where it would not.
+  reachable FixedUnderARestatedDirective { fixed and restated and not otherDecided }
+  reachable WithheldWhereItWouldReword   { strictReported and restated and rewords and stalled }
 
   // Under loose, a declaration strict would report goes unreported.
   reachable LooseLeavesTheDeclaration {
