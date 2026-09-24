@@ -1,4 +1,4 @@
-package fixdirectivestrictsurplus
+package fixunusedstrictsurplus
 
 // aHelper's directive restates the default. surplus reports it too, and the
 // deletion settles both.

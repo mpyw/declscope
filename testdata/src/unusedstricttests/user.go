@@ -1,4 +1,4 @@
-package directivestricttests
+package unusedstricttests
 
 // userShared restates the default. order_test.go uses it from another
 // namespace, which only the test variant sees.

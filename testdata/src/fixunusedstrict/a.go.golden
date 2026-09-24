@@ -1,4 +1,4 @@
-package fixdirectivestrict
+package fixunusedstrict
 
 // aDoc has a doc comment, separated from the directive by a bare line that
 // the fix takes along.

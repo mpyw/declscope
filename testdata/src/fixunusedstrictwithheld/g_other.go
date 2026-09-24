@@ -1,5 +1,5 @@
 //go:build ignore
 
-package fixdirectivestrictwithheld
+package fixunusedstrictwithheld
 
 var _ = gShared()

@@ -1,6 +1,6 @@
 //declscope:private // want `unused file-level //declscope:private: every declaration it reaches already has private scope`
 
-package directivestrict
+package unusedstrict
 
 // A declaration restating the file's directive is reported, and so is the
 // file's, which restates the default for everything here.

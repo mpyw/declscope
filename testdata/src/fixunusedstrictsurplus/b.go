@@ -1,4 +1,4 @@
-package fixdirectivestrictsurplus
+package fixunusedstrictsurplus
 
 // An ignore answers surplus for bQuiet, and would answer nothing once the
 // directive is gone.

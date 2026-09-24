@@ -1,4 +1,4 @@
-package fixdirectivestrictwithheld
+package fixunusedstrictwithheld
 
 // The block keeps its report, since e.go uses dA. Deleting dB's directive
 // would hand dB to the block, and the block's report would name it too.

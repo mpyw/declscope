@@ -27,9 +27,9 @@ import (
 // default leaves off.
 const strictConfig = "rules:\n  surplus: strict\n"
 
-// directiveStrictConfig puts the directive rule's strict judgment in force,
-// whose fix deletes a directive that restates the scope in force.
-const directiveStrictConfig = "rules:\n  directive: strict\n"
+// unusedStrictConfig puts the unused rule's strict judgment in force, whose
+// fix deletes a directive that restates the scope in force.
+const unusedStrictConfig = "rules:\n  unused: strict\n"
 
 type fixCase struct {
 	name   string
@@ -71,7 +71,7 @@ var fixCases = []fixCase{
 	{
 		// Two directive insertions converging: the one on the type reaches the
 		// field, so a second one on the field would bind nothing, and the
-		// directive rule would report what -fix had just written.
+		// unused rule would report what -fix had just written.
 		name: "type and member crossing together",
 		files: map[string]string{
 			"user.go":  "package x\n\ntype entry struct {\n\tkey string\n}\n",
@@ -152,7 +152,7 @@ var fixCases = []fixCase{
 	},
 	{
 		// Narrowing the field would leave the directive deciding nothing,
-		// which the directive rule would report, so it gets no fix.
+		// which the unused rule would report, so it gets no fix.
 		name:   "a field whose narrowing would leave the directive unused, under strict",
 		config: strictConfig,
 		files: map[string]string{
@@ -174,12 +174,12 @@ var fixCases = []fixCase{
 		},
 	},
 
-	// rules.directive: strict deletes a directive naming the scope its
+	// rules.unused: strict deletes a directive naming the scope its
 	// declarations would have without it. Deleting several in one run must
 	// leave every scope where it was, and change no other report.
 	{
-		name:   "redundant directives at every level, under directive strict",
-		config: directiveStrictConfig,
+		name:   "redundant directives at every level, under unused strict",
+		config: unusedStrictConfig,
 		files: map[string]string{
 			"user.go": "//declscope:private\n\npackage x\n\n// userDoc is documented.\n//\n//declscope:private\nfunc userDoc() int { return 1 }\n\n" +
 				"//declscope:private\ntype userShape struct {\n\t//declscope:private\n\tside int\n\tedge int //declscope:private\n}\n\n" +
@@ -191,8 +191,8 @@ var fixCases = []fixCase{
 	{
 		// The spec's private narrows its block's package, so it is kept, and
 		// the file's private, which the spec's shadows, is judged against it.
-		name:   "a spec narrowing its block, under directive strict",
-		config: directiveStrictConfig,
+		name:   "a spec narrowing its block, under unused strict",
+		config: unusedStrictConfig,
 		files: map[string]string{
 			"user.go": "//declscope:private\n\npackage x\n\n//declscope:package\nvar (\n\t//declscope:private\n\tuserA = 1\n)\n\nvar _ = userA\n",
 		},
@@ -200,8 +200,8 @@ var fixCases = []fixCase{
 	{
 		// A redundant directive on a declaration used elsewhere keeps it: the
 		// boundary report names the level that decided.
-		name:   "a redundant directive on a crossing declaration, under directive strict",
-		config: directiveStrictConfig,
+		name:   "a redundant directive on a crossing declaration, under unused strict",
+		config: unusedStrictConfig,
 		files: map[string]string{
 			"user.go":  "package x\n\n//declscope:private\nfunc userShared() int { return 1 }\n\n//declscope:private\ntype userBox struct {\n\tn int\n}\n",
 			"order.go": "package x\n\nfunc OrderRun() int { return userShared() + userBox{}.n }\n",
@@ -211,8 +211,8 @@ var fixCases = []fixCase{
 		// The boundary fix widens the type, so the field would take the new
 		// directive if its own were deleted in the same run, and surplus
 		// strict would report it widened for nothing.
-		name:   "a field's redundant directive under a type the boundary fix widens, under directive strict",
-		config: "rules:\n  directive: strict\n  surplus: strict\n",
+		name:   "a field's redundant directive under a type the boundary fix widens, under unused strict",
+		config: "rules:\n  unused: strict\n  surplus: strict\n",
 		files: map[string]string{
 			"user.go":  "package x\n\ntype entry struct {\n\t//declscope:private\n\tkey string\n}\n\nfunc userKey(e entry) string { return e.key }\n\nvar _ = userKey\n",
 			"order.go": "package x\n\nfunc OrderRun() entry { return entry{} }\n",
@@ -222,8 +222,8 @@ var fixCases = []fixCase{
 		// Every spec overrides the block, whose report an ignore answers.
 		// userA's directive restates the block and is deleted. The block then
 		// binds userA, but is still redundant and still answered.
-		name:   "a block every spec overrides, under directive strict",
-		config: directiveStrictConfig,
+		name:   "a block every spec overrides, under unused strict",
+		config: unusedStrictConfig,
 		files: map[string]string{
 			"user.go": "package x\n\n//declscope:private\n//declscope:ignore directive\nvar (\n\t//declscope:private\n\tuserA = 1\n\t//declscope:package\n\tUserB = 2\n)\n\nvar _ = userA\n",
 		},
@@ -232,8 +232,8 @@ var fixCases = []fixCase{
 		// The block narrows UserA, so it is not redundant, and a bare ignore
 		// answers its loose report. Deleting UserA's directive would make the
 		// block bind, and leave the ignore answering nothing.
-		name:   "a spec restating a block a bare ignore answers, under directive strict",
-		config: directiveStrictConfig,
+		name:   "a spec restating a block a bare ignore answers, under unused strict",
+		config: unusedStrictConfig,
 		files: map[string]string{
 			"user.go": "package x\n\n//declscope:private\n//declscope:ignore\nvar (\n\t//declscope:private\n\tUserA = 1\n)\n",
 		},
@@ -242,8 +242,8 @@ var fixCases = []fixCase{
 		// Under the package default surplus reports the same directive; the
 		// deletion settles both. Where an ignore answers surplus, the fix is
 		// withheld, or the ignore would be left answering nothing.
-		name:   "a package directive restating the package default, under directive strict",
-		config: "defaults:\n  unexported: package\nrules:\n  directive: strict\n",
+		name:   "a package directive restating the package default, under unused strict",
+		config: "defaults:\n  unexported: package\nrules:\n  unused: strict\n",
 		files: map[string]string{
 			"user.go": "package x\n\n//declscope:package\nfunc userHelper() int { return 1 }\n\n" +
 				"//declscope:package\n//declscope:ignore surplus\nfunc userQuiet() int { return 2 }\n\nvar _ = userHelper() + userQuiet()\n",
@@ -252,8 +252,8 @@ var fixCases = []fixCase{
 	{
 		// Deleting the member's directive would make it a dependent of the
 		// file's, which surplus strict judges one declaration at a time.
-		name:   "a package directive restating the file's, under directive and surplus strict",
-		config: "rules:\n  directive: strict\n  surplus: strict\n",
+		name:   "a package directive restating the file's, under unused and surplus strict",
+		config: "rules:\n  unused: strict\n  surplus: strict\n",
 		files: map[string]string{
 			"user.go":  "//declscope:package\n\npackage x\n\nfunc userShared() int { return 1 }\n\n//declscope:package\nfunc userLocal() int { return 2 }\n\nvar _ = userLocal()\n",
 			"order.go": "package x\n\nfunc OrderRun() int { return userShared() }\n",
@@ -263,8 +263,8 @@ var fixCases = []fixCase{
 		// Only the test variant sees the crossing. The ordinary variant must
 		// not offer the deletion the test variant withholds, since the driver
 		// applies the fixes of both.
-		name:   "a redundant directive on a declaration only a test uses from elsewhere, under directive strict",
-		config: directiveStrictConfig,
+		name:   "a redundant directive on a declaration only a test uses from elsewhere, under unused strict",
+		config: unusedStrictConfig,
 		files: map[string]string{
 			"user.go":       "package x\n\n//declscope:private\nfunc userShared() int { return 1 }\n",
 			"order_test.go": "package x\n\nimport \"testing\"\n\nfunc TestOrder(t *testing.T) { _ = userShared() }\n",
@@ -274,8 +274,8 @@ var fixCases = []fixCase{
 		// The block keeps its report, since another namespace uses userA.
 		// Deleting userB's directive would hand userB to the block, and the
 		// block's report would name it too.
-		name:   "a spec restating a block that keeps its report, under directive strict",
-		config: directiveStrictConfig,
+		name:   "a spec restating a block that keeps its report, under unused strict",
+		config: unusedStrictConfig,
 		files: map[string]string{
 			"user.go":  "package x\n\n//declscope:private\nvar (\n\tuserA = 1\n\t//declscope:private\n\tuserB = 2\n)\n\nvar _ = userB\n",
 			"order.go": "package x\n\nvar _ = userA\n",
@@ -285,8 +285,8 @@ var fixCases = []fixCase{
 		// The block binds nothing, but narrowed needs it, so it is reported
 		// by loose alone. Deleting Exported's directive would hand Exported
 		// to the block, and the block's report would name it.
-		name:   "a spec restating a block that is reported but not redundant, under directive strict",
-		config: "rules:\n  directive: strict\n  surplus: off\n",
+		name:   "a spec restating a block that is reported but not redundant, under unused strict",
+		config: "rules:\n  unused: strict\n  surplus: off\n",
 		files: map[string]string{
 			"user.go": "package x\n\n//declscope:package\nvar (\n\t//declscope:package\n\tExported = 1\n\t//declscope:private\n\tnarrowed = 2\n)\n\nvar _ = narrowed\n",
 		},

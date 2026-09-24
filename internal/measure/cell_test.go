@@ -32,12 +32,12 @@ func TestCellTableAlignsARaggedColumn(t *testing.T) {
 func TestMarkdownNamesARuleSwitchedOff(t *testing.T) {
 	var buf bytes.Buffer
 	s := Summary{Checks: Checks{Configs: []ConfigUse{{
-		Packages: 1, Boundary: false, Surplus: "loose", Directive: "loose", Qualify: "never",
+		Packages: 1, Boundary: false, Surplus: "loose", Unused: "off", Qualify: "never",
 	}}}}
 	if err := s.writeMarkdown(&buf); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(buf.String(), "boundary off, qualify never, surplus loose, directive loose") {
+	if !strings.Contains(buf.String(), "boundary off, qualify never, surplus loose, unused off") {
 		t.Errorf("the rules row does not read boundary off:\n%s", buf.String())
 	}
 }

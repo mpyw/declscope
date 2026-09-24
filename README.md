@@ -244,7 +244,7 @@ rules:
       mouse: [wheel]
   boundary: on           # off | on
   surplus: loose         # off | loose | strict
-  directive: loose       # loose | strict
+  unused: loose          # off | loose | strict
 
 filter:
   only: []              # nothing outside these, when set
@@ -262,7 +262,7 @@ baseline: .declscope-baseline.yaml
 | `rules.naming.vocabulary` | Namespace to a list of words | None | Extra words that carry a namespace. See [what carries a namespace](#what-carries-a-namespace) |
 | `rules.boundary` | `off`, `on` | `on` | Whether the [`boundary`](#boundary) rule reports. See [reach without a boundary](#reach-without-a-boundary) |
 | `rules.surplus` | `off`, `loose`, `strict` | `loose` | How much the [`surplus`](#surplus) rule reports. See [strict](#strict) |
-| `rules.directive` | `loose`, `strict` | `loose` | When the [`directive`](#unused-and-malformed-directives) rule calls a scope directive unused. See [loose and strict](#loose-and-strict) |
+| `rules.unused` | `off`, `loose`, `strict` | `loose` | How much the [`unused`](#unused-directives) rule reports. See [off, loose and strict](#off-loose-and-strict) |
 | `filter.only` | Path globs | None | When set, no file outside them is read. Empty places no restriction |
 | `filter.omit` | Path globs | None | Files taken back out, whether or not `only` let them through |
 | `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` | The [baseline](#adopting-on-an-existing-codebase) to consult |
@@ -330,7 +330,7 @@ The report is that narrow on purpose. A package that reads nothing is usually th
 
 ## Directives
 
-A **directive** is a line comment `//declscope:name`, with a lowercase name, no spaces, and any argument after a space. Any other comment starting with `declscope:` is [reported as malformed](#unused-and-malformed-directives) and has no effect. A trailing `// reason` is ignored.
+A **directive** is a line comment `//declscope:name`, with a lowercase name, no spaces, and any argument after a space. Any other comment starting with `declscope:` is [reported as malformed](#malformed-directives) and has no effect. A trailing `// reason` is ignored.
 
 ```go
 //declscope:package // shared with the reporting code
@@ -390,9 +390,11 @@ Go excludes a `//tool:name` comment from a doc comment, so none of them reaches 
 - Every level is consulted. An ignore counts as used whenever it covers a rule that would have fired, so overlapping ignores never make one another look unused.
 - Ignores are consulted **before** the baseline. A suppression the baseline would also have absorbed still counts as used.
 
-### Unused and malformed directives
+### Unused directives
 
-A directive that decides nothing is reported. Neither a suppression nor a claim of intent should outlive what justified it.
+A directive that decides nothing is reported by the `unused` rule. Neither a suppression nor a claim of intent should outlive what justified it.
+
+An **ignore** is unused when it silenced nothing.
 
 A **scope** directive binds a declaration when the scope it names is one the declaration could not have had **under any configuration**.
 
@@ -403,14 +405,15 @@ A **scope** directive binds a declaration when the scope it names is one the dec
 
 Because the test covers every configuration, a directive that names today's default is never reported. One line of `.declscope.yaml` never turns into hundreds of diagnostics.
 
-#### Loose and strict
+#### Off, loose and strict
 
-`rules.directive` decides how far that test goes. It has no `off`. The rule also reports malformed and conflicting directives, and those must stay visible.
+`rules.unused` decides how far the rule goes. It reaches unused directives only. The [`directive`](#malformed-directives) rule has no switch.
 
-| `rules.directive` | A scope directive is unused when | Fix |
+| `rules.unused` | Reported | Fix |
 | --- | --- | --- |
-| `loose` (default) | No configuration could make it bind | None |
-| `strict` | Also, every declaration it reaches would have the scope it names without it, under the configuration in force | Delete the directive |
+| `off` | Nothing | None |
+| `loose` (default) | An ignore that silenced nothing, and a scope directive no configuration could make bind | None |
+| `strict` | Also, a scope directive when every declaration it reaches would have the scope it names without it, under the configuration in force | Delete the scope directive |
 
 Under `strict`, the scope a declaration would have without the directive comes from the same resolution as always. That is the enclosing type's directive for a field, the block's for a spec, then the file's, then exportedness, then `defaults.unexported`.
 
@@ -445,7 +448,26 @@ A declaration that a nearer directive overrides is judged too. Deleting the oute
 
 Accounting is **per physical directive**. One written on a `var (...)` block counts as used as soon as any spec needed it, and is reported once when none did.
 
-These reports carry the `directive` rule, so `//declscope:ignore directive` silences one. A bare `//declscope:ignore` covers it at the file level, but not on the declaration carrying it. An ignore must not exempt itself from the report written to catch it.
+#### Silencing an unused report
+
+These reports carry the `unused` rule, so `//declscope:ignore unused` silences one. An ignore naming `directive` does not, and is itself reported as unused when that is all it was written for.
+
+| The ignore | Silences an unused report |
+| --- | --- |
+| `//declscope:ignore unused` on the declaration | For the scope directive and the other ignores beside it |
+| Bare `//declscope:ignore` on the declaration | For the scope directive beside it. Not for the other ignores, which would let a group of ignores exempt one another |
+| `//declscope:ignore unused`, or a bare one, above the package clause | For every directive in the file |
+
+**No ignore silences the report that it is itself unused**, whatever it names. One that could would never be called unused, and that report is written to catch it. An ignore that silences another's report has done its job, and is not reported.
+
+```go
+//declscope:ignore qualify // silenced nothing, but its report is silenced
+//declscope:ignore unused  // silences that report, so it is used
+func helper() {}
+
+//declscope:ignore unused // reported: the only report it could silence is its own
+func other() {}
+```
 
 <details>
 <summary>What each unused-directive report means</summary>
@@ -464,24 +486,9 @@ These reports carry the `directive` rule, so `//declscope:ignore directive` sile
 </details>
 
 <details>
-<summary>Malformed directives</summary>
-
-| Directive | Report |
-| --- | --- |
-| `//declscope:foo` | `unknown directive declscope:foo` |
-| `// declscope:package`, `/*declscope:package*/`, or any other comment starting with `declscope:` that is not `//declscope:name` | `malformed declscope directive: write it as //declscope:name` |
-| `//declscope:package x` | `//declscope:package takes no argument` |
-| `//declscope:private` and `//declscope:package` together | `conflicting scope directives: ...` |
-| `//declscope:core` and `//declscope:namespace` together | `conflicting namespace directives: a core file's namespace is the core` |
-| `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, surplus, directive, filter)` |
-| `//declscope:namespace` after the package clause | `declscope:namespace must appear before the package clause` |
-
-</details>
-
-<details>
 <summary>Which variant reports an unused directive</summary>
 
-An **ignore** is called unused only by a pass that sees **every** reference in the package. An ignore needed only by a test would otherwise be unused in one variant and necessary in another. A **scope** directive reads no references, so it is judged in every variant. Under `rules.directive: strict`, the fix that deletes one is offered only by a pass that sees every file, for the reason above.
+An **ignore** is called unused only by a pass that sees **every** reference in the package. An ignore needed only by a test would otherwise be unused in one variant and necessary in another. A **scope** directive reads no references, so it is judged in every variant. Under `rules.unused: strict`, the fix that deletes one is offered only by a pass that sees every file, for the reason above.
 
 | Variant | Unused-**ignore** reports | Unused-**scope** reports |
 | --- | --- | --- |
@@ -491,6 +498,21 @@ An **ignore** is called unused only by a pass that sees **every** reference in t
 | `-test=false`, package with in-package tests | **None** | Yes |
 
 </details>
+
+### Malformed directives
+
+A directive that is malformed, unknown, conflicting or misplaced is reported by the `directive` rule. It has no configuration key and is always on, since a directive that cannot be read leaves the author believing something is stated. `//declscope:ignore directive` silences one, on the declaration carrying it or above the package clause.
+
+| Directive | Report |
+| --- | --- |
+| `//declscope:foo` | `unknown directive declscope:foo` |
+| `// declscope:package`, `/*declscope:package*/`, or any other comment starting with `declscope:` that is not `//declscope:name` | `malformed declscope directive: write it as //declscope:name` |
+| `//declscope:package x` | `//declscope:package takes no argument` |
+| `//declscope:private` and `//declscope:package` together | `conflicting scope directives: ...` |
+| `//declscope:core` and `//declscope:namespace` together | `conflicting namespace directives: a core file's namespace is the core` |
+| `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, surplus, unused, directive, filter)` |
+| `//declscope:namespace` after the package clause | `declscope:namespace must appear before the package clause` |
+| A directive attached to no declaration, such as one inside a function body | `misplaced declscope:package: no declaration here for it to bind to; ...` |
 
 ## Namespaces
 
@@ -655,7 +677,8 @@ A **rule** is one check. A rule's name is the diagnostic's category, its [baseli
 | [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:package` | `rules.boundary` | `on` |
 | [`qualify`](#the-naming-rule) | A name that does not carry its namespace | Rename to prefix it | `rules.naming.*` | Off |
 | [`surplus`](#surplus) | Package scope with no visible use from another namespace | Under `strict`, insert `//declscope:private` | `rules.surplus` | `loose` |
-| [`directive`](#unused-and-malformed-directives) | A directive that binds nothing, or is malformed | Under `strict`, delete a redundant scope directive | `rules.directive` | `loose` |
+| [`unused`](#unused-directives) | A directive that decides nothing: an ignore that silenced nothing, or a scope directive that binds nothing | Under `strict`, delete a redundant scope directive | `rules.unused` | `loose` |
+| [`directive`](#malformed-directives) | A directive that is malformed, unknown, conflicting or misplaced | None | No | On |
 | [`filter`](#the-filter-rule) | A `filter.only` that an `only` above it cancels | None | No | On |
 
 Every diagnostic carries **at most one** fix, so `-fix` never has to choose.
@@ -937,7 +960,7 @@ A declaration is reported only when the enclosing directive is what widened it. 
 | Stays quiet on | Why |
 | --- | --- |
 | An exported declaration | It is package-scoped by exportedness alone |
-| A declaration that states its own scope | It answers for itself. A redundant `//declscope:package` there is a [`directive`](#unused-and-malformed-directives) report |
+| A declaration that states its own scope | It answers for itself. A redundant `//declscope:package` there is an [`unused`](#unused-directives) report |
 | An embedded field | It has no name of its own |
 | Anything under `defaults.unexported: package` | It would be package-scoped with no directive at all |
 | Anything under a directive `loose` reports | Deleting that directive is the advice already |
@@ -969,11 +992,11 @@ Two subcommands report what the analyzer found. Neither decides anything. The ex
 $ declscope survey -config .declscope-strict.yaml ./internal/measure/...
 ## Checks in force
 
-| check      | value                                                                     | packages |
-| ---------- | ------------------------------------------------------------------------- | -------: |
-| config     | `.declscope-strict.yaml`                                                  |        1 |
-| rules      | boundary on, qualify ondemand, exported, surplus strict, directive strict |        1 |
-| type check | 1 package ok, 0 failed                                                    |          |
+| check      | value                                                                  | packages |
+| ---------- | ---------------------------------------------------------------------- | -------: |
+| config     | `.declscope-strict.yaml`                                               |        1 |
+| rules      | boundary on, qualify ondemand, exported, surplus strict, unused strict |        1 |
+| type check | 1 package ok, 0 failed                                                 |          |
 
 ## Findings
 
@@ -982,6 +1005,7 @@ $ declscope survey -config .declscope-strict.yaml ./internal/measure/...
 | `boundary`  |     0 |       0 |         0 |        0 |
 | `qualify`   |     0 |       0 |         0 |        0 |
 | `surplus`   |     0 |       0 |         0 |        0 |
+| `unused`    |     0 |       0 |         - |        0 |
 | `directive` |     0 |       0 |         - |        0 |
 | `filter`    |     0 |       0 |         - |        0 |
 

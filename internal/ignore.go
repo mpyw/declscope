@@ -43,25 +43,10 @@ type ignoreSite struct {
 	fileLevel bool
 	used      bool
 	// siblings are the ignores parsed from the same comment group, which is
-	// where a //declscope:ignore directive answering for this one is written.
+	// where a //declscope:ignore unused answering for this one is written.
 	//
 	//declscope:package // collect.go records them as it parses the group
 	siblings []directive.Ignore
-}
-
-// namesDirective reports whether some ignore written beside this one names the
-// directive rule explicitly.
-//
-// A bare //declscope:ignore covers every rule, this report among them, so
-// reading it as an answer here would let one exempt itself from ever being
-// called unused — which is the one thing this report exists to prevent.
-func (s *ignoreSite) namesDirective() bool {
-	for _, ig := range s.siblings {
-		if slices.Contains(ig.Rules, rule.Directive) {
-			return true
-		}
-	}
-	return false
 }
 
 // siteOfIgnore returns the accounting entry for ig, keyed by where it is written.
@@ -126,21 +111,25 @@ func (c *collection) ignoreWouldSilence(t *target, r rule.Rule) bool {
 	return false
 }
 
-// ignoreSilencesFile reports whether the file stands r down for everything it holds,
-// and marks the ignore that did it used.
+// ignoreSilencesFile reports whether the file stands the problem's rule down
+// for everything it holds, and marks the ignore that did it used.
 //
 // The marking is what keeps an ignore written for a directive problem from
 // being reported as unused itself: it silences a report that is not attached to
 // any declaration, so the per-target accounting never sees it work.
 //
+// An ignore never silences the report written at its own position, which is
+// the report that it is unused. One that could would never be called unused,
+// and that report exists to catch it.
+//
 //declscope:package // report.go consults it for problems, which no target holds
-func (c *collection) ignoreSilencesFile(fi *fileInfo, r rule.Rule) bool {
+func (c *collection) ignoreSilencesFile(fi *fileInfo, p directive.Problem) bool {
 	if fi == nil {
 		return false
 	}
 	hit := false
 	for _, ig := range fi.ignores {
-		if ig.Covers(r) {
+		if ig.Pos != p.Pos && ig.Covers(p.Rule) {
 			c.siteOfIgnore(ig).used = true
 			hit = true
 		}
@@ -164,7 +153,7 @@ func (c *collection) ignored(ignores []directive.Ignore, r rule.Rule) bool {
 	return hit
 }
 
-// reportUnusedIgnores reports every ignore directive that silencedByIgnore nothing.
+// reportUnusedIgnores reports every ignore directive that silenced nothing.
 //
 // Only a pass that sees every reference in the package can tell. The ordinary
 // variant of a package with in-package _test.go files does not see the
@@ -176,23 +165,47 @@ func (c *collection) ignored(ignores []directive.Ignore, r rule.Rule) bool {
 // lost; with -test=false, a package with in-package tests gets no
 // unused-ignore report at all, which is the only report that can be trusted.
 //
+// The report is the unused rule's, so another ignore covering that rule can
+// answer it, and is then used: one written beside it on the same declaration
+// when it names the rule, or one at the file level. No ignore answers its own,
+// or it could never be called unused. The answers are taken over the ignores
+// that silenced nothing before any answer counts, so the result does not
+// depend on which is judged first. spec/unused_ignore.fsl is the model.
+//
 //declscope:package // report.go drains it after every finding has been seen
-func (c *collection) reportUnusedIgnores(pass *analysis.Pass) {
-	if c.unseen(pass).all {
+func (c *collection) reportUnusedIgnores(pass *analysis.Pass, opts Options) {
+	if !opts.Unused.Reports() || c.unseen(pass).all {
 		return
 	}
 	sites := make([]*ignoreSite, 0, len(c.ignores))
 	for _, s := range c.ignores {
-		// An ignore written beside this one, on the same declaration, answers
-		// for it — the same way reportUnusedScopeSites consults the directive that
-		// carries the scope. Judging it only at the file level would leave the
-		// declaration-level remedy producing a second report instead of none.
-		if !s.used && !s.namesDirective() {
+		if !s.used {
 			sites = append(sites, s)
 		}
 	}
 	slices.SortFunc(sites, func(a, b *ignoreSite) int { return comparePos(pass.Fset, a.ig.Pos, b.ig.Pos) })
+
+	// Settle every answer before any report is made. An ignore answering one
+	// of these has done a job, and its own report is not made. One answered by
+	// a sibling is not reported at all; one answered at the file level is
+	// reported and then silenced, as every problem is, so that the survey
+	// counts it as ignored.
+	bySibling := make(map[*ignoreSite]bool, len(sites))
 	for _, s := range sites {
+		for _, ig := range s.siblings {
+			if ig.Pos != s.ig.Pos && slices.Contains(ig.Rules, rule.Unused) {
+				bySibling[s] = true
+				c.siteOfIgnore(ig).used = true
+			}
+		}
+		// The report this would be, asked of the file before it exists, so
+		// that the ignore answering it is marked used in time.
+		c.ignoreSilencesFile(c.fileAt(pass, s.ig.Pos), directive.Problem{Pos: s.ig.Pos, Rule: rule.Unused})
+	}
+	for _, s := range sites {
+		if s.used || bySibling[s] {
+			continue
+		}
 		var msg string
 		switch {
 		case s.fileLevel:
@@ -202,6 +215,6 @@ func (c *collection) reportUnusedIgnores(pass *analysis.Pass) {
 		default:
 			msg = fmt.Sprintf("unused %s on %s", s.ig, strings.Join(s.decls, ", "))
 		}
-		c.problems = append(c.problems, directive.Problem{Pos: s.ig.Pos, Msg: msg})
+		c.problems = append(c.problems, directive.Problem{Pos: s.ig.Pos, Msg: msg, Rule: rule.Unused})
 	}
 }

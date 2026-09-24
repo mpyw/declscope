@@ -449,13 +449,13 @@ func (c *collection) checkSurplusDeclaration(pass *analysis.Pass, opts Options, 
 //
 //   - An exported declaration is package-scoped by exportedness alone.
 //   - A declaration that states its own scope answers for itself. A redundant
-//     //declscope:package there is the directive rule's report, not this one.
+//     //declscope:package there is the unused rule's report, not this one.
 //   - A declaration whose scope comes from defaults.unexported took no
 //     directive.
 //   - Under defaults.unexported: package it would be package-scoped with no
 //     directive at all, so the directive widened nothing.
 //
-// The last one reads the configuration, which the directive rule's binding
+// The last one reads the configuration, which the unused rule's binding
 // test deliberately does not. The two questions differ. That test decides
 // whether a comment may be deleted, and must hold under every configuration,
 // because the comment outlives any one of them. This one asks whether the
@@ -553,7 +553,7 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 
 	// A directive that decides something today and would decide nothing once
 	// everything it widens is narrowed is one the fixes would leave unused,
-	// and the directive rule would report what -fix had just written. Its
+	// and the unused rule would report what -fix had just written. Its
 	// advice is to delete the directive, which no fix does, so what is under
 	// it is reported without one. A directive that already decides nothing is
 	// already reported, and narrowing under it changes nothing about that.

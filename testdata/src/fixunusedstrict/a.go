@@ -1,6 +1,6 @@
 //declscope:private // want `unused file-level //declscope:private: every declaration it reaches already has private scope`
 
-package fixdirectivestrict
+package fixunusedstrict
 
 // aDoc has a doc comment, separated from the directive by a bare line that
 // the fix takes along.

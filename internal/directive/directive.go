@@ -91,8 +91,12 @@ type Problem struct {
 	Pos token.Pos
 	Msg string
 
+	// Rule is the rule the report carries: directive for what this package
+	// finds, unused for a directive the analysis finds deciding nothing.
+	Rule rule.Rule
+
 	// Fixes is at most one suggested fix. Only a redundant scope directive
-	// under rules.directive: strict carries one, which deletes it.
+	// under rules.unused: strict carries one, which deletes it.
 	Fixes []analysis.SuggestedFix
 }
 
@@ -220,7 +224,7 @@ func (d *Decl) consume(pos token.Pos, keyword, arg string) {
 }
 
 func (d *Decl) problem(pos token.Pos, msg string) {
-	d.Problems = append(d.Problems, Problem{Pos: pos, Msg: msg})
+	d.Problems = append(d.Problems, Problem{Pos: pos, Msg: msg, Rule: rule.Directive})
 }
 
 // Stray reports every directive in a comment group that reached no
@@ -236,7 +240,7 @@ func Stray(g *ast.CommentGroup) []Problem {
 			continue
 		}
 		if malformed {
-			out = append(out, Problem{Pos: c.Pos(), Msg: malformedMessage})
+			out = append(out, Problem{Pos: c.Pos(), Msg: malformedMessage, Rule: rule.Directive})
 			continue
 		}
 		msg := fmt.Sprintf("misplaced declscope:%s: no declaration here for it to bind to; "+
@@ -244,7 +248,7 @@ func Stray(g *ast.CommentGroup) []Problem {
 		if keyword == "namespace" {
 			msg = "declscope:namespace must appear before the package clause"
 		}
-		out = append(out, Problem{Pos: c.Pos(), Msg: msg})
+		out = append(out, Problem{Pos: c.Pos(), Msg: msg, Rule: rule.Directive})
 	}
 	return out
 }
@@ -378,7 +382,7 @@ func parseIgnore(pos token.Pos, arg string) (Ignore, *Problem) {
 		}
 		r, ok := rule.Parse(name)
 		if !ok {
-			return Ignore{}, &Problem{Pos: pos, Msg: fmt.Sprintf("unknown rule %q in declscope:ignore (want one of %s)",
+			return Ignore{}, &Problem{Pos: pos, Rule: rule.Directive, Msg: fmt.Sprintf("unknown rule %q in declscope:ignore (want one of %s)",
 				name, strings.Join(rule.Names(), ", "))}
 		}
 		ignore.Rules = append(ignore.Rules, r)
@@ -387,7 +391,7 @@ func parseIgnore(pos token.Pos, arg string) (Ignore, *Problem) {
 }
 
 func (f *File) problem(pos token.Pos, msg string) {
-	f.Problems = append(f.Problems, Problem{Pos: pos, Msg: msg})
+	f.Problems = append(f.Problems, Problem{Pos: pos, Msg: msg, Rule: rule.Directive})
 }
 
 // split extracts the keyword and argument from a comment holding a declscope

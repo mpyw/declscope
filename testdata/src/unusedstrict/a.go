@@ -1,4 +1,4 @@
-package directivestrict
+package unusedstrict
 
 // Under strict, a private field of a type that states no scope is reported:
 // defaults.unexported gives it private without the directive.

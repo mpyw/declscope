@@ -215,50 +215,57 @@ func (s BoundaryModeSet) String() string {
 	return modeJoin(names)
 }
 
-// DirectiveMode says when the directive rule calls a scope directive unused:
-// only when no configuration could make it bind, or also when it names the
-// scope the declaration would have without it under this one. Only
-// rules.directive reads one.
+// UnusedMode says when the unused rule reports a directive: never, only when
+// no configuration could make a scope directive bind, or also when it names
+// the scope the declaration would have without it under this one. Only
+// rules.unused reads one.
 //
-// There is no off. The rule also reports malformed, unknown, conflicting and
-// misplaced directives, which a switch would silence along with the rest;
-// //declscope:ignore directive answers one case at a time.
-type DirectiveMode int
+// Its off reaches the unused rule alone. Malformed, unknown, conflicting and
+// misplaced directives are the directive rule's, which has no switch.
+type UnusedMode int
 
 const (
-	// DirectiveModeLoose reports a scope directive only when the scope it
-	// names is one every declaration it reaches would have under every
-	// configuration. It is the default.
-	DirectiveModeLoose DirectiveMode = iota
+	// UnusedModeLoose reports an ignore that silenced nothing, and a scope
+	// directive only when the scope it names is one every declaration it
+	// reaches would have under every configuration. It is the default.
+	UnusedModeLoose UnusedMode = iota
 
-	// DirectiveModeStrict also reports a scope directive that names, for
+	// UnusedModeOff reports nothing.
+	UnusedModeOff
+
+	// UnusedModeStrict also reports a scope directive that names, for
 	// everything it reaches, the scope that declaration would have without it
 	// under the configuration in force, and offers to delete it.
-	DirectiveModeStrict
+	UnusedModeStrict
 )
 
 // String returns the spelling the settings use.
-func (m DirectiveMode) String() string {
+func (m UnusedMode) String() string {
 	switch m {
-	case DirectiveModeLoose:
+	case UnusedModeOff:
+		return "off"
+	case UnusedModeLoose:
 		return "loose"
-	case DirectiveModeStrict:
+	case UnusedModeStrict:
 		return "strict"
 	default:
 		return "unknown"
 	}
 }
 
+// Reports reports whether the rule says anything at all.
+func (m UnusedMode) Reports() bool { return m == UnusedModeLoose || m == UnusedModeStrict }
+
 // ReportsRedundant reports whether a directive restating the scope the
 // configuration already gives is reported.
-func (m DirectiveMode) ReportsRedundant() bool { return m == DirectiveModeStrict }
+func (m UnusedMode) ReportsRedundant() bool { return m == UnusedModeStrict }
 
-// DirectiveModeSet is the values rules.directive accepts, in the order an
-// error message names them.
-type DirectiveModeSet []DirectiveMode
+// UnusedModeSet is the values rules.unused accepts, in the order an error
+// message names them.
+type UnusedModeSet []UnusedMode
 
 // Parse reads a setting's value, of the members of the set only.
-func (s DirectiveModeSet) Parse(value string) (DirectiveMode, bool) {
+func (s UnusedModeSet) Parse(value string) (UnusedMode, bool) {
 	for _, m := range s {
 		if value == m.String() {
 			return m, true
@@ -267,8 +274,8 @@ func (s DirectiveModeSet) Parse(value string) (DirectiveMode, bool) {
 	return 0, false
 }
 
-// String lists the accepted spellings: "loose or strict".
-func (s DirectiveModeSet) String() string {
+// String lists the accepted spellings: "off, loose or strict".
+func (s UnusedModeSet) String() string {
 	names := make([]string, len(s))
 	for i, m := range s {
 		names[i] = m.String()

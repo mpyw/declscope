@@ -1,4 +1,4 @@
-package fixdirectivestrict
+package fixunusedstrict
 
 // bShared is used from c.go, so deleting its directive would move the level
 // the boundary report names. It is reported without a fix, and this file takes

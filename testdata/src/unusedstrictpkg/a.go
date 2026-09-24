@@ -1,4 +1,4 @@
-package directivestrictpkg
+package unusedstrictpkg
 
 // Under defaults.unexported: package the private field narrows it, and is kept.
 type implicit struct {

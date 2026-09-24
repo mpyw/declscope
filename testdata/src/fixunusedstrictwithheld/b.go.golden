@@ -1,4 +1,4 @@
-package fixdirectivestrictwithheld
+package fixunusedstrictwithheld
 
 // The boundary fix widens bEntry, so the field's directive stays: without it
 // the field would take the type's new directive.

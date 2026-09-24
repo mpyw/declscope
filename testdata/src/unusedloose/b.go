@@ -1,6 +1,6 @@
 //declscope:private // want `unused file-level //declscope:private`
 
-package directiveloose
+package unusedloose
 
 // The spec's private narrows its block's package. Deleting it would widen the
 // spec, so it binds, whatever the file says. The block's directive and the

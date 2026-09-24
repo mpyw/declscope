@@ -1,4 +1,4 @@
-package directivestrict
+package unusedstrict
 
 // The exported spec's package widens it back from its block's private, so
 // strict keeps it. The block is kept as well: without it, the spec's package

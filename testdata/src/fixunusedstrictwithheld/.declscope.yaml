@@ -1,5 +1,5 @@
 rules:
-  directive: strict
+  unused: strict
   # surplus would withhold the package directives' fixes on its own account;
-  # this package is about the directive rule's own reasons.
+  # this package is about the unused rule's own reasons.
   surplus: off

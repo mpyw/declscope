@@ -1,4 +1,4 @@
-package fixdirectivestrictwithheld
+package fixunusedstrictwithheld
 
 // The block binds nothing, but fNarrowed needs it, so loose alone reports it.
 // Deleting FExported's directive would hand FExported to the block, and the

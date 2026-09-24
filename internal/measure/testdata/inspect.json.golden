@@ -44,6 +44,14 @@
       "ignored": 0,
       "baselined": 0,
       "reported": 0
+    },
+    "unused": {
+      "asked": true,
+      "keyable": false,
+      "found": 2,
+      "ignored": 1,
+      "baselined": 0,
+      "reported": 1
     }
   },
   "namespaces": [

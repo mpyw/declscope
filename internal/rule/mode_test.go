@@ -99,20 +99,22 @@ func TestQualifyModeSetString(t *testing.T) {
 // TestModeStringUnknown pins what a value outside every mode spells, so that
 // a mode added without its spelling reads as a bug rather than as a setting.
 func TestModeStringUnknown(t *testing.T) {
-	for _, got := range []string{QualifyMode(-1).String(), SurplusMode(-1).String(), BoundaryMode(-1).String(), DirectiveMode(-1).String()} {
+	for _, got := range []string{QualifyMode(-1).String(), SurplusMode(-1).String(), BoundaryMode(-1).String(), UnusedMode(-1).String()} {
 		if got != "unknown" {
 			t.Errorf("String() = %q, want unknown", got)
 		}
 	}
 }
 
-// TestDirectiveMode pins the spelling of each rules.directive value, that it
-// parses back, and that only strict reports a redundant directive.
-func TestDirectiveMode(t *testing.T) {
-	all := DirectiveModeSet{DirectiveModeLoose, DirectiveModeStrict}
-	for m, want := range map[DirectiveMode]string{
-		DirectiveModeLoose:  "loose",
-		DirectiveModeStrict: "strict",
+// TestUnusedMode pins the spelling of each rules.unused value, that it parses
+// back, that off alone reports nothing, and that only strict reports a
+// redundant directive.
+func TestUnusedMode(t *testing.T) {
+	all := UnusedModeSet{UnusedModeOff, UnusedModeLoose, UnusedModeStrict}
+	for m, want := range map[UnusedMode]string{
+		UnusedModeOff:    "off",
+		UnusedModeLoose:  "loose",
+		UnusedModeStrict: "strict",
 	} {
 		if got := m.String(); got != want {
 			t.Errorf("String() = %q, want %q", got, want)
@@ -120,16 +122,19 @@ func TestDirectiveMode(t *testing.T) {
 		if back, ok := all.Parse(want); !ok || back != m {
 			t.Errorf("Parse(%q) = %v, %v; want %v", want, back, ok, m)
 		}
-		if got := m.ReportsRedundant(); got != (m == DirectiveModeStrict) {
+		if got := m.Reports(); got != (m != UnusedModeOff) {
+			t.Errorf("%v.Reports() = %v", m, got)
+		}
+		if got := m.ReportsRedundant(); got != (m == UnusedModeStrict) {
 			t.Errorf("%v.ReportsRedundant() = %v", m, got)
 		}
 	}
-	for _, v := range []string{"off", "on", "", "true"} {
+	for _, v := range []string{"on", "", "true"} {
 		if _, ok := all.Parse(v); ok {
-			t.Errorf("Parse(%q) accepted a value rules.directive does not take", v)
+			t.Errorf("Parse(%q) accepted a value rules.unused does not take", v)
 		}
 	}
-	if got := all.String(); got != "loose or strict" {
-		t.Errorf("String() = %q, want %q", got, "loose or strict")
+	if got := all.String(); got != "off, loose or strict" {
+		t.Errorf("String() = %q, want %q", got, "off, loose or strict")
 	}
 }

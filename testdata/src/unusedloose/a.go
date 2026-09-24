@@ -1,6 +1,6 @@
-package directiveloose
+package unusedloose
 
-// rules.directive is loose by default. A private field of a type that states
+// rules.unused is loose by default. A private field of a type that states
 // no scope names the scope defaults.unexported gives it today, but another
 // configuration could give it package, so the directive is not reported.
 type implicit struct {

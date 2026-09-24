@@ -1,3 +1,3 @@
-package fixdirectivestrict
+package fixunusedstrict
 
 var _ = bShared()

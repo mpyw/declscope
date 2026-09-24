@@ -1,4 +1,4 @@
-package directiveloose
+package unusedloose
 
 // The exported spec's package widens it back from its block's private.
 // Deleting it would narrow the spec, so it binds. The block binds cOther.

@@ -212,7 +212,7 @@ type Count struct {
 	Asked bool
 
 	// Keyable is false for a rule whose findings carry no baseline key, which
-	// is the directive rule and the filter rule. Their Baselined is zero
+	// is the unused, directive and filter rules. Their Baselined is zero
 	// because nothing could ever suppress them.
 	Keyable bool
 }
@@ -241,7 +241,7 @@ type Package struct {
 
 	// AllCore marks a package whose every file joined the core namespace. The
 	// boundary and naming rules then have nothing to check, though the
-	// surplus, directive and filter rules still run.
+	// surplus, unused, directive and filter rules still run.
 	AllCore bool
 }
 
@@ -279,8 +279,8 @@ type ConfigUse struct {
 	// Surplus is the mode as the config spells it: off, loose, strict.
 	Surplus string
 
-	// Directive is the mode as the config spells it: loose, strict.
-	Directive string
+	// Unused is the mode as the config spells it: off, loose, strict.
+	Unused string
 
 	// Qualify is the mode as the config spells it: always, ondemand, never.
 	Qualify string

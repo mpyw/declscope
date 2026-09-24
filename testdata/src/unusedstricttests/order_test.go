@@ -1,4 +1,4 @@
-package directivestricttests
+package unusedstricttests
 
 import "testing"
 

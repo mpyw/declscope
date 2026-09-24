@@ -1,4 +1,4 @@
-package fixdirectivestrictwithheld
+package fixunusedstrictwithheld
 
 // aBare restates the default, and nothing withholds its fix.
 //
@@ -9,7 +9,7 @@ func aBare() int { return 1 }
 // redundant and answered once aSpec takes it, and aSpec's directive goes.
 //
 //declscope:private
-//declscope:ignore directive
+//declscope:ignore unused
 var (
 	//declscope:private // want `unused //declscope:private on aSpec: it already has private scope`
 	aSpec = 2

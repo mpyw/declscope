@@ -1,5 +1,5 @@
 defaults:
   unexported: package
 rules:
-  directive: strict
+  unused: strict
   surplus: off

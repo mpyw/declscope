@@ -1,3 +1,3 @@
-package directivestrict
+package unusedstrict
 
 var _ = dShared()

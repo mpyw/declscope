@@ -1,4 +1,4 @@
-package directivestrict
+package unusedstrict
 
 // A block's directive that restates the default is reported with every spec
 // that takes it.

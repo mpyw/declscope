@@ -45,6 +45,7 @@ func fixturePackage() Package {
 			rule.Boundary:  {Asked: true, Keyable: true, Found: 5, Ignored: 1, Baselined: 2, Reported: 2},
 			rule.Qualify:   {Asked: true, Keyable: true, Found: 4, Ignored: 1, Baselined: 1, Reported: 2},
 			rule.Surplus:   {Asked: true, Keyable: true},
+			rule.Unused:    {Asked: true, Found: 2, Ignored: 1, Reported: 1},
 			rule.Directive: {Asked: true, Found: 1, Reported: 1},
 			rule.Filter:    {Asked: true},
 		},
@@ -73,7 +74,7 @@ func fixtureSummary() Summary {
 	}}, Checks{
 		Configs: []ConfigUse{{
 			Chain: []string{".declscope.yaml"}, Packages: 2,
-			Boundary: true, Surplus: "loose", Directive: "strict", Qualify: "ondemand", Exported: true,
+			Boundary: true, Surplus: "loose", Unused: "strict", Qualify: "ondemand", Exported: true,
 		}},
 		Baselines: []BaselineUse{{Path: ".declscope-baseline.yaml", Entries: 12}},
 		TypeCheck: TypeCheck{Packages: 2},

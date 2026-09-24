@@ -104,34 +104,34 @@ func TestSuggestedFixSurplusStrict(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixsurplusstrict")
 }
 
-// TestSuggestedFixDirectiveStrict checks the fix rules.directive: strict
+// TestSuggestedFixUnusedStrict checks the fix rules.unused: strict
 // offers: it deletes the redundant directive, whether it stands on its own
 // line or trails a field, with the bare // that separated it from a doc
 // comment, and with the blank line after a file-level one. A directive on a
 // declaration another namespace uses is reported without a fix, so that file
 // takes no edit.
-func TestSuggestedFixDirectiveStrict(t *testing.T) {
-	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixdirectivestrict")
+func TestSuggestedFixUnusedStrict(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixunusedstrict")
 }
 
-// TestSuggestedFixDirectiveStrictWithheld checks each reason the directive
+// TestSuggestedFixUnusedStrictWithheld checks each reason the directive
 // rule's strict fix is withheld, with the report kept: a field whose type the
 // boundary fix widens (b.go), a spec whose block keeps a report the deletion
 // would change (d.go, and f.go where loose alone reports the block), and a
 // declaration a file the build excludes names (g.go). Only a.go and the
 // boundary fix in b.go take edits; an outer directive an ignore answers does
 // not withhold.
-func TestSuggestedFixDirectiveStrictWithheld(t *testing.T) {
-	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixdirectivestrictwithheld")
+func TestSuggestedFixUnusedStrictWithheld(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixunusedstrictwithheld")
 }
 
-// TestSuggestedFixDirectiveStrictSurplus checks the reasons the directive
+// TestSuggestedFixUnusedStrictSurplus checks the reasons the directive
 // rule's strict fix is withheld while surplus reads a //declscope:package: an
 // ignore answering surplus (b.go), and a directive restating an enclosing one
 // (c.go). Only a.go, where the deletion settles surplus's report too, takes
 // an edit.
-func TestSuggestedFixDirectiveStrictSurplus(t *testing.T) {
-	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixdirectivestrictsurplus")
+func TestSuggestedFixUnusedStrictSurplus(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixunusedstrictsurplus")
 }
 
 // fixesWantless collects what analysistest reports instead of failing, for a
@@ -143,7 +143,7 @@ func (w *fixesWantless) Errorf(format string, args ...any) {
 	w.errors = append(w.errors, fmt.Sprintf(format, args...))
 }
 
-// TestSuggestedFixDirectiveStrictUnseenTests checks that the ordinary variant
+// TestSuggestedFixUnusedStrictUnseenTests checks that the ordinary variant
 // of a package with in-package tests offers no deletion. Only the test
 // variant sees order_test.go use userShared from another namespace, and it
 // withholds the fix, since the boundary report names the directive. The
@@ -152,9 +152,9 @@ func (w *fixesWantless) Errorf(format string, args ...any) {
 //
 // The boundary report exists in the test variant alone, and a want in
 // user.go must hold in both, so the diagnostics are read here directly.
-func TestSuggestedFixDirectiveStrictUnseenTests(t *testing.T) {
+func TestSuggestedFixUnusedStrictUnseenTests(t *testing.T) {
 	var w fixesWantless
-	results := analysistest.Run(&w, analysistest.TestData(), declscope.Analyzer, "directivestricttests")
+	results := analysistest.Run(&w, analysistest.TestData(), declscope.Analyzer, "unusedstricttests")
 	const want = "unused //declscope:private on userShared: it already has private scope"
 	variants := 0
 	for _, r := range results {
@@ -173,10 +173,10 @@ func TestSuggestedFixDirectiveStrictUnseenTests(t *testing.T) {
 	}
 }
 
-// TestSuggestedFixDirectiveStrictUnreadable checks that a pass with no
+// TestSuggestedFixUnusedStrictUnreadable checks that a pass with no
 // ReadFile, as the subcommands build one, still makes the strict reports and
 // offers no deletion, since it cannot see the lines it would delete.
-func TestSuggestedFixDirectiveStrictUnreadable(t *testing.T) {
+func TestSuggestedFixUnusedStrictUnreadable(t *testing.T) {
 	blind := &analysis.Analyzer{
 		Name: declscope.Analyzer.Name,
 		Doc:  declscope.Analyzer.Doc,
@@ -186,9 +186,9 @@ func TestSuggestedFixDirectiveStrictUnreadable(t *testing.T) {
 			return declscope.Analyzer.Run(&unreadable)
 		},
 	}
-	for _, r := range analysistest.Run(t, analysistest.TestData(), blind, "fixdirectivestrict") {
+	for _, r := range analysistest.Run(t, analysistest.TestData(), blind, "fixunusedstrict") {
 		for _, d := range r.Diagnostics {
-			if d.Category == string(rule.Directive) && len(d.SuggestedFixes) > 0 {
+			if d.Category == string(rule.Unused) && len(d.SuggestedFixes) > 0 {
 				t.Errorf("%q offers a fix it could not have read", d.Message)
 			}
 		}

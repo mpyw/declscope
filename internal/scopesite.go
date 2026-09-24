@@ -253,13 +253,17 @@ func (s *scopeSite) redundant() bool { return s.reached && !s.needed }
 // in every variant, where an unused ignore defers to the one that sees every
 // file.
 //
-// Under rules.directive: strict it also reports a directive that is
-// redundant today (redundantAtScopeSite), and offers to delete it. widened
-// names the types a boundary fix in this run widens; nil when no fix is made.
+// Under rules.unused: strict it also reports a directive that is redundant
+// today (redundantAtScopeSite), and offers to delete it. Under off it reports
+// nothing, and so offers nothing. widened names the types a boundary fix in
+// this run widens; nil when no fix is made.
 //
 //declscope:package // report.go drains it after every finding has been seen
 func (c *collection) reportUnusedScopeSites(pass *analysis.Pass, opts Options, widened map[types.Object]bool) {
-	strict := opts.Directive.ReportsRedundant()
+	if !opts.Unused.Reports() {
+		return
+	}
+	strict := opts.Unused.ReportsRedundant()
 	unused := func(s *scopeSite) bool { return !s.bound || strict && s.redundant() }
 	sites := make([]*scopeSite, 0, len(c.scopes))
 	for _, s := range c.scopes {
@@ -269,7 +273,7 @@ func (c *collection) reportUnusedScopeSites(pass *analysis.Pass, opts Options, w
 		// A declaration-level ignore reaches this report through the directive
 		// that carries it: the scope directive and the ignore were written on
 		// the same declaration, so the author already answered.
-		if c.ignored(s.dir.Ignores, rule.Directive) {
+		if c.ignored(s.dir.Ignores, rule.Unused) {
 			continue
 		}
 		sites = append(sites, s)
@@ -305,7 +309,7 @@ func (c *collection) reportUnusedScopeSites(pass *analysis.Pass, opts Options, w
 			msg = "unused " + s.dir.Scope.Directive() + " on " + strings.Join(s.decls, ", ") +
 				": nothing it reaches takes a scope"
 		}
-		c.problems = append(c.problems, directive.Problem{Pos: s.dir.ScopePos, Msg: msg, Fixes: fixes})
+		c.problems = append(c.problems, directive.Problem{Pos: s.dir.ScopePos, Msg: msg, Rule: rule.Unused, Fixes: fixes})
 	}
 }
 

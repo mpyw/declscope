@@ -51,12 +51,21 @@ func TestBlankImport(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "blankimport")
 }
 
-// TestIgnoreDirective checks which ignore answers a report about a directive.
-// Such a report hangs on a comment rather than on a declaration, so the file
-// level answers one written where no declaration is, and an ignore naming the
-// rule beside another answers for its neighbour.
+// TestIgnoreDirective checks which ignore answers a report of the directive
+// rule. Such a report hangs on a comment rather than on a declaration, so the
+// file level answers one written where no declaration is. An ignore naming
+// directive answers no unused report, and is itself reported as unused when
+// that is all it was written for.
 func TestIgnoreDirective(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ignoredirective")
+}
+
+// TestIgnoreUnused checks which ignore answers the unused rule's report on
+// another ignore: one beside it naming unused, or one at the file level, bare
+// or named. A bare one beside it does not, and no ignore answers its own
+// report, whatever it names.
+func TestIgnoreUnused(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ignoreunused")
 }
 
 func TestDirectives(t *testing.T) {
@@ -453,29 +462,36 @@ func TestSurplusStrictBaseline(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusstrictbaselined")
 }
 
-// TestDirectiveLoose checks the default rules.directive: a scope directive
+// TestUnusedLoose checks the default rules.unused: a scope directive
 // naming the scope defaults.unexported gives today is kept, since another
 // configuration could make it bind, and one restating an enclosing directive
 // is reported as before.
-func TestDirectiveLoose(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "directiveloose")
+func TestUnusedLoose(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unusedloose")
 }
 
-// TestDirectiveStrict checks rules.directive: strict under the private
+// TestUnusedStrict checks rules.unused: strict under the private
 // default. A directive naming the scope its declarations would have without
 // it is reported, at the field, type, block, spec and file levels, and one
 // that widens, narrows, or is overridden to another effect is not. A block's
 // directive judged only through the specs that override it is reported when
 // they agree with it.
-func TestDirectiveStrict(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "directivestrict")
+func TestUnusedStrict(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unusedstrict")
 }
 
-// TestDirectiveStrictPackageDefault checks strict under defaults.unexported:
+// TestUnusedOff checks rules.unused: off. No directive is reported unused,
+// neither an ignore nor a scope directive, and a malformed directive is still
+// reported, since the directive rule has no switch.
+func TestUnusedOff(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unusedoff")
+}
+
+// TestUnusedStrictPackageDefault checks strict under defaults.unexported:
 // package, where the same private field binds and a package directive on an
 // unexported declaration is the redundant one.
-func TestDirectiveStrictPackageDefault(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "directivestrictpkg")
+func TestUnusedStrictPackageDefault(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unusedstrictpkg")
 }
 
 // TestSymbolFileName checks a file whose name yields no namespace, such as

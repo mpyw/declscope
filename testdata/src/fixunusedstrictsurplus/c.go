@@ -1,6 +1,6 @@
 //declscope:private
 
-package fixdirectivestrictsurplus
+package fixunusedstrictsurplus
 
 // cLocal's directive restates its block's, which cTaker keeps in use.
 // Deleting it would make cLocal one of the block's dependents, which surplus

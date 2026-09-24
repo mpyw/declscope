@@ -125,12 +125,12 @@ func surveyPackages(pkgs []*packages.Package, configPath string, failed []string
 		use, ok := configs[key]
 		if !ok {
 			use = &measure.ConfigUse{
-				Chain:     chain,
-				Boundary:  opts.Boundary.Reports(),
-				Surplus:   opts.Surplus.String(),
-				Directive: opts.Directive.String(),
-				Qualify:   opts.Qualify.String(),
-				Exported:  opts.NameExported,
+				Chain:    chain,
+				Boundary: opts.Boundary.Reports(),
+				Surplus:  opts.Surplus.String(),
+				Unused:   opts.Unused.String(),
+				Qualify:  opts.Qualify.String(),
+				Exported: opts.NameExported,
 			}
 			configs[key] = use
 			configOrder = append(configOrder, key)

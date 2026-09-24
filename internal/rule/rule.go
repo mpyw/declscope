@@ -35,10 +35,15 @@ const (
 	// each unreached dependent of a directive that is otherwise in use, fixed
 	// by narrowing that one declaration.
 	Surplus Rule = "surplus"
-	// Directive: a directive that binds nothing, or that is malformed or
-	// misplaced. It has no fix and no configuration; it carries a name so that
-	// an ignore can silence one and a baseline can record one, which a report
-	// with no rule could never allow.
+	// Unused: a directive that decides nothing. A scope directive that binds
+	// no declaration, or under rules.unused: strict one that names the scope
+	// everything it reaches would have without it, and an ignore that
+	// silenced nothing. rules.unused sets how far it goes, off included.
+	Unused Rule = "unused"
+	// Directive: a directive that is malformed, unknown, conflicting or
+	// misplaced. It has no fix and no configuration, so it is always on. It
+	// carries a name so that an ignore can silence one, which a report with no
+	// rule could never allow.
 	Directive Rule = "directive"
 	// Filter: a filter.only that cannot take effect, because an only above it
 	// in the chain of config files removes everything it matches. It is about
@@ -48,7 +53,7 @@ const (
 )
 
 // All lists every rule, in the order they are reported.
-var All = []Rule{Boundary, Qualify, Surplus, Directive, Filter}
+var All = []Rule{Boundary, Qualify, Surplus, Unused, Directive, Filter}
 
 // Parse resolves a rule name.
 func Parse(name string) (Rule, bool) {

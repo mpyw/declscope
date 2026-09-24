@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"maps"
 	"path/filepath"
 	"slices"
 
@@ -52,9 +53,9 @@ func (c *collection) surveyed(pass *analysis.Pass, opts Options) measure.Package
 		out.Edges = append(out.Edges, edgesForSurvey(c, t, crossed)...)
 	}
 
-	// The directive and filter rules are settled once every other finding has
-	// been seen, exactly as the report settles them.
-	out.Findings[rule.Directive], out.Findings[rule.Filter] = c.surveyedProblemsForReport(pass, opts)
+	// The unused, directive and filter rules are settled once every other
+	// finding has been seen, exactly as the report settles them.
+	maps.Copy(out.Findings, c.surveyedProblemsForReport(pass, opts))
 
 	out.Namespaces, out.AllCore = namespacesForSurvey(pass, c, opts)
 	return out.Sorted()

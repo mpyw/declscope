@@ -1,6 +1,6 @@
 //declscope:private // want `unused file-level //declscope:private: every declaration it reaches already has private scope`
 
-package directivestrict
+package unusedstrict
 
 // The spec's private narrows its block's package, so strict keeps it too. The
 // block reaches no declaration that takes its scope. The file's private is
