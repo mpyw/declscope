@@ -15,9 +15,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-covdir="$(pwd)/.covdata"
-rm -rf "$covdir"
-mkdir -p "$covdir"
+# The binary's raw counters are only read by covdata below, so they live in a
+# temporary directory, removed however the script ends. mktemp names it by an
+# absolute path, which cover_test.go needs.
+covdir="$(mktemp -d)"
+trap 'rm -rf "$covdir"' EXIT
 
 # shellcheck disable=SC2086 # GOTESTFLAGS is a list of flags
 DECLSCOPE_COVERDIR="$covdir" go test ${GOTESTFLAGS:-} \
