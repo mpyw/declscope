@@ -193,9 +193,8 @@ func lowerLeading(s string) string {
 // userIDCache matches the prefix userId.
 func cutFold(name, prefix string) (rest string, ok bool) {
 	for _, want := range prefix {
-		if name == "" {
-			return "", false
-		}
+		// An exhausted name decodes as utf8.RuneError, which no identifier
+		// spells, so it fails the comparison below like any other rune.
 		got, size := utf8.DecodeRuneInString(name)
 		if got != want && unicode.ToLower(got) != unicode.ToLower(want) {
 			return "", false

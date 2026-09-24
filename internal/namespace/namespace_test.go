@@ -140,6 +140,12 @@ func TestQualify(t *testing.T) {
 		// A namespace that cannot be a prefix leaves the name unchanged.
 		{"helper", "2faAuth", "helper"},
 		{"helper", "Foo", "helper"},
+
+		// An exported name keeps its exportedness, so the prefix is raised.
+		{"Load", "user", "UserLoad"},
+
+		// An empty name gains the namespace alone, not a stray capital.
+		{"", "user", "user"},
 	}
 	for _, tt := range tests {
 		if got := namespace.Qualify(tt.name, tt.ns); got != tt.qualified {
@@ -201,6 +207,13 @@ func TestContainsCases(t *testing.T) {
 		{"nounSecret", "command", false},
 		// Accepted as the price of anchoring only the left edge. Intended.
 		{"models", "mode", true},
+		// The core namespace has no name, so no name carries it.
+		{"helper", "", false},
+		// A change between letters and digits opens a word, even before a
+		// lowercase letter.
+		{"v2user", "user", true},
+		// A name shorter than the namespace cannot hold it.
+		{"use", "user", false},
 	}
 	for _, tt := range tests {
 		if got := namespace.Contains(tt.name, tt.ns); got != tt.want {
