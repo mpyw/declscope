@@ -457,6 +457,9 @@ These reports carry the `unused` rule, so `//declscope:ignore unused` silences o
 | `//declscope:ignore unused` on the declaration | For the scope directive and the other ignores beside it |
 | Bare `//declscope:ignore` on the declaration | For the scope directive beside it. Not for the other ignores, which would let a group of ignores exempt one another |
 | `//declscope:ignore unused`, or a bare one, above the package clause | For every directive in the file |
+| `//declscope:ignore unused` on a block or a type | Not for the specs or fields inside it |
+
+An ignore on a block or a type reaches the declarations inside it for every other rule. An unused report is about one directive, not about a declaration, so only an ignore beside that directive, or one for the whole file, answers it. One ignore on a block cannot hide every stale directive under it.
 
 **No ignore silences the report that it is itself unused**, whatever it names. One that could would never be called unused, and that report is written to catch it. An ignore that silences another's report has done its job, and is not reported.
 
@@ -1189,6 +1192,7 @@ declscope reads one package at a time, and counts a use only where a name is wri
 | --- | --- |
 | Uses outside the package | A scope beyond `package` could not be checked, so none exists |
 | Whole-value operations on a struct | Copying, comparing or zeroing a value names no field |
+| A composite literal of a type parameter | `T{1}` fills the fields of whatever `T` is instantiated with, without naming them |
 | Reflection, `//go:linkname`, generated files | These reach a declaration without spelling it |
 | A declaration nobody uses | `boundary` needs a use to find, so unused code produces no diagnostic |
 
