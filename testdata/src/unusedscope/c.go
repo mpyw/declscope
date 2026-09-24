@@ -1,4 +1,4 @@
-//declscope:package // want `unused file-level //declscope:package`
+//declscope:package // want `unused file-level //declscope:package$`
 
 package unusedscope
 

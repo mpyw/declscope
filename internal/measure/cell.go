@@ -24,7 +24,7 @@ func cellCount(n int, asked bool) string {
 }
 
 // cellKeyable prints a dash where no baseline could ever suppress the rule,
-// which is the directive rule and the filter rule. A zero there would read as
+// which is the unused, directive and filter rules. A zero there would read as
 // "suppressible, and none suppressed".
 func cellKeyable(n int, keyable bool) string {
 	if !keyable {

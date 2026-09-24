@@ -57,7 +57,7 @@ func (f reportedFinding) widensReport(t *target) bool {
 // others, so two can converge — the shape spec/rename_siblings.fsl already
 // models for renames. A directive inserted on a type reaches the type's
 // members, which leaves a directive inserted on a member in the same run
-// binding nothing: the directive rule then reports what -fix just wrote, and a
+// binding nothing: the unused rule then reports what -fix just wrote, and a
 // second -fix does not clear it, because that rule carries no fix. The wider
 // insertion wins and the narrower one is dropped.
 //
@@ -136,11 +136,11 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	// Unused directives are reported only once every finding has been seen,
 	// since a type's directive may be used up by one of its members, which is
 	// reached later in the loop above.
-	c.reportUnusedScopeSites(pass)
+	c.reportUnusedScopeSites(pass, opts, widened)
 
-	// Directive hygiene carries a rule like every other check, so that
-	// //declscope:ignore directive can silence one. A report with no rule is
-	// one nothing could answer.
+	// Directive hygiene carries rules like every other check, so that
+	// //declscope:ignore unused or directive can silence one. A report with
+	// no rule is one nothing could answer.
 	//
 	// It takes no baseline entry, and wants none: a baseline exists so that
 	// turning declscope on does not report boundaries a codebase never
@@ -155,35 +155,22 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	slices.SortStableFunc(c.problems, func(a, b directive.Problem) int {
 		return comparePos(pass.Fset, a.Pos, b.Pos)
 	})
-	surviving := c.problems[:0]
-	for _, p := range c.problems {
-		if c.ignoreSilencesFile(c.fileAt(pass, p.Pos), rule.Directive) {
-			continue
-		}
-		surviving = append(surviving, p)
-	}
-	c.problems = surviving
+	c.problems = c.silencedProblemsForReport(pass)
 
-	// Only now, with every ignore that silencedByIgnore something marked used. An
-	// ignore report is itself a directive problem, so it is appended rather
-	// than reported directly, and joins the same ordering — and the same
+	// Only now, with every ignore that silenced something marked used. An
+	// ignore report is itself a problem, so it is appended rather than
+	// reported directly, and joins the same ordering — and the same
 	// silencing, which is why the filter runs again over the tail. Running it
 	// once would leave the one report nothing could answer.
-	c.reportUnusedIgnores(pass)
-	kept := c.problems[:0]
-	for _, p := range c.problems {
-		if c.ignoreSilencesFile(c.fileAt(pass, p.Pos), rule.Directive) {
-			continue
-		}
-		kept = append(kept, p)
-	}
-	c.problems = kept
+	c.reportUnusedIgnores(pass, opts)
+	c.problems = c.silencedProblemsForReport(pass)
 
 	for _, p := range c.problems {
 		pass.Report(analysis.Diagnostic{
-			Pos:      p.Pos,
-			Category: string(rule.Directive),
-			Message:  p.Msg,
+			Pos:            p.Pos,
+			Category:       string(p.Rule),
+			Message:        p.Msg,
+			SuggestedFixes: p.Fixes,
 		})
 	}
 	if w := c.filterWarning; w != nil {
@@ -303,10 +290,10 @@ func (c *collection) surveyedFindingsForReport(pass *analysis.Pass, opts Options
 	return out
 }
 
-// surveyedProblemsForReport tallies the two rules that carry no baseline key:
-// the directive rule, whose findings are settled in a second pass once every
-// other finding has been seen, and the filter rule, which reports at most once
-// per package.
+// surveyedProblemsForReport tallies the rules that carry no baseline key: the
+// unused and directive rules, whose findings are settled in a second pass once
+// every other finding has been seen, and the filter rule, which reports at
+// most once per package.
 //
 // It runs the same two stages report runs, in the same order, for the same
 // reason: an ignore written for a directive problem silences something
@@ -315,26 +302,42 @@ func (c *collection) surveyedFindingsForReport(pass *analysis.Pass, opts Options
 // job.
 //
 //declscope:package // the survey's second entry, driven from survey.go
-func (c *collection) surveyedProblemsForReport(pass *analysis.Pass) (measure.Count, measure.Count) {
-	count := measure.Count{Asked: true}
+func (c *collection) surveyedProblemsForReport(pass *analysis.Pass, opts Options) map[rule.Rule]measure.Count {
+	counts := map[rule.Rule]measure.Count{
+		rule.Unused:    {Asked: opts.Unused.Reports()},
+		rule.Directive: {Asked: true},
+		rule.Filter:    {Asked: true},
+	}
+	tally := func(found bool, problems []directive.Problem) {
+		for _, p := range problems {
+			count := counts[p.Rule]
+			if found {
+				count.Found++
+			} else {
+				count.Reported++
+			}
+			counts[p.Rule] = count
+		}
+	}
 
-	c.reportUnusedScopeSites(pass)
-	count.Found = len(c.problems)
+	c.reportUnusedScopeSites(pass, opts, nil)
+	tally(true, c.problems)
 	c.problems = c.silencedProblemsForReport(pass)
 
 	kept := len(c.problems)
-	c.reportUnusedIgnores(pass)
-	count.Found += len(c.problems) - kept
+	c.reportUnusedIgnores(pass, opts)
+	tally(true, c.problems[kept:])
 	c.problems = c.silencedProblemsForReport(pass)
+	tally(false, c.problems)
 
-	count.Reported = len(c.problems)
-	count.Ignored = count.Found - count.Reported
-
-	filtered := measure.Count{Asked: true}
-	if c.filterWarning != nil {
-		filtered.Found, filtered.Reported = 1, 1
+	for r, count := range counts {
+		count.Ignored = count.Found - count.Reported
+		counts[r] = count
 	}
-	return count, filtered
+	if c.filterWarning != nil {
+		counts[rule.Filter] = measure.Count{Asked: true, Found: 1, Reported: 1}
+	}
+	return counts
 }
 
 // silencedProblemsForReport drops the problems a file-level ignore stands
@@ -342,7 +345,7 @@ func (c *collection) surveyedProblemsForReport(pass *analysis.Pass) (measure.Cou
 func (c *collection) silencedProblemsForReport(pass *analysis.Pass) []directive.Problem {
 	kept := c.problems[:0]
 	for _, p := range c.problems {
-		if c.ignoreSilencesFile(c.fileAt(pass, p.Pos), rule.Directive) {
+		if c.ignoreSilencesFile(c.fileAt(pass, p.Pos), p) {
 			continue
 		}
 		kept = append(kept, p)
@@ -591,14 +594,13 @@ func atLineStartForReport(pass *analysis.Pass, pos token.Pos) bool {
 	return strings.TrimLeft(string(prefix), " \t") == ""
 }
 
+// namespaceInReport names a file's namespace, or the file itself when its stem
+// yields none (★.go). Every file has a path, taken from the file set.
 func namespaceInReport(ns, path string) string {
 	if ns != "" {
 		return fmt.Sprintf("namespace %q", ns)
 	}
-	if path != "" {
-		return fmt.Sprintf("file %s", filepath.Base(path))
-	}
-	return "its namespace"
+	return fmt.Sprintf("file %s", filepath.Base(path))
 }
 
 func fileInReport(f *fileInfo) string {
@@ -640,8 +642,6 @@ func (t *target) reportsName(opts Options) bool {
 		if !t.foreignMethod() {
 			return false
 		}
-	case !t.renameable:
-		return false
 	}
 	return !isExported(t.obj.Name()) || opts.NameExported
 }

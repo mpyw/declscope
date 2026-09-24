@@ -1,0 +1,27 @@
+package fixunusedstrict
+
+// aDoc has a doc comment, separated from the directive by a bare line that
+// the fix takes along.
+func aDoc() int { return 1 }
+
+func aBare() int { return 2 }
+
+// aIgnored keeps its ignore: only the scope directive goes, and the bare line
+// still separates the doc comment from what is left.
+//
+//declscope:ignore qualify // want `unused //declscope:ignore qualify on aIgnored`
+func aIgnored() int { return 3 }
+
+type aShape struct {
+	side int
+
+	// edge is documented.
+	edge int
+}
+
+var (
+	aSeed  = 1
+	aLimit = 2
+)
+
+var _ = aDoc() + aBare() + aIgnored() + aShape{}.side + aShape{}.edge + aSeed + aLimit

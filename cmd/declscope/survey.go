@@ -39,9 +39,8 @@ func surveyRun(args []string) {
 		_, _ = io.WriteString(fs.Output(), surveyUsage)
 		fs.PrintDefaults()
 	}
-	if err := fs.Parse(args); err != nil {
-		os.Exit(2)
-	}
+	// ExitOnError: Parse reports a bad flag and exits with status 2 itself.
+	_ = fs.Parse(args)
 	patterns := fs.Args()
 	if len(patterns) == 0 {
 		patterns = []string{"./..."}
@@ -129,6 +128,7 @@ func surveyPackages(pkgs []*packages.Package, configPath string, failed []string
 				Chain:    chain,
 				Boundary: opts.Boundary.Reports(),
 				Surplus:  opts.Surplus.String(),
+				Unused:   opts.Unused.String(),
 				Qualify:  opts.Qualify.String(),
 				Exported: opts.NameExported,
 			}

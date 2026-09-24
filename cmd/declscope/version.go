@@ -40,7 +40,6 @@ func registerVersionFlag() {
 type versionFlag struct{}
 
 func (versionFlag) IsBoolFlag() bool { return true }
-func (versionFlag) Get() any         { return nil }
 func (versionFlag) String() string   { return "" }
 
 func (versionFlag) Set(s string) error {

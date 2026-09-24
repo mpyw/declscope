@@ -76,6 +76,8 @@ import (
 	"slices"
 	"strings"
 
+	"golang.org/x/tools/go/analysis"
+
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
@@ -83,10 +85,19 @@ import (
 // tool is the tool part of a declscope directive, //tool:name args.
 const tool = "declscope"
 
-// Problem is a malformed or contradictory directive.
+// Problem is a malformed or contradictory directive, or one that decides
+// nothing.
 type Problem struct {
 	Pos token.Pos
 	Msg string
+
+	// Rule is the rule the report carries: directive for what this package
+	// finds, unused for a directive the analysis finds deciding nothing.
+	Rule rule.Rule
+
+	// Fixes is at most one suggested fix. Only a redundant scope directive
+	// under rules.unused: strict carries one, which deletes it.
+	Fixes []analysis.SuggestedFix
 }
 
 // Ignore is one ignore directive. An empty Rules silences every rule.
@@ -121,6 +132,20 @@ type Decl struct {
 	Ignores []Ignore
 
 	Problems []Problem
+
+	// Beneath is the scope directive Merge replaced: a block's, when the spec
+	// states its own. Resolution never reads it, since the spec's wins. It is
+	// kept for the one question that does: what the spec would take if its
+	// own directive were deleted.
+	Beneath *Decl
+}
+
+// BeneathScope returns the scope directive Merge replaced, or the zero Decl.
+func (d Decl) BeneathScope() Decl {
+	if d.Beneath == nil {
+		return Decl{}
+	}
+	return *d.Beneath
 }
 
 // Merge layers a more specific Decl over a broader one, as for a spec inside a
@@ -131,6 +156,9 @@ type Decl struct {
 func (d Decl) Merge(inner Decl) Decl {
 	out := d
 	if inner.HasScope {
+		if d.HasScope {
+			out.Beneath = &Decl{Scope: d.Scope, HasScope: true, ScopePos: d.ScopePos}
+		}
 		out.Scope, out.HasScope, out.ScopePos = inner.Scope, true, inner.ScopePos
 	}
 	out.Ignores = append(append([]Ignore(nil), d.Ignores...), inner.Ignores...)
@@ -196,7 +224,7 @@ func (d *Decl) consume(pos token.Pos, keyword, arg string) {
 }
 
 func (d *Decl) problem(pos token.Pos, msg string) {
-	d.Problems = append(d.Problems, Problem{Pos: pos, Msg: msg})
+	d.Problems = append(d.Problems, Problem{Pos: pos, Msg: msg, Rule: rule.Directive})
 }
 
 // Stray reports every directive in a comment group that reached no
@@ -212,7 +240,7 @@ func Stray(g *ast.CommentGroup) []Problem {
 			continue
 		}
 		if malformed {
-			out = append(out, Problem{Pos: c.Pos(), Msg: malformedMessage})
+			out = append(out, Problem{Pos: c.Pos(), Msg: malformedMessage, Rule: rule.Directive})
 			continue
 		}
 		msg := fmt.Sprintf("misplaced declscope:%s: no declaration here for it to bind to; "+
@@ -220,7 +248,7 @@ func Stray(g *ast.CommentGroup) []Problem {
 		if keyword == "namespace" {
 			msg = "declscope:namespace must appear before the package clause"
 		}
-		out = append(out, Problem{Pos: c.Pos(), Msg: msg})
+		out = append(out, Problem{Pos: c.Pos(), Msg: msg, Rule: rule.Directive})
 	}
 	return out
 }
@@ -354,7 +382,7 @@ func parseIgnore(pos token.Pos, arg string) (Ignore, *Problem) {
 		}
 		r, ok := rule.Parse(name)
 		if !ok {
-			return Ignore{}, &Problem{Pos: pos, Msg: fmt.Sprintf("unknown rule %q in declscope:ignore (want one of %s)",
+			return Ignore{}, &Problem{Pos: pos, Rule: rule.Directive, Msg: fmt.Sprintf("unknown rule %q in declscope:ignore (want one of %s)",
 				name, strings.Join(rule.Names(), ", "))}
 		}
 		ignore.Rules = append(ignore.Rules, r)
@@ -363,7 +391,7 @@ func parseIgnore(pos token.Pos, arg string) (Ignore, *Problem) {
 }
 
 func (f *File) problem(pos token.Pos, msg string) {
-	f.Problems = append(f.Problems, Problem{Pos: pos, Msg: msg})
+	f.Problems = append(f.Problems, Problem{Pos: pos, Msg: msg, Rule: rule.Directive})
 }
 
 // split extracts the keyword and argument from a comment holding a declscope

@@ -4,7 +4,7 @@
 // what another is about to write — the shape rename_siblings.fsl already holds
 // for renames. The insertions have their own way of converging: a directive
 // written on a type reaches the type's members, so a member fixed in the same
-// run is left carrying a directive that binds nothing, and the `directive` rule
+// run is left carrying a directive that binds nothing, and the `unused` rule
 // reports what -fix has just written. That rule carries no fix, so a second
 // -fix does not clear it.
 //
@@ -112,7 +112,7 @@ spec FixMembers {
 
   // The scope the member takes from the levels outside its own directive, and
   // whether that scope is the same under every configuration — it is not when
-  // defaults.unexported decides it. This is directive_effect.fsl's binding
+  // defaults.unexported decides it. This is unused_bind.fsl's binding
   // test, over the source the run leaves behind rather than the one it read.
   def memberOuterFixed() =
     typeDirAfter() != NoDir or fileDir != NoDir or memberExported

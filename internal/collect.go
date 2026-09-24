@@ -156,11 +156,14 @@ func (c *collection) collectTargets(pass *analysis.Pass, opts Options) {
 }
 
 func (c *collection) addFuncToCollection(pass *analysis.Pass, opts Options, fi *fileInfo, d *ast.FuncDecl) {
+	// Parsed before anything is skipped, so that a directive on a function
+	// declscope does not check, the blank one or init, is reported unused
+	// rather than misplaced: it is written where a directive belongs.
+	dir := c.parseCollectedDecl(append([]*ast.CommentGroup{d.Doc}, fi.looseTrailingComments(pass.Fset, d)...)...)
 	obj, ok := pass.TypesInfo.Defs[d.Name].(*types.Func)
 	if !ok || d.Name.Name == "_" {
 		return
 	}
-	dir := c.parseCollectedDecl(append([]*ast.CommentGroup{d.Doc}, fi.looseTrailingComments(pass.Fset, d)...)...)
 
 	if d.Recv == nil {
 		// init is not declared in package scope and can never be referenced.
@@ -170,11 +173,10 @@ func (c *collection) addFuncToCollection(pass *analysis.Pass, opts Options, fi *
 		sc, boundBy, boundAt, decided := c.bindAtScopeSite(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
 		c.addToCollection(&target{
 			obj: obj, ident: d.Name, kind: kindFunc, file: fi, dir: dir, anchor: d.Pos(), doc: d.Doc,
-			scope:      sc,
-			decided:    decided,
-			boundBy:    boundBy,
-			boundAt:    boundAt,
-			renameable: true,
+			scope:   sc,
+			decided: decided,
+			boundBy: boundBy,
+			boundAt: boundAt,
 		})
 		return
 	}
@@ -232,11 +234,10 @@ func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, f
 				c.addToCollection(&target{
 					obj: obj, ident: spec.Name, kind: kindType, file: fi, dir: dir, anchor: anchor,
 					doc: doc, fromBlock: fromBlock,
-					scope:      sc,
-					decided:    decided,
-					boundBy:    boundBy,
-					boundAt:    boundAt,
-					renameable: true,
+					scope:   sc,
+					decided: decided,
+					boundBy: boundBy,
+					boundAt: boundAt,
 				})
 			}
 			c.addMembersToCollection(pass, opts, fi, spec, pass.TypesInfo.Defs[spec.Name], dir)
@@ -262,11 +263,10 @@ func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, f
 				c.addToCollection(&target{
 					obj: obj, ident: name, kind: k, file: fi, dir: dir, anchor: anchor,
 					doc: doc, fromBlock: fromBlock,
-					scope:      sc,
-					decided:    decided,
-					boundBy:    boundBy,
-					boundAt:    boundAt,
-					renameable: true,
+					scope:   sc,
+					decided: decided,
+					boundBy: boundBy,
+					boundAt: boundAt,
 				})
 			}
 		}
@@ -431,11 +431,13 @@ func (c *collection) collectUnkeyedFields(pass *analysis.Pass, fi *fileInfo, lit
 	if !ok || st.NumFields() != len(lit.Elts) {
 		return
 	}
+	// A field that is not a target, such as an embedded one or one declared
+	// in another package, is recorded too. refs is only ever read for a
+	// target, so the entry is never asked for. The literal of an instantiated
+	// generic struct holds the instantiated fields, and refs is keyed by the
+	// declared ones, which origin maps them back to.
 	for i, elt := range lit.Elts {
-		f := st.Field(i)
-		if _, tracked := c.byObj[f]; !tracked {
-			continue
-		}
+		f := origin(st.Field(i))
 		c.refs[f] = append(c.refs[f], ref{node: elt, file: fi})
 	}
 }

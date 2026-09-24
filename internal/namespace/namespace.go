@@ -193,6 +193,8 @@ func lowerLeading(s string) string {
 // userIDCache matches the prefix userId.
 func cutFold(name, prefix string) (rest string, ok bool) {
 	for _, want := range prefix {
+		// An exhausted name would decode as utf8.RuneError, U+FFFD, and a
+		// vocabulary word is YAML's, not an identifier, so it may spell one.
 		if name == "" {
 			return "", false
 		}

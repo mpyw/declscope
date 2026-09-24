@@ -145,8 +145,6 @@ type target struct {
 	// enclosing var, const or type block rather than on this spec. dir holds
 	// the two merged, and only here is the difference still known.
 	fromBlock bool
-	// renameable is false for members, whose fix is never a rename.
-	renameable bool
 }
 
 // foreignMethod reports whether this is a method with a receiver whose type is
@@ -349,7 +347,7 @@ type unseenFiles struct {
 	// all withholds every rename: an in-package test file this pass does not
 	// see, or something in the directory that could not be read or parsed.
 	//
-	//declscope:package // rename.go, ignore.go and surplus.go defer wholesale on it
+	//declscope:package // rename.go, ignore.go, surplus.go and scopesite.go defer wholesale on it
 	all bool
 
 	// names is every identifier written in an unseen file that was read. A
@@ -357,7 +355,7 @@ type unseenFiles struct {
 	// the excluded file would otherwise still spell the old name, or would
 	// find the new one declared twice.
 	//
-	//declscope:package // rename.go checks names against it; surplus.go defers on any
+	//declscope:package // rename.go and scopesite.go check names against it; surplus.go defers on any
 	names map[string]bool
 }
 

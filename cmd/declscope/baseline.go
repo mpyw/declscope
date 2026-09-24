@@ -52,9 +52,8 @@ func baselineRun(args []string) {
 		_, _ = io.WriteString(fs.Output(), baselineUsage)
 		fs.PrintDefaults()
 	}
-	if err := fs.Parse(args); err != nil {
-		os.Exit(2)
-	}
+	// ExitOnError: Parse reports a bad flag and exits with status 2 itself.
+	_ = fs.Parse(args)
 
 	patterns := fs.Args()
 	if len(patterns) == 0 {

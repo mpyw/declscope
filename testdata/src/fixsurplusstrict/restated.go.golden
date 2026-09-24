@@ -1,0 +1,51 @@
+//declscope:package
+
+package fixsurplusstrict
+
+// restatedHelper takes the file's package, and order.go calls it.
+func restatedHelper() int { return 3 }
+
+// restatedSpare takes it too, and nothing else calls it. Its narrowing gives
+// this file an edit whatever the rest gets, so the golden is compared.
+//
+//declscope:private
+func restatedSpare() int { return 4 } // want `func restatedSpare takes package scope`
+
+var _ = restatedSpare
+
+// The block restates the file's package, so it decides nothing, and the
+// unused rule reports it naming both specs. Narrowing restatedLocal would
+// reword that report, so the fix is withheld. The block is the thing to
+// delete, which no fix does.
+//
+//declscope:package // want `unused //declscope:package on restatedShared, restatedLocal: nothing it reaches takes a scope`
+var (
+	restatedShared = 1
+	restatedLocal  = 2 // want `var restatedLocal takes package scope`
+)
+
+var _ = restatedLocal
+
+// The type restates the file's package too, but its report names the type
+// alone, and a field it reaches is never named. Narrowing spare leaves that
+// report reading the same, so the fix is offered.
+//
+//declscope:package // want `unused //declscope:package on restatedEntry: nothing it reaches takes a scope`
+type restatedEntry struct {
+	key   int
+	//declscope:private
+	spare int // want `field restatedEntry.spare takes package scope`
+}
+
+var _ = restatedEntry{}.spare
+
+// A type that declares no name is named on no report, which reads whether
+// anything took its scope. Wide takes it and stays, so narrowing spare leaves
+// the report reading the same, and the fix is offered.
+//
+//declscope:package // want `unused //declscope:package: nothing it reaches takes a scope`
+type _ struct {
+	Wide  int
+	//declscope:private
+	spare int // want `field _.spare takes package scope`
+}

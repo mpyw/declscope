@@ -11,11 +11,10 @@ func fileLoose() int {
 	return 1
 }
 
-// The same ignore answers the unused-ignore report, which is itself a report
-// about a directive. Silencing it is the job it did, so it is not turned
-// around and called unused.
+// The unused-ignore report is the unused rule's, not the directive rule's, so
+// the file-level ignore above does not answer it.
 //
-//declscope:ignore boundary
-func fileQuiet() int { return 2 }
+//declscope:ignore boundary // want `unused //declscope:ignore boundary on fileLoud`
+func fileLoud() int { return 2 }
 
-var _ = fileLoose() + fileQuiet()
+var _ = fileLoose() + fileLoud()

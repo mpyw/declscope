@@ -247,7 +247,7 @@ func surveyTestRuleRow(out, rule, found string) bool {
 func TestSurveyNamesTheChecksInForce(t *testing.T) {
 	dir := t.TempDir()
 	writeTree(t, dir, "go.mod", testModule)
-	writeTree(t, dir, ".declscope.yaml", "rules:\n  surplus: off\n  naming:\n    qualify: always\n")
+	writeTree(t, dir, ".declscope.yaml", "rules:\n  surplus: off\n  unused: strict\n  naming:\n    qualify: always\n")
 	writeTree(t, dir, ".declscope-baseline.yaml",
 		"packages:\n  example.com/declscopetest/p:\n    boundary:\n      user: [userHelper]\n")
 	writeTree(t, dir, "p/user.go", "package p\n\nfunc userHelper() int { return 1 }\n")
@@ -266,6 +266,7 @@ func TestSurveyNamesTheChecksInForce(t *testing.T) {
 					Boundary bool   `json:"boundary"`
 					Qualify  string `json:"qualify"`
 					Surplus  string `json:"surplus"`
+					Unused   string `json:"unused"`
 				} `json:"rules"`
 			} `json:"configs"`
 			Baselines []struct {
@@ -285,8 +286,8 @@ func TestSurveyNamesTheChecksInForce(t *testing.T) {
 	if len(cfg.Chain) != 1 || !strings.HasSuffix(cfg.Chain[0], ".declscope.yaml") {
 		t.Errorf("chain = %v, want the one config file", cfg.Chain)
 	}
-	if cfg.Rules.Qualify != "always" || cfg.Rules.Surplus != "off" || !cfg.Rules.Boundary {
-		t.Errorf("rules = %+v, want qualify always with surplus off and boundary on", cfg.Rules)
+	if cfg.Rules.Qualify != "always" || cfg.Rules.Surplus != "off" || cfg.Rules.Unused != "strict" || !cfg.Rules.Boundary {
+		t.Errorf("rules = %+v, want qualify always with surplus off, unused strict and boundary on", cfg.Rules)
 	}
 
 	if len(got.Checks.Baselines) != 1 {
@@ -316,9 +317,36 @@ func TestSurveyRendersTheChecksAsMarkdown(t *testing.T) {
 	if !strings.Contains(out, "surplus off") {
 		t.Errorf("a rule the config turned off should read as off:\n%s", out)
 	}
+	if !strings.Contains(out, "unused loose") {
+		t.Errorf("the unused rule's mode should be named, loose by default:\n%s", out)
+	}
 	for _, rule := range []string{"qualify", "surplus"} {
 		if !strings.Contains(out, "`"+rule+"`") {
 			t.Errorf("the findings table does not list %s:\n%s", rule, out)
+		}
+	}
+}
+
+// TestSurveyUnusedOff checks that rules.unused: off is named in the checks
+// in force, and that the unused rule then reads as never asked, with dashes,
+// while the directive rule still counts what it finds.
+func TestSurveyUnusedOff(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, ".declscope.yaml", "rules:\n  unused: off\n")
+	writeTree(t, dir, "p/user.go", "package p\n\n//declscope:ignore boundary\n//declscope:bogus\nfunc userHelper() int { return 1 }\n\nvar _ = userHelper\n")
+
+	out, code := runIn(t, bin, dir, "survey")
+	if code != 0 {
+		t.Fatalf("survey exited %d\n%s", code, out)
+	}
+	for _, want := range []string{
+		"unused off",
+		"| `unused`    |     - |       - |         - |        - |",
+		"| `directive` |     1 |       0 |         - |        1 |",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("want %q in:\n%s", want, out)
 		}
 	}
 }
@@ -393,5 +421,75 @@ func TestSurveyRefusesABrokenConfig(t *testing.T) {
 	out, code := runIn(t, bin, dir, "survey", "./...")
 	if code == 0 || !strings.Contains(out, `rules.surplus: unknown mode "bogus"`) {
 		t.Errorf("want the config error and a non-zero exit, got %d:\n%s", code, out)
+	}
+}
+
+// TestSurveyCountsWhatIgnoresAnswer checks that a finding an ignore silences
+// is counted as ignored under its own rule: an unused report and a directive
+// report, each answered at the file level by an ignore naming that rule, and
+// a naming finding answered on the declaration, which the package row shows
+// as exempt.
+func TestSurveyCountsWhatIgnoresAnswer(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, ".declscope.yaml", "rules:\n  naming:\n    qualify: always\n")
+	writeTree(t, dir, "p/misc.go", "//declscope:ignore unused\n//declscope:ignore directive\n\npackage p\n\n//declscope:private\nfunc init() {}\n\n"+
+		"//declscope:bogus\n//declscope:ignore qualify\nfunc stray() int { return 1 }\n\nvar _ = stray\n")
+
+	out, code := runIn(t, bin, dir, "survey", "-format=json", "./...")
+	if code != 0 {
+		t.Fatalf("survey exited %d\n%s", code, out)
+	}
+	var got struct {
+		Totals map[string]struct {
+			Found   int `json:"found"`
+			Ignored int `json:"ignored"`
+		} `json:"totals"`
+		Packages []struct {
+			Qualify struct {
+				Exempt int `json:"exempt"`
+			} `json:"qualify"`
+		} `json:"packages"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, rule := range []string{"unused", "directive", "qualify"} {
+		if c := got.Totals[rule]; c.Found != 1 || c.Ignored != 1 {
+			t.Errorf("%s: found %d, ignored %d; want one of each", rule, c.Found, c.Ignored)
+		}
+	}
+	if len(got.Packages) != 1 || got.Packages[0].Qualify.Exempt != 1 {
+		t.Errorf("packages = %+v, want one with an exempt name", got.Packages)
+	}
+}
+
+// TestSurveyCountsABaselinedName checks that a naming finding the baseline
+// absorbs is counted as baselined in the package row, not as reported.
+func TestSurveyCountsABaselinedName(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, ".declscope.yaml", "rules:\n  naming:\n    qualify: always\n")
+	writeTree(t, dir, ".declscope-baseline.yaml",
+		"packages:\n  example.com/declscopetest/p:\n    qualify:\n      user: [helper]\n")
+	writeTree(t, dir, "p/user.go", "package p\n\nfunc helper() int { return 1 }\n\nvar _ = helper\n")
+
+	out, code := runIn(t, bin, dir, "survey", "-format=json", "./...")
+	if code != 0 {
+		t.Fatalf("survey exited %d\n%s", code, out)
+	}
+	var got struct {
+		Packages []struct {
+			Qualify struct {
+				Reported  int `json:"reported"`
+				Baselined int `json:"baselined"`
+			} `json:"qualify"`
+		} `json:"packages"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if len(got.Packages) != 1 || got.Packages[0].Qualify.Baselined != 1 || got.Packages[0].Qualify.Reported != 0 {
+		t.Errorf("packages = %+v, want one baselined name and none reported", got.Packages)
 	}
 }

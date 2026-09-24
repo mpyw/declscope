@@ -1,0 +1,7 @@
+package fixunusedstrictsurplus
+
+// aHelper's directive restates the default. surplus reports it too, and the
+// deletion settles both.
+func aHelper() int { return 1 }
+
+var _ = aHelper()

@@ -1,11 +1,11 @@
 ## Checks in force
 
-| check      | value                                                  | packages |
-| ---------- | ------------------------------------------------------ | -------: |
-| config     | `.declscope.yaml`                                      |        2 |
-| rules      | boundary on, qualify ondemand, exported, surplus loose |        2 |
-| baseline   | `.declscope-baseline.yaml`, 12 entries                 |          |
-| type check | 2 packages ok, 0 failed                                |          |
+| check      | value                                                                 | packages |
+| ---------- | --------------------------------------------------------------------- | -------: |
+| config     | `.declscope.yaml`                                                     |        2 |
+| rules      | boundary on, qualify ondemand, exported, surplus loose, unused strict |        2 |
+| baseline   | `.declscope-baseline.yaml`, 12 entries                                |          |
+| type check | 2 packages ok, 0 failed                                               |          |
 
 ## Findings
 
@@ -14,6 +14,7 @@
 | `boundary`  |     5 |       1 |         2 |        2 |
 | `qualify`   |     4 |       1 |         1 |        2 |
 | `surplus`   |     0 |       0 |         0 |        0 |
+| `unused`    |     2 |       1 |         - |        1 |
 | `directive` |     1 |       0 |         - |        1 |
 | `filter`    |     0 |       0 |         - |        0 |
 

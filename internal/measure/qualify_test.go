@@ -93,3 +93,20 @@ func TestQualifyRowsCountExemptApart(t *testing.T) {
 	}
 	t.Fatalf("no row for completion: %+v", rows)
 }
+
+// TestQualifyRowsSkipANameWithNoNamespaceRow checks that a finding in a
+// namespace the package lists no row for, such as one only a test file
+// declares, is left out rather than given a row of its own.
+func TestQualifyRowsSkipANameWithNoNamespaceRow(t *testing.T) {
+	pkg := Package{
+		Namespaces: []Namespace{{Name: "user", QualifyTargets: 1}},
+		Names: []NameFinding{
+			{Namespace: "integration", Declaration: "helper", State: NameReported},
+			{Namespace: "user", Declaration: "load", State: NameReported},
+		},
+	}
+	rows := pkg.QualifyRows()
+	if len(rows) != 1 || rows[0].Namespace != "user" || rows[0].Reported != 1 {
+		t.Errorf("rows = %+v, want user alone with one reported name", rows)
+	}
+}

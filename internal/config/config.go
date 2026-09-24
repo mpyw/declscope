@@ -15,9 +15,11 @@
 //	      mouse: [wheel]
 //	  boundary: on          # off | on (off stops checking reach, leaving only the naming rule)
 //	  surplus: loose        # off | loose | strict
+//	  unused: loose         # off | loose | strict
 //
 // rules.naming.qualify reads an rule.QualifyMode; rules.boundary reads an
 // rule.BoundaryMode; rules.surplus reads an rule.SurplusMode;
+// rules.unused reads an rule.UnusedMode;
 // rules.naming.exported is true/false; rules.naming.vocabulary maps a
 // namespace to the extra words that satisfy the naming rule for it.
 //
@@ -61,6 +63,9 @@ var boundaryModes = rule.BoundaryModeSet{rule.BoundaryModeOff, rule.BoundaryMode
 // The values rules.surplus accepts, from reporting least to most.
 var surplusModes = rule.SurplusModeSet{rule.SurplusModeOff, rule.SurplusModeLoose, rule.SurplusModeStrict}
 
+// The values rules.unused accepts, from reporting least to most.
+var unusedModes = rule.UnusedModeSet{rule.UnusedModeOff, rule.UnusedModeLoose, rule.UnusedModeStrict}
+
 // boolSetting is a true/false key, with its own error naming the two values it
 // takes rather than the parser's "cannot unmarshal".
 type boolSetting struct {
@@ -102,6 +107,10 @@ type rulesSection struct {
 	// Surplus says how much the surplus rule reports: off, loose or strict.
 	// A mode rather than a switch, so the key spells the rule's own name.
 	Surplus string `yaml:"surplus"`
+
+	// Unused says how much the unused rule reports: off, loose or strict.
+	// A mode rather than a switch, so the key spells the rule's own name.
+	Unused string `yaml:"unused"`
 }
 
 // namingSection holds the naming rule and its reach. exported decides which
@@ -190,9 +199,6 @@ func resolve(dir, explicit string) (internal.Options, string, error) {
 	// Outermost first, so a nearer file overrides the keys it states and
 	// leaves the rest as the file above set them.
 	for _, p := range chain {
-		if p == "" {
-			continue
-		}
 		f, err := Load(p)
 		if err != nil {
 			return opts, p, err
@@ -324,15 +330,9 @@ func sameDir(a, b string) bool {
 	if a == b {
 		return true
 	}
-	sa, err := os.Stat(a)
-	if err != nil {
-		return false
-	}
-	sb, err := os.Stat(b)
-	if err != nil {
-		return false
-	}
-	return os.SameFile(sa, sb)
+	sa, errA := os.Stat(a)
+	sb, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(sa, sb)
 }
 
 // Load reads and parses a config file.
@@ -370,6 +370,7 @@ var sections = map[string]struct {
 	"config.defaultsSection": {"defaults.", defaultsSection{}},
 	"config.rulesSection":    {"rules.", rulesSection{}},
 	"config.namingSection":   {"rules.naming.", namingSection{}},
+	"config.filterSection":   {"filter.", filterSection{}},
 }
 
 var unknownField = regexp.MustCompile(`^line (\d+): field (\S+) not found in type (\S+)$`)
@@ -459,6 +460,13 @@ func (f *File) Apply(opts *internal.Options) error {
 			return fmt.Errorf("rules.surplus: unknown mode %q (want %s)", f.Rules.Surplus, surplusModes)
 		}
 		opts.Surplus = m
+	}
+	if f.Rules.Unused != "" {
+		m, ok := unusedModes.Parse(f.Rules.Unused)
+		if !ok {
+			return fmt.Errorf("rules.unused: unknown mode %q (want %s)", f.Rules.Unused, unusedModes)
+		}
+		opts.Unused = m
 	}
 	// only intersects and omit unions, so each stating file adds to what is
 	// already there rather than replacing it. A config file can narrow what is

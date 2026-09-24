@@ -165,6 +165,7 @@ type jsonRules struct {
 	Qualify  string `json:"qualify"`
 	Exported bool   `json:"exported"`
 	Surplus  string `json:"surplus"`
+	Unused   string `json:"unused"`
 }
 
 type jsonBaseline struct {
@@ -178,7 +179,7 @@ type jsonCount struct {
 	Asked bool `json:"asked"`
 
 	// Keyable is false for a rule no baseline can suppress, which is the
-	// directive rule and the filter rule. The tables print a dash for their
+	// unused, directive and filter rules. The tables print a dash for their
 	// baselined cell, and without this a consumer reads the zero beside it as
 	// "suppressible, and none suppressed".
 	Keyable bool `json:"keyable"`
@@ -254,6 +255,7 @@ func (s Summary) writeJSON(w io.Writer) error {
 				Qualify:  c.Qualify,
 				Exported: c.Exported,
 				Surplus:  c.Surplus,
+				Unused:   c.Unused,
 			},
 		})
 	}

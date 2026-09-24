@@ -54,4 +54,17 @@ var (
 //declscope:package // want `unused //declscope:package: no checked declaration carries it`
 func init() {}
 
+// The blank function is declared but never checked, like init.
+//
+//declscope:package // want `unused //declscope:package: no checked declaration carries it`
+func _() {}
+
+// A blank field declares nothing to check either.
+type blankField struct {
+	//declscope:package // want `unused //declscope:package: no checked declaration carries it`
+	_ int
+}
+
+var _ = blankField{}
+
 var _ = seed + limit + other + shared

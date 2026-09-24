@@ -1,0 +1,10 @@
+package fixunusedstrictwithheld
+
+// The boundary fix widens bEntry, so the field's directive stays: without it
+// the field would take the type's new directive.
+type bEntry struct { // want `type bEntry is private to namespace "b", but is used from namespace "c"`
+	//declscope:private // want `unused //declscope:private on bEntry.key: it already has private scope`
+	key string
+}
+
+var _ = bEntry{}.key

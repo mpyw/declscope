@@ -51,12 +51,21 @@ func TestBlankImport(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "blankimport")
 }
 
-// TestIgnoreDirective checks which ignore answers a report about a directive.
-// Such a report hangs on a comment rather than on a declaration, so the file
-// level answers one written where no declaration is, and an ignore naming the
-// rule beside another answers for its neighbour.
+// TestIgnoreDirective checks which ignore answers a report of the directive
+// rule. Such a report hangs on a comment rather than on a declaration, so the
+// file level answers one written where no declaration is. An ignore naming
+// directive answers no unused report, and is itself reported as unused when
+// that is all it was written for.
 func TestIgnoreDirective(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ignoredirective")
+}
+
+// TestIgnoreUnused checks which ignore answers the unused rule's report on
+// another ignore: one beside it naming unused, or one at the file level, bare
+// or named. A bare one beside it does not, and no ignore answers its own
+// report, whatever it names.
+func TestIgnoreUnused(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ignoreunused")
 }
 
 func TestDirectives(t *testing.T) {
@@ -174,6 +183,13 @@ func TestTypeIgnore(t *testing.T) {
 // too, not only package-level declarations.
 func TestDefaultsReachMembers(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "defaultsmembers")
+}
+
+// TestUnkeyedLiteral checks that a composite literal without keys uses every
+// field it writes, though it names none of them, and that a literal of a
+// generic struct's instantiation uses the declared fields.
+func TestUnkeyedLiteral(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unkeyed")
 }
 
 // TestGenerics checks that the members of a generic type are bounded like
@@ -451,4 +467,48 @@ func TestSurplusStrictOpaqueSource(t *testing.T) {
 // finding by the declaration's name.
 func TestSurplusStrictBaseline(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusstrictbaselined")
+}
+
+// TestUnusedLoose checks the default rules.unused: a scope directive
+// naming the scope defaults.unexported gives today is kept, since another
+// configuration could make it bind, and one restating an enclosing directive
+// is reported as before.
+func TestUnusedLoose(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unusedloose")
+}
+
+// TestUnusedStrict checks rules.unused: strict under the private
+// default. A directive naming the scope its declarations would have without
+// it is reported, at the field, type, block, spec and file levels, and one
+// that widens, narrows, or is overridden to another effect is not. A block's
+// directive judged only through the specs that override it is reported when
+// they agree with it.
+func TestUnusedStrict(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unusedstrict")
+}
+
+// TestUnusedOff checks rules.unused: off. No directive is reported unused,
+// neither an ignore nor a scope directive, and a malformed directive is still
+// reported, since the directive rule has no switch.
+func TestUnusedOff(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unusedoff")
+}
+
+// TestUnusedStrictPackageDefault checks strict under defaults.unexported:
+// package, where the same private field binds and a package directive on an
+// unexported declaration is the redundant one.
+func TestUnusedStrictPackageDefault(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unusedstrictpkg")
+}
+
+// TestSymbolFileName checks a file whose name yields no namespace, such as
+// ★.go. It is its own unit, and a report names the file.
+func TestSymbolFileName(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "symbolfile")
+}
+
+// TestMethodOnGeneratedType checks a method whose receiver is declared in a
+// generated file, which the pass does not read.
+func TestMethodOnGeneratedType(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "generatedowner")
 }

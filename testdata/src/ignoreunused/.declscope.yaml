@@ -1,0 +1,6 @@
+# Focused on which ignore answers the unused rule's report on another ignore.
+# The naming rule is stated off so that the ignores here silence nothing by
+# accident: an ignore that did silence something would not be judged unused.
+rules:
+  naming:
+    qualify: never

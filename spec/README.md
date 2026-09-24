@@ -42,8 +42,11 @@ the binary.
 | `knobs.fsl` | An exported declaration carries no boundary by default, for every kind | As above |
 | `knobs.fsl` | A directive narrows an exported declaration anyway, including a type's directive reaching an exported member | As above |
 | `knobs.fsl` | A reference from inside the namespace never crosses a boundary | As above |
-| `directive_effect.fsl` | A scope directive is used when anything in its reach binds to it, and reported when nothing does | Every combination of stated scope, enclosing directive, `defaults.unexported`, target presence and exportedness, and two enclosed declarations by exportedness and shadowing |
-| `directive_effect.fsl` | Binding is quantified over configurations *and* over enclosing directives — so restating the default of the day never counts, and `//declscope:package` under an enclosing `private` always does | As above |
+| `unused_bind.fsl` | Under `rules.unused: loose`, the default, a scope directive is used when anything in its reach binds to it, and reported when nothing does | Every combination of stated scope, enclosing directive, `defaults.unexported`, target presence and exportedness, and two enclosed declarations by exportedness and shadowing |
+| `unused_bind.fsl` | Binding is quantified over configurations *and* over enclosing directives. Restating the default of the day never counts, and `//declscope:package` under an enclosing `private` always does. `strict` is the opt-in that reads the configuration in force, in `unused_modes.fsl` | As above |
+| `unused_modes.fsl` | Under `rules.unused: strict` a scope directive is also reported when everything it reaches, shadowed or not, would have the scope it names without it under the configuration in force. `loose` reports exactly what `unused_bind.fsl` does, `strict` keeps every `loose` report, and `off` reports nothing | Every combination of `rules.unused`, stated scope, `defaults.unexported`, a declaration taking the directive's scope and one a nearer directive shadows, each by exportedness and next level out, and the five reasons the fix is withheld, one of them a pass that cannot see every crossing |
+| `unused_modes.fsl` | The fix that deletes the directive leaves the declaration's scope where it was, and leaves the nearer directive judged against the scope it was judged against. It is offered only under `strict`, and never where it would change another report | As above |
+| `unused_ignore.fsl` | No ignore answers the report that it is itself unused, whatever it names, `unused` and bare included. An ignore answers another's report and is then used: on a declaration only when it names `unused`, at the file level also when bare. `off` reports nothing | Every combination of `rules.unused`, the level, and what two ignores at that level name and silence |
 | `knobs.fsl` | A boundary is reported only for a private scope and only across a namespace, and on an exported declaration only where a directive narrowed it — each guard witnessed by an invariant its removal breaks | As above |
 | `naming_rules.fsl` | A fix is eventually applied wherever one is offered, which is what the `fair` on the fix actions claims | As above, plus whether a rename is offered at all |
 | `rename_guarded.fsl` | The guard `renameSafe` applies — every scope Go resolves through — makes the rename sound, and dropping any one of the four checks breaks it | Every binding environment at the reference site |
@@ -53,7 +56,7 @@ the binary.
 | `surplus.fsl` | A pass that did not read every file reports nothing, and each suppressor is witnessed alone, with every other one off | As above |
 | `surplus_strict.fsl` | Neither `surplus` finding is made of a declaration reachable by any path the rule counts: a spelled use, a struct conversion, a linkname, or an opaque source | Every combination of `rules.surplus`, why the declaration has its scope (the enclosing directive, its own, exportedness, `defaults.unexported`, no enclosing directive), the level the directive is written at, the reach path, the shape of the entry, what else the directive reaches, and whether the pass read every file |
 | `surplus_strict.fsl` | `strict` reports a superset of `loose` and never lands on the declaration `loose` already covers. It reports only where an enclosing directive widened the declaration, at the file, block and type level alike, and never a type whose narrowing would narrow a reached member | As above |
-| `surplus_strict.fsl` | The inserted `//declscope:private` binds, settles the report, starts no boundary report on the declaration or a member it narrows, never makes `loose` fire, and never leaves the enclosing directive binding nothing. Where it would, the fix is withheld and the report is not | As above |
+| `surplus_strict.fsl` | The inserted `//declscope:private` binds, settles the report, starts no boundary report on the declaration or a member it narrows, never makes `loose` fire, and never leaves the enclosing directive binding nothing. Where it would, the fix is withheld and the report is not. Under a directive that already binds nothing, the fix is withheld only where it would reword that directive's `unused` report | As above |
 | `rename_sound.fsl` | **Fails** — models a guard that checks package scope only, and enumerates what a sound guard must check beyond it | As above |
 | `rename_siblings.fsl` | **Fails** — models fixes that check their target against the pre-fix names only, and shows two of them converging on one name | Every pair of rename targets |
 
@@ -110,7 +113,7 @@ step and needs gigabytes for the same claims these prove in single-digit
 megabytes.
 
 ```console
-./spec/verify.sh     # what CI runs: thirteen proved, two violated
+./spec/verify.sh     # what CI runs: fifteen proved, two violated
 ```
 
 Or one at a time:
@@ -125,25 +128,29 @@ fslc verify filter_chain.fsl     --depth 2
 fslc verify boundary_fix.fsl     --depth 4
 fslc verify fix_members.fsl      --depth 4
 fslc verify knobs.fsl            --depth 4
-fslc verify directive_effect.fsl --depth 4
 fslc verify rename_guarded.fsl   --depth 4
 fslc verify rename_reach.fsl     --depth 3
 fslc verify surplus.fsl         --depth 2
 fslc verify surplus_strict.fsl  --depth 4
+fslc verify unused_bind.fsl     --depth 4
+fslc verify unused_ignore.fsl   --depth 2
+fslc verify unused_modes.fsl    --depth 6
 fslc verify rename_sound.fsl     --depth 2   # expected: violated
 fslc verify rename_siblings.fsl  --depth 3   # expected: violated
 ```
 
-`knobs.fsl`, `directive_effect.fsl` and `surplus.fsl` configure once and then
+`knobs.fsl`, `unused_bind.fsl`, `surplus.fsl` and `unused_ignore.fsl` configure once and then
 have only the actions that record a report, so their reachables are witnessed at
 step 1 or 2; the others add a fix action and witness at step 2.
 `surplus_strict.fsl` configures in two steps, so that no one action carries the
-product of every parameter, and witnesses by step 4. The deadlock warning a bounded
+product of every parameter, and witnesses by step 4. `unused_modes.fsl`
+configures in four steps for the same reason, judges, and fixes, so it witnesses
+by step 6. The deadlock warning a bounded
 run prints is the shape of the model, not a failure, and `rename_guarded.fsl`
 also reports a vacuous antecedent — which is the guard working, and is stated as
 `NothingResolvedNewName` rather than left as a warning.
 
-The thirteen that pass are `proved` under `--engine induction`, which is what
+The fifteen that pass are `proved` under `--engine induction`, which is what
 `verify.sh` and CI assert. Bounded verification alone would let an invariant be
 true to a depth without being inductive, and reading the exit code alone would
 let a spec that stopped parsing pass as "violated, as intended" — `fslc` exits
@@ -194,6 +201,17 @@ is a semantics that contradicts the documented one; each was run:
 | `strict` narrows a type one of whose members is reached | `violated` (`NeverNarrowsAReachedMember`) |
 | `strict` reports a member of a type it already narrows | `violated` (`NeverRepeatsTheOwnersFinding`) |
 | The `strict` fix is offered where it would leave the directive binding nothing | `violated` (`FixKeepsTheDirectiveBound`) |
+| `strict` ignores the declarations a nearer directive shadows | `violated` (`StrictAddsOnlyRedundant`) |
+| The `strict` fix is offered on a declaration another namespace uses | `violated` (`FixKeepsOtherReports`) |
+| The `strict` fix is offered by a pass that does not read every file | `violated` (`FixKeepsOtherReports`) |
+| `strict` keeps `loose`'s quantifier over configurations | `reachable_failed` |
+| `strict` reports under `loose` | `violated` (`LooseIsUnusedBind`) |
+| `strict` drops the reports `loose` makes | `violated` (`LooseIsUnusedBind`) |
+| `rules.unused: off` still reports | `violated` (`OffReportsNothing`) |
+| An ignore covering `unused` answers its own unused report | `violated` (`NeverExemptsItself`) |
+| A bare ignore on a declaration answers a sibling's unused report | `violated` (`DeclAnswersByName`) |
+| A bare file-level ignore does not answer another's unused report | `reachable_failed` (`BareFileIgnoreAnswers`) |
+| An ignore that answers another's report is still called unused | `violated` (`AnsweringIsUse`) |
 | `rules.boundary: off` is wired into `surplus` as well | `reachable_failed` (`SurplusFiresWhileBoundaryOff`) |
 | `rules.boundary: off` is wired into `qualify` as well | `reachable_failed` (`QualifyFiresWhileBoundaryOff`) |
 | The `rules.boundary` gate is dropped from the boundary report | `violated` (`BoundarySilencedWhenOff`) |

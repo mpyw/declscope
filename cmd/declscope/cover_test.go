@@ -17,9 +17,8 @@ import (
 // A binary built with `go build -cover` writes its counters to the directory
 // named by GOCOVERDIR instead, which `go tool covdata textfmt` turns into an
 // ordinary profile. Setting DECLSCOPE_COVERDIR turns that on: TestMain builds
-// the instrumented binary, every run below points at the directory, and the
-// caller — the CI job, or anyone running the tests by hand — converts what
-// lands there and hands it to the coverage service beside `go test`'s own
+// the instrumented binary, every run below points at the directory, and
+// coverage.sh converts what lands there and merges it with `go test`'s own
 // profile. Without the variable the binary is built and run exactly as before,
 // so a plain `go test ./...` pays nothing for this.
 

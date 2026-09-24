@@ -1,0 +1,5 @@
+defaults:
+  unexported: package
+rules:
+  unused: strict
+  surplus: off

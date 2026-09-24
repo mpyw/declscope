@@ -1,0 +1,251 @@
+// The unused rule on a scope directive, under each of rules.unused's modes.
+// off reports nothing and offers no fix. loose, the default, is
+// unused_bind.fsl: a scope directive is unused only when nothing it reaches
+// takes a scope it could not have had under ANY configuration. strict, the
+// opt-in, also reports a directive that names the scope the declaration
+// would have without it under THIS configuration: //declscope:private on an
+// unexported field of a type that states nothing, while defaults.unexported
+// is private.
+//
+// loose's quantifier is what keeps one line of YAML from flipping every
+// directive in a tree. strict gives that up on purpose, for the repository
+// that wants each directive to say something today. What it must not give up
+// is safety: its fix deletes the directive, so the deletion must leave every
+// declaration with the scope it had, and every other directive judged as it
+// was. The judgment is therefore over everything the directive reaches, not
+// only what takes its scope from it:
+//
+//   a  a declaration that takes its scope from this directive. Without the
+//      directive it takes the next level out: the enclosing type's, block's or
+//      file's directive, then exportedness, then defaults.unexported.
+//   b  a declaration a nearer directive shadows. Its scope does not move, but
+//      the nearer directive is judged against what b would have without it,
+//      which is this directive's scope today and the next level out once this
+//      one is gone. The two must agree, or deleting this directive would turn
+//      the nearer one redundant, or bound, where it was not.
+//
+// "The next level out" includes a block's directive under a spec that states
+// its own, which the merged declaration hides. Without it, a spec's
+// //declscope:private under a //declscope:package block would be called
+// redundant against the file, and deleting it would widen the spec.
+//
+// The fix is withheld where deleting the directive would change another
+// report, though the scope does not move:
+//
+//   aCrosses       a is used from another namespace. The boundary message
+//                  names the level that decided, and that level moves.
+//   ownerWidened   a is a field whose type a boundary fix widens in the same
+//                  run. The field would take the type's new directive.
+//   surplusHolds   the directive is //declscope:package and surplus judges
+//                  what depends on it: a would join an enclosing directive's
+//                  dependents, or an ignore answers the directive's own
+//                  surplus report and would be left answering nothing.
+//   outerStuck     a's next level out is a directive that is itself reported
+//                  and keeps its report. a would join it, and its report
+//                  would change. One an ignore answers is not reported: it
+//                  stays redundant and answered, so nothing shows.
+//   blind          the pass does not read every file of the package: the
+//                  ordinary variant of a package with in-package tests, or a
+//                  file the build excludes. A crossing in such a file
+//                  (crossUnseen) is one aCrosses the pass cannot see, and the
+//                  driver applies the fixes of every variant, so a deletion
+//                  one variant offers is made whatever the other withholds.
+//
+// ASSUME-1: one declaration of each kind is enough. Reach is a conjunction
+//   here where it is a disjunction in unused_bind.fsl, and a conjunction
+//   of two is what shows each half is read (modelling assumption)
+spec UnusedModes {
+  enum Scope { Package, Private }
+  enum Dir   { NoDir, DirPackage, DirPrivate }
+  enum Mode  { Off, Loose, Strict }
+
+  state {
+    phase: Int,
+    mode: Mode, stated: Scope, cfgUnexported: Scope,
+    aPresent: Bool, aExported: Bool, aOuter: Dir,
+    bPresent: Bool, bExported: Bool, bOuter: Dir,
+    aCrosses: Bool, ownerWidened: Bool, surplusHolds: Bool, outerStuck: Bool,
+    blind: Bool, crossUnseen: Bool,
+    reported: Bool, fixed: Bool,
+    // What the fix left: a's scope, and what the directive shadowing b is
+    // judged against.
+    aAfter: Scope, bAfter: Scope
+  }
+
+  init {
+    phase = 0
+    mode = Loose  stated = Package  cfgUnexported = Private
+    aPresent = false  aExported = false  aOuter = NoDir
+    bPresent = false  bExported = false  bOuter = NoDir
+    aCrosses = false  ownerWidened = false  surplusHolds = false  outerStuck = false
+    blind = false  crossUnseen = false
+    reported = false  fixed = false
+    aAfter = Package  bAfter = Package
+  }
+
+  // One step per concern rather than one action for all of them: an action's
+  // instances are the product of its parameters, at every step.
+  action configureScope(m: Mode, st: Scope, cu: Scope) {
+    requires phase == 0
+    phase = 1  mode = m  stated = st  cfgUnexported = cu
+  }
+  action configureTaker(ap: Bool, ax: Bool, ao: Dir) {
+    requires phase == 1
+    phase = 2  aPresent = ap  aExported = ax  aOuter = ao
+  }
+  action configureShadowed(bp: Bool, bx: Bool, bo: Dir) {
+    requires phase == 2
+    phase = 3  bPresent = bp  bExported = bx  bOuter = bo
+  }
+  action configureOthers(cr: Bool, ow: Bool, sh: Bool, os: Bool, bl: Bool, cu: Bool) {
+    requires phase == 3
+    // A crossing the pass cannot see is a crossing, in a file it does not read.
+    requires not cu or (cr and bl)
+    phase = 4
+    aCrosses = cr  ownerWidened = ow  surplusHolds = sh  outerStuck = os
+    blind = bl  crossUnseen = cu
+  }
+
+  // The scope from the next level out, and whether it is the same under every
+  // configuration. unused_bind.fsl's outerFixed and outerScope.
+  def outerFixed(o: Dir, x: Bool) = o != NoDir or x
+  def outerScope(o: Dir, x: Bool) =
+    if o == DirPackage then Package
+    else if o == DirPrivate then Private
+    else if x then Package
+    else cfgUnexported
+
+  // loose: bound when a takes a scope it could not have had under any
+  // configuration. b is shadowed and binds nothing to this directive.
+  def looseBound() = aPresent and not (outerFixed(aOuter, aExported) and stated == outerScope(aOuter, aExported))
+  // strict: redundant when everything reached agrees with the next level out
+  // under this configuration.
+  def redundant() =
+    (aPresent or bPresent)
+    and (not aPresent or stated == outerScope(aOuter, aExported))
+    and (not bPresent or stated == outerScope(bOuter, bExported))
+  // The pass sees a crossing only in a file it reads, so the crossing guard
+  // reads what it sees, and blind covers the rest.
+  def seesCrossing() = aCrosses and not crossUnseen
+  def fixable() =
+    mode == Strict and redundant()
+    and not seesCrossing() and not ownerWidened and not surplusHolds and not outerStuck
+    and not blind
+
+  fair action judge() {
+    requires phase == 4
+    phase = 5
+    reported = mode != Off and (not looseBound() or (mode == Strict and redundant()))
+  }
+  fair action fix() {
+    requires phase == 5  requires reported  requires fixable()  requires not fixed
+    fixed = true
+    aAfter = outerScope(aOuter, aExported)
+    bAfter = outerScope(bOuter, bExported)
+  }
+
+  // --- off says nothing, loose is unchanged, and strict only adds ------------
+  invariant OffReportsNothing      { mode == Off => not reported and not fixed }
+  invariant LooseIsUnusedBind { (phase == 5 and mode == Loose) => (reported == not looseBound()) }
+  invariant StrictKeepsLoose       { (phase == 5 and mode != Off and not looseBound()) => reported }
+  invariant StrictAddsOnlyRedundant {
+    reported => not looseBound()
+                or (mode == Strict
+                    and (not aPresent or stated == outerScope(aOuter, aExported))
+                    and (not bPresent or stated == outerScope(bOuter, bExported)))
+  }
+  invariant FixOnlyUnderStrict { fixed => mode == Strict and reported }
+
+  // --- what the fix leaves -----------------------------------------------------
+  // Expanded rather than routed through redundant(), so that mutating the
+  // guard moves one side only and the invariant can fail.
+  invariant FixKeepsTheScope     { (fixed and aPresent) => aAfter == stated }
+  invariant FixKeepsTheShadowed  { (fixed and bPresent) => bAfter == stated }
+  invariant FixKeepsOtherReports { fixed => not aCrosses and not ownerWidened and not surplusHolds and not outerStuck }
+
+  // Auxiliary: the inputs are never assigned once configured.
+  invariant PhaseInRange { phase >= 0 and phase <= 5 }
+  invariant JudgedLast   { (reported or fixed) => phase == 5 }
+  invariant FixRecordsItsGuard { fixed => fixable() }
+  invariant UnseenIsACrossing  { crossUnseen => aCrosses and blind }
+
+  // --- off ---------------------------------------------------------------------
+  // A directive every mode but off reports is silent under off: restating the
+  // type's directive, which loose reports and strict would delete.
+  reachable RestatingSilentUnderOff {
+    phase == 5 and mode == Off and aPresent and aOuter == DirPrivate
+    and stated == Private and not bPresent and not reported and not fixed
+  }
+
+  // --- the case strict exists for ---------------------------------------------
+  // //declscope:private on a field of a type that states nothing, under the
+  // private default: loose binds it, strict reports it and deletes it.
+  reachable ImplicitBindsUnderLoose {
+    phase == 5 and mode == Loose and aPresent and not aExported and aOuter == NoDir
+    and cfgUnexported == Private and stated == Private and not bPresent and not reported
+  }
+  reachable ImplicitReportedUnderStrict {
+    phase == 5 and mode == Strict and aPresent and not aExported and aOuter == NoDir
+    and cfgUnexported == Private and stated == Private and not bPresent and reported and fixed
+  }
+  // The same comment under the package default says something, in either mode.
+  reachable ImplicitBindsUnderPackageDefault {
+    phase == 5 and mode == Strict and aPresent and not aExported and aOuter == NoDir
+    and cfgUnexported == Package and stated == Private and not bPresent and not reported
+  }
+  reachable PackageRedundantUnderPackageDefault {
+    phase == 5 and mode == Strict and aPresent and not aExported and aOuter == NoDir
+    and cfgUnexported == Package and stated == Package and not bPresent and reported and fixed
+  }
+  // Restating the type's directive is reported by both modes; strict deletes it.
+  reachable RestatingReportedUnderLoose {
+    phase == 5 and mode == Loose and aPresent and aOuter == DirPrivate
+    and stated == Private and reported and not fixed
+  }
+  reachable RestatingFixedUnderStrict {
+    phase == 5 and mode == Strict and aPresent and aOuter == DirPrivate
+    and stated == Private and not bPresent and reported and fixed
+  }
+  // A nearer directive shadowing a declaration that would take another scope
+  // without this one keeps it: reported by neither mode as redundant.
+  reachable ShadowedDisagreementKeepsIt {
+    phase == 5 and mode == Strict and not aPresent and bPresent and not bExported
+    and bOuter == NoDir and cfgUnexported == Private and stated == Package and reported and not fixed
+  }
+  reachable ShadowedAgreementDeletes {
+    phase == 5 and mode == Strict and not aPresent and bPresent and not bExported
+    and bOuter == NoDir and cfgUnexported == Private and stated == Private and fixed
+  }
+  // Each withholding reason is witnessed with the others off.
+  reachable CrossingWithholds {
+    phase == 5 and mode == Strict and reported and redundant() and aCrosses
+    and not ownerWidened and not surplusHolds and not outerStuck and not blind and not fixed
+  }
+  reachable OwnerWidenedWithholds {
+    phase == 5 and mode == Strict and reported and redundant() and ownerWidened
+    and not aCrosses and not surplusHolds and not outerStuck and not blind and not fixed
+  }
+  reachable SurplusWithholds {
+    phase == 5 and mode == Strict and reported and redundant() and surplusHolds
+    and not aCrosses and not ownerWidened and not outerStuck and not blind and not fixed
+  }
+  reachable OuterStuckWithholds {
+    phase == 5 and mode == Strict and reported and redundant() and outerStuck
+    and not aCrosses and not ownerWidened and not surplusHolds and not blind and not fixed
+  }
+  reachable BlindWithholds {
+    phase == 5 and mode == Strict and reported and redundant() and blind
+    and not aCrosses and not ownerWidened and not surplusHolds and not outerStuck and not fixed
+  }
+  // The case blind exists for: a crossing only the test variant sees.
+  reachable UnseenCrossingWithholds {
+    phase == 5 and mode == Strict and reported and redundant() and aCrosses and crossUnseen
+    and not ownerWidened and not surplusHolds and not outerStuck and not fixed
+  }
+  // An exported declaration takes package whatever the default says, so
+  // //declscope:private on it binds in both modes.
+  reachable ExportedNarrowedBinds {
+    phase == 5 and mode == Strict and aPresent and aExported and aOuter == NoDir
+    and stated == Private and not bPresent and not reported
+  }
+}

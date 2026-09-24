@@ -1,21 +1,5 @@
 package ignoredirective
 
-// An ignore written beside this one, in the same comment group, answers for
-// it: the author has already said that reports about the directives on this
-// declaration are not to be made, and the unused-ignore report is one of them.
-//
-//declscope:ignore qualify
-//declscope:ignore directive
-func declQuiet() int { return 1 }
-
-// Without that sibling the same ignore is reported, which is what makes the
-// line above a decision rather than a blanket.
-//
-//declscope:ignore qualify // want `unused //declscope:ignore qualify on declLoud`
-func declLoud() int { return 2 }
-
-var _ = declQuiet() + declLoud()
-
 // A malformed directive is answered by an ignore on the same declaration,
 // where the two are still in hand together. Nothing is reported for either:
 // the ignore silenced the report about the typo, so it is not unused.
@@ -24,4 +8,18 @@ var _ = declQuiet() + declLoud()
 //declscope:ignore directive
 func declTypo() int { return 3 }
 
-var _ = declTypo
+// An ignore for the directive rule answers no unused report. That report is
+// the unused rule's, so the ignore silenced nothing and is reported beside
+// the directive it was written for.
+//
+//declscope:package // want `unused //declscope:package on DeclLeftover: nothing it reaches takes a scope`
+//declscope:ignore directive // want `unused //declscope:ignore directive on DeclLeftover`
+func DeclLeftover() int { return 4 }
+
+// An ignore for the unused rule answers no directive report.
+//
+//declscope:bogus // want `unknown directive declscope:bogus`
+//declscope:ignore unused // want `unused //declscope:ignore unused on declWrongRule`
+func declWrongRule() int { return 5 }
+
+var _ = declTypo() + DeclLeftover() + declWrongRule()

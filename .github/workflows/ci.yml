@@ -33,18 +33,14 @@ jobs:
         with:
           cache: true
 
-      # DECLSCOPE_COVERDIR turns on the second profile. The subcommand tests
-      # drive the built linter as a subprocess, so `go test` counts none of the
-      # statements they run; with the variable set, the binary is built with
-      # -cover and writes its counters here instead. See cmd/declscope/cover_test.go.
+      # The subcommand tests drive the built linter as a subprocess, so `go test`
+      # counts none of the statements they run. coverage.sh builds that binary
+      # with -cover, merges its counters with go test's profile into
+      # coverage-merged.txt, and prints the total. See cmd/declscope/cover_test.go.
       - name: Run tests with coverage
-        run: |
-          go test -v -race -coverprofile=coverage.txt -covermode=atomic -coverpkg=./... ./...
-          go tool covdata textfmt -i="$DECLSCOPE_COVERDIR" -o=coverage-bin.txt
+        run: ./coverage.sh
         env:
-          # Absolute: `go test` runs each test binary in its own package
-          # directory, so a relative path would name a different place per package.
-          DECLSCOPE_COVERDIR: ${{ github.workspace }}/covdata
+          GOTESTFLAGS: -v -race
 
       # OIDC rather than a CODECOV_TOKEN secret: the repository is public, so
       # there is nothing a token would protect that the run's own identity does
@@ -56,7 +52,7 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
         with:
-          files: ./coverage.txt,./coverage-bin.txt
+          files: ./coverage-merged.txt
           flags: unittests
           name: codecov
           use_oidc: true

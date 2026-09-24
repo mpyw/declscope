@@ -1,6 +1,7 @@
 package main_test
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -170,5 +171,28 @@ func TestInspectTakesTheConfigItWasGiven(t *testing.T) {
 	}
 	if strings.Contains(out, ".declscope.yaml") {
 		t.Errorf("the report names a config that did not run:\n%s", out)
+	}
+}
+
+// TestInspectRefusesAPatternMatchingNothing checks a pattern that names no
+// package: there is nothing to measure, and the run says so.
+func TestInspectRefusesAPatternMatchingNothing(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	out, code := runIn(t, bin, dir, "inspect", "./...")
+	if code != 1 || !strings.Contains(out, "no package matched") {
+		t.Errorf("exited %d, want 1 with the refusal:\n%s", code, out)
+	}
+}
+
+// TestInspectRefusesAMissingConfig checks that a -config that is not there
+// stops the run, rather than measuring under the defaults.
+func TestInspectRefusesAMissingConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, "p/p.go", "package p\n")
+	out, code := runIn(t, bin, dir, "inspect", "-config", filepath.Join(dir, "absent.yaml"), "./p")
+	if code != 1 || !strings.Contains(out, "absent.yaml") {
+		t.Errorf("exited %d, want 1 naming the file:\n%s", code, out)
 	}
 }

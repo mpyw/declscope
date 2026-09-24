@@ -72,8 +72,6 @@ type surplusBook struct {
 }
 
 // surplusDeclaration is one strict finding.
-//
-//declscope:private // only the computation below hands it out
 type surplusDeclaration struct {
 	msg   string
 	fixed bool
@@ -96,8 +94,6 @@ type surplusDeclaration struct {
 // evidence is gathered on the first question, never before: a package with
 // no //declscope:package asks none under loose, and interface satisfaction
 // is the costly part of it.
-//
-//declscope:private // only the computation below hands it out
 type surplusState struct {
 	pass      *analysis.Pass
 	findings  map[*target]string
@@ -140,12 +136,9 @@ func (c *collection) surplusJudged(pass *analysis.Pass) *surplusState {
 // reachesOutside reports whether t is reached from another namespace by any
 // path the rule counts, exportedness aside: another namespace spells it,
 // something reaches it without spelling it, or a directive names it as text.
-// A pass that does not read every file answers true, since it cannot rule
-// anything out.
+// It is never asked of a blind state: a pass that does not read every file
+// cannot rule anything out, and every caller returns before asking.
 func (s *surplusState) reachesOutside(c *collection, t *target) bool {
-	if s.blind {
-		return true
-	}
 	if !s.gathered {
 		s.gathered = true
 		s.reached = c.surplusReached(s.pass)
@@ -385,7 +378,9 @@ func surplusCarried(pass *analysis.Pass, reached map[types.Object]bool) {
 // snapshot(user) pairs every field of both types by name and spells none of
 // them, so a field reached only this way looks unused to the reference index.
 // Both sides are marked: the conversion reads one and writes the other, and
-// either type's fields may be the ones another namespace declared.
+// either type's fields may be the ones another namespace declared. An
+// instantiated generic struct holds the instantiated fields, which origin maps
+// back to the declared ones byObj is keyed by.
 func (c *collection) surplusConversions(pass *analysis.Pass, reached map[types.Object]bool) {
 	mark := func(t types.Type, fi *fileInfo) {
 		st, ok := types.Unalias(t).Underlying().(*types.Struct)
@@ -393,7 +388,7 @@ func (c *collection) surplusConversions(pass *analysis.Pass, reached map[types.O
 			return
 		}
 		for i := range st.NumFields() {
-			f := st.Field(i)
+			f := origin(st.Field(i))
 			target, tracked := c.byObj[f]
 			if tracked && target.file.key() != fi.key() {
 				reached[f] = true
@@ -456,16 +451,16 @@ func (c *collection) checkSurplusDeclaration(pass *analysis.Pass, opts Options, 
 //
 //   - An exported declaration is package-scoped by exportedness alone.
 //   - A declaration that states its own scope answers for itself. A redundant
-//     //declscope:package there is the directive rule's report, not this one.
+//     //declscope:package there is the unused rule's report, not this one.
 //   - A declaration whose scope comes from defaults.unexported took no
 //     directive.
 //   - Under defaults.unexported: package it would be package-scoped with no
 //     directive at all, so the directive widened nothing.
 //
-// The last one reads the configuration, which the directive rule's binding
-// test deliberately does not. The two questions differ. That test decides
-// whether a comment may be deleted, and must hold under every configuration,
-// because the comment outlives any one of them. This one asks whether the
+// The last one reads the configuration, which the unused rule's binding
+// test under loose deliberately does not. The two questions differ. That test
+// decides whether a comment is unused under every configuration, because the
+// comment outlives any one of them. This one asks whether the
 // directive is what widened the declaration today. The fix binds under every
 // configuration regardless: the enclosing directive fixes the scope the
 // declaration would otherwise take, so //declscope:private under it differs.
@@ -473,14 +468,10 @@ func surplusEnclosed(opts Options, t *target) bool {
 	if isExported(t.obj.Name()) || t.scope != scope.PackageInternal || opts.Unexported != scope.Private {
 		return false
 	}
-	switch t.boundAt {
-	case scopesiteLevelContainer, scopesiteLevelFile:
-		return true
-	case scopesiteLevelDecl:
-		return t.fromBlock
-	default:
-		return false
-	}
+	// Package scope on an unexported name under a private default came from
+	// a directive, so the level is never the default here.
+	return t.boundAt == scopesiteLevelContainer || t.boundAt == scopesiteLevelFile ||
+		t.boundAt == scopesiteLevelDecl && t.fromBlock
 }
 
 // computeSurplusDeclarations judges each declaration under a directive that is
@@ -564,10 +555,16 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 
 	// A directive that decides something today and would decide nothing once
 	// everything it widens is narrowed is one the fixes would leave unused,
-	// and the directive rule would report what -fix had just written. Its
+	// and the unused rule would report what -fix had just written. Its
 	// advice is to delete the directive, which no fix does, so what is under
-	// it is reported without one. A directive that already decides nothing is
-	// already reported, and narrowing under it changes nothing about that.
+	// it is reported without one.
+	//
+	// A directive that already decides nothing is already the unused rule's
+	// report. Where narrowing under it would reword that report, as it does
+	// for a block's, which names each spec that takes its scope, the fix is
+	// withheld too: the advice there is the same deletion. A type's report
+	// names the type and never its fields, so narrowing a field leaves it
+	// reading the same, and the fix is offered.
 	boundBefore, boundAfter := make(map[token.Pos]bool), make(map[token.Pos]bool)
 	for _, t := range c.targets {
 		if !t.decided {
@@ -578,10 +575,14 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 			boundAfter[t.boundBy.ScopePos] = true
 		}
 	}
+	reworded := make(map[token.Pos]bool)
 	for _, names := range groups {
 		slices.SortFunc(names, func(a, b *target) int { return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos()) })
 		pos := names[0].boundBy.ScopePos
-		fixed := !boundBefore[pos] || boundAfter[pos]
+		if _, seen := reworded[pos]; !seen && !boundBefore[pos] {
+			reworded[pos] = c.rewordedAtScopeSite(opts, names[0].boundBy, narrowed)
+		}
+		fixed := boundAfter[pos] || !boundBefore[pos] && !reworded[pos]
 		for i, t := range names {
 			out[t] = surplusDeclaration{msg: surplusDeclarationMessage(t), fixed: fixed && i == 0, settledBy: settledBy[t]}
 		}

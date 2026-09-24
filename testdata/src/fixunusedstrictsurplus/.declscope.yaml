@@ -1,0 +1,4 @@
+defaults:
+  unexported: package
+rules:
+  unused: strict

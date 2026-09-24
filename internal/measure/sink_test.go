@@ -8,11 +8,13 @@ import (
 // sinkTestWriter fails after the given number of writes, so that a failure
 // partway through a report can be observed.
 type sinkTestWriter struct {
-	ok  int
-	err error
+	ok    int
+	err   error
+	calls int
 }
 
 func (w *sinkTestWriter) Write(p []byte) (int, error) {
+	w.calls++
 	if w.ok == 0 {
 		return 0, w.err
 	}
@@ -32,12 +34,13 @@ func TestSinkKeepsTheFirstError(t *testing.T) {
 	out.print("one")
 	out.printf("%s", "two")
 	out.print("three")
+	out.printf("%s", "four")
 
 	if got := out.flush(); !errors.Is(got, first) {
 		t.Errorf("flush returned %v, want the first write error", got)
 	}
-	if w.ok != 0 {
-		t.Error("the sink kept writing after a failure")
+	if w.calls != 2 {
+		t.Errorf("the sink wrote %d times, want 2: it kept writing after a failure", w.calls)
 	}
 }
 

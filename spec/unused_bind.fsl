@@ -1,18 +1,34 @@
-// A scope directive that binds nothing is reported, on the same principle as an
-// unused ignore: a directive that decides nothing should not sit in the source
-// claiming to.
+// When a scope directive binds, under rules.unused: loose, the default. A
+// directive that binds nothing is reported by the unused rule, on the same
+// principle as an unused ignore: a directive that decides nothing should not
+// sit in the source claiming to.
 //
 // A directive binds a declaration when the scope it names is one that
-// declaration could not have had anyway — under ANY configuration, and given
+// declaration could not have had anyway: under ANY configuration, and given
 // whatever the levels outside this directive already say. Both quantifiers
-// matter, and getting either wrong has a name:
+// matter for loose:
 //
-//   - Read off the current configuration instead, and one line of YAML flips
-//     every directive in a tree, and recording a deliberate `private` becomes
-//     an error.
-//   - Ask only whether the name is exported, and //declscope:package under an
-//     enclosing `private` — the one thing that widens an exported declaration
-//     back — is called inert, so a codebase can narrow and never widen again.
+//   - Over configurations, so that the report does not read the current one.
+//     A change of defaults.unexported then changes no report, and a directive
+//     recording a deliberate `private` that today's default also gives is
+//     kept. This is what makes loose safe as the default: an upgrade or a
+//     config edit adds no report to a tree nobody touched.
+//     rules.unused: strict is the opt-in that reads the current configuration
+//     instead, and accepts that trade: it also reports a directive naming the
+//     scope the declaration would have without it today, and one line of YAML
+//     changes what it reports. unused_modes.fsl models strict and off beside
+//     loose, and its loose is this spec's.
+//   - Over enclosing directives, not only exportedness. Asking only whether
+//     the name is exported would call //declscope:package under an enclosing
+//     `private` inert, although it is the one thing that widens an exported
+//     declaration back, so a codebase could narrow and never widen again.
+//
+// "The levels outside" are every level a deletion would fall through to. For a
+// spec that states its own scope, the first of them is the block's directive
+// the spec overrides, then the type's for a field, then the file's. Skipping
+// the block judges a spec's private under a package block against the file,
+// and calls it inert where deleting it widens the spec. outerDir is the
+// nearest of them, whichever level that is.
 //
 // So: the scope outside this directive is FIXED when an outer level states one,
 // or when the declaration is exported and nothing does (exported carries no
@@ -23,7 +39,7 @@
 // is one, plus what it encloses. One binding is enough. Two enclosed
 // declarations are modelled because one cannot distinguish "nothing to bind"
 // from "this one had nothing to bind".
-spec DirectiveEffect {
+spec UnusedBind {
   enum Scope { Package, Private }
   enum Dir   { NoDir, DirPackage, DirPrivate }
 
@@ -124,6 +140,12 @@ spec DirectiveEffect {
   }
   reachable ExportedNarrowedByPrivateBinds {
     configured and hasTarget and targetExported and outerDir == NoDir
+    and stated == Private and not aPresent and not bPresent and bound
+  }
+  // A spec's private under a package block binds, whatever the file says:
+  // the block is the level a deletion falls through to.
+  reachable SpecNarrowingItsBlockBinds {
+    configured and hasTarget and not targetExported and outerDir == DirPackage
     and stated == Private and not aPresent and not bPresent and bound
   }
   // Restating what the enclosing level already said decides nothing either.
