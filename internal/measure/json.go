@@ -161,10 +161,11 @@ type jsonConfig struct {
 }
 
 type jsonRules struct {
-	Boundary bool   `json:"boundary"`
-	Qualify  string `json:"qualify"`
-	Exported bool   `json:"exported"`
-	Surplus  string `json:"surplus"`
+	Boundary  bool   `json:"boundary"`
+	Qualify   string `json:"qualify"`
+	Exported  bool   `json:"exported"`
+	Surplus   string `json:"surplus"`
+	Directive string `json:"directive"`
 }
 
 type jsonBaseline struct {
@@ -250,10 +251,11 @@ func (s Summary) writeJSON(w io.Writer) error {
 			Chain:    jsonStrings(c.Chain),
 			Packages: c.Packages,
 			Rules: jsonRules{
-				Boundary: c.Boundary,
-				Qualify:  c.Qualify,
-				Exported: c.Exported,
-				Surplus:  c.Surplus,
+				Boundary:  c.Boundary,
+				Qualify:   c.Qualify,
+				Exported:  c.Exported,
+				Surplus:   c.Surplus,
+				Directive: c.Directive,
 			},
 		})
 	}

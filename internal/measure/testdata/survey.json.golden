@@ -14,7 +14,8 @@
           "boundary": true,
           "qualify": "ondemand",
           "exported": true,
-          "surplus": "loose"
+          "surplus": "loose",
+          "directive": "strict"
         }
       }
     ],

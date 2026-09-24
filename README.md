@@ -969,11 +969,11 @@ Two subcommands report what the analyzer found. Neither decides anything. The ex
 $ declscope survey -config .declscope-strict.yaml ./internal/measure/...
 ## Checks in force
 
-| check      | value                                                   | packages |
-| ---------- | ------------------------------------------------------- | -------: |
-| config     | `.declscope-strict.yaml`                                |        1 |
-| rules      | boundary on, qualify ondemand, exported, surplus strict |        1 |
-| type check | 1 package ok, 0 failed                                  |          |
+| check      | value                                                                     | packages |
+| ---------- | ------------------------------------------------------------------------- | -------: |
+| config     | `.declscope-strict.yaml`                                                  |        1 |
+| rules      | boundary on, qualify ondemand, exported, surplus strict, directive strict |        1 |
+| type check | 1 package ok, 0 failed                                                    |          |
 
 ## Findings
 

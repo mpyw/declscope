@@ -279,6 +279,9 @@ type ConfigUse struct {
 	// Surplus is the mode as the config spells it: off, loose, strict.
 	Surplus string
 
+	// Directive is the mode as the config spells it: loose, strict.
+	Directive string
+
 	// Qualify is the mode as the config spells it: always, ondemand, never.
 	Qualify string
 

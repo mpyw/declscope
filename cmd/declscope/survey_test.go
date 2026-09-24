@@ -247,7 +247,7 @@ func surveyTestRuleRow(out, rule, found string) bool {
 func TestSurveyNamesTheChecksInForce(t *testing.T) {
 	dir := t.TempDir()
 	writeTree(t, dir, "go.mod", testModule)
-	writeTree(t, dir, ".declscope.yaml", "rules:\n  surplus: off\n  naming:\n    qualify: always\n")
+	writeTree(t, dir, ".declscope.yaml", "rules:\n  surplus: off\n  directive: strict\n  naming:\n    qualify: always\n")
 	writeTree(t, dir, ".declscope-baseline.yaml",
 		"packages:\n  example.com/declscopetest/p:\n    boundary:\n      user: [userHelper]\n")
 	writeTree(t, dir, "p/user.go", "package p\n\nfunc userHelper() int { return 1 }\n")
@@ -263,9 +263,10 @@ func TestSurveyNamesTheChecksInForce(t *testing.T) {
 				Chain    []string `json:"chain"`
 				Packages int      `json:"packages"`
 				Rules    struct {
-					Boundary bool   `json:"boundary"`
-					Qualify  string `json:"qualify"`
-					Surplus  string `json:"surplus"`
+					Boundary  bool   `json:"boundary"`
+					Qualify   string `json:"qualify"`
+					Surplus   string `json:"surplus"`
+					Directive string `json:"directive"`
 				} `json:"rules"`
 			} `json:"configs"`
 			Baselines []struct {
@@ -285,8 +286,8 @@ func TestSurveyNamesTheChecksInForce(t *testing.T) {
 	if len(cfg.Chain) != 1 || !strings.HasSuffix(cfg.Chain[0], ".declscope.yaml") {
 		t.Errorf("chain = %v, want the one config file", cfg.Chain)
 	}
-	if cfg.Rules.Qualify != "always" || cfg.Rules.Surplus != "off" || !cfg.Rules.Boundary {
-		t.Errorf("rules = %+v, want qualify always with surplus off and boundary on", cfg.Rules)
+	if cfg.Rules.Qualify != "always" || cfg.Rules.Surplus != "off" || cfg.Rules.Directive != "strict" || !cfg.Rules.Boundary {
+		t.Errorf("rules = %+v, want qualify always with surplus off, directive strict and boundary on", cfg.Rules)
 	}
 
 	if len(got.Checks.Baselines) != 1 {
@@ -315,6 +316,9 @@ func TestSurveyRendersTheChecksAsMarkdown(t *testing.T) {
 	}
 	if !strings.Contains(out, "surplus off") {
 		t.Errorf("a rule the config turned off should read as off:\n%s", out)
+	}
+	if !strings.Contains(out, "directive loose") {
+		t.Errorf("the directive rule's mode should be named, loose by default:\n%s", out)
 	}
 	for _, rule := range []string{"qualify", "surplus"} {
 		if !strings.Contains(out, "`"+rule+"`") {
