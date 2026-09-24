@@ -394,22 +394,17 @@ Go excludes a `//tool:name` comment from a doc comment, so none of them reaches 
 
 The `unused` rule reports a directive that changes nothing. A directive that declscope cannot read belongs to the [`directive`](#malformed-directives) rule instead.
 
-| Term | Meaning |
-| --- | --- |
-| **Takes its scope from** | A declaration takes its scope from the nearest directive that states one. That is its own, then its type's for a field or its block's for a spec, then its file's |
-| **Next scope** | For a directive and a declaration it reaches, the scope that the levels beyond the directive give. That is the next directive out, else package for an exported name, else `defaults.unexported` |
-
 #### Off, loose and strict
 
-| `rules.unused` | An ignore is reported when | A scope directive is reported when | `-fix` |
+| `rules.unused` | `//declscope:ignore` is reported when | `//declscope:package` or `//declscope:private` is reported when | `-fix` |
 | --- | --- | --- | --- |
 | `off` | Never | Never | None |
-| `loose` *(default)* | It silenced no report | No declaration takes its scope from it, except one whose next scope is the same under every config | None |
-| `strict` | It silenced no report | `loose` reports it, or its scope is the next scope of every declaration it reaches, under the current config | Deletes a redundant scope directive, unless [withheld](#the-strict-fix) |
+| `loose` *(default)* | It silenced no report | Deleting it would change no declaration's scope under any config | None |
+| `strict` | It silenced no report | Deleting it would change no declaration's scope under the current config | Deletes a redundant scope directive, unless [withheld](#the-strict-fix) |
 
 - One comment gets one report, however many declarations it reaches. A block's directive is reported once.
-- A next scope is the same under every config when it comes from a directive or from an exported name.
-- Under `strict`, "every declaration it reaches" includes one that states its own scope. So a directive stays when deleting it would make a nearer directive redundant.
+- Without the directive, a declaration falls to the next row of [scope resolution](#scope-resolution). Only `defaults.unexported` there depends on the config.
+- Under `strict`, a directive that `loose` keeps also stays when deleting it would make a nearer directive redundant.
 - `off` still leaves the `directive` rule on.
 
 > [!WARNING]
@@ -436,7 +431,7 @@ func greet(u user) string { return u.name }
 | 8 | Nothing | `unused //declscope:package on Helper: nothing it reaches takes a scope` | `unused //declscope:package on Helper: it already has package scope` |
 | 11 | Nothing | `unused //declscope:ignore boundary on greet` | `unused //declscope:ignore boundary on greet` |
 
-Line 4 is where the modes differ. The next scope of `user.name` is `defaults.unexported`, which `loose` does not read.
+Line 4 is where the modes differ. Deleting line 4 leaves `user.name` private only because `defaults.unexported` is private, which `loose` does not rely on.
 
 <details>
 <summary>A directive that <code>strict</code> keeps because of a nearer one</summary>
@@ -452,7 +447,7 @@ var (
 )
 ```
 
-declscope reports nothing here. The block's `//declscope:private` is the next scope of `seed`. It is not the next scope of `Limit`, which is package, from exportedness. Without the block, `Limit`'s `//declscope:package` would be redundant.
+declscope reports nothing here, although deleting the block would change no scope. `seed` would stay private from `defaults.unexported`, and `Limit` states its own. But without the block, `Limit` would be package from exportedness alone. Its `//declscope:package` would then be redundant.
 
 </details>
 
@@ -472,21 +467,21 @@ An unused **ignore** is reported only by a pass that sees every reference in the
 
 #### Report messages
 
-A report names only the declarations that take the directive's scope. A declaration with the other scope is never said to have the directive's.
+A report names only the declarations whose scope comes from the directive. A declaration with the other scope is never said to have the directive's.
 
 | Report | Mode | Made when |
 | --- | --- | --- |
 | `unused //declscope:ignore boundary on greet` | Both | The ignore silenced nothing on the named declarations |
 | `unused file-level //declscope:ignore qualify` | Both | The file-level ignore silenced nothing |
 | `unused //declscope:ignore: no checked declaration carries it` | Both | The directive is on something declscope does not check, such as `init` or `_`. A scope directive there reads the same |
-| `unused //declscope:package: every declaration it reaches states its own scope` | Both | Every spec of the block states another scope |
-| `unused file-level //declscope:package` | Both | No declaration in the file takes its scope from it, except one whose next scope is the same under every config |
-| `unused //declscope:package on Helper: nothing it reaches takes a scope` | `loose` | The named declarations have the same next scope under every config |
-| `unused //declscope:private on user.name: it already has private scope`<br>`unused //declscope:private on seed, limit: each already has private scope` | `strict` | The named declarations have the same next scope |
-| `unused //declscope:private: every declaration it reaches already has private scope` | `strict` | Every spec of the block repeats it |
-| `unused file-level //declscope:private: every declaration it reaches already has private scope` | `strict` | Every declaration in the file has that scope |
-| `unused file-level //declscope:package: every declaration it reaches takes a nearer directive's scope` | `strict` | Every declaration in the file takes the other scope from a nearer directive |
-| `unused file-level //declscope:package: every declaration it reaches takes a nearer directive's scope or already has package scope` | `strict` | Some declarations do each |
+| `unused //declscope:package: every declaration it reaches states its own scope` | Both | Every spec of the block states its own scope, so deleting it would change none |
+| `unused file-level //declscope:package` | Both | Deleting it would change no declaration's scope under any config |
+| `unused //declscope:package on Helper: nothing it reaches takes a scope` | `loose` | Deleting it would change no named declaration's scope under any config |
+| `unused //declscope:private on user.name: it already has private scope`<br>`unused //declscope:private on seed, limit: each already has private scope` | `strict` | Deleting it would change no named declaration's scope under the current config |
+| `unused //declscope:private: every declaration it reaches already has private scope` | `strict` | Every spec of the block repeats it. Deleting the block and those repeats would change no scope under the current config |
+| `unused file-level //declscope:private: every declaration it reaches already has private scope` | `strict` | Deleting it would change no declaration's scope under the current config. No declaration in the file has the other scope |
+| `unused file-level //declscope:package: every declaration it reaches takes a nearer directive's scope` | `strict` | Every declaration's scope comes from a nearer directive, and some of those directives state the other scope |
+| `unused file-level //declscope:package: every declaration it reaches takes a nearer directive's scope or already has package scope` | `strict` | Deleting it would change no declaration's scope under the current config. Some declarations have the other scope from a nearer directive |
 
 #### The strict fix
 
@@ -496,7 +491,7 @@ The fix is **withheld** when the deletion would change another report. The repor
 
 | Withheld when | What would change |
 | --- | --- |
-| Another namespace uses a declaration that takes its scope from the directive | The [`boundary`](#boundary) report names the directive |
+| Another namespace uses a declaration whose scope comes from the directive | The [`boundary`](#boundary) report names the directive |
 | A field whose type the `boundary` fix widens in the same run | The field would take the type's new `//declscope:package` |
 | A `//declscope:package` that repeats an enclosing one, while [`surplus`](#surplus) is on | `surplus` would judge the declaration under the enclosing directive |
 | A `//declscope:package` under `//declscope:ignore surplus` | The ignore would silence nothing |
