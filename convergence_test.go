@@ -304,6 +304,31 @@ var fixCases = []fixCase{
 				"//declscope:package\nfunc userOwn() int { return 2 }\n\nvar _ = userNarrow() + userOwn()\n",
 		},
 	},
+	{
+		// A type that declares no name is reached through its fields alone.
+		// userTaken takes its private, userSame restates it and userWide
+		// states package. The type's report reads "states its own scope or
+		// already has private scope". The type's directive and userSame's
+		// are deleted in one run, and userWide's stays, since it widens.
+		name:   "an unnamed type one field takes, one restates and one overrides, under unused strict",
+		config: "rules:\n  unused: strict\n  surplus: off\n",
+		files: map[string]string{
+			"user.go": "package x\n\n//declscope:private\ntype _ struct {\n\tuserTaken int\n\t//declscope:private\n\tuserSame int\n" +
+				"\t//declscope:package\n\tuserWide int\n}\n",
+		},
+	},
+	{
+		// The same shape kept: the type's //declscope:package restates the
+		// file's while surplus reads it, so its deletion is withheld, and so is
+		// the deletion of the field that restates it. Both reports read the
+		// same after the run.
+		name:   "an unnamed type whose report is kept beside a field that restates it, under unused strict",
+		config: unusedStrictConfig,
+		files: map[string]string{
+			"user.go": "//declscope:package\n\npackage x\n\nfunc userF() int { return 1 }\n\n//declscope:package\ntype _ struct {\n" +
+				"\tuserTaken int\n\t//declscope:package\n\tuserSame int\n\t//declscope:private\n\tuserNarrow int\n}\n\nvar _ = userF()\n",
+		},
+	},
 
 	// A rename is offered only when it provably changes nothing but the
 	// spelling. Each case below is one way a rename that checks only package

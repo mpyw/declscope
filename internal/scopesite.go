@@ -339,18 +339,26 @@ func messageOfScopeSite(s *scopeSite, redundant bool) string {
 			return "unused file-level " + d + ": every declaration it reaches " + nearer + " or " + has
 		}
 	}
+	if len(s.decls) == 0 {
+		// No declaration is named, which is not the same as none taking the
+		// scope: a field of a type that declares no name takes it through its
+		// type, and is never named. So taken, not the names, decides whether
+		// "states its own scope" is true of everything reached.
+		switch {
+		case !s.taken && !s.shadowed:
+			return "unused " + d + ": no checked declaration carries it"
+		// A spec restating its block, or a field of an unnamed type.
+		case redundant && !s.overridden:
+			return "unused " + d + ": every declaration it reaches " + has
+		case !s.taken:
+			return "unused " + d + ": every declaration it reaches states its own scope"
+		case !redundant:
+			return "unused " + d + ": nothing it reaches takes a scope"
+		default:
+			return "unused " + d + ": every declaration it reaches states its own scope or " + has
+		}
+	}
 	switch {
-	// A spec restating its block, or a field of a type that declares no name.
-	case len(s.decls) == 0 && redundant && !s.overridden:
-		return "unused " + d + ": every declaration it reaches " + has
-	// Only a directive no declaration takes as written was overridden by
-	// every one. Where some spec states no scope, the report names those
-	// specs: a block overridden by one spec and restating the file for
-	// another is not overridden by all.
-	case len(s.decls) == 0 && s.shadowed:
-		return "unused " + d + ": every declaration it reaches states its own scope"
-	case len(s.decls) == 0:
-		return "unused " + d + ": no checked declaration carries it"
 	case !redundant:
 		return "unused " + d + " on " + strings.Join(s.decls, ", ") + ": nothing it reaches takes a scope"
 	case len(s.decls) == 1:
