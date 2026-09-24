@@ -368,6 +368,39 @@ func messageOfScopeSite(s *scopeSite, redundant bool) string {
 	}
 }
 
+// rewordedAtScopeSite reports whether narrowing the declarations in narrowed
+// would change the unused report on d, a directive that binds nothing and so
+// is reported whenever the rule is on.
+//
+// A narrowed declaration that took d's scope states //declscope:private
+// instead: it leaves the names on the report and joins what overrides d. What
+// d decides does not move, since each narrowed declaration is judged against
+// the same levels beyond it, so the report is only reworded, never dropped.
+//
+//declscope:package // surplus.go withholds a narrowing that would reword it
+func (c *collection) rewordedAtScopeSite(opts Options, d directive.Decl, narrowed map[*target]bool) bool {
+	if !opts.Unused.Reports() {
+		return false
+	}
+	s := c.scopeSite(d)
+	after := *s
+	after.decls, after.taken = nil, false
+	for _, t := range c.targets {
+		switch {
+		case t.boundBy.ScopePos != d.ScopePos:
+		case narrowed[t]:
+			after.shadowed, after.overridden = true, true
+		default:
+			after.taken = true
+			if t.dir.ScopePos == d.ScopePos {
+				after.decls = append(after.decls, t.name())
+			}
+		}
+	}
+	redundant := opts.Unused.ReportsRedundant() && s.redundant()
+	return messageOfScopeSite(s, redundant) != messageOfScopeSite(&after, redundant)
+}
+
 // scopesiteRemovals decides which strict reports carry the fix that deletes
 // the directive, once per run, and builds it.
 //

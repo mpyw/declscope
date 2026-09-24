@@ -216,3 +216,11 @@ func TestSuggestedFixUnparsableExcludedFile(t *testing.T) {
 func TestSuggestedFixSurplusNarrowsWithTypeFix(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixsurplusnarrow")
 }
+
+// TestSuggestedFixSurplusStrictUnusedStrict checks strict's fix under a
+// directive that decides nothing while the unused rule is strict. The fix is
+// offered where the directive's report reads the same after it, and withheld
+// where narrowing would reword that report.
+func TestSuggestedFixSurplusStrictUnusedStrict(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixsurplusstrictunusedstrict")
+}

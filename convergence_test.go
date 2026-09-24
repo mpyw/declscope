@@ -318,6 +318,30 @@ var fixCases = []fixCase{
 		},
 	},
 	{
+		// The type restates the file's package, and its report names the type
+		// alone. Strict surplus narrows userSpare, and the report reads the
+		// same after the run.
+		name:   "a field under a type that decides nothing, under surplus strict",
+		config: strictConfig,
+		files: map[string]string{
+			"user.go": "//declscope:package\n\npackage x\n\n//declscope:package\ntype userEntry struct {\n\tuserKey   int\n\tuserSpare int\n}\n\n" +
+				"var _ = userEntry{}.userSpare\n",
+			"order.go": "package x\n\nfunc OrderRun() int { return userEntry{}.userKey }\n",
+		},
+	},
+	{
+		// A type that declares no name, restating the file's package. Under
+		// unused strict its report says what every field already has, and
+		// narrowing userSpare would make it say that one states its own scope.
+		// The narrowing is withheld.
+		name:   "a field under an unnamed type that decides nothing, under surplus and unused strict",
+		config: "rules:\n  surplus: strict\n  unused: strict\n",
+		files: map[string]string{
+			"user.go":  "//declscope:package\n\npackage x\n\nfunc userF() int { return 1 }\n\n//declscope:package\ntype _ struct {\n\tUserWide  int\n\tuserSpare int\n}\n",
+			"order.go": "package x\n\nfunc OrderRun() int { return userF() }\n",
+		},
+	},
+	{
 		// A type that declares no name is reached through its fields alone.
 		// userTaken takes its private, userSame restates it and userWide
 		// states package. The type's report reads "states its own scope or

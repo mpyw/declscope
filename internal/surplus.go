@@ -560,9 +560,11 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 	// it is reported without one.
 	//
 	// A directive that already decides nothing is already the unused rule's
-	// report, and that report names what takes its scope: narrowing under it
-	// would reword it. The advice there is the same, so the fix is withheld
-	// too, unless the unused rule is off and there is no report to reword.
+	// report. Where narrowing under it would reword that report, as it does
+	// for a block's, which names each spec that takes its scope, the fix is
+	// withheld too: the advice there is the same deletion. A type's report
+	// names the type and never its fields, so narrowing a field leaves it
+	// reading the same, and the fix is offered.
 	boundBefore, boundAfter := make(map[token.Pos]bool), make(map[token.Pos]bool)
 	for _, t := range c.targets {
 		if !t.decided {
@@ -573,10 +575,14 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 			boundAfter[t.boundBy.ScopePos] = true
 		}
 	}
+	reworded := make(map[token.Pos]bool)
 	for _, names := range groups {
 		slices.SortFunc(names, func(a, b *target) int { return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos()) })
 		pos := names[0].boundBy.ScopePos
-		fixed := boundAfter[pos] || !boundBefore[pos] && !opts.Unused.Reports()
+		if _, seen := reworded[pos]; !seen && !boundBefore[pos] {
+			reworded[pos] = c.rewordedAtScopeSite(opts, names[0].boundBy, narrowed)
+		}
+		fixed := boundAfter[pos] || !boundBefore[pos] && !reworded[pos]
 		for i, t := range names {
 			out[t] = surplusDeclaration{msg: surplusDeclarationMessage(t), fixed: fixed && i == 0, settledBy: settledBy[t]}
 		}

@@ -1,0 +1,5 @@
+# Both rules strict: an unused report under strict reads what the declarations
+# already have, so narrowing one of them can reword it where loose's cannot.
+rules:
+  surplus: strict
+  unused: strict

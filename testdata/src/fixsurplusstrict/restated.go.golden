@@ -7,6 +7,8 @@ func restatedHelper() int { return 3 }
 
 // restatedSpare takes it too, and nothing else calls it. Its narrowing gives
 // this file an edit whatever the rest gets, so the golden is compared.
+//
+//declscope:private
 func restatedSpare() int { return 4 } // want `func restatedSpare takes package scope`
 
 var _ = restatedSpare
@@ -31,6 +33,7 @@ var _ = restatedLocal
 //declscope:package // want `unused //declscope:package on restatedEntry: nothing it reaches takes a scope`
 type restatedEntry struct {
 	key   int
+	//declscope:private
 	spare int // want `field restatedEntry.spare takes package scope`
 }
 
@@ -43,5 +46,6 @@ var _ = restatedEntry{}.spare
 //declscope:package // want `unused //declscope:package: nothing it reaches takes a scope`
 type _ struct {
 	Wide  int
+	//declscope:private
 	spare int // want `field _.spare takes package scope`
 }
