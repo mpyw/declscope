@@ -104,6 +104,14 @@ func TestSuggestedFixSurplusStrict(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixsurplusstrict")
 }
 
+// TestSuggestedFixSurplusStrictUnusedOff checks that strict's fix is offered
+// under a directive that decides nothing when the unused rule is off. With
+// the rule on, that directive's report names what narrowing would change, and
+// fixsurplusstrict/restated.go pins that the fix is withheld there.
+func TestSuggestedFixSurplusStrictUnusedOff(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixsurplusstrictunusedoff")
+}
+
 // TestSuggestedFixUnusedStrict checks the fix rules.unused: strict
 // offers: it deletes the redundant directive, whether it stands on its own
 // line or trails a field, with the bare // that separated it from a doc

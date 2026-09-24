@@ -1075,6 +1075,7 @@ A declaration is reported only when the enclosing directive is what widened it. 
 | `a, b int` or `var x, y` | One directive, on the first name's diagnostic |
 | A field that shares its line with another, as in a single-line struct | The field is broken onto its own line first |
 | Everything the directive reaches would be narrowed | Withheld. The directive would bind nothing, and deleting it is the edit to make |
+| The directive already changes no scope, while `unused` is on | Withheld. Narrowing would change the declarations its `unused` report names |
 
 A [`boundary`](#boundary) fix on a type widens its members too. Under `strict`, the same fix narrows each member no other namespace uses, so one `-fix` run leaves nothing for `strict` to report.
 

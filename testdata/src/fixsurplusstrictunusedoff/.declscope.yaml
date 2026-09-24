@@ -1,0 +1,5 @@
+# The unused rule is off, so a directive that decides nothing has no report
+# for narrowing to reword, and strict's fix is offered under it.
+rules:
+  surplus: strict
+  unused: off

@@ -305,6 +305,19 @@ var fixCases = []fixCase{
 		},
 	},
 	{
+		// The block restates the file's package, so it decides nothing and the
+		// unused rule names both specs. Strict surplus would narrow userLocal,
+		// and the report would then name userShared alone: a diagnostic the run
+		// did not start with. The narrowing is withheld.
+		name:   "a spec under a block that decides nothing, under surplus strict",
+		config: strictConfig,
+		files: map[string]string{
+			"user.go": "//declscope:package\n\npackage x\n\n//declscope:package\nvar (\n\tuserShared = 1\n\tuserLocal  = 2\n)\n\n" +
+				"func userF() int { return userLocal }\n\nvar _ = userF()\n",
+			"order.go": "package x\n\nfunc OrderRun() int { return userShared + userF() }\n",
+		},
+	},
+	{
 		// A type that declares no name is reached through its fields alone.
 		// userTaken takes its private, userSame restates it and userWide
 		// states package. The type's report reads "states its own scope or

@@ -557,8 +557,12 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 	// everything it widens is narrowed is one the fixes would leave unused,
 	// and the unused rule would report what -fix had just written. Its
 	// advice is to delete the directive, which no fix does, so what is under
-	// it is reported without one. A directive that already decides nothing is
-	// already reported, and narrowing under it changes nothing about that.
+	// it is reported without one.
+	//
+	// A directive that already decides nothing is already the unused rule's
+	// report, and that report names what takes its scope: narrowing under it
+	// would reword it. The advice there is the same, so the fix is withheld
+	// too, unless the unused rule is off and there is no report to reword.
 	boundBefore, boundAfter := make(map[token.Pos]bool), make(map[token.Pos]bool)
 	for _, t := range c.targets {
 		if !t.decided {
@@ -572,7 +576,7 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 	for _, names := range groups {
 		slices.SortFunc(names, func(a, b *target) int { return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos()) })
 		pos := names[0].boundBy.ScopePos
-		fixed := !boundBefore[pos] || boundAfter[pos]
+		fixed := boundAfter[pos] || !boundBefore[pos] && !opts.Unused.Reports()
 		for i, t := range names {
 			out[t] = surplusDeclaration{msg: surplusDeclarationMessage(t), fixed: fixed && i == 0, settledBy: settledBy[t]}
 		}
