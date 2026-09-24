@@ -322,7 +322,8 @@ The analyzer deliberately does **not** report unmatched baseline entries. A pack
 
 ```bash
 go test ./...          # analysistest + unit tests
-mise x -- ./test_all.sh   # tests, golangci-lint, dogfooding and the specs
+./coverage.sh          # the same tests, printing the merged coverage per package
+mise x -- ./test_all.sh   # tests with coverage, golangci-lint, dogfooding and the specs
 ```
 
 - `testdata/src/*` are `analysistest` packages. Most carry their own `.declscope.yaml`, which also exercises config discovery end to end — the naming rule is off by default, so every package asserting qualify behavior (including the unused-ignore accounting for it) has to state `qualify: ondemand` or `always`. `qualifydefault/` deliberately carries none: it pins the default itself.
@@ -342,7 +343,11 @@ mise x -- ./test_all.sh   # tests, golangci-lint, dogfooding and the specs
 
 The subcommand tests drive the **built binary** as a subprocess, because what they assert is the handshake between a subcommand and the analyzer. `go test -coverprofile` therefore counts none of the statements they run, and `cmd/declscope` read as 1% covered while being the most thoroughly exercised package in the tree.
 
-`DECLSCOPE_COVERDIR` closes that without turning the tests into unit tests of halves: `cmd/declscope/cover_test.go` builds the binary with `go build -cover` and points every run at that directory, and the caller converts what lands there with `go tool covdata textfmt` into a second profile. Both are uploaded. Name the directory by an **absolute** path — `go test` runs each test binary in its own package directory. Without the variable the binary is built and run exactly as before, so a plain `go test ./...` pays nothing for it.
+`DECLSCOPE_COVERDIR` closes that without turning the tests into unit tests of halves: `cmd/declscope/cover_test.go` builds the binary with `go build -cover` and points every run at that directory. `coverage.sh` sets it, converts what lands there with `go tool covdata textfmt`, merges it with `go test`'s profile into `coverage-merged.txt`, and prints the coverage per package. `test_all.sh` and CI both run it, and CI uploads the merged profile. Name the directory by an **absolute** path — `go test` runs each test binary in its own package directory. Without the variable the binary is built and run exactly as before, so a plain `go test ./...` pays nothing for it.
+
+`convergence_test.go` builds its own binary without `-cover`, so what it runs counts nowhere. A path only it reaches needs an analysistest fixture too, which is how `fixsurplusnarrow` came about.
+
+The statements left uncovered are defensive: I/O errors (`os.Executable`, `os.Getwd`, `filepath.Abs`, a directory that cannot be read, a write to stdout), go/types and go/parser contracts (a nil field list, a method with no receiver type, a position in no collected file), the yaml encoder failing on a struct of strings, a cgo file a driver shows unprocessed, the go command's older `_testmain.go` answer, and the rename guards `renameSafe` keeps as a contract independent of its caller. Anything else uncovered is a missing test or dead code.
 
 `codecov.yml` therefore excludes nothing. `main.go` was excluded while no test could reach it; with the counters it is covered like the rest, and an ignore list nothing needs is one that quietly grows.
 

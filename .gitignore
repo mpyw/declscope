@@ -5,6 +5,9 @@
 *.out
 coverage.html
 coverage.txt
+coverage-bin.txt
+coverage-merged.txt
+/.covdata/
 
 # Go workspace
 go.work

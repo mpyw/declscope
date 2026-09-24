@@ -32,9 +32,10 @@ run_test() {
 
 echo ""
 
-# Run all tests
+# Run all tests. coverage.sh runs them once, with the subcommand binary built
+# with -cover, and prints the statement coverage of both profiles merged.
 run_test "analyzer" \
-    go test -v ./...
+    env GOTESTFLAGS=-v ./coverage.sh
 
 ## go.mod's toolchain and mise.toml's go say the same thing in two places,
 ## which is the cost of pinning Go with mise. golangci-lint refuses to load a
