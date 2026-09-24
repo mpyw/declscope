@@ -156,11 +156,14 @@ func (c *collection) collectTargets(pass *analysis.Pass, opts Options) {
 }
 
 func (c *collection) addFuncToCollection(pass *analysis.Pass, opts Options, fi *fileInfo, d *ast.FuncDecl) {
+	// Parsed before anything is skipped, so that a directive on a function
+	// declscope does not check, the blank one or init, is reported unused
+	// rather than misplaced: it is written where a directive belongs.
+	dir := c.parseCollectedDecl(append([]*ast.CommentGroup{d.Doc}, fi.looseTrailingComments(pass.Fset, d)...)...)
 	obj, ok := pass.TypesInfo.Defs[d.Name].(*types.Func)
 	if !ok || d.Name.Name == "_" {
 		return
 	}
-	dir := c.parseCollectedDecl(append([]*ast.CommentGroup{d.Doc}, fi.looseTrailingComments(pass.Fset, d)...)...)
 
 	if d.Recv == nil {
 		// init is not declared in package scope and can never be referenced.
