@@ -1112,7 +1112,9 @@ A [`boundary`](#boundary) fix on a type widens its members too. Under `strict`, 
 
 `declscope shrink` finds the exported declarations of `internal/` packages that nothing outside their package uses. With `-fix` it unexports them.
 
-The analyzer cannot answer this. It reads one package, and any importer might use an exported name. Inside `internal/`, Go limits the importers to one directory tree. `shrink` loads the whole module, so it sees every importer. The absence of a use then means something.
+**Why it matters.** An exported declaration takes package scope by default, so the analyzer never reports a boundary on it. An exported name that nothing outside needs hides a declaration from every check here. Unexported, it takes `private`, and the analyzer checks who reaches it.
+
+**Why a subcommand.** The analyzer reads one package, and any importer might use an exported name. Inside `internal/`, Go limits the importers to one directory tree. `shrink` loads the whole module, so it sees every one of them. `go vet` and golangci-lint never run it.
 
 ```go
 // internal/user/user.go
@@ -1140,67 +1142,62 @@ $ declscope shrink
 internal/user/user.go:8:6: func Format is exported, but nothing outside example.com/app/internal/user uses it
 ```
 
-`declscope shrink -fix` renames `Format` to `format` everywhere it is written, and in the doc comment that opens with it. `Record` is not reported. `fmt.Println` reads its fields through reflection, which is a use.
+`declscope shrink -fix` renames `Format` to `format`, and the doc comment that opens with it. `Record` is not reported: `fmt.Println` reads its fields through reflection, which is a use.
 
-| Behavior | Detail |
+### Run it before the analyzer
+
+**Apply `shrink -fix` first, then work on the analyzer's reports.** A declaration it unexports becomes private to its namespace. Wherever another file uses it, the analyzer now reports a crossing, which `declscope -fix` or a move settles. The other order takes a second round.
+
+```console
+$ declscope shrink -fix ./...
+$ declscope ./...
+```
+
+Run them in the same order in CI. `shrink` exits 3 when it reports anything, as the analyzer does. With `-fix`, only the reports left without a fix count.
+
+### What it decides
+
+A fix is offered only where no use can exist outside the package. Where a use may exist but cannot be proved, the report stays and says why no fix is offered.
+
+| Case | Result |
 | --- | --- |
-| What is loaded | Every package of the module, with its tests. The patterns only choose what to report on |
-| Exit status | 3 when anything is reported, as the analyzer's drivers do. With `-fix`, only the reports left without a fix count |
-| A package not judged | An `internal/` package the patterns name but `shrink` cannot judge is named on stderr, with the reason. The exit status ignores it |
-| A load error | The run refuses. A package that does not type-check shows no uses, which would read as nothing using a declaration |
-| Deleting unused code | Out of scope. Once a declaration is unexported, staticcheck's `unused` and gopls' `unusedfunc` report it if nothing uses it |
+| Another package names it, writes it in an unkeyed literal, pairs its field in a struct conversion, or links it with `//go:linkname` | Not reported |
+| The compiler needs it to satisfy an interface | Not reported |
+| Another module can reach it through a value an importable package hands out, such as `pub.Get().Method()` | Not reported |
+| An API another package uses returns it, takes it, or holds it | Not reported. The other package must still be able to name the type |
+| A value of it escapes into an interface, where `fmt`, `encoding/json` or `reflect` can find it | Not reported |
+| Only an external test package (`package foo_test`) uses it | Reported, with no fix. One declared in an in-package `_test.go` file is the `export_test.go` idiom, and is not reported |
+| A build-excluded file or `-ldflags -X` may use it | Reported, with no fix |
+| A generated file or an example function (`ExampleF`) names it, which the rename cannot rewrite | Reported, with no fix |
+| The new name would collide, be captured, or have no Go spelling (`MAX_RETRIES`) | Reported, with no fix |
 
-### What counts as a use
+Deleting unused code is out of scope. Once a declaration is unexported, staticcheck's `unused` and gopls' `unusedfunc` report it if nothing uses it.
 
-| Use | Result |
-| --- | --- |
-| Another package names it, writes it in an unkeyed literal, or links it with `//go:linkname` | Not reported |
-| A struct conversion or an identical unnamed struct type pairs a field by name | Not reported |
-| The compiler checks that its type satisfies an interface, and the method is one it needs | Not reported |
-| A value of its type reaches another module through the exported API of a package another module may import | Not reported for a method or field. `pub.Get().Method()` needs no import of the type |
-| It is embedded in a struct that such an API hands out | Not reported. `pub.Get().Inner` selects the field by the type's name |
-| An API another package uses returns it, takes it, or holds it in an exported field | Not reported for a type. The other package holds values of it, and must still be able to name the type |
-| A build-excluded file of another package imports the package and writes `pkg.Name` | Not reported |
-| A value of its type escapes into an interface, directly or inside another value | Not reported. `fmt`, `encoding/json` and `reflect` find methods and fields at run time, and `%T` prints a type's name |
-| Only an external test package (`package foo_test`) names it | Reported, with no fix. A declaration of an in-package `_test.go` file is not reported: that is the `export_test.go` idiom |
+### What it does not judge
 
-### When the fix is withheld
+`shrink` stands down wherever an importer could be unseen. Each `internal/` package it skips is named on stderr with the reason, and the exit status ignores it.
 
-A fix is offered only where no use can exist outside the package. A doubt withholds the fix and keeps the report.
-
-| Doubt | Why |
-| --- | --- |
-| A build-excluded file of another package selects the name, or uses a dot import | The file may use it in a configuration this run does not build |
-| A build-excluded file of its own package names it | The rename cannot rewrite that file |
-| A generated file names it | A regeneration would put the old name back |
-| An example function names it (`ExampleF`, `ExampleT_M`) | `go vet` checks that the name still resolves |
-| The new name is taken, captured, a keyword, predeclared, `init` or `main` | The rename would not compile, or would compute something else |
-| The name has no unexported spelling Go would use, such as `MAX_RETRIES` | The fix would write a name nobody would. `HTTPServer`, `IDs` and `IPv4` become `httpServer`, `ids` and `ipv4` |
-| It is a package-level `string` variable | `go build -ldflags "-X path.Name=value"` sets it by name, and ignores a name that no longer exists |
-| A struct embedding the type already has a field or method of the new name | The embedded field takes the type's new name, and would collide |
-
-### What is never judged
-
-| Package or declaration | Why |
+| Not judged | Why |
 | --- | --- |
 | A package outside `internal/` | Another module may import it |
 | `package main` | `-buildmode=plugin` looks its exported symbols up by name |
 | A package with assembly or cgo, for any architecture | Those files name Go symbols where `go/types` does not look |
-| An `internal/` whose parent path holds a nested module's path | That module may import the package, and this run never loads it. It counts wherever it sits, `_tools/` and `testdata/` included |
-| An interface's method names | Every implementation would have to rename too |
-| A test function of a `_test.go` file | `go test` finds it by name |
+| An `internal/` whose parent path a nested module's path extends | That module may import the package, and this run never loads it |
+| An interface's method names, and the test functions of a `_test.go` file | Every implementation would rename too, and `go test` finds a test by name |
+
+A package that does not type-check refuses the whole run, since it would show no uses at all.
 
 > [!IMPORTANT]
-> `shrink` cannot see a name written as a string outside Go's type system. A template naming a field, a constant passed to `reflect.Value.MethodByName`, or a script calling `go tool nm` all use a declaration by name. When the value reaches them through an interface, the fix is already withheld. Otherwise, silence the report with `//declscope:ignore overexported` on the declaration.
-
-> [!IMPORTANT]
-> `shrink` assumes that every module whose path extends an `internal/` parent lives inside this module's directory tree. Go checks `internal/` by import path. A module published from somewhere else under such a path, such as a `/v2` on another branch, could import the package unseen.
+> Two uses are outside what `shrink` can see. Silence either with the ignore below.
+>
+> - A name written as a string that no interface leads to, such as a template field or a constant given to `reflect.Value.MethodByName`.
+> - A module outside this module's directory tree whose path extends an `internal/` parent, such as a `/v2` on another branch. Go checks `internal/` by import path.
 
 ### Silencing it
 
-Write `//declscope:ignore overexported` on the declaration, on a field's type, or before the package clause. A trailing comment on a declaration's first or last line counts too, such as after `struct {` or `var (`, as it does for the analyzer. A bare `//declscope:ignore` does not reach this rule. The analyzer judges a bare ignore, and would report it unused when only `shrink` needed it.
+Write `//declscope:ignore overexported // <why>` where any other ignore goes: on the declaration, on a field's type, or before the package clause. A bare `//declscope:ignore` does not reach this rule.
 
-`shrink` reports an `//declscope:ignore overexported` that silenced nothing. An ignore beside it naming `unused`, or a file-level one covering `unused`, answers that report, as it does for the analyzer. The analyzer never judges an ignore naming this rule, or one that may be answering it, since it cannot see whether `shrink` needed it.
+`shrink` reports an ignore of it that silenced nothing. `//declscope:ignore unused` answers that report, as it does for the analyzer.
 
 ## Measuring what is there
 
