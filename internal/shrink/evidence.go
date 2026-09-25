@@ -7,10 +7,11 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/packages"
-	"golang.org/x/tools/go/ssa"
-	"golang.org/x/tools/go/ssa/ssautil"
 	"golang.org/x/tools/go/types/typeutil"
 	"golang.org/x/tools/refactor/satisfy"
+
+	"github.com/mpyw/declscope/internal/shrink/module"
+	"github.com/mpyw/declscope/internal/shrink/reach"
 )
 
 // evidence is everything the module says about who uses what. Every map is
@@ -68,34 +69,36 @@ type evidenceSite struct {
 // evidenceCollect gathers the evidence over every package of the module.
 //
 //declscope:package // the core collects it once per run
-func evidenceCollect(m *loadedModule) (ev *evidence, err error) {
+func evidenceCollect(m *module.Module) (ev *evidence, err error) {
 	ev = &evidence{
 		outside: map[string]bool{}, extTest: map[string]bool{}, generated: map[string]bool{}, example: map[string]bool{},
 		satisfied: map[string]bool{}, paired: map[string]bool{}, escaped: map[string]bool{},
 		exposed: map[string]bool{}, carried: map[string]bool{}, sites: map[string][]evidenceSite{},
 	}
 	inModule := map[string]bool{}
-	for _, p := range m.pkgs {
+	for _, p := range m.Pkgs {
 		inModule[p.Types.Path()] = true
 	}
 	// One variant per import path: the widest holds every file the others
 	// do, parsed once and shared, so reading the others would find the same
 	// references, satisfactions and conversions again.
 	var roots []types.Type
-	for _, p := range m.loadWidest() {
-		ev.evidenceReferences(m, p)
-		ev.evidenceExamples(m, p)
-		roots = append(roots, ev.evidenceInstances(m, p, inModule)...)
-		if err := ev.evidenceSatisfactions(m, p); err != nil {
+	for _, p := range m.Widest() {
+		ev.references(m, p)
+		ev.examples(m, p)
+		roots = append(roots, ev.instances(m, p, inModule)...)
+		if err := ev.satisfactions(m, p); err != nil {
 			return nil, err
 		}
 	}
-	ev.evidenceLinknames(m)
-	ev.evidenceUnnamedStructs(m)
-	roots = append(roots, evidenceInterfaceConversions(m)...)
-	evidenceWalk(m, roots, false, ev.escaped, nil)
-	ev.evidenceExposure(m)
-	ev.evidenceCarried(m)
+	ev.linknames(m)
+	ev.unnamedStructs(m)
+	// What escapes into an interface: every conversion SSA sees, and every
+	// type argument of a generic whose body it cannot see.
+	roots = append(roots, reach.Conversions(m.Widest())...)
+	reach.Reflect(roots, func(obj types.Object) { ev.escaped[keyOf(m.Fset, obj)] = true })
+	ev.exposure(m)
+	ev.carry(m)
 	return ev, nil
 }
 
@@ -119,11 +122,11 @@ func evidenceClassify(p *packages.Package, declPath string) evidenceClass {
 	return evidenceOutside
 }
 
-func (ev *evidence) evidenceRecord(m *loadedModule, p *packages.Package, obj types.Object, id *ast.Ident, gen bool) {
+func (ev *evidence) record(m *module.Module, p *packages.Package, obj types.Object, id *ast.Ident, gen bool) {
 	if obj == nil || obj.Pkg() == nil {
 		return
 	}
-	key := keyOf(m.fset, obj)
+	key := keyOf(m.Fset, obj)
 	if key == "" {
 		return
 	}
@@ -140,9 +143,9 @@ func (ev *evidence) evidenceRecord(m *loadedModule, p *packages.Package, obj typ
 	}
 }
 
-// evidenceReferences records every identifier of one package variant, and
+// references records every identifier of one package variant, and
 // every unkeyed literal and struct conversion in it.
-func (ev *evidence) evidenceReferences(m *loadedModule, p *packages.Package) {
+func (ev *evidence) references(m *module.Module, p *packages.Package) {
 	info := p.TypesInfo
 	for _, file := range p.Syntax {
 		gen := ast.IsGenerated(file)
@@ -152,47 +155,47 @@ func (ev *evidence) evidenceReferences(m *loadedModule, p *packages.Package) {
 				// An embedded field's identifier is a definition of the field
 				// and a use of the type at once, so both maps are read.
 				if obj := info.Defs[n]; obj != nil {
-					ev.evidenceRecord(m, p, origin(obj), n, gen)
+					ev.record(m, p, origin(obj), n, gen)
 				}
 				if obj := info.Uses[n]; obj != nil {
 					obj = origin(obj)
-					ev.evidenceRecord(m, p, obj, n, gen)
+					ev.record(m, p, obj, n, gen)
 					// s.T selects an embedded field by the type's name.
 					if _, isDef := info.Defs[n]; !isDef {
 						if tn := embeddedTypeName(obj); tn != nil {
-							ev.evidenceRecord(m, p, tn, n, gen)
+							ev.record(m, p, tn, n, gen)
 						}
 					}
 				}
 			case *ast.CompositeLit:
-				ev.evidenceUnkeyed(m, p, n)
+				ev.unkeyed(m, p, n)
 			case *ast.CallExpr:
-				ev.evidenceConversion(m, p, n)
+				ev.conversion(m, p, n)
 			}
 			return true
 		})
 	}
 }
 
-// evidenceExamples records what the example functions of a test file name.
+// examples records what the example functions of a test file name.
 // ExampleF names F, ExampleT names T, and ExampleT_M names T's method or
 // field M, each with an optional _suffix starting with a lower-case letter.
 // An example in the package itself stops the rename; one in the external
 // test package is a use by external tests, like any other reference there.
-func (ev *evidence) evidenceExamples(m *loadedModule, p *packages.Package) {
+func (ev *evidence) examples(m *module.Module, p *packages.Package) {
 	// go vet resolves an external test's example against the package under
 	// test, whether or not the file imports it. Every variant of that package
 	// keys its declarations alike, so any of them answers.
 	subject := p.Types
 	if p.ForTest != "" && p.PkgPath != p.ForTest {
-		variants := m.byPath[p.ForTest]
+		variants := m.Variants(p.ForTest)
 		if len(variants) == 0 {
 			return
 		}
 		subject = variants[0].Types
 	}
 	for _, file := range p.Syntax {
-		if !strings.HasSuffix(m.fset.File(file.Pos()).Name(), "_test.go") {
+		if !strings.HasSuffix(m.Fset.File(file.Pos()).Name(), "_test.go") {
 			continue
 		}
 		for _, decl := range file.Decls {
@@ -217,19 +220,19 @@ func (ev *evidence) evidenceExamples(m *loadedModule, p *packages.Package) {
 			}
 			for _, o := range named {
 				if subject == p.Types {
-					ev.example[keyOf(m.fset, o)] = true
+					ev.example[keyOf(m.Fset, o)] = true
 				} else {
-					ev.extTest[keyOf(m.fset, o)] = true
+					ev.extTest[keyOf(m.Fset, o)] = true
 				}
 			}
 		}
 	}
 }
 
-// evidenceUnkeyed records the fields an unkeyed composite literal writes by
+// unkeyed records the fields an unkeyed composite literal writes by
 // position. Another package can write one only while every field is
 // exported, so the literal is a use of each.
-func (ev *evidence) evidenceUnkeyed(m *loadedModule, p *packages.Package, lit *ast.CompositeLit) {
+func (ev *evidence) unkeyed(m *module.Module, p *packages.Package, lit *ast.CompositeLit) {
 	if len(lit.Elts) == 0 {
 		return
 	}
@@ -245,17 +248,17 @@ func (ev *evidence) evidenceUnkeyed(m *loadedModule, p *packages.Package, lit *a
 	}
 	for i := range min(len(lit.Elts), st.NumFields()) {
 		if evidenceClassify(p, owner.Pkg().Path()) == evidenceExtTest {
-			ev.extTest[keyOf(m.fset, st.Field(i))] = true
+			ev.extTest[keyOf(m.Fset, st.Field(i))] = true
 		} else {
-			ev.outside[keyOf(m.fset, st.Field(i))] = true
+			ev.outside[keyOf(m.Fset, st.Field(i))] = true
 		}
 	}
 }
 
-// evidenceConversion records the fields a struct conversion pairs. The two
+// conversion records the fields a struct conversion pairs. The two
 // struct types must name their fields alike, so renaming one side breaks it
 // wherever it is written.
-func (ev *evidence) evidenceConversion(m *loadedModule, p *packages.Package, call *ast.CallExpr) {
+func (ev *evidence) conversion(m *module.Module, p *packages.Package, call *ast.CallExpr) {
 	tv, ok := p.TypesInfo.Types[call.Fun]
 	if !ok || !tv.IsType() || len(call.Args) != 1 {
 		return
@@ -267,7 +270,7 @@ func (ev *evidence) evidenceConversion(m *loadedModule, p *packages.Package, cal
 	}
 	for _, st := range []*types.Struct{to, from} {
 		for i := range st.NumFields() {
-			ev.paired[keyOf(m.fset, st.Field(i))] = true
+			ev.paired[keyOf(m.Fset, st.Field(i))] = true
 		}
 	}
 }
@@ -291,7 +294,7 @@ func evidenceStructOf(t types.Type) (*types.Struct, *types.TypeName) {
 	return nil, nil
 }
 
-// evidenceUnnamedStructs pairs the fields of every named struct type whose
+// unnamedStructs pairs the fields of every named struct type whose
 // struct is identical to an unnamed struct type written somewhere: a value
 // of one is assignable to the other only while the field names agree.
 //
@@ -300,11 +303,11 @@ func evidenceStructOf(t types.Type) (*types.Struct, *types.TypeName) {
 // from export data, appears only inside the type of the expression naming
 // that function. Identical ones are kept once, so a table-driven test
 // writing the same struct in every row costs one comparison.
-func (ev *evidence) evidenceUnnamedStructs(m *loadedModule) {
+func (ev *evidence) unnamedStructs(m *module.Module) {
 	var unnamed typeutil.Map
 	var named []*types.Struct
 	seenNamed := map[*types.Struct]bool{}
-	for _, p := range m.loadWidest() {
+	for _, p := range m.Widest() {
 		// The struct literal a defined type is declared with is recorded as a
 		// type expression too, but it is that type's own struct, not an
 		// unnamed one it could be assigned to.
@@ -344,7 +347,7 @@ func (ev *evidence) evidenceUnnamedStructs(m *loadedModule) {
 		for _, u := range buckets[evidenceFieldNames(st)] {
 			if u != st && types.IdenticalIgnoreTags(st, u) {
 				for i := range st.NumFields() {
-					ev.paired[keyOf(m.fset, st.Field(i))] = true
+					ev.paired[keyOf(m.Fset, st.Field(i))] = true
 				}
 				break
 			}
@@ -399,11 +402,11 @@ func evidenceCollectUnnamed(t types.Type, into *typeutil.Map, seen map[types.Typ
 	}
 }
 
-// evidenceInstances records the methods a type argument supplies to a
+// instances records the methods a type argument supplies to a
 // constraint, and returns the type arguments given to a generic declared
 // outside the module. Its body is not built here, so what it does with the
 // value is unknown, and the value is taken to escape.
-func (ev *evidence) evidenceInstances(m *loadedModule, p *packages.Package, inModule map[string]bool) []types.Type {
+func (ev *evidence) instances(m *module.Module, p *packages.Package, inModule map[string]bool) []types.Type {
 	var roots []types.Type
 	for id, inst := range p.TypesInfo.Instances {
 		obj := p.TypesInfo.Uses[id]
@@ -426,18 +429,18 @@ func (ev *evidence) evidenceInstances(m *loadedModule, p *packages.Package, inMo
 				continue
 			}
 			if iface, ok := tparams.At(i).Constraint().Underlying().(*types.Interface); ok {
-				ev.evidenceMarkRequired(m, iface, targ)
+				ev.markRequired(m, iface, targ)
 			}
 		}
 	}
 	return roots
 }
 
-// evidenceSatisfactions records every method a static interface satisfaction
+// satisfactions records every method a static interface satisfaction
 // in the package variant needs: an assignment, an argument, a return, a
 // comparison, a type assertion, anywhere the compiler checks that a type
 // implements an interface.
-func (ev *evidence) evidenceSatisfactions(m *loadedModule, p *packages.Package) (err error) {
+func (ev *evidence) satisfactions(m *module.Module, p *packages.Package) (err error) {
 	// satisfy requires well-typed input and may panic otherwise. The load
 	// refuses a package with errors, so a panic here is a bug to report
 	// rather than a finding to guess past.
@@ -450,26 +453,26 @@ func (ev *evidence) evidenceSatisfactions(m *loadedModule, p *packages.Package) 
 	f.Find(p.TypesInfo, p.Syntax)
 	for c := range f.Result {
 		if iface, ok := c.LHS.Underlying().(*types.Interface); ok {
-			ev.evidenceMarkRequired(m, iface, c.RHS)
+			ev.markRequired(m, iface, c.RHS)
 		}
 	}
 	return nil
 }
 
-// evidenceMarkRequired records the methods of t that iface requires.
-func (ev *evidence) evidenceMarkRequired(m *loadedModule, iface *types.Interface, t types.Type) {
+// markRequired records the methods of t that iface requires.
+func (ev *evidence) markRequired(m *module.Module, iface *types.Interface, t types.Type) {
 	for i := range iface.NumMethods() {
 		want := iface.Method(i)
 		obj, _, _ := types.LookupFieldOrMethod(t, true, want.Pkg(), want.Name())
 		if fn, ok := obj.(*types.Func); ok && fn != want {
-			ev.satisfied[keyOf(m.fset, origin(fn))] = true
+			ev.satisfied[keyOf(m.Fset, origin(fn))] = true
 		}
 	}
 }
 
-// evidenceLinknames records every declaration a //go:linkname anywhere in the
+// linknames records every declaration a //go:linkname anywhere in the
 // module pulls by its import path, compiled or not.
-func (ev *evidence) evidenceLinknames(m *loadedModule) {
+func (ev *evidence) linknames(m *module.Module) {
 	byPath := map[string]map[string]string{}
 	add := func(file *ast.File) {
 		for _, g := range file.Comments {
@@ -496,16 +499,16 @@ func (ev *evidence) evidenceLinknames(m *loadedModule) {
 			}
 		}
 	}
-	for _, p := range m.loadWidest() {
+	for _, p := range m.Widest() {
 		for _, f := range p.Syntax {
 			add(f)
 		}
 	}
-	for _, x := range m.excluded {
-		add(x.file)
+	for _, x := range m.Excluded {
+		add(x.Syntax)
 	}
 	for path, names := range byPath {
-		for _, p := range m.byPath[path] {
+		for _, p := range m.Variants(path) {
 			scope := p.Types.Scope()
 			for name := range names {
 				typ, member, isMember := evidenceLinknameMember(name)
@@ -514,13 +517,13 @@ func (ev *evidence) evidenceLinknames(m *loadedModule) {
 					continue
 				}
 				if !isMember {
-					ev.outside[keyOf(m.fset, obj)] = true
+					ev.outside[keyOf(m.Fset, obj)] = true
 					continue
 				}
 				// path.T.M spells T as well, so the type keeps its name too.
-				ev.outside[keyOf(m.fset, obj)] = true
+				ev.outside[keyOf(m.Fset, obj)] = true
 				if found, _, _ := types.LookupFieldOrMethod(obj.Type(), true, p.Types, member); found != nil {
-					ev.outside[keyOf(m.fset, origin(found))] = true
+					ev.outside[keyOf(m.Fset, origin(found))] = true
 				}
 			}
 		}
@@ -537,152 +540,21 @@ func evidenceLinknameMember(name string) (typ, member string, isMember bool) {
 	return strings.Cut(name, ".")
 }
 
-// evidenceInterfaceConversions returns the type of every value converted to
-// an interface anywhere in the module: SSA's MakeInterface, which is every
-// such conversion including the ones into any. Once a value is in an
-// interface, fmt, encoding/json and reflect can find its methods and fields at
-// run time, and an assertion can find it another interface to satisfy.
-//
-// Generic functions of the module are instantiated, so a conversion inside
-// one is seen with the concrete type. One declared outside the module has no
-// body here, and evidenceInstances covers it.
-func evidenceInterfaceConversions(m *loadedModule) []types.Type {
-	prog, _ := ssautil.Packages(m.loadWidest(), ssa.InstantiateGenerics)
-	prog.Build()
-	var roots []types.Type
-	for fn := range ssautil.AllFunctions(prog) {
-		for _, b := range fn.Blocks {
-			for _, instr := range b.Instrs {
-				if mi, ok := instr.(*ssa.MakeInterface); ok {
-					roots = append(roots, mi.X.Type())
-				}
-			}
-		}
-	}
-	return roots
-}
-
-// evidenceWalk marks every named type reachable from roots in into.
-//
-// With exportedOnly false it follows everything reflection can: every field,
-// every element, key and pointee, and the parameters and results of every
-// method and function type. With it true it follows only what another module
-// can reach by name, which is how exposure is walked: exported fields and
-// methods, and fields and methods an embedding promotes. Exposure also marks
-// each such member, since a member is what another module uses.
-//
-// named, when not nil, receives every named type the walk reaches.
-//
-// An instantiation is walked through its origin and its type arguments, so
-// that a recursive generic type cannot expand without end.
-func evidenceWalk(m *loadedModule, roots []types.Type, exportedOnly bool, into, named map[string]bool) {
-	seen := map[string]bool{}
-	var walk func(t types.Type)
-	walkSig := func(sig *types.Signature) {
-		for _, tup := range []*types.Tuple{sig.Params(), sig.Results()} {
-			for i := range tup.Len() {
-				walk(tup.At(i).Type())
-			}
-		}
-	}
-	walk = func(t types.Type) {
-		switch t := types.Unalias(t).(type) {
-		case *types.Named:
-			for i := range t.TypeArgs().Len() {
-				walk(t.TypeArgs().At(i))
-			}
-			o := t.Origin()
-			key := keyOf(m.fset, o.Obj())
-			if key == "" || seen[key] {
-				return
-			}
-			seen[key] = true
-			if named != nil {
-				named[key] = true
-			}
-			if !exportedOnly {
-				into[key] = true
-			}
-			ms := types.NewMethodSet(types.NewPointer(o))
-			for i := range ms.Len() {
-				fn, ok := ms.At(i).Obj().(*types.Func)
-				if !ok || exportedOnly && !fn.Exported() {
-					continue
-				}
-				if exportedOnly {
-					into[keyOf(m.fset, origin(fn))] = true
-				}
-				walkSig(fn.Signature())
-			}
-			walk(o.Underlying())
-		case *types.Pointer:
-			walk(t.Elem())
-		case *types.Slice:
-			walk(t.Elem())
-		case *types.Array:
-			walk(t.Elem())
-		case *types.Chan:
-			walk(t.Elem())
-		case *types.Map:
-			walk(t.Key())
-			walk(t.Elem())
-		case *types.Struct:
-			for i := range t.NumFields() {
-				f := t.Field(i)
-				if exportedOnly && !f.Exported() && !f.Embedded() {
-					continue
-				}
-				// A field is marked for itself, not only through its type:
-				// type Wire Record shares Record's fields, and Wire escaping
-				// exposes them to reflection under either name.
-				if !exportedOnly {
-					into[keyOf(m.fset, f)] = true
-				}
-				if exportedOnly && f.Exported() {
-					into[keyOf(m.fset, f)] = true
-					// An embedded field is named by its type, so another
-					// module selecting it (v.Inner, Inner: in a literal)
-					// spells the type's name.
-					if tn := embeddedTypeName(f); tn != nil {
-						into[keyOf(m.fset, tn)] = true
-					}
-				}
-				walk(f.Type())
-			}
-		case *types.Signature:
-			walkSig(t)
-		case *types.Interface:
-			// A value in an interface was converted at its own MakeInterface,
-			// which is a root of its own. What another module can call on one
-			// is the interface's methods, whose signatures carry values.
-			if exportedOnly {
-				for i := range t.NumMethods() {
-					walkSig(t.Method(i).Signature())
-				}
-			}
-		}
-	}
-	for _, r := range roots {
-		walk(r)
-	}
-}
-
-// evidenceExposure marks every method and field another module can reach,
-// and every embedded type another module can name as a field.
+// exposure marks every method and field another module can reach, and every
+// embedded type it can name as a field.
 //
 // The roots are the exported declarations of every package a module this run
-// does not load may import: every package whose range rangeOf cannot vouch
+// does not load may import: every package whose range the module cannot vouch
 // for. That is a package outside internal/, and also an internal package
 // whose parent lies above the module or holds a nested module that may import
 // it. "No internal element in its path" is not the test: such a package can
 // hand a value out to another module just the same. package main is always
 // among the roots, inside internal/ or not, since -buildmode=plugin looks its
 // exported symbols up.
-func (ev *evidence) evidenceExposure(m *loadedModule) {
+func (ev *evidence) exposure(m *module.Module) {
 	var roots []types.Type
-	for _, path := range m.paths {
-		p := m.byPath[path][0]
-		if _, judged := m.rangeOf(path); judged && p.Name != "main" {
+	for _, p := range m.Widest() {
+		if _, judged := m.Range(p.PkgPath); judged && p.Name != "main" {
 			continue
 		}
 		// An external test package is imported by nothing.
@@ -696,23 +568,32 @@ func (ev *evidence) evidenceExposure(m *loadedModule) {
 			}
 		}
 	}
-	evidenceWalk(m, roots, true, ev.exposed, nil)
+	reach.ByName(roots, func(obj types.Object) {
+		ev.exposed[keyOf(m.Fset, obj)] = true
+		// An embedded field is named by its type, so another module selecting
+		// it (v.Inner, or Inner: in a literal) spells the type's name.
+		if tn := embeddedTypeName(obj); tn != nil {
+			ev.exposed[keyOf(m.Fset, tn)] = true
+		}
+	}, func(*types.TypeName) {})
 }
 
-// evidenceCarried marks every type a declaration used from another package
-// carries out in its type. The roots are those declarations, found in the
-// reference index. The walk follows what the other package can reach by name,
-// as exposure does, but keeps the types rather than the members: every member
-// the other package actually uses is already in the index, since this run sees
-// the whole range.
-func (ev *evidence) evidenceCarried(m *loadedModule) {
+// carry marks every type a declaration used from another package carries out
+// in its type. The roots are those declarations, found in the reference
+// index. The walk follows what the other package can reach by name, as
+// exposure does, but keeps the types rather than the members: every member
+// the other package actually uses is already in the index, since this run
+// sees the whole range.
+func (ev *evidence) carry(m *module.Module) {
 	var roots []types.Type
-	for _, p := range m.loadWidest() {
+	for _, p := range m.Widest() {
 		for _, obj := range p.TypesInfo.Defs {
-			if obj != nil && ev.outside[keyOf(m.fset, obj)] {
+			if obj != nil && ev.outside[keyOf(m.Fset, obj)] {
 				roots = append(roots, obj.Type())
 			}
 		}
 	}
-	evidenceWalk(m, roots, true, map[string]bool{}, ev.carried)
+	reach.ByName(roots, func(types.Object) {}, func(tn *types.TypeName) {
+		ev.carried[keyOf(m.Fset, tn)] = true
+	})
 }

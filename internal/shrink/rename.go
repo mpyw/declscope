@@ -13,6 +13,7 @@ import (
 
 	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/namespace"
+	"github.com/mpyw/declscope/internal/shrink/module"
 )
 
 // renameEdits returns the edits unexporting c, or why they are withheld.
@@ -31,7 +32,7 @@ import (
 //declscope:package // the core offers the fix it returns
 func (r *run) renameEdits(c *candidate) ([]Edit, string) {
 	newName, spelled := namespace.Unexported(c.obj.Name())
-	variants := r.mod.byPath[c.pkg.PkgPath]
+	variants := r.mod.Variants(c.pkg.PkgPath)
 	facts := r.renameFactsOf(c.pkg.PkgPath)
 	switch {
 	case !spelled:
@@ -42,7 +43,7 @@ func (r *run) renameEdits(c *candidate) ([]Edit, string) {
 		return nil, "the unexported name is predeclared"
 	case !c.kind.member() && (newName == "init" || newName == "main"):
 		return nil, "the unexported name means something to the toolchain"
-	case loadNamedInOwnExcluded(r.mod.excluded, c, newName):
+	case c.writtenInOwn(r.mod.Excluded, newName):
 		return nil, "a build-excluded file of its package writes the unexported name"
 	}
 	// A name another fix of this run claims reads the same as one already
@@ -95,10 +96,10 @@ func (r *run) renameEdits(c *candidate) ([]Edit, string) {
 	// is a site once.
 	var edits []Edit
 	for _, s := range r.ev.sites[c.key] {
-		p := r.mod.fset.PositionFor(s.ident.Pos(), false)
+		p := r.mod.Fset.PositionFor(s.ident.Pos(), false)
 		edits = append(edits, Edit{Filename: p.Filename, Start: p.Offset, End: p.Offset + len(s.ident.Name), NewText: newName})
 	}
-	if e, ok := renameDoc(r.mod.fset, c.doc, c.obj.Name(), newName); ok {
+	if e, ok := renameDoc(r.mod.Fset, c.doc, c.obj.Name(), newName); ok {
 		edits = append(edits, e)
 	}
 	return edits, ""
@@ -156,7 +157,7 @@ type renameClaim struct {
 // method or field that is a selection of it, and for a type an embedded
 // field named by it. An ambiguous selection counts, since c may be one of the
 // candidates it is ambiguous between.
-func renameReach(m *loadedModule, c *candidate) func(renameTyped) bool {
+func renameReach(m *module.Module, c *candidate) func(renameTyped) bool {
 	return func(t renameTyped) bool {
 		obj, index, _ := types.LookupFieldOrMethod(t.typ, true, t.pkg, c.obj.Name())
 		if obj == nil {
@@ -164,9 +165,9 @@ func renameReach(m *loadedModule, c *candidate) func(renameTyped) bool {
 		}
 		if c.kind == kindType {
 			tn := embeddedTypeName(obj)
-			return tn != nil && keyOf(m.fset, tn) == c.key
+			return tn != nil && keyOf(m.Fset, tn) == c.key
 		}
-		return keyOf(m.fset, origin(obj)) == c.key
+		return keyOf(m.Fset, origin(obj)) == c.key
 	}
 }
 
@@ -205,7 +206,7 @@ func (r *run) renameFactsOf(path string) *renameFacts {
 		return f
 	}
 	f := &renameFacts{linknamed: map[string]bool{}, asked: map[string]bool{}}
-	for _, p := range r.mod.byPath[path] {
+	for _, p := range r.mod.Variants(path) {
 		for name := range directive.Linknamed(p.Syntax) {
 			f.linknamed[name] = true
 		}
@@ -270,14 +271,14 @@ func renamePackageFree(variants []*packages.Package, sites []evidenceSite, newNa
 // package that embeds the type, and on every named type declared with one.
 // The embedded field takes the type's new name, and would collide with a
 // field or method already called that, at any depth.
-func renameEmbeddingFree(m *loadedModule, facts *renameFacts, c *candidate, newName string) bool {
+func renameEmbeddingFree(m *module.Module, facts *renameFacts, c *candidate, newName string) bool {
 	embeds := func(t types.Type) bool {
 		st, ok := t.Underlying().(*types.Struct)
 		if !ok {
 			return false
 		}
 		for i := range st.NumFields() {
-			if tn := embeddedTypeName(st.Field(i)); tn != nil && keyOf(m.fset, tn) == c.key {
+			if tn := embeddedTypeName(st.Field(i)); tn != nil && keyOf(m.Fset, tn) == c.key {
 				return true
 			}
 		}
@@ -299,11 +300,11 @@ func renameEmbeddingFree(m *loadedModule, facts *renameFacts, c *candidate, newN
 // package that promotes the member, and no interface of the package asking
 // for it. The last is a behavior change rather than a compile error: a type
 // that gains method m starts satisfying interface{ m() } in an assertion.
-func renameMemberFree(m *loadedModule, facts *renameFacts, c *candidate, newName string) bool {
+func renameMemberFree(m *module.Module, facts *renameFacts, c *candidate, newName string) bool {
 	if facts.asked[newName] {
 		return false
 	}
-	for _, p := range m.byPath[c.pkg.PkgPath] {
+	for _, p := range m.Variants(c.pkg.PkgPath) {
 		if found, _, _ := types.LookupFieldOrMethod(c.owner.Type(), true, p.Types, newName); found != nil {
 			return false
 		}
@@ -315,7 +316,7 @@ func renameMemberFree(m *loadedModule, facts *renameFacts, c *candidate, newName
 		// selector that resolves today ambiguous. Such a type is checked too.
 		sel, index, _ := types.LookupFieldOrMethod(t.typ, true, t.pkg, c.obj.Name())
 		ambiguous := sel == nil && index != nil
-		if !ambiguous && (sel == nil || keyOf(m.fset, origin(sel)) != c.key) {
+		if !ambiguous && (sel == nil || keyOf(m.Fset, origin(sel)) != c.key) {
 			continue
 		}
 		if found, _, _ := types.LookupFieldOrMethod(t.typ, true, t.pkg, newName); found != nil {

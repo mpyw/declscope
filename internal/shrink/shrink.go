@@ -8,14 +8,21 @@
 // module sees every one of them, and the absence of a use becomes evidence.
 //
 // The report and the fix are held to different standards. The report may be
-// wrong where a use is possible but not provable: a type that escapes into an
-// interface, found at run time by fmt, encoding/json or reflect, or a name a
-// build-excluded file writes. Each such doubt withholds the fix and leaves the
-// report. The fix is made only where no use can exist outside the package.
+// wrong where a use is possible but not provable, such as a name a
+// build-excluded file writes: the fix is withheld there and the report kept.
+// The fix is made only where no use can exist outside the package.
 //
-// This file is the package's core: the model every stage reads, and the run
-// that drives them. In a named namespace each type here would have to carry
-// that namespace's name.
+// The package is laid out by what each part needs to know. What asks only of
+// types or files is a subpackage with its own small vocabulary: module loads
+// the module and knows its internal ranges, excluded reads the files the
+// build left out, and reach follows what a value lets code reach. What works
+// on the model below stays here, one file per stage: candidate.go finds the
+// declarations to judge, evidence.go gathers who uses what, rename.go decides
+// the fix, and ignore.go accounts for //declscope:ignore overexported.
+//
+// This file is the core: the model every stage reads, and the judgment that
+// drives them. In a named namespace each type here would have to carry that
+// namespace's name.
 //
 //declscope:core
 package shrink
@@ -27,6 +34,7 @@ import (
 	"go/token"
 	"go/types"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -35,6 +43,8 @@ import (
 
 	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/rule"
+	"github.com/mpyw/declscope/internal/shrink/excluded"
+	"github.com/mpyw/declscope/internal/shrink/module"
 )
 
 // Finding is one report of declscope shrink.
@@ -100,11 +110,11 @@ type Skipped struct {
 // patterns name, resolved from dir. Every package of the module is loaded
 // whatever the patterns say, since an importer outside them still counts.
 func Run(dir string, patterns []string) (Result, error) {
-	mod, err := loadModule(dir)
+	mod, err := module.Load(dir)
 	if err != nil {
 		return Result{}, err
 	}
-	wanted, err := loadWanted(dir, patterns)
+	wanted, err := module.Wanted(dir, patterns)
 	if err != nil {
 		return Result{}, err
 	}
@@ -112,24 +122,27 @@ func Run(dir string, patterns []string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	r := &run{mod: mod, ev: ev, reserved: map[string]bool{}, facts: map[string]*renameFacts{}, claims: map[string][]renameClaim{}, usedIgnores: map[token.Pos]bool{}}
+	r := &run{
+		mod: mod, ev: ev, reserved: map[string]bool{}, facts: map[string]*renameFacts{},
+		claims: map[string][]renameClaim{}, usedIgnores: map[token.Pos]bool{},
+	}
 	var res Result
-	for _, path := range mod.paths {
+	for _, path := range mod.Paths {
 		if !wanted[path] {
 			continue
 		}
-		pkgs := mod.byPath[path]
-		if why := r.skip(pkgs); why != "" {
+		pkgs := mod.Variants(path)
+		if why := r.skip(pkgs[0]); why != "" {
 			// A package outside internal/ is never judged, and listing every
 			// one would bury the packages a reader expected judged.
-			if _, internal := loadInternalParent(path); internal {
+			if _, internal := module.InternalParent(path); internal {
 				res.Skipped = append(res.Skipped, Skipped{Package: path, Reason: why})
 			}
 			continue
 		}
-		candidates, siblings := loadCandidates(pkgs)
+		candidates, siblings := candidatesOf(pkgs[0])
 		res.Findings = append(res.Findings, r.judge(candidates)...)
-		res.Findings = append(res.Findings, r.unusedIgnores(pkgs, siblings)...)
+		res.Findings = append(res.Findings, r.unusedIgnores(pkgs[0], siblings)...)
 	}
 	slices.SortFunc(res.Findings, func(a, b Finding) int {
 		return cmp.Or(strings.Compare(a.Pos.Filename, b.Pos.Filename), cmp.Compare(a.Pos.Offset, b.Pos.Offset))
@@ -176,10 +189,10 @@ func Apply(findings []Finding) error {
 // kind is what a candidate declares, for the message and for which evidence
 // applies to it.
 //
-//declscope:package // load.go and rename.go classify candidates by it
+//declscope:package // candidate.go and rename.go classify candidates by it
 type kind string
 
-//declscope:package // load.go classifies each candidate
+//declscope:package // candidate.go classifies each candidate
 const (
 	kindFunc   kind = "func"
 	kindVar    kind = "var"
@@ -192,12 +205,12 @@ const (
 // member reports whether the kind is reached through a value of its owner,
 // which is how another module uses one without naming the owner.
 //
-//declscope:package // load.go and rename.go ask it
+//declscope:package // rename.go asks it
 func (k kind) member() bool { return k == kindMethod || k == kindField }
 
 // candidate is an exported declaration of a judged package.
 //
-//declscope:package // load.go and rename.go read what the judgment is about
+//declscope:package // candidate.go builds it, and every stage reads it
 type candidate struct {
 	obj  types.Object
 	key  string
@@ -215,14 +228,70 @@ type candidate struct {
 	doc *ast.CommentGroup
 }
 
+// inOwnPackage reports whether a build-excluded file belongs to the
+// candidate's own package: its directory and its package name.
+func (c *candidate) inOwnPackage(x *excluded.File) bool {
+	var dir string
+	for _, f := range slices.Concat(c.pkg.GoFiles, c.pkg.CompiledGoFiles) {
+		dir = filepath.Dir(f)
+		break
+	}
+	return x.Dir == dir && x.Package == c.pkg.Types.Name()
+}
+
+// qualifiedIn reports whether a build-excluded file of another package
+// imports the candidate's package and writes pkg.Name: a use, in a
+// configuration this run does not build.
+func (c *candidate) qualifiedIn(xs []*excluded.File) bool {
+	return slices.ContainsFunc(xs, func(x *excluded.File) bool {
+		return !c.inOwnPackage(x) && x.Qualifies(c.pkg.PkgPath, c.pkg.Types.Name(), c.obj.Name())
+	})
+}
+
+// maybeUsedIn reports whether a build-excluded file of another package may
+// use the candidate without pinning it to its package: a method or field
+// selected by name on some value, or a name under a dot import.
+func (c *candidate) maybeUsedIn(xs []*excluded.File) bool {
+	name := c.obj.Name()
+	return slices.ContainsFunc(xs, func(x *excluded.File) bool {
+		if c.inOwnPackage(x) {
+			return false
+		}
+		return c.kind.member() && x.Selects(name) || x.DotImports(c.pkg.PkgPath) && x.Writes(name)
+	})
+}
+
+// writtenInOwn reports whether a build-excluded file of the candidate's own
+// package writes name. The rename cannot rewrite that file, which would keep
+// the old name or declare the new one twice.
+//
+//declscope:package // rename.go asks it about the new name
+func (c *candidate) writtenInOwn(xs []*excluded.File, name string) bool {
+	return slices.ContainsFunc(xs, func(x *excluded.File) bool { return c.inOwnPackage(x) && x.Writes(name) })
+}
+
+// linkerSet reports whether the candidate is a package-level string
+// variable, which `go build -ldflags "-X path.Name=value"` sets by name. A
+// build file passes the flag, where go/types never looks, and the linker
+// ignores a -X whose name no longer exists, so the rename would break the
+// release silently.
+func (c *candidate) linkerSet() bool {
+	v, ok := c.obj.(*types.Var)
+	if !ok || c.kind != kindVar {
+		return false
+	}
+	b, ok := v.Type().Underlying().(*types.Basic)
+	return ok && b.Kind() == types.String
+}
+
 // run is the state one invocation shares across the packages it judges.
 //
-//declscope:package // rename.go's renameEdits is a method of it
+//declscope:package // rename.go and ignore.go add methods of their own
 type run struct {
-	mod *loadedModule
+	mod *module.Module
 	ev  *evidence
-	// reserved holds every new name a fix in this run has claimed. Two
-	// exported names can lower to one (Foo and FOO both become foo), and
+	// reserved holds every package-level name a fix in this run has claimed.
+	// Two exported names can lower to one (Foo and FOO both become foo), and
 	// the fixes cannot see each other.
 	reserved map[string]bool
 	// facts caches what the rename guards ask of each package.
@@ -230,8 +299,6 @@ type run struct {
 	// claims holds the member names this run's fixes give, per package.
 	claims map[string][]renameClaim
 	// usedIgnores is every ignore naming overexported that silenced a report.
-	//
-	//declscope:private // only the core accounts for ignores
 	usedIgnores map[token.Pos]bool
 }
 
@@ -240,8 +307,7 @@ type run struct {
 // Each reason is one way an importer could be unseen or a name could be
 // read where the analysis never looks, so nothing is said rather than a
 // guess.
-func (r *run) skip(pkgs []*packages.Package) string {
-	p := pkgs[0]
+func (r *run) skip(p *packages.Package) string {
 	switch {
 	case p.Name == "main":
 		// -buildmode=plugin looks exported symbols of main up by name.
@@ -254,8 +320,7 @@ func (r *run) skip(pkgs []*packages.Package) string {
 	case !slices.Equal(p.GoFiles, p.CompiledGoFiles):
 		return "the package uses cgo"
 	}
-	_, ok := r.mod.rangeOf(p.PkgPath)
-	if !ok {
+	if _, ok := r.mod.Range(p.PkgPath); !ok {
 		return "not inside an internal/ whose importers this run loads"
 	}
 	return ""
@@ -265,210 +330,94 @@ func (r *run) skip(pkgs []*packages.Package) string {
 func (r *run) judge(candidates []*candidate) []Finding {
 	var findings []Finding
 	for _, c := range candidates {
-		f, ok := r.judgeOne(c)
-		if !ok {
+		if r.usedOutside(c) {
 			continue
 		}
-		if r.silenced(c) {
+		f := Finding{
+			Pos:  r.mod.Fset.PositionFor(c.obj.Pos(), false),
+			Rule: rule.Overexported,
+			// A method or field is named alone, never with its type: the type
+			// may be fixed in the same run, and a report the run keeps must
+			// read the same afterwards.
+			Name:    c.obj.Name(),
+			Kind:    string(c.kind),
+			Package: c.pkg.PkgPath,
+		}
+		if r.ev.extTest[c.key] {
+			// Exporting from an in-package _test.go file for the external
+			// tests is the export_test.go idiom, doing its job.
+			if c.testFile {
+				continue
+			}
+			f.TestOnly, f.Withheld = true, "external tests use it"
+		} else {
+			f.Withheld = r.withheld(c)
+		}
+		if r.silencedByIgnore(c) {
 			continue
 		}
 		// The rename is asked last, once the report is known to stand. It
 		// claims its new name for the rest of the run, and a silenced
 		// declaration is never renamed, so it must claim nothing.
 		if f.Withheld == "" {
-			edits, why := r.renameEdits(c)
-			if why != "" {
-				f.Withheld = why
-			} else {
-				f.Fix = edits
-			}
+			f.Fix, f.Withheld = r.renameEdits(c)
 		}
 		findings = append(findings, f)
 	}
 	return findings
 }
 
-// judgeOne reports one candidate, or returns false when something uses it.
-// A finding with no Withheld reason is one the rename is still to decide.
-func (r *run) judgeOne(c *candidate) (Finding, bool) {
-	ev := r.ev
-	if ev.outside[c.key] || ev.satisfied[c.key] {
-		return Finding{}, false
+// usedOutside reports whether anything outside the candidate's package uses
+// it. Each entry is one way to be used, and any of them silences the report.
+func (r *run) usedOutside(c *candidate) bool {
+	ev, key := r.ev, c.key
+	uses := []func() bool{
+		// Another package names it, writes it unkeyed, or links it by name.
+		func() bool { return ev.outside[key] },
+		// A static interface satisfaction needs it, and names no method.
+		func() bool { return ev.satisfied[key] },
+		// Another module reaches it through a value an importable package
+		// hands out, or names it as an embedded field of one.
+		func() bool { return ev.exposed[key] },
+		// An API another package uses carries the type out, and the type must
+		// stay nameable where it is held.
+		func() bool { return c.kind == kindType && ev.carried[key] },
+		// A struct conversion or an identical unnamed struct pairs the field
+		// by name.
+		func() bool { return c.kind == kindField && ev.paired[key] },
+		// A value of it escapes into an interface, where fmt, encoding/json
+		// and reflect find methods and fields at run time, and %T prints a
+		// type's name. A method escapes with its owner.
+		func() bool { return ev.escaped[key] },
+		func() bool { return c.kind == kindMethod && ev.escaped[keyOf(r.mod.Fset, c.owner)] },
+		// A build-excluded file of another package writes pkg.Name.
+		func() bool { return !c.kind.member() && c.qualifiedIn(r.mod.Excluded) },
 	}
-	// Another module can reach a method or field through a value, and an
-	// embedded type's name as the name of the embedded field.
-	if ev.exposed[c.key] {
-		return Finding{}, false
-	}
-	// A type an API used from another package returns or takes is held
-	// there, and must stay nameable where it is held.
-	if c.kind == kindType && ev.carried[c.key] {
-		return Finding{}, false
-	}
-	if c.owner != nil && ev.paired[c.key] {
-		return Finding{}, false
-	}
-	// An escape into an interface is a use: fmt, encoding/json and reflect
-	// find methods and fields at run time, and a type's name through %T. A
-	// report there would name something nobody could act on.
-	if r.escaped(c) {
-		return Finding{}, false
-	}
-	xs := r.mod.excluded
-	if !c.kind.member() && loadQualifiedInExcluded(xs, c) {
-		return Finding{}, false
-	}
-	f := Finding{
-		Pos:     r.mod.fset.PositionFor(c.obj.Pos(), false),
-		Rule:    rule.Overexported,
-		Name:    candidateName(c),
-		Kind:    string(c.kind),
-		Package: c.pkg.PkgPath,
-	}
-	if ev.extTest[c.key] {
-		// Exporting from an in-package _test.go file for the external tests
-		// is the export_test.go idiom, and doing its job.
-		if c.testFile {
-			return Finding{}, false
-		}
-		f.TestOnly = true
-		f.Withheld = "external tests use it"
-		return f, true
-	}
-	switch {
-	case loadNamedInOtherExcluded(xs, c):
-		f.Withheld = "a build-excluded file of another package may use it"
-	case loadNamedInOwnExcluded(xs, c, c.obj.Name()):
-		f.Withheld = "a build-excluded file of its package names it"
-	case ev.generated[c.key]:
-		f.Withheld = "a generated file names it"
-	case ev.example[c.key]:
-		f.Withheld = "an example function names it"
-	case candidateLinkerSet(c):
-		f.Withheld = "a string variable may be set by -ldflags -X, which names it"
-	}
-	return f, true
+	return slices.ContainsFunc(uses, func(used func() bool) bool { return used() })
 }
 
-// escaped reports whether a value that reflection may inspect reaches the
-// candidate: the type itself for a type, the owner for a method, and the
-// field itself for a field, which every type sharing the struct holds.
-func (r *run) escaped(c *candidate) bool {
-	switch c.kind {
-	case kindType:
-		return r.ev.escaped[c.key]
-	case kindMethod:
-		return r.ev.escaped[keyOf(r.mod.fset, c.owner)]
-	case kindField:
-		return r.ev.escaped[c.key]
+// withheld returns why the fix is withheld for a reason other than the
+// rename itself, or "". Each entry is a use that may exist but cannot be
+// proved, or a reference the rename cannot rewrite.
+func (r *run) withheld(c *candidate) string {
+	xs := r.mod.Excluded
+	reasons := []struct {
+		why     string
+		applies func() bool
+	}{
+		{"a build-excluded file of another package may use it", func() bool { return c.maybeUsedIn(xs) }},
+		{"a build-excluded file of its package names it", func() bool { return c.writtenInOwn(xs, c.obj.Name()) }},
+		{"a generated file names it", func() bool { return r.ev.generated[c.key] }},
+		{"an example function names it", func() bool { return r.ev.example[c.key] }},
+		{"a string variable may be set by -ldflags -X, which names it", c.linkerSet},
 	}
-	return false
-}
-
-// silenced reports whether an ignore naming overexported covers the
-// candidate, and records every one that does. A bare ignore does not reach a
-// module-wide rule: see rule.IsModuleWide.
-func (r *run) silenced(c *candidate) bool {
-	hit := false
-	for _, ig := range c.ignores {
-		if slices.Contains(ig.Rules, rule.Overexported) {
-			r.usedIgnores[ig.Pos] = true
-			hit = true
+	for _, reason := range reasons {
+		if reason.applies() {
+			return reason.why
 		}
 	}
-	return hit
+	return ""
 }
-
-// unusedIgnores reports every ignore naming nothing but overexported, in the
-// files of a judged package, that silenced nothing. One naming another rule
-// as well is judged by neither side: the analyzer cannot see this rule, and
-// this run cannot see the analyzer's.
-//
-// The report is the unused rule's, answered as the analyzer answers its own:
-// by an ignore beside it naming unused, or by a file-level ignore covering
-// unused, bare or named. The analyzer in turn never calls such an answer
-// unused, since it cannot see the report it answers.
-func (r *run) unusedIgnores(pkgs []*packages.Package, siblings map[token.Pos][]directive.Ignore) []Finding {
-	var findings []Finding
-	seen := map[token.Pos]bool{}
-	for _, p := range pkgs {
-		for _, file := range p.Syntax {
-			// A generated file declares no candidate, so an ignore there
-			// could never silence one. The analyzer does not read it either.
-			if ast.IsGenerated(file) {
-				continue
-			}
-			fileIgnores := directive.ParseFile(file).Ignores
-			for _, g := range file.Comments {
-				group := directive.ParseDecl(g).Ignores
-				for _, ig := range group {
-					if seen[ig.Pos] || r.usedIgnores[ig.Pos] || !unusedJudged(ig) {
-						continue
-					}
-					seen[ig.Pos] = true
-					// The siblings are those of the binding the ignore was read
-					// in, doc and trailing comment together. An ignore bound to
-					// no candidate has only its own comment group.
-					beside, ok := siblings[ig.Pos]
-					if !ok {
-						beside = group
-					}
-					if unusedAnswered(ig, beside, fileIgnores) {
-						continue
-					}
-					findings = append(findings, Finding{
-						Pos:     r.mod.fset.PositionFor(ig.Pos, false),
-						Rule:    rule.Unused,
-						Package: p.PkgPath,
-					})
-				}
-			}
-		}
-	}
-	return findings
-}
-
-// unusedJudged reports whether this run judges ig: it names module-wide
-// rules and nothing else.
-func unusedJudged(ig directive.Ignore) bool {
-	return len(ig.Rules) > 0 && !slices.ContainsFunc(ig.Rules, func(x rule.Rule) bool { return !rule.IsModuleWide(x) })
-}
-
-// unusedAnswered reports whether another ignore answers ig's unused report:
-// one beside it naming unused, or a file-level one covering it. No ignore
-// answers its own report.
-func unusedAnswered(ig directive.Ignore, beside, fileIgnores []directive.Ignore) bool {
-	for _, other := range beside {
-		if other.Pos != ig.Pos && slices.Contains(other.Rules, rule.Unused) {
-			return true
-		}
-	}
-	for _, other := range fileIgnores {
-		if other.Pos != ig.Pos && other.Covers(rule.Unused) {
-			return true
-		}
-	}
-	return false
-}
-
-// candidateLinkerSet reports whether the candidate is a package-level string
-// variable, which `go build -ldflags "-X path.Name=value"` sets by name. A
-// build file passes the flag, where go/types never looks, and the linker
-// ignores a -X whose name no longer exists, so the rename would break the
-// release silently.
-func candidateLinkerSet(c *candidate) bool {
-	v, ok := c.obj.(*types.Var)
-	if !ok || c.kind != kindVar {
-		return false
-	}
-	b, ok := v.Type().Underlying().(*types.Basic)
-	return ok && b.Kind() == types.String
-}
-
-// candidateName is the name the message uses. A method or field is named
-// alone, never with its type: the type may be fixed in the same run, and a
-// report the run keeps must read the same afterwards.
-func candidateName(c *candidate) string { return c.obj.Name() }
 
 // keyOf identifies a declaration across the variants of its package.
 //
@@ -504,7 +453,7 @@ func origin(obj types.Object) types.Object {
 // and nil for any other object. A selection of the field (s.T) is spelled
 // with the type's name, so renaming the type rewrites it too.
 //
-//declscope:package // evidence.go records such selections under the type
+//declscope:package // evidence.go and rename.go follow embedded fields
 func embeddedTypeName(obj types.Object) *types.TypeName {
 	v, ok := obj.(*types.Var)
 	if !ok || !v.Embedded() {

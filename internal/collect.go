@@ -70,19 +70,13 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 			continue
 		}
 		kept = append(kept, f)
-		fi := &fileInfo{file: f, path: path, lineComments: make(map[int]*ast.CommentGroup)}
+		fi := &fileInfo{file: f, path: path, binder: directive.NewBinder(pass.Fset, f)}
 		fileDir := directive.ParseFile(f)
 		fi.ignores = fileDir.Ignores
 		for _, ig := range fileDir.Ignores {
 			c.siteOfIgnore(ig).fileLevel = true
 		}
 		c.problems = append(c.problems, fileDir.Problems...)
-		for _, g := range f.Comments {
-			line := pass.Fset.Position(g.Pos()).Line
-			if _, seen := fi.lineComments[line]; !seen {
-				fi.lineComments[line] = g
-			}
-		}
 		fi.scope = fileDir.Scope
 		if fileDir.Scope.HasScope {
 			c.scopeSite(fileDir.Scope).fileLevel = true
@@ -159,7 +153,7 @@ func (c *collection) addFuncToCollection(pass *analysis.Pass, opts Options, fi *
 	// Parsed before anything is skipped, so that a directive on a function
 	// declscope does not check, the blank one or init, is reported unused
 	// rather than misplaced: it is written where a directive belongs.
-	dir := c.parseCollectedDecl(append([]*ast.CommentGroup{d.Doc}, fi.looseTrailingComments(pass.Fset, d)...)...)
+	dir := c.parseCollectedDecl(fi.binder.Func(d)...)
 	obj, ok := pass.TypesInfo.Defs[d.Name].(*types.Func)
 	if !ok || d.Name.Name == "_" {
 		return
@@ -215,14 +209,13 @@ func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, f
 	grouped := d.Lparen.IsValid()
 	outer := c.parseCollectedDecl(d.Doc)
 	if grouped && len(d.Specs) > 0 {
-		attached := append(commentsAttached(d.Specs[0]), commentsAttached(d.Specs[len(d.Specs)-1])...)
-		outer = outer.Merge(c.parseCollectedDecl(fi.looseTrailingComments(pass.Fset, d, attached...)...))
+		outer = outer.Merge(c.parseCollectedDecl(fi.binder.Block(d)...))
 	}
 
 	for _, spec := range d.Specs {
 		switch spec := spec.(type) {
 		case *ast.TypeSpec:
-			own := c.parseCollectedDecl(commentsForSpec(pass, fi, spec)...)
+			own := c.parseCollectedDecl(fi.binder.Spec(spec)...)
 			dir := outer.Merge(own)
 			c.shadowedAtScopeSite(outer, dir)
 			anchor, doc, fromBlock := d.Pos(), d.Doc, false
@@ -243,7 +236,7 @@ func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, f
 			c.addMembersToCollection(pass, opts, fi, spec, pass.TypesInfo.Defs[spec.Name], dir)
 
 		case *ast.ValueSpec:
-			own := c.parseCollectedDecl(commentsForSpec(pass, fi, spec)...)
+			own := c.parseCollectedDecl(fi.binder.Spec(spec)...)
 			dir := outer.Merge(own)
 			c.shadowedAtScopeSite(outer, dir)
 			anchor, doc, fromBlock := d.Pos(), d.Doc, false
