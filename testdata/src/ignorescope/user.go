@@ -21,7 +21,7 @@ func userKept() int { return 3 }
 
 // An unparseable directive silences nothing.
 //
-//declscope:ignore bogus // want `unknown rule "bogus" in declscope:ignore \(want one of boundary, qualify, surplus, unused, directive, filter\)`
+//declscope:ignore bogus // want `unknown rule "bogus" in declscope:ignore \(want one of boundary, qualify, surplus, unused, directive, filter, overexported\)`
 func userTypo() int { return 4 } // want `func userTypo is private to namespace "user", but is used from namespace "order"`
 
 //declscope:ignore boundary,qualify

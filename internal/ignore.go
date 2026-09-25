@@ -179,7 +179,9 @@ func (c *collection) reportUnusedIgnores(pass *analysis.Pass, opts Options) {
 	}
 	sites := make([]*ignoreSite, 0, len(c.ignores))
 	for _, s := range c.ignores {
-		if !s.used {
+		// An ignore naming a module-wide rule may be doing its job in a run
+		// this pass is not, so it is left to declscope shrink to judge.
+		if !s.used && !s.ig.NamesModuleWide() {
 			sites = append(sites, s)
 		}
 	}

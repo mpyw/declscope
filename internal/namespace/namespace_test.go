@@ -225,3 +225,20 @@ func TestContainsCases(t *testing.T) {
 		}
 	}
 }
+
+func TestUnexported(t *testing.T) {
+	tests := map[string]string{
+		"Load":       "load",
+		"HTTPClient": "httpClient",
+		"ID":         "id",
+		"URLPath":    "urlPath",
+		"X":          "x",
+		"load":       "load",
+		"Äpfel":      "äpfel",
+	}
+	for in, want := range tests {
+		if got := namespace.Unexported(in); got != want {
+			t.Errorf("Unexported(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

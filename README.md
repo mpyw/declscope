@@ -224,6 +224,7 @@ tar xzf "declscope_${VERSION}_darwin_arm64.tar.gz"
 | `declscope survey [packages]` | [Report what was checked and what it found](#measuring-what-is-there), one row per package | `-format`, `-test`, `-config`, `-allow-errors` |
 | `declscope inspect <package>` | [Report the shape of one package](#measuring-what-is-there): its namespaces and the crossings between them | `-format`, `-test`, `-config` |
 | `declscope baseline [packages]` | [Record the violations a codebase already has](#adopting-on-an-existing-codebase) | `-config`, `-o` |
+| `declscope shrink [packages]` | [Unexport what no importer uses](#unexporting-what-no-importer-uses), inside `internal/` | `-fix` |
 | `declscope skill install` | Install the adoption skill for an AI agent | `--agent`, `--scope` |
 
 `declscope <subcommand> -help` lists each one's flags.
@@ -339,7 +340,7 @@ A **directive** is a line comment `//declscope:name`, with a lowercase name, no 
 | Directive | Level | Effect |
 | --- | --- | --- |
 | `//declscope:package`, `//declscope:private` | Declaration or file | States the [scope](#scope-resolution). On a type it also reaches the type's [fields](#members), but not its methods |
-| `//declscope:ignore` | Declaration or file | Silences every rule |
+| `//declscope:ignore` | Declaration or file | Silences every rule the analyzer reports. [`overexported`](#silencing-it) must be named |
 | `//declscope:ignore <rules>` | Declaration or file | Silences the named [rules](#rules), comma-separated |
 | `//declscope:core` | File | Joins the file to the [core namespace](#the-core-namespace) |
 | `//declscope:namespace <name>` | File | Joins the file to a [shared namespace](#namespaces) |
@@ -805,6 +806,7 @@ A **rule** is one check. A rule's name is the diagnostic's category, its [baseli
 | [`unused`](#unused-directives) | An ignore that silenced nothing, or a scope directive that changes no scope | Under `strict`, delete a redundant scope directive | `rules.unused` | `loose` |
 | [`directive`](#malformed-directives) | A directive that is malformed, unknown, conflicting or misplaced | None | No | On |
 | [`filter`](#the-filter-rule) | A `filter.only` that an `only` above it cancels | None | No | On |
+| [`overexported`](#unexporting-what-no-importer-uses) | An exported declaration of an `internal/` package that nothing outside its package uses | Unexport it | Running `declscope shrink` | Not run by the analyzer |
 
 Every diagnostic carries **at most one** fix, so `-fix` never has to choose.
 
@@ -1106,6 +1108,93 @@ A [`boundary`](#boundary) fix on a type widens its members too. Under `strict`, 
 
 </details>
 
+## Unexporting what no importer uses
+
+`declscope shrink` finds the exported declarations of `internal/` packages that nothing outside their package uses. With `-fix` it unexports them.
+
+The analyzer cannot answer this. It reads one package, and any importer might use an exported name. Inside `internal/`, Go limits the importers to one directory tree. `shrink` loads the whole module, so it sees every importer. The absence of a use then means something.
+
+```go
+// internal/user/user.go
+package user
+
+import "fmt"
+
+func Load(id int) string { return Format(id) }
+
+func Format(id int) string { return fmt.Sprint(id) }
+
+type Record struct {
+	ID   int
+	Name string
+}
+
+func Dump(r Record) { fmt.Println(r) }
+```
+
+`api/api.go` calls `user.Load` and names `user.Dump`. Nothing outside `user` names `Format` or `Record`:
+
+```console
+$ declscope shrink
+internal/user/user.go:7:6: func Format is exported, but nothing outside example.com/app/internal/user uses it
+internal/user/user.go:9:6: type Record is exported, but nothing outside example.com/app/internal/user uses it (no fix: its type escapes into an interface, where reflection may find it)
+internal/user/user.go:10:2: field ID is exported, but nothing outside example.com/app/internal/user uses it (no fix: its type escapes into an interface, where reflection may find it)
+internal/user/user.go:11:2: field Name is exported, but nothing outside example.com/app/internal/user uses it (no fix: its type escapes into an interface, where reflection may find it)
+```
+
+`declscope shrink -fix` renames `Format` to `format` everywhere it is written. `Record` keeps its name. `fmt.Println` reads its fields through reflection, and `%+v` would print the new names.
+
+| Behavior | Detail |
+| --- | --- |
+| What is loaded | Every package of the module, with its tests. The patterns only choose what to report on |
+| Exit status | 3 when anything is reported, as the analyzer's drivers do. With `-fix`, only the reports left without a fix count |
+| A load error | The run refuses. A package that does not type-check shows no uses, which would read as nothing using a declaration |
+| Deleting unused code | Out of scope. Once a declaration is unexported, staticcheck's `unused` and gopls' `unusedfunc` report it if nothing uses it |
+
+### What counts as a use
+
+| Use | Result |
+| --- | --- |
+| Another package names it, writes it in an unkeyed literal, or links it with `//go:linkname` | Not reported |
+| A struct conversion or an identical unnamed struct type pairs a field by name | Not reported |
+| The compiler checks that its type satisfies an interface, and the method is one it needs | Not reported |
+| A value of its type reaches another module through the exported API of a package outside `internal/` | Not reported for a method or field. `pub.Get().Method()` needs no import of the type |
+| A build-excluded file of another package imports the package and writes `pkg.Name` | Not reported |
+| Only an external test package (`package foo_test`) names it | Reported, with no fix |
+
+### When the fix is withheld
+
+A fix is offered only where no use can exist outside the package. A doubt withholds the fix and keeps the report.
+
+| Doubt | Why |
+| --- | --- |
+| The type escapes into an interface | `fmt`, `encoding/json` and `reflect` find methods and fields at run time. This covers a method, a field, and a type's own name |
+| A build-excluded file of another package selects the name, or uses a dot import | The file may use it in a configuration this run does not build |
+| A build-excluded file of its own package names it | The rename cannot rewrite that file |
+| A generated file names it | A regeneration would put the old name back |
+| An example function names it (`ExampleF`, `ExampleT_M`) | `go vet` checks that the name still resolves |
+| The new name is taken, captured, a keyword, predeclared, `init` or `main` | The rename would not compile, or would compute something else |
+
+### What is never judged
+
+| Package or declaration | Why |
+| --- | --- |
+| A package outside `internal/` | Another module may import it |
+| `package main` | `-buildmode=plugin` looks its exported symbols up by name |
+| A package with assembly or cgo | Those files name Go symbols where `go/types` does not look |
+| An `internal/` whose parent directory holds another module | That module may import the package, and this run never loads it |
+| An interface's method names | Every implementation would have to rename too |
+| A test function of a `_test.go` file | `go test` finds it by name |
+
+> [!IMPORTANT]
+> `shrink` assumes that every module whose path extends an `internal/` parent lives under that parent's directory. Go checks `internal/` by import path. A module published from somewhere else under such a path, such as a `/v2` on another branch, could import the package unseen.
+
+### Silencing it
+
+Write `//declscope:ignore overexported` on the declaration, on a field's type, or before the package clause. A bare `//declscope:ignore` does not reach this rule. The analyzer judges a bare ignore, and would report it unused when only `shrink` needed it.
+
+`shrink` reports an `//declscope:ignore overexported` that silenced nothing. The analyzer never judges an ignore naming this rule, since it cannot see whether `shrink` needed it.
+
 ## Measuring what is there
 
 Two subcommands report what the analyzer found. Neither decides anything. The exit status is zero whatever the counts say, since gating is what the analyzer and a baseline are for.
@@ -1314,7 +1403,7 @@ declscope reads one package at a time, and counts a use only where a name is wri
 
 | Not seen | Consequence |
 | --- | --- |
-| Uses outside the package | A scope beyond `package` could not be checked, so none exists |
+| Uses outside the package | A scope beyond `package` could not be checked, so none exists. [`declscope shrink`](#unexporting-what-no-importer-uses) loads the module to judge exportedness inside `internal/` |
 | Whole-value operations on a struct | Copying, comparing or zeroing a value names no field |
 | A composite literal of a type parameter | `T{1}` fills the fields of whatever `T` is instantiated with, without naming them |
 | Reflection, `//go:linkname`, generated files | These reach a declaration without spelling it |

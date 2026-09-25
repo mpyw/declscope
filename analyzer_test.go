@@ -70,6 +70,13 @@ func TestIgnoreUnused(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ignoreunused")
 }
 
+// TestIgnoreModuleWide checks that an ignore naming a rule only declscope
+// shrink reports is never judged unused here, and that a bare ignore does not
+// reach such a rule, so the analyzer still judges it.
+func TestIgnoreModuleWide(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ignoremodulewide")
+}
+
 func TestDirectives(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "directives")
 }

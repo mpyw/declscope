@@ -106,9 +106,20 @@ type Ignore struct {
 	Rules []rule.Rule
 }
 
-// Covers reports whether the directive silences r.
+// Covers reports whether the directive silences r. A bare ignore silences
+// every rule the analyzer reports, and a module-wide rule only when named: see
+// rule.IsModuleWide.
 func (i Ignore) Covers(r rule.Rule) bool {
-	return len(i.Rules) == 0 || slices.Contains(i.Rules, r)
+	if len(i.Rules) == 0 {
+		return !rule.IsModuleWide(r)
+	}
+	return slices.Contains(i.Rules, r)
+}
+
+// NamesModuleWide reports whether the directive names a rule only a
+// module-wide subcommand reports, which the analyzer cannot judge.
+func (i Ignore) NamesModuleWide() bool {
+	return slices.ContainsFunc(i.Rules, rule.IsModuleWide)
 }
 
 // String renders the directive as written, for reporting it unused.

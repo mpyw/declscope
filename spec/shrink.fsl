@@ -21,7 +21,12 @@
 //               a plugin looking up a symbol of package main, a nested module
 //               under the internal parent, a package that failed to load. Each
 //               is possible only outside Placement Internal, which is what the
-//               range restriction buys
+//               range restriction buys, or where the declaration is exposed
+//   exposed     a method or field of a type the exported API of an importable
+//               package reaches. Another module cannot name the type, but it
+//               can hold a value of it (pub.Get().Method()), so the internal
+//               rule proves nothing about its methods and fields. The tool
+//               sees this, the way surplus sees an exported carrier
 //   dynamicUse  a use through reflection or an interface found at run time.
 //               Possible only where the tool sees a Doubt
 //
@@ -57,7 +62,7 @@ spec Shrink {
 
   state {
     phase: Int,
-    kind: Kind, placement: Placement, hiddenUse: Bool,
+    kind: Kind, placement: Placement, exposed: Bool, hiddenUse: Bool,
     outside: Outside, doubt: Doubt, dynamicUse: Bool, staticSatisfaction: Bool,
     excludedSamePkg: Bool, generatedRef: Bool, renameUnsafe: Bool,
     exported: Bool,
@@ -66,7 +71,7 @@ spec Shrink {
 
   init {
     phase = 0
-    kind = Value  placement = Internal  hiddenUse = false
+    kind = Value  placement = Internal  exposed = false  hiddenUse = false
     outside = None  doubt = NoDoubt  dynamicUse = false  staticSatisfaction = false
     excludedSamePkg = false  generatedRef = false  renameUnsafe = false
     exported = true
@@ -75,11 +80,14 @@ spec Shrink {
 
   // Three steps rather than one: one action with every parameter is the
   // product of all of them at every step, which is what the checker holds.
-  action configurePlacement(k: Kind, p: Placement, h: Bool) {
+  action configurePlacement(k: Kind, p: Placement, ex: Bool, h: Bool) {
     requires phase == 0
-    // Everything that can hide an importer is outside the range.
-    requires not (h and p == Internal)
-    phase = 1  kind = k  placement = p  hiddenUse = h
+    // Only a method or a field is reached through a value.
+    requires not (ex and (k == Value or k == Type))
+    // Everything that can hide an importer is outside the range, or exposes
+    // the declaration through a value.
+    requires not (h and p == Internal and not ex)
+    phase = 1  kind = k  placement = p  exposed = ex  hiddenUse = h
   }
   action configureUse(o: Outside, d: Doubt, dyn: Bool, sat: Bool) {
     requires phase == 1
@@ -93,6 +101,9 @@ spec Shrink {
     requires not (dyn and d == NoDoubt)
     phase = 2  outside = o  doubt = d  dynamicUse = dyn  staticSatisfaction = sat
   }
+  // gen is a generated file or an example function of the package naming
+  // the declaration: a regeneration would put the old name back, and go vet
+  // checks that ExampleF still names F.
   action configureFix(ex: Bool, gen: Bool, un: Bool) {
     requires phase == 2
     phase = 3  excludedSamePkg = ex  generatedRef = gen  renameUnsafe = un
@@ -107,8 +118,8 @@ spec Shrink {
   def inRange() = placement == Internal
   // A static satisfaction is a use, found by refactor/satisfy.
   def satisfied() = kind == Method and staticSatisfaction
-  def fires() = exported and inRange() and outside == None and not satisfied()
-  def testOnlyFires() = exported and inRange() and outside == ExtTestOnly and not satisfied()
+  def fires() = exported and inRange() and not exposed and outside == None and not satisfied()
+  def testOnlyFires() = exported and inRange() and not exposed and outside == ExtTestOnly and not satisfied()
   def fixBlocked() = doubt != NoDoubt or excludedSamePkg or generatedRef or renameUnsafe
   def fixable() = fires() and not fixBlocked()
 
@@ -140,7 +151,7 @@ spec Shrink {
   // importer inside the range, and a dynamic use leaves a trace.
   invariant PhaseInRange { phase >= 0 and phase <= 3 }
   invariant PlacementUnsetBeforeItsStep {
-    phase == 0 => kind == Value and placement == Internal and not hiddenUse
+    phase == 0 => kind == Value and placement == Internal and not exposed and not hiddenUse
   }
   invariant UseUnsetBeforeItsStep {
     phase <= 1 => outside == None and doubt == NoDoubt
@@ -149,7 +160,10 @@ spec Shrink {
   invariant FixInputsUnsetBeforeTheirStep {
     phase <= 2 => not excludedSamePkg and not generatedRef and not renameUnsafe
   }
-  invariant NothingHiddenInRange { hiddenUse => placement != Internal }
+  invariant NothingHiddenInRangeUnlessExposed {
+    hiddenUse => placement != Internal or exposed
+  }
+  invariant OnlyAMemberIsExposed { exposed => kind == Method or kind == Field }
   invariant DynamicUseLeavesATrace { dynamicUse => doubt != NoDoubt }
   invariant OnlyAMethodSatisfies { staticSatisfaction => kind == Method }
   invariant UnexportedOnlyByTheFix { not exported => fixed }
@@ -160,6 +174,9 @@ spec Shrink {
 
   // The report is never made of a declaration the loaded code shows in use.
   invariant NeverReportsVisibleUse { reported => outside == None and not satisfied() }
+  // A value of the type reaches another module, so its methods and fields may
+  // be used there, and nothing is said.
+  invariant SilentWhenExposed { (reported or reportedTestOnly) => not exposed }
   invariant TestOnlyMeansOnlyTests { reportedTestOnly => outside == ExtTestOnly }
   invariant NeverBothReports { not (reported and reportedTestOnly) }
   // Outside the range the absence of a use proves nothing, so nothing is said.
@@ -219,14 +236,19 @@ spec Shrink {
   // Each reason for silence, witnessed with the declaration otherwise unused.
   def unusedInRange() = configured() and exported and outside == None and not satisfied()
   reachable SilentOnStaticSatisfaction {
-    configured() and inRange() and outside == None and kind == Method
+    configured() and inRange() and not exposed and outside == None and kind == Method
     and staticSatisfaction and not fires()
   }
+  reachable SilentWhenExposedAlone {
+    configured() and inRange() and exposed and outside == None
+    and not satisfied() and not fires()
+  }
   reachable SilentOnSpelledUse {
-    configured() and inRange() and outside == Spelled and not satisfied() and not fires()
+    configured() and inRange() and not exposed and outside == Spelled
+    and not satisfied() and not fires()
   }
   reachable SilentOnExcludedQualifiedUse {
-    configured() and inRange() and outside == ExcludedQualified and not fires()
+    configured() and inRange() and not exposed and outside == ExcludedQualified and not fires()
   }
   reachable SilentOutsideInternal {
     configured() and placement == NotInternal and outside == None and not fires()

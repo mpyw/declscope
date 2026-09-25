@@ -1,0 +1,5 @@
+# Focused on ignores naming overexported, which only declscope shrink reports.
+# The naming rule is stated off so that nothing else is silenced by accident.
+rules:
+  naming:
+    qualify: never

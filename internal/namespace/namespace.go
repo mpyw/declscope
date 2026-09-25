@@ -101,6 +101,12 @@ func Qualify(name, ns string) string {
 	return out
 }
 
+// Unexported returns the unexported spelling of an exported name, the way Go
+// spells an identifier that begins with an initialism: Load becomes load,
+// HTTPClient becomes httpClient and ID becomes id. An unexported name is
+// returned unchanged. declscope shrink renames with it.
+func Unexported(name string) string { return lowerLeading(name) }
+
 // trimSegment drops the final underscore-separated segment when match accepts
 // it. The segment is only dropped when something would remain, mirroring
 // go/build: linux.go is an ordinary file, foo_linux.go is constrained.

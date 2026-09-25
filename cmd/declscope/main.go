@@ -7,6 +7,7 @@
 //	declscope baseline [flags] [packages]  record current violations
 //	declscope survey [flags] [packages]    report what was checked and found
 //	declscope inspect [flags] <package>    report the shape of one package
+//	declscope shrink [flags] [packages]    unexport what no importer uses
 //	declscope skill install                install the adoption skill
 package main
 
@@ -31,6 +32,9 @@ func main() {
 			return
 		case "survey":
 			surveyRun(os.Args[2:])
+			return
+		case "shrink":
+			shrinkRun(os.Args[2:])
 			return
 		}
 	}

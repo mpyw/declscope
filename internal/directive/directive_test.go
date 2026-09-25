@@ -554,3 +554,20 @@ func other() {}
 		}
 	}
 }
+
+func TestIgnoreCoversModuleWide(t *testing.T) {
+	bare := directive.Ignore{}
+	if bare.Covers(rule.Overexported) {
+		t.Error("a bare ignore covers overexported, which the analyzer would then judge unused")
+	}
+	if !bare.Covers(rule.Boundary) {
+		t.Error("a bare ignore does not cover boundary")
+	}
+	named := directive.Ignore{Rules: []rule.Rule{rule.Overexported}}
+	if !named.Covers(rule.Overexported) || !named.NamesModuleWide() {
+		t.Error("an ignore naming overexported does not cover it")
+	}
+	if (directive.Ignore{Rules: []rule.Rule{rule.Boundary}}).NamesModuleWide() {
+		t.Error("an ignore naming boundary names a module-wide rule")
+	}
+}
