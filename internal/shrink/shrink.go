@@ -112,7 +112,7 @@ func Run(dir string, patterns []string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	r := &run{mod: mod, ev: ev, reserved: map[string]bool{}, facts: map[string]*renameFacts{}, usedIgnores: map[token.Pos]bool{}}
+	r := &run{mod: mod, ev: ev, reserved: map[string]bool{}, facts: map[string]*renameFacts{}, claims: map[string][]renameClaim{}, usedIgnores: map[token.Pos]bool{}}
 	var res Result
 	for _, path := range mod.paths {
 		if !wanted[path] {
@@ -210,6 +210,9 @@ type candidate struct {
 	ignores []directive.Ignore
 	// testFile marks a declaration of an in-package _test.go file.
 	testFile bool
+	// doc is the declaration's own doc comment, whose leading name the
+	// rename rewrites too.
+	doc *ast.CommentGroup
 }
 
 // run is the state one invocation shares across the packages it judges.
@@ -224,6 +227,8 @@ type run struct {
 	reserved map[string]bool
 	// facts caches what the rename guards ask of each package.
 	facts map[string]*renameFacts
+	// claims holds the member names this run's fixes give, per package.
+	claims map[string][]renameClaim
 	// usedIgnores is every ignore naming overexported that silenced a report.
 	//
 	//declscope:private // only the core accounts for ignores
@@ -303,6 +308,12 @@ func (r *run) judgeOne(c *candidate) (Finding, bool) {
 	if c.owner != nil && ev.paired[c.key] {
 		return Finding{}, false
 	}
+	// An escape into an interface is a use: fmt, encoding/json and reflect
+	// find methods and fields at run time, and a type's name through %T. A
+	// report there would name something nobody could act on.
+	if r.escaped(c) {
+		return Finding{}, false
+	}
 	xs := r.mod.excluded
 	if !c.kind.member() && loadQualifiedInExcluded(xs, c) {
 		return Finding{}, false
@@ -325,8 +336,6 @@ func (r *run) judgeOne(c *candidate) (Finding, bool) {
 		return f, true
 	}
 	switch {
-	case r.escaped(c):
-		f.Withheld = "its type escapes into an interface, where reflection may find it"
 	case loadNamedInOtherExcluded(xs, c):
 		f.Withheld = "a build-excluded file of another package may use it"
 	case loadNamedInOwnExcluded(xs, c, c.obj.Name()):

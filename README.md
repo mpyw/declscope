@@ -1122,6 +1122,7 @@ import "fmt"
 
 func Load(id int) string { return Format(id) }
 
+// Format renders an ID for display.
 func Format(id int) string { return fmt.Sprint(id) }
 
 type Record struct {
@@ -1136,13 +1137,10 @@ func Dump(r Record) { fmt.Println(r) }
 
 ```console
 $ declscope shrink
-internal/user/user.go:7:6: func Format is exported, but nothing outside example.com/app/internal/user uses it
-internal/user/user.go:9:6: type Record is exported, but nothing outside example.com/app/internal/user uses it (no fix: its type escapes into an interface, where reflection may find it)
-internal/user/user.go:10:2: field ID is exported, but nothing outside example.com/app/internal/user uses it (no fix: its type escapes into an interface, where reflection may find it)
-internal/user/user.go:11:2: field Name is exported, but nothing outside example.com/app/internal/user uses it (no fix: its type escapes into an interface, where reflection may find it)
+internal/user/user.go:8:6: func Format is exported, but nothing outside example.com/app/internal/user uses it
 ```
 
-`declscope shrink -fix` renames `Format` to `format` everywhere it is written. `Record` keeps its name. `fmt.Println` reads its fields through reflection, and `%+v` would print the new names.
+`declscope shrink -fix` renames `Format` to `format` everywhere it is written, and in the doc comment that opens with it. `Record` is not reported. `fmt.Println` reads its fields through reflection, which is a use.
 
 | Behavior | Detail |
 | --- | --- |
@@ -1163,6 +1161,7 @@ internal/user/user.go:11:2: field Name is exported, but nothing outside example.
 | It is embedded in a struct that such an API hands out | Not reported. `pub.Get().Inner` selects the field by the type's name |
 | An API another package uses returns it, takes it, or holds it in an exported field | Not reported for a type. The other package holds values of it, and must still be able to name the type |
 | A build-excluded file of another package imports the package and writes `pkg.Name` | Not reported |
+| A value of its type escapes into an interface, directly or inside another value | Not reported. `fmt`, `encoding/json` and `reflect` find methods and fields at run time, and `%T` prints a type's name |
 | Only an external test package (`package foo_test`) names it | Reported, with no fix. A declaration of an in-package `_test.go` file is not reported: that is the `export_test.go` idiom |
 
 ### When the fix is withheld
@@ -1171,7 +1170,6 @@ A fix is offered only where no use can exist outside the package. A doubt withho
 
 | Doubt | Why |
 | --- | --- |
-| The type escapes into an interface | `fmt`, `encoding/json` and `reflect` find methods and fields at run time. This covers a method, a field, and a type's own name |
 | A build-excluded file of another package selects the name, or uses a dot import | The file may use it in a configuration this run does not build |
 | A build-excluded file of its own package names it | The rename cannot rewrite that file |
 | A generated file names it | A regeneration would put the old name back |

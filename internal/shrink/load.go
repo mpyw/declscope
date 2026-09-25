@@ -433,9 +433,9 @@ func loadCandidates(pkgs []*packages.Package) ([]*candidate, map[token.Pos][]dir
 	p := pkgs[0]
 	l := &loadBinder{fset: p.Fset, siblings: map[token.Pos][]directive.Ignore{}}
 	var out []*candidate
-	add := func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore) {
+	add := func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore, doc *ast.CommentGroup) {
 		testFile := strings.HasSuffix(l.fset.File(obj.Pos()).Name(), "_test.go")
-		out = append(out, &candidate{obj: obj, key: keyOf(l.fset, obj), kind: k, owner: owner, pkg: p, ignores: ignores, testFile: testFile})
+		out = append(out, &candidate{obj: obj, key: keyOf(l.fset, obj), kind: k, owner: owner, pkg: p, ignores: ignores, testFile: testFile, doc: doc})
 	}
 	for _, file := range p.Syntax {
 		if ast.IsGenerated(file) {
@@ -528,8 +528,8 @@ func loadAttached(spec ast.Spec) []*ast.CommentGroup {
 	return nil
 }
 
-// loadAdd records one candidate.
-type loadAdd func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore)
+// loadAdd records one candidate with its doc comment.
+type loadAdd func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore, doc *ast.CommentGroup)
 
 // loadFuncCandidate records a func or method with the ignores covering it.
 func loadFuncCandidate(p *packages.Package, d *ast.FuncDecl, testFile bool, ignores []directive.Ignore, add loadAdd) {
@@ -544,7 +544,7 @@ func loadFuncCandidate(p *packages.Package, d *ast.FuncDecl, testFile bool, igno
 		if testFile && loadIsTestEntry(d.Name.Name) {
 			return
 		}
-		add(fn, kindFunc, nil, ignores)
+		add(fn, kindFunc, nil, ignores, d.Doc)
 		return
 	}
 	recv := fn.Signature().Recv()
@@ -559,7 +559,7 @@ func loadFuncCandidate(p *packages.Package, d *ast.FuncDecl, testFile bool, igno
 	if !ok || types.IsInterface(named) {
 		return
 	}
-	add(fn, kindMethod, named.Origin().Obj(), ignores)
+	add(fn, kindMethod, named.Origin().Obj(), ignores, d.Doc)
 }
 
 func loadGenCandidates(p *packages.Package, l *loadBinder, d *ast.GenDecl, fileIgnores []directive.Ignore, add loadAdd) {
@@ -582,6 +582,11 @@ func loadGenCandidates(p *packages.Package, l *loadBinder, d *ast.GenDecl, fileI
 			continue
 		}
 		own := l.parse(slices.Concat(docs, l.loose(spec, loadAttached(spec)...))...)
+		// Without parentheses, the declaration's doc comment is the spec's.
+		doc := docs[0]
+		if doc == nil && !d.Lparen.IsValid() {
+			doc = d.Doc
+		}
 		switch s := spec.(type) {
 		case *ast.ValueSpec:
 			ignores := slices.Concat(own, block, fileIgnores)
@@ -591,9 +596,9 @@ func loadGenCandidates(p *packages.Package, l *loadBinder, d *ast.GenDecl, fileI
 				}
 				switch obj := p.TypesInfo.Defs[name].(type) {
 				case *types.Var:
-					add(obj, kindVar, nil, ignores)
+					add(obj, kindVar, nil, ignores, loadDocFor(doc, len(s.Names)))
 				case *types.Const:
-					add(obj, kindConst, nil, ignores)
+					add(obj, kindConst, nil, ignores, loadDocFor(doc, len(s.Names)))
 				}
 			}
 		case *ast.TypeSpec:
@@ -603,7 +608,7 @@ func loadGenCandidates(p *packages.Package, l *loadBinder, d *ast.GenDecl, fileI
 				continue
 			}
 			if s.Name.IsExported() {
-				add(tn, kindType, nil, slices.Concat(typeIgnores, fileIgnores))
+				add(tn, kindType, nil, slices.Concat(typeIgnores, fileIgnores), doc)
 			}
 			st, ok := s.Type.(*ast.StructType)
 			if !ok || tn.IsAlias() {
@@ -616,12 +621,21 @@ func loadGenCandidates(p *packages.Package, l *loadBinder, d *ast.GenDecl, fileI
 						continue
 					}
 					if v, ok := p.TypesInfo.Defs[name].(*types.Var); ok {
-						add(v, kindField, tn, fieldIgnores)
+						add(v, kindField, tn, fieldIgnores, loadDocFor(field.Doc, len(field.Names)))
 					}
 				}
 			}
 		}
 	}
+}
+
+// loadDocFor returns doc when it documents one name only. A comment over
+// `a, b int` starts with at most one of the names, and belongs to both.
+func loadDocFor(doc *ast.CommentGroup, names int) *ast.CommentGroup {
+	if names != 1 {
+		return nil
+	}
+	return doc
 }
 
 // loadIsTestEntry reports whether go test finds a function of a _test.go file

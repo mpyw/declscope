@@ -6,10 +6,13 @@
 // be used unseen is a way for it to be wrong. Here the two outputs are held to
 // different standards, and that difference is the point of the model:
 //
-//   the report may be wrong where a use is possible but not provable: a type
-//     that escapes into an empty interface, found by fmt, encoding/json or
-//     reflect at run time, or a method or field whose name alone a
-//     build-excluded file of another package writes
+//   the report may be wrong where a use is possible but not provable: a
+//     method or field whose name alone a build-excluded file of another
+//     package writes
+//   an escape into an interface is taken as a use and reported not at all.
+//     fmt, encoding/json and reflect find methods and fields at run time,
+//     and dogfooding found no such report anyone could act on: nearly all
+//     were fields of structs written as JSON or printed with %+v
 //   the fix never is. FixNeverBreaks says an unexport is made only where no
 //     use exists outside the package by any path, seen or unseen, and nothing
 //     inside the package stops the rename
@@ -118,8 +121,10 @@ spec Shrink {
   def inRange() = placement == Internal
   // A static satisfaction is a use, found by refactor/satisfy.
   def satisfied() = kind == Method and staticSatisfaction
-  def fires() = exported and inRange() and not exposed and outside == None and not satisfied()
-  def testOnlyFires() = exported and inRange() and not exposed and outside == ExtTestOnly and not satisfied()
+  // An escape is a use, like a static satisfaction.
+  def escapes() = doubt == Escapes
+  def fires() = exported and inRange() and not exposed and outside == None and not satisfied() and not escapes()
+  def testOnlyFires() = exported and inRange() and not exposed and outside == ExtTestOnly and not satisfied() and not escapes()
   def fixBlocked() = doubt != NoDoubt or excludedSamePkg or generatedRef or renameUnsafe
   def fixable() = fires() and not fixBlocked()
 
@@ -207,13 +212,12 @@ spec Shrink {
   // fix is what stays out.
   reachable ReportedDespiteADynamicUse { reported and dynamicUse }
 
+  // An escape silences the report, as a use does.
+  invariant SilentOnEscape { (reported or reportedTestOnly) => not escapes() }
+
   // Each fix blocker withholds the fix and leaves the report, witnessed alone
   // with every other one off.
   def onlyBlocker() = configured() and fires()
-  reachable WithheldOnEscape {
-    onlyBlocker() and doubt == Escapes
-    and not excludedSamePkg and not generatedRef and not renameUnsafe and not fixable()
-  }
   reachable WithheldOnExcludedName {
     onlyBlocker() and doubt == ExcludedName
     and not excludedSamePkg and not generatedRef and not renameUnsafe and not fixable()
@@ -230,8 +234,12 @@ spec Shrink {
     onlyBlocker() and doubt == NoDoubt
     and not excludedSamePkg and not generatedRef and renameUnsafe and not fixable()
   }
-  // An escape withholds the fix on a type too, whose name reflect reads.
-  reachable WithheldOnTypeEscape { onlyBlocker() and kind == Type and doubt == Escapes }
+  // An escape is a use for a type too, whose name reflect reads, and the
+  // report stays out.
+  reachable SilentOnTypeEscape {
+    configured() and inRange() and not exposed and outside == None and kind == Type
+    and doubt == Escapes and not fires()
+  }
 
   // Each reason for silence, witnessed with the declaration otherwise unused.
   def unusedInRange() = configured() and exported and outside == None and not satisfied()

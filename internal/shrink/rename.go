@@ -1,9 +1,13 @@
 package shrink
 
 import (
+	"go/ast"
 	"go/token"
 	"go/types"
 	"slices"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/tools/go/packages"
 
@@ -44,20 +48,12 @@ func (r *run) renameEdits(c *candidate) ([]Edit, string) {
 	// A name another fix of this run claims reads the same as one already
 	// taken: after that fix it is, and a report the run keeps must read the
 	// same once the fixes are applied.
-	//
-	// Members share one reservation per package, not one per type. A.ID and
-	// B.Id both lower to id, and a type embedding A and B would then hold an
-	// ambiguous selector. A type claims the member name as well as the
-	// package name, since an embedded field takes the type's name.
-	member := c.pkg.PkgPath + "#" + newName
-	var reserve []string
 	var taken string
 	if c.kind.member() {
 		taken = "the unexported name is taken on its type"
 		if !renameMemberFree(r.mod, facts, c, newName) {
 			return nil, taken
 		}
-		reserve = []string{member}
 	} else {
 		taken = "the unexported name is taken or would be captured"
 		if !renamePackageFree(variants, r.ev.sites[c.key], newName) {
@@ -69,18 +65,30 @@ func (r *run) renameEdits(c *candidate) ([]Edit, string) {
 		if facts.linknamed[c.obj.Name()] {
 			return nil, "a //go:linkname or //export names it"
 		}
-		reserve = []string{c.pkg.PkgPath + "." + newName}
-		if c.kind == kindType {
-			reserve = append(reserve, member)
-		}
-	}
-	for _, key := range reserve {
+		key := c.pkg.PkgPath + "." + newName
 		if r.reserved[key] {
 			return nil, taken
 		}
-	}
-	for _, key := range reserve {
 		r.reserved[key] = true
+	}
+	// A member, and a type through the fields embedding it, meets another
+	// fix's new name only in a type reaching both. A.ID and B.Id both lower
+	// to id, and clash exactly in a type embedding A and B: a claim keyed by
+	// package would withhold unrelated fixes, and the next run, with nothing
+	// claimed, would offer them.
+	claim := renameClaim{name: newName, reach: renameReach(r.mod, c)}
+	for _, t := range slices.Concat(facts.named, facts.structs) {
+		if !claim.reach(t) {
+			continue
+		}
+		for _, other := range r.claims[c.pkg.PkgPath] {
+			if other.name == newName && other.reach(t) {
+				return nil, taken
+			}
+		}
+	}
+	if c.kind.member() || c.kind == kindType {
+		r.claims[c.pkg.PkgPath] = append(r.claims[c.pkg.PkgPath], claim)
 	}
 
 	// Evidence is read from one variant per import path, so each identifier
@@ -90,7 +98,76 @@ func (r *run) renameEdits(c *candidate) ([]Edit, string) {
 		p := r.mod.fset.PositionFor(s.ident.Pos(), false)
 		edits = append(edits, Edit{Filename: p.Filename, Start: p.Offset, End: p.Offset + len(s.ident.Name), NewText: newName})
 	}
+	if e, ok := renameDoc(r.mod.fset, c.doc, c.obj.Name(), newName); ok {
+		edits = append(edits, e)
+	}
 	return edits, ""
+}
+
+// renameDoc rewrites the name a doc comment opens with, the way Go writes
+// one: "// Name ...", or "// A Name ...", "// An Name ...", "// The Name ...".
+// Left alone, the comment would describe a name that no longer exists. The
+// rest of the comment, and any other mention of the name, is prose and is
+// not touched.
+func renameDoc(fset *token.FileSet, doc *ast.CommentGroup, oldName, newName string) (Edit, bool) {
+	if doc == nil || len(doc.List) == 0 {
+		return Edit{}, false
+	}
+	c := doc.List[0]
+	body, ok := strings.CutPrefix(c.Text, "//")
+	if !ok {
+		return Edit{}, false
+	}
+	offset := 2
+	if rest, ok := strings.CutPrefix(body, " "); ok {
+		body, offset = rest, offset+1
+	}
+	for _, article := range []string{"A ", "An ", "The "} {
+		if rest, ok := strings.CutPrefix(body, article); ok && strings.HasPrefix(rest, oldName) {
+			body, offset = rest, offset+len(article)
+			break
+		}
+	}
+	rest, ok := strings.CutPrefix(body, oldName)
+	if !ok {
+		return Edit{}, false
+	}
+	// The name must end where a word does: "Loader" does not open with "Load".
+	if r, _ := utf8.DecodeRuneInString(rest); rest != "" && (unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_') {
+		return Edit{}, false
+	}
+	p := fset.PositionFor(c.Pos(), false)
+	return Edit{Filename: p.Filename, Start: p.Offset + offset, End: p.Offset + offset + len(oldName), NewText: newName}, true
+}
+
+// renameClaim is a member name a fix of this run gives, with the test for
+// whether a type holds it: the member's own type and every type promoting it,
+// or every struct embedding the type being renamed.
+//
+//declscope:package // run keeps every claim of the run
+type renameClaim struct {
+	//declscope:private // the core holds the claims, not what is in them
+	name string
+	//declscope:private // the core holds the claims, not what is in them
+	reach func(renameTyped) bool
+}
+
+// renameReach returns whether a type holds c under its current name. For a
+// method or field that is a selection of it, and for a type an embedded
+// field named by it. An ambiguous selection counts, since c may be one of the
+// candidates it is ambiguous between.
+func renameReach(m *loadedModule, c *candidate) func(renameTyped) bool {
+	return func(t renameTyped) bool {
+		obj, index, _ := types.LookupFieldOrMethod(t.typ, true, t.pkg, c.obj.Name())
+		if obj == nil {
+			return index != nil
+		}
+		if c.kind == kindType {
+			tn := embeddedTypeName(obj)
+			return tn != nil && keyOf(m.fset, tn) == c.key
+		}
+		return keyOf(m.fset, origin(obj)) == c.key
+	}
 }
 
 // renameFacts is what the guards ask of one package, gathered once over all
