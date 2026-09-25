@@ -68,14 +68,16 @@ func Reflect(roots []types.Type, mark func(types.Object)) {
 
 // ByName calls member with every exported method and field that code
 // holding a value of one of roots can name, and typ with every named type and
-// alias it reaches on the way. That code need not import the package: pub.Get().M()
+// alias it reaches on the way. A member is followed into its type only when
+// member returns true, so a caller can leave out one that will not stay
+// exported. That code need not import the package: pub.Get().M()
 // calls M on a type another module cannot spell.
 //
 // An embedded field is passed to member whether its type is exported or
 // not, since the fields and methods it promotes are named through it. An
 // interface's methods are followed for what they hand out. The value held in
 // an interface was converted where it was put there, which Reflect covers.
-func ByName(roots []types.Type, member func(types.Object), typ func(*types.TypeName)) {
+func ByName(roots []types.Type, member func(types.Object) bool, typ func(*types.TypeName)) {
 	w := &walker{seen: map[*types.TypeName]bool{}}
 	w.named = func(o *types.Named) {
 		typ(o.Obj())
@@ -85,8 +87,9 @@ func ByName(roots []types.Type, member func(types.Object), typ func(*types.TypeN
 			if !fn.Exported() {
 				continue
 			}
-			member(fn.Origin())
-			w.signature(fn.Signature())
+			if member(fn.Origin()) {
+				w.signature(fn.Signature())
+			}
 		}
 		w.walk(o.Underlying())
 	}
@@ -94,8 +97,8 @@ func ByName(roots []types.Type, member func(types.Object), typ func(*types.TypeN
 		if !f.Exported() && !f.Embedded() {
 			return
 		}
-		if f.Exported() {
-			member(f)
+		if f.Exported() && !member(f) {
+			return
 		}
 		w.walk(f.Type())
 	}

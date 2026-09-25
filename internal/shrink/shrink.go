@@ -33,6 +33,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -45,6 +46,7 @@ import (
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/shrink/excluded"
 	"github.com/mpyw/declscope/internal/shrink/module"
+	"github.com/mpyw/declscope/internal/shrink/reach"
 )
 
 // Finding is one report of declscope shrink.
@@ -141,7 +143,7 @@ func Run(dir string, patterns []string) (Result, error) {
 			continue
 		}
 		candidates, siblings := candidatesOf(pkgs[0])
-		res.Findings = append(res.Findings, r.judge(candidates)...)
+		res.Findings = append(res.Findings, r.judge(pkgs[0], candidates)...)
 		res.Findings = append(res.Findings, r.unusedIgnores(pkgs[0], siblings)...)
 	}
 	slices.SortFunc(res.Findings, func(a, b Finding) int {
@@ -302,6 +304,11 @@ type run struct {
 	claims map[string][]renameClaim
 	// usedIgnores is every ignore naming overexported that silenced a report.
 	usedIgnores map[token.Pos]bool
+	// held is every type of the package being judged that a declaration
+	// staying exported carries.
+	//
+	//declscope:private // only the judgment reads it
+	held map[string]bool
 }
 
 // skip says why a package is not judged at all, or returns "".
@@ -327,8 +334,37 @@ func (r *run) skip(p *packages.Package) string {
 }
 
 // judge reports every candidate of one package.
-func (r *run) judge(candidates []*candidate) []Finding {
-	var findings []Finding
+//
+// A type that an exported declaration returns, takes or holds keeps its name
+// as long as that declaration stays exported, or the declaration would hand
+// out a type its callers cannot name. Which declarations stay exported is
+// known only once each is judged, and a type kept exported may carry others,
+// so judging repeats until no more types are kept. held only grows, since a
+// held type is never reported again, and it is bounded by the package's
+// types, so the loop ends. A declaration unexported
+// in the same run keeps nothing: it and the type it returns both go at once,
+// which is what makes one run of -fix settle a package.
+func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
+	r.held = map[string]bool{}
+	for {
+		reserved, claims, used := maps.Clone(r.reserved), maps.Clone(r.claims), maps.Clone(r.usedIgnores)
+		findings, reported, fixed := r.judgeOnce(candidates)
+		more := r.heldBy(p, reported, fixed)
+		if len(more) == 0 {
+			return findings
+		}
+		// The fixes of this round claimed names and marked ignores used, as
+		// if they stood. The next round decides again from where this began.
+		r.reserved, r.claims, r.usedIgnores = reserved, claims, used
+		maps.Copy(r.held, more)
+	}
+}
+
+// judgeOnce judges every candidate against what this round holds, and
+// returns the findings with the keys of the candidates it reports and of
+// those it would unexport.
+func (r *run) judgeOnce(candidates []*candidate) (findings []Finding, reported, fixed map[string]bool) {
+	reported, fixed = map[string]bool{}, map[string]bool{}
 	for _, c := range candidates {
 		if r.usedOutside(c) {
 			continue
@@ -362,9 +398,39 @@ func (r *run) judge(candidates []*candidate) []Finding {
 		if f.Withheld == "" {
 			f.Fix, f.Withheld = r.renameEdits(c)
 		}
+		if f.Fix != nil {
+			fixed[c.key] = true
+		}
+		reported[c.key] = true
 		findings = append(findings, f)
 	}
-	return findings
+	return findings, reported, fixed
+}
+
+// heldBy returns every type of the package that a declaration staying
+// exported carries, and that this round reports, with a fix or without: a
+// carried type is used. The roots are the package's exported declarations,
+// less those fixed; a fixed method or field is not followed either.
+//
+// Each root is walked on its own, so that a type does not hold itself. A
+// type whose own fix is withheld stays exported, but that says nothing about
+// whether anything uses it, and its report stays.
+func (r *run) heldBy(p *packages.Package, reported, fixed map[string]bool) map[string]bool {
+	fset := r.mod.Fset
+	more := map[string]bool{}
+	scope := p.Types.Scope()
+	for _, name := range scope.Names() {
+		obj := scope.Lookup(name)
+		if !obj.Exported() || fixed[keyOf(fset, obj)] {
+			continue
+		}
+		reach.ByName([]types.Type{obj.Type()}, func(o types.Object) bool { return !fixed[keyOf(fset, o)] }, func(tn *types.TypeName) {
+			if key := keyOf(fset, tn); reported[key] && tn != obj {
+				more[key] = true
+			}
+		})
+	}
+	return more
 }
 
 // usedOutside reports whether anything outside the candidate's package uses
@@ -379,9 +445,10 @@ func (r *run) usedOutside(c *candidate) bool {
 		// Another module reaches it through a value an importable package
 		// hands out, or names it as an embedded field of one.
 		func() bool { return ev.exposed[key] },
-		// An API another package uses carries the type out, and the type must
-		// stay nameable where it is held.
-		func() bool { return c.kind == kindType && ev.carried[key] },
+		// An API another package uses carries the type out, or an exported
+		// declaration that stays exported does, and the type must stay
+		// nameable where it is held.
+		func() bool { return c.kind == kindType && (ev.carried[key] || r.held[key]) },
 		// A struct conversion or an identical unnamed struct pairs the field
 		// by name.
 		func() bool { return c.kind == kindField && ev.paired[key] },

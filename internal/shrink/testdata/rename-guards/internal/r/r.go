@@ -10,6 +10,10 @@ func Plain() int { return 1 } // want: func Plain is exported, but nothing.*uses
 // A Thing is fixed, and so is the name after the article.
 type Thing struct{} // want: type Thing is exported, but nothing.*uses it$
 
+// NewThing returns a Thing, and is fixed in the same run, so it keeps
+// nothing exported: one run of -fix settles both.
+func NewThing() *Thing { return nil } // want: func NewThing is exported, but nothing.*uses it$
+
 // Svc's method is fixed, and so is the name its doc comment opens with.
 type Svc struct{} // want: type Svc is exported, but nothing.*uses it$
 
@@ -194,6 +198,7 @@ func uses() int {
 
 var (
 	_ Thing
+	_ = NewThing
 	_ Alias
 	_ Level
 	_ = Asked{}.Run

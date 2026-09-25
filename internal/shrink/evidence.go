@@ -568,13 +568,14 @@ func (ev *evidence) exposure(m *module.Module) {
 			}
 		}
 	}
-	reach.ByName(roots, func(obj types.Object) {
+	reach.ByName(roots, func(obj types.Object) bool {
 		ev.exposed[keyOf(m.Fset, obj)] = true
 		// An embedded field is named by its type, so another module selecting
 		// it (v.Inner, or Inner: in a literal) spells the type's name.
 		if tn := embeddedTypeName(obj); tn != nil {
 			ev.exposed[keyOf(m.Fset, tn)] = true
 		}
+		return true
 	}, func(*types.TypeName) {})
 }
 
@@ -593,7 +594,7 @@ func (ev *evidence) carry(m *module.Module) {
 			}
 		}
 	}
-	reach.ByName(roots, func(types.Object) {}, func(tn *types.TypeName) {
+	reach.ByName(roots, func(types.Object) bool { return true }, func(tn *types.TypeName) {
 		ev.carried[keyOf(m.Fset, tn)] = true
 	})
 }

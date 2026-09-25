@@ -34,7 +34,21 @@ var Version = "dev" // want: var Version is exported.*no fix: a string variable 
 
 func current() string { return Version }
 
+// Made stays exported, since an example function names it, so the type it
+// returns stays nameable: Produced is not reported, though an example names
+// it too. Deeper stays exported for the same reason, so Deep, which it hands
+// out, is kept as well. Unused, a method
+// like Deeper would be unexported with Deep in the same run.
+func Made() Produced { return Produced{} } // want: func Made is exported.*no fix: an example function names it
+
+type Produced struct{}
+
+func (Produced) Deeper() *Deep { return nil } // want: method Deeper is exported.*no fix: an example function names it
+
+type Deep struct{}
+
 var (
+	_ = Made
 	_ = Lonely() + WinRef + GenRef + Dotted + Helper()
 	_ = Picker{}.Pick
 	_ = Tool{}.Run

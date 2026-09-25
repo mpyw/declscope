@@ -1165,7 +1165,7 @@ A fix is offered only where no use can exist outside the package. Where a use ma
 | Another package names it, writes it in an unkeyed literal, pairs its field in a struct conversion, or links it with `//go:linkname` | Not reported |
 | The compiler needs it to satisfy an interface | Not reported |
 | Another module can reach it through a value an importable package hands out, such as `pub.Get().Method()` | Not reported |
-| An API another package uses returns it, takes it, or holds it | Not reported. The other package must still be able to name the type |
+| An exported declaration that stays exported returns it, takes it, or holds it | Not reported. Its callers must still be able to name the type. A declaration unexported in the same run keeps nothing, so both go at once |
 | A value of it escapes into an interface, where `fmt`, `encoding/json` or `reflect` can find it | Not reported |
 | A field has a struct tag, which says reflection reads it | Not reported. `go vet` rejects a `json` or `xml` tag on an unexported field |
 | Only an external test package (`package foo_test`) uses it | Reported, with no fix. One declared in an in-package `_test.go` file is the `export_test.go` idiom, and is not reported |
