@@ -151,9 +151,11 @@ func TestShrinkNestedModuleInUnderscoreDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The reason names the module, since nothing else would lead a reader to
+	// a go.mod in a directory ./... skips.
 	if len(res.Skipped) != 1 || res.Skipped[0].Package != "example.com/tl/internal/a" ||
-		!strings.Contains(res.Skipped[0].Reason, "importers") {
-		t.Errorf("skipped = %+v, want internal/a with the reason", res.Skipped)
+		!strings.Contains(res.Skipped[0].Reason, "nested module example.com/tl/_tools") {
+		t.Errorf("skipped = %+v, want internal/a, naming the nested module", res.Skipped)
 	}
 }
 

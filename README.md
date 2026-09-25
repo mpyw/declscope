@@ -1167,6 +1167,7 @@ A fix is offered only where no use can exist outside the package. Where a use ma
 | Another module can reach it through a value an importable package hands out, such as `pub.Get().Method()` | Not reported |
 | An API another package uses returns it, takes it, or holds it | Not reported. The other package must still be able to name the type |
 | A value of it escapes into an interface, where `fmt`, `encoding/json` or `reflect` can find it | Not reported |
+| A field has a struct tag, which says reflection reads it | Not reported. `go vet` rejects a `json` or `xml` tag on an unexported field |
 | Only an external test package (`package foo_test`) uses it | Reported, with no fix. One declared in an in-package `_test.go` file is the `export_test.go` idiom, and is not reported |
 | A build-excluded file or `-ldflags -X` may use it | Reported, with no fix |
 | A generated file or an example function (`ExampleF`) names it, which the rename cannot rewrite | Reported, with no fix |

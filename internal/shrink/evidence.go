@@ -554,7 +554,7 @@ func evidenceLinknameMember(name string) (typ, member string, isMember bool) {
 func (ev *evidence) exposure(m *module.Module) {
 	var roots []types.Type
 	for _, p := range m.Widest() {
-		if _, judged := m.Range(p.PkgPath); judged && p.Name != "main" {
+		if _, why := m.Range(p.PkgPath); why == "" && p.Name != "main" {
 			continue
 		}
 		// An external test package is imported by nothing.

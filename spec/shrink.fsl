@@ -9,7 +9,8 @@
 //   the report may be wrong where a use is possible but not provable: a
 //     method or field whose name alone a build-excluded file of another
 //     package writes
-//   an escape into an interface is taken as a use and reported not at all.
+//   an escape into an interface is taken as a use and reported not at all,
+//     and so is a struct tag, which declares a use through reflection.
 //     fmt, encoding/json and reflect find methods and fields at run time,
 //     and dogfooding found no such report anyone could act on: nearly all
 //     were fields of structs written as JSON or printed with %+v

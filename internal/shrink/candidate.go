@@ -38,11 +38,13 @@ func candidatesOf(p *packages.Package) ([]*candidate, map[token.Pos][]directive.
 		return ignores
 	}
 	var out []*candidate
-	add := func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore, doc *ast.CommentGroup) {
-		out = append(out, &candidate{
+	add := func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore, doc *ast.CommentGroup) *candidate {
+		c := &candidate{
 			obj: obj, key: keyOf(p.Fset, obj), kind: k, owner: owner, pkg: p, ignores: ignores, doc: doc,
 			testFile: strings.HasSuffix(p.Fset.File(obj.Pos()).Name(), "_test.go"),
-		})
+		}
+		out = append(out, c)
+		return c
 	}
 	for _, file := range p.Syntax {
 		if ast.IsGenerated(file) {
@@ -70,8 +72,8 @@ func candidatesOf(p *packages.Package) ([]*candidate, map[token.Pos][]directive.
 }
 
 // candidateAdd records one candidate with the ignores covering it and its
-// doc comment.
-type candidateAdd func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore, doc *ast.CommentGroup)
+// doc comment, and returns it.
+type candidateAdd func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore, doc *ast.CommentGroup) *candidate
 
 // candidateFunc records an exported func, or an exported method of a named
 // type that is not an interface.
@@ -132,7 +134,7 @@ func candidateSpec(p *packages.Package, d *ast.GenDecl, spec ast.Spec, own, file
 			ignores := slices.Concat(parse(field.Doc, field.Comment), own, fileIgnores)
 			for _, name := range field.Names {
 				if v, ok := p.TypesInfo.Defs[name].(*types.Var); ok && name.IsExported() {
-					add(v, kindField, tn, ignores, candidateDoc(nil, field.Doc, len(field.Names)))
+					add(v, kindField, tn, ignores, candidateDoc(nil, field.Doc, len(field.Names))).tagged = field.Tag != nil
 				}
 			}
 		}

@@ -223,6 +223,8 @@ type candidate struct {
 	ignores []directive.Ignore
 	// testFile marks a declaration of an in-package _test.go file.
 	testFile bool
+	// tagged marks a field written with a struct tag.
+	tagged bool
 	// doc is the declaration's own doc comment, whose leading name the
 	// rename rewrites too.
 	doc *ast.CommentGroup
@@ -320,10 +322,8 @@ func (r *run) skip(p *packages.Package) string {
 	case !slices.Equal(p.GoFiles, p.CompiledGoFiles):
 		return "the package uses cgo"
 	}
-	if _, ok := r.mod.Range(p.PkgPath); !ok {
-		return "not inside an internal/ whose importers this run loads"
-	}
-	return ""
+	_, why := r.mod.Range(p.PkgPath)
+	return why
 }
 
 // judge reports every candidate of one package.
@@ -385,6 +385,10 @@ func (r *run) usedOutside(c *candidate) bool {
 		// A struct conversion or an identical unnamed struct pairs the field
 		// by name.
 		func() bool { return c.kind == kindField && ev.paired[key] },
+		// A struct tag says reflection reads the field, whether or not a value
+		// reaches it here. go vet rejects a json or xml tag on an unexported
+		// field, so the rename would not even pass vet.
+		func() bool { return c.tagged },
 		// A value of it escapes into an interface, where fmt, encoding/json
 		// and reflect find methods and fields at run time, and %T prints a
 		// type's name. A method escapes with its owner.
