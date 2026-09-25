@@ -57,6 +57,9 @@ the binary.
 | `surplus_strict.fsl` | Neither `surplus` finding is made of a declaration reachable by any path the rule counts: a spelled use, a struct conversion, a linkname, or an opaque source | Every combination of `rules.surplus`, why the declaration has its scope (the enclosing directive, its own, exportedness, `defaults.unexported`, no enclosing directive), the level the directive is written at, the reach path, the shape of the entry, what else the directive reaches, and whether the pass read every file |
 | `surplus_strict.fsl` | `strict` reports a superset of `loose` and never lands on the declaration `loose` already covers. It reports only where an enclosing directive widened the declaration, at the file, block and type level alike, and never a type whose narrowing would narrow a reached member | As above |
 | `surplus_strict.fsl` | The inserted `//declscope:private` binds, settles the report, starts no boundary report on the declaration or a member it narrows, never makes `loose` fire, and never leaves the enclosing directive binding nothing. Where it would, the fix is withheld and the report is not. Under a directive that already binds nothing, the fix is withheld only where it would reword that directive's `unused` report | As above |
+| `shrink.fsl` | `declscope shrink` (#112) never unexports a declaration that anything outside its package uses, by any path: a spelled use, an external test, a static interface satisfaction, an importer no loaded package shows, a value of its type that the exported API of an importable package hands out, or a use through reflection. Nor does it unexport one whose rename something inside the package would break | Every combination of the kind of declaration, where it sits, what the loaded code shows about a use from another package, the doubts the tool can raise but not settle, and the three reasons a rename is unsafe inside the package |
+| `shrink.fsl` | The report and the fix are held to different standards. The report may be wrong where a use is possible but not provable, and each such doubt withholds the fix and leaves the report. An escape into an interface is a use, and silences the report. Outside `internal/`, in package main, over a nested module or after a load error, nothing is said at all | As above |
+| `shrink.fsl` | One pass converges: an unexported declaration is out of the rule, and no report starts after the fix | As above |
 | `rename_sound.fsl` | **Fails** — models a guard that checks package scope only, and enumerates what a sound guard must check beyond it | As above |
 | `rename_siblings.fsl` | **Fails** — models fixes that check their target against the pre-fix names only, and shows two of them converging on one name | Every pair of rename targets |
 
@@ -113,7 +116,7 @@ step and needs gigabytes for the same claims these prove in single-digit
 megabytes.
 
 ```console
-./spec/verify.sh     # what CI runs: fifteen proved, two violated
+./spec/verify.sh     # what CI runs: sixteen proved, two violated
 ```
 
 Or one at a time:
@@ -135,6 +138,7 @@ fslc verify surplus_strict.fsl  --depth 4
 fslc verify unused_bind.fsl     --depth 4
 fslc verify unused_ignore.fsl   --depth 2
 fslc verify unused_modes.fsl    --depth 6
+fslc verify shrink.fsl          --depth 6
 fslc verify rename_sound.fsl     --depth 2   # expected: violated
 fslc verify rename_siblings.fsl  --depth 3   # expected: violated
 ```
@@ -145,12 +149,13 @@ step 1 or 2; the others add a fix action and witness at step 2.
 `surplus_strict.fsl` configures in two steps, so that no one action carries the
 product of every parameter, and witnesses by step 4. `unused_modes.fsl`
 configures in four steps for the same reason, judges, and fixes, so it witnesses
-by step 6. The deadlock warning a bounded
+by step 6. `shrink.fsl` configures in three steps, reports, and fixes, so it
+witnesses by step 5. The deadlock warning a bounded
 run prints is the shape of the model, not a failure, and `rename_guarded.fsl`
 also reports a vacuous antecedent — which is the guard working, and is stated as
 `NothingResolvedNewName` rather than left as a warning.
 
-The fifteen that pass are `proved` under `--engine induction`, which is what
+The sixteen that pass are `proved` under `--engine induction`, which is what
 `verify.sh` and CI assert. Bounded verification alone would let an invariant be
 true to a depth without being inductive, and reading the exit code alone would
 let a spec that stopped parsing pass as "violated, as intended" — `fslc` exits
@@ -204,6 +209,18 @@ is a semantics that contradicts the documented one; each was run:
 | `strict` ignores the declarations a nearer directive shadows | `violated` (`StrictAddsOnlyRedundant`) |
 | The `strict` fix is offered on a declaration another namespace uses | `violated` (`FixKeepsOtherReports`) |
 | The `strict` fix is offered by a pass that does not read every file | `violated` (`FixKeepsOtherReports`) |
+| `shrink` reports a declaration whose type or owner escapes into an interface | `violated` (`SilentOnEscape`) |
+| `shrink` fixes where a build-excluded file of another package may use the name | `violated` (`FixNeverBreaks`) |
+| `shrink` fixes a declaration a build-excluded file of its own package writes | `violated` (`FixNeverBreaks`) |
+| `shrink` fixes a declaration a generated file references | `violated` (`FixNeverBreaks`) |
+| `shrink` fixes where the rename guard objects | `violated` (`FixNeverBreaks`) |
+| `shrink` judges outside `internal/` | `violated` (`SilentOutsideRange`) |
+| `shrink` judges a method or field of a type an importable package's exported API reaches | `violated` (`SilentWhenExposed`, and `FixNeverBreaks` without it) |
+| `shrink` reports a method that statically satisfies an interface | `violated` (`NeverReportsVisibleUse`) |
+| `shrink` reports whatever no package in the build spells, external tests and excluded files included | `violated` (`NeverReportsVisibleUse`) |
+| A build-excluded name silences the `shrink` report instead of withholding only the fix | `reachable_failed` (`WithheldOnExcludedName`, `ReportedDespiteADynamicUse`) |
+| `shrink` fixes a declaration only external tests use | `violated` (`FixFollowsReport`) |
+| `fair` is dropped from the `shrink` fix | `violated` (`EventuallyFixed`) |
 | `strict` keeps `loose`'s quantifier over configurations | `reachable_failed` |
 | `strict` reports under `loose` | `violated` (`LooseIsUnusedBind`) |
 | `strict` drops the reports `loose` makes | `violated` (`LooseIsUnusedBind`) |

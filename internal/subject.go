@@ -35,10 +35,9 @@ type fileInfo struct {
 	path string
 	ns   string
 
-	// lineComments indexes every comment group by the line it starts on, so
-	// that trailing directives can be found on declarations that carry no
-	// comment field of their own, such as ast.FuncDecl.
-	lineComments map[int]*ast.CommentGroup
+	// binder finds the comment groups each declaration takes its directives
+	// from, the rule declscope shrink shares.
+	binder *directive.Binder
 
 	// ignores stands the whole file outside a naming rule. They apply on top
 	// of whatever each declaration says for itself. Whether each silencedByIgnore

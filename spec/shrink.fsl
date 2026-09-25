@@ -1,0 +1,279 @@
+// shrink reports an exported declaration of an internal package that nothing
+// outside its package uses, and fixes it by unexporting it (#112). It is
+// surplus one visibility level up: exportedness wider than any use.
+//
+// Like surplus, it concludes from an absence, and every way a declaration can
+// be used unseen is a way for it to be wrong. Here the two outputs are held to
+// different standards, and that difference is the point of the model:
+//
+//   the report may be wrong where a use is possible but not provable: a
+//     method or field whose name alone a build-excluded file of another
+//     package writes
+//   an escape into an interface is taken as a use and reported not at all.
+//     fmt, encoding/json and reflect find methods and fields at run time,
+//     and dogfooding found no such report anyone could act on: nearly all
+//     were fields of structs written as JSON or printed with %+v
+//   the fix never is. FixNeverBreaks says an unexport is made only where no
+//     use exists outside the package by any path, seen or unseen, and nothing
+//     inside the package stops the rename
+//
+// The tool reads only what it can see. What it cannot see is modelled as truth
+// the guards never read:
+//
+//   hiddenUse   a use no loaded package shows: an importer in another module,
+//               a plugin looking up a symbol of package main, a nested module
+//               under the internal parent, a package that failed to load. Each
+//               is possible only outside Placement Internal, which is what the
+//               range restriction buys, or where the declaration is exposed
+//   exposed     a method or field of a type the exported API of an importable
+//               package reaches. Another module cannot name the type, but it
+//               can hold a value of it (pub.Get().Method()), so the internal
+//               rule proves nothing about its methods and fields. The tool
+//               sees this, the way surplus sees an exported carrier
+//   dynamicUse  a use through reflection or an interface found at run time.
+//               Possible only where the tool sees a Doubt
+//
+// ASSUME-1: one exported declaration is enough. A fix renames only
+//   identifiers of its own package, and changes no reference, so it cannot
+//   change what any other declaration's judgment reads (modelling assumption)
+// ASSUME-2: the rename guard itself (scope capture, collisions, sibling
+//   targets) is renameUnsafe here. rename_guarded.fsl, rename_reach.fsl and
+//   rename_siblings.fsl hold what it must check (modelling assumption)
+spec Shrink {
+  // Value is a func, var or const, and Type a type name. The two differ only
+  // in whether an escape into an empty interface reaches them: a type's name
+  // is read by %T, reflect.Type.Name and gob.Register.
+  enum Kind { Value, Type, Method, Field }
+  // Where the declaration sits. Only Internal is in range: outside internal/
+  // another module may import the package, package main is reachable by
+  // plugin, and a nested module or a load error leaves an importer unread.
+  enum Placement { Internal, NotInternal, MainPkg, NestedModule, LoadError }
+  // What the loaded code shows about a use from another package.
+  //   Spelled            a package in the build spells it, writes it in an
+  //                      unkeyed literal, pairs it in a struct conversion,
+  //                      passes it as a type argument, or links it by name
+  //   ExtTestOnly        only an external test package (package foo_test)
+  //   ExcludedQualified  a build-excluded file imports the package and writes
+  //                      pkg.Name, which only a package-level name can be
+  enum Outside { None, Spelled, ExtTestOnly, ExcludedQualified }
+  // A use the tool can suspect but not prove.
+  //   Escapes       the type, or its owner, escapes into an empty interface,
+  //                 directly or through a field, element, key or pointer
+  //   ExcludedName  a build-excluded file of another package writes the name
+  //                 where no import pins it: x.Name, or a dot import
+  enum Doubt { NoDoubt, Escapes, ExcludedName }
+
+  state {
+    phase: Int,
+    kind: Kind, placement: Placement, exposed: Bool, hiddenUse: Bool,
+    outside: Outside, doubt: Doubt, dynamicUse: Bool, staticSatisfaction: Bool,
+    excludedSamePkg: Bool, generatedRef: Bool, renameUnsafe: Bool,
+    exported: Bool,
+    reported: Bool, reportedTestOnly: Bool, fixed: Bool, stalled: Bool
+  }
+
+  init {
+    phase = 0
+    kind = Value  placement = Internal  exposed = false  hiddenUse = false
+    outside = None  doubt = NoDoubt  dynamicUse = false  staticSatisfaction = false
+    excludedSamePkg = false  generatedRef = false  renameUnsafe = false
+    exported = true
+    reported = false  reportedTestOnly = false  fixed = false  stalled = false
+  }
+
+  // Three steps rather than one: one action with every parameter is the
+  // product of all of them at every step, which is what the checker holds.
+  action configurePlacement(k: Kind, p: Placement, ex: Bool, h: Bool) {
+    requires phase == 0
+    // Only a method or a field is reached through a value.
+    requires not (ex and (k == Value or k == Type))
+    // Everything that can hide an importer is outside the range, or exposes
+    // the declaration through a value.
+    requires not (h and p == Internal and not ex)
+    phase = 1  kind = k  placement = p  exposed = ex  hiddenUse = h
+  }
+  action configureUse(o: Outside, d: Doubt, dyn: Bool, sat: Bool) {
+    requires phase == 1
+    // Only a method satisfies an interface.
+    requires not (sat and kind != Method)
+    // pkg.Name selects a package-level name, never a method or a field.
+    requires not (o == ExcludedQualified and (kind == Method or kind == Field))
+    // A func, var or const has no method set and no name reflect reads.
+    requires not (d == Escapes and kind == Value)
+    // A dynamic use leaves a trace: an escape, or a name in an excluded file.
+    requires not (dyn and d == NoDoubt)
+    phase = 2  outside = o  doubt = d  dynamicUse = dyn  staticSatisfaction = sat
+  }
+  // gen is a generated file or an example function of the package naming
+  // the declaration: a regeneration would put the old name back, and go vet
+  // checks that ExampleF still names F.
+  action configureFix(ex: Bool, gen: Bool, un: Bool) {
+    requires phase == 2
+    phase = 3  excludedSamePkg = ex  generatedRef = gen  renameUnsafe = un
+  }
+
+  def configured() = phase == 3
+
+  // A pass that ran and neither reported nor fixed, which may repeat forever.
+  action pass() { requires configured()  stalled = true }
+
+  // --- what the tool reads ------------------------------------------------
+  def inRange() = placement == Internal
+  // A static satisfaction is a use, found by refactor/satisfy.
+  def satisfied() = kind == Method and staticSatisfaction
+  // An escape is a use, like a static satisfaction.
+  def escapes() = doubt == Escapes
+  def fires() = exported and inRange() and not exposed and outside == None and not satisfied() and not escapes()
+  def testOnlyFires() = exported and inRange() and not exposed and outside == ExtTestOnly and not satisfied() and not escapes()
+  def fixBlocked() = doubt != NoDoubt or excludedSamePkg or generatedRef or renameUnsafe
+  def fixable() = fires() and not fixBlocked()
+
+  // --- the truth the tool never reads -------------------------------------
+  def usedOutside() = outside != None or hiddenUse or dynamicUse or satisfied()
+  def breaksInside() = excludedSamePkg or generatedRef or renameUnsafe
+  def fixBreaks() = usedOutside() or breaksInside()
+
+  fair action report() {
+    requires configured()  requires not reported  requires fires()
+    reported = true
+  }
+  fair action reportTestOnly() {
+    requires configured()  requires not reportedTestOnly  requires testOnlyFires()
+    reportedTestOnly = true
+  }
+  fair action fix() {
+    requires configured()  requires reported  requires not fixed  requires fixable()
+    fixed = true  exported = false
+  }
+
+  // Nothing is judged before the configuration is complete, and a fix follows
+  // its report. Both are what makes the invariants below inductive.
+  invariant JudgedOnlyOnceConfigured {
+    (reported or reportedTestOnly or fixed or stalled) => configured()
+  }
+  invariant FixFollowsReport { fixed => reported }
+  // The configuration keeps what configure required of it: nothing hides an
+  // importer inside the range, and a dynamic use leaves a trace.
+  invariant PhaseInRange { phase >= 0 and phase <= 3 }
+  invariant PlacementUnsetBeforeItsStep {
+    phase == 0 => kind == Value and placement == Internal and not exposed and not hiddenUse
+  }
+  invariant UseUnsetBeforeItsStep {
+    phase <= 1 => outside == None and doubt == NoDoubt
+                  and not dynamicUse and not staticSatisfaction
+  }
+  invariant FixInputsUnsetBeforeTheirStep {
+    phase <= 2 => not excludedSamePkg and not generatedRef and not renameUnsafe
+  }
+  invariant NothingHiddenInRangeUnlessExposed {
+    hiddenUse => placement != Internal or exposed
+  }
+  invariant OnlyAMemberIsExposed { exposed => kind == Method or kind == Field }
+  invariant DynamicUseLeavesATrace { dynamicUse => doubt != NoDoubt }
+  invariant OnlyAMethodSatisfies { staticSatisfaction => kind == Method }
+  invariant UnexportedOnlyByTheFix { not exported => fixed }
+
+  // The property the fix exists to keep. An unexport must never break a build
+  // or change what a program does.
+  invariant FixNeverBreaks { fixed => not fixBreaks() }
+
+  // The report is never made of a declaration the loaded code shows in use.
+  invariant NeverReportsVisibleUse { reported => outside == None and not satisfied() }
+  // A value of the type reaches another module, so its methods and fields may
+  // be used there, and nothing is said.
+  invariant SilentWhenExposed { (reported or reportedTestOnly) => not exposed }
+  invariant TestOnlyMeansOnlyTests { reportedTestOnly => outside == ExtTestOnly }
+  invariant NeverBothReports { not (reported and reportedTestOnly) }
+  // Outside the range the absence of a use proves nothing, so nothing is said.
+  invariant SilentOutsideRange {
+    (reported or reportedTestOnly or fixed) => placement == Internal
+  }
+  // A declaration only tests use from outside keeps its name: the external
+  // test package would stop compiling.
+  invariant NoFixForTestOnly { not (fixed and reportedTestOnly) }
+
+  // One pass converges: once unexported, the declaration is out of the rule,
+  // and no report starts after the fix.
+  invariant FixedIsSettled { fixed => not fires() and not testOnlyFires() }
+  trans NoReportAfterFix {
+    old(fixed) => (reported == old(reported) and reportedTestOnly == old(reportedTestOnly))
+  }
+
+  trans ReportOnlyWhereItFires { not old(reported) and reported => old(fires()) }
+  trans FixOnlyWhereFixable { not old(fixed) and fixed => old(fixable()) }
+
+  reachable Reported { reported }
+  reachable Fixed { fixed }
+  reachable ReportedTestOnly { reportedTestOnly }
+  reachable FixedMethod { fixed and kind == Method }
+  reachable FixedField { fixed and kind == Field }
+
+  // The report is advisory where a use is possible: it can be wrong, and the
+  // fix is what stays out.
+  reachable ReportedDespiteADynamicUse { reported and dynamicUse }
+
+  // An escape silences the report, as a use does.
+  invariant SilentOnEscape { (reported or reportedTestOnly) => not escapes() }
+
+  // Each fix blocker withholds the fix and leaves the report, witnessed alone
+  // with every other one off.
+  def onlyBlocker() = configured() and fires()
+  reachable WithheldOnExcludedName {
+    onlyBlocker() and doubt == ExcludedName
+    and not excludedSamePkg and not generatedRef and not renameUnsafe and not fixable()
+  }
+  reachable WithheldOnExcludedSamePackage {
+    onlyBlocker() and doubt == NoDoubt
+    and excludedSamePkg and not generatedRef and not renameUnsafe and not fixable()
+  }
+  reachable WithheldOnGeneratedReference {
+    onlyBlocker() and doubt == NoDoubt
+    and not excludedSamePkg and generatedRef and not renameUnsafe and not fixable()
+  }
+  reachable WithheldOnUnsafeRename {
+    onlyBlocker() and doubt == NoDoubt
+    and not excludedSamePkg and not generatedRef and renameUnsafe and not fixable()
+  }
+  // An escape is a use for a type too, whose name reflect reads, and the
+  // report stays out.
+  reachable SilentOnTypeEscape {
+    configured() and inRange() and not exposed and outside == None and kind == Type
+    and doubt == Escapes and not fires()
+  }
+
+  // Each reason for silence, witnessed with the declaration otherwise unused.
+  def unusedInRange() = configured() and exported and outside == None and not satisfied()
+  reachable SilentOnStaticSatisfaction {
+    configured() and inRange() and not exposed and outside == None and kind == Method
+    and staticSatisfaction and not fires()
+  }
+  reachable SilentWhenExposedAlone {
+    configured() and inRange() and exposed and outside == None
+    and not satisfied() and not fires()
+  }
+  reachable SilentOnSpelledUse {
+    configured() and inRange() and not exposed and outside == Spelled
+    and not satisfied() and not fires()
+  }
+  reachable SilentOnExcludedQualifiedUse {
+    configured() and inRange() and not exposed and outside == ExcludedQualified and not fires()
+  }
+  reachable SilentOutsideInternal {
+    configured() and placement == NotInternal and outside == None and not fires()
+  }
+  reachable SilentInMain {
+    configured() and placement == MainPkg and outside == None and not fires()
+  }
+  reachable SilentOverNestedModule {
+    configured() and placement == NestedModule and outside == None and not fires()
+  }
+  reachable SilentOnLoadError {
+    configured() and placement == LoadError and outside == None and not fires()
+  }
+  reachable CanFireUnused { unusedInRange() and inRange() and fires() }
+
+  reachable PendingReportSurvivesAPass { stalled and fires() and not reported }
+
+  leadsTo EventuallyReported { configured() and fires() ~> reported }
+  leadsTo EventuallyFixed { configured() and fixable() and reported ~> fixed }
+}

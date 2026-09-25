@@ -225,3 +225,36 @@ func TestContainsCases(t *testing.T) {
 		}
 	}
 }
+
+func TestUnexported(t *testing.T) {
+	tests := map[string]string{
+		"Load":        "load",
+		"HTTPClient":  "httpClient",
+		"ID":          "id",
+		"IDs":         "ids",
+		"URLs":        "urls",
+		"URLPath":     "urlPath",
+		"HTTPServer":  "httpServer",
+		"APIKey":      "apiKey",
+		"IDToken":     "idToken",
+		"UUIDs":       "uuids",
+		"OAuth":       "oAuth",
+		"HTTP2Client": "http2Client",
+		"IPv4":        "ipv4",
+		"ABC2Foo":     "abc2Foo",
+		"MAX":         "max",
+		"X":           "x",
+		"load":        "load",
+		"Äpfel":       "äpfel",
+	}
+	for in, want := range tests {
+		if got, ok := namespace.Unexported(in); !ok || got != want {
+			t.Errorf("Unexported(%q) = %q, %v, want %q", in, got, ok, want)
+		}
+	}
+	for _, in := range []string{"MAX_RETRIES", "Foo_bar"} {
+		if got, ok := namespace.Unexported(in); ok {
+			t.Errorf("Unexported(%q) = %q, want no spelling", in, got)
+		}
+	}
+}

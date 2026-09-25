@@ -50,21 +50,36 @@ const (
 	// the configuration rather than a declaration, so it carries no fix and no
 	// baseline entry, and a file-level ignore is what silences it.
 	Filter Rule = "filter"
+	// Overexported: an exported declaration of an internal package that
+	// nothing outside its package uses. Only declscope shrink reports it,
+	// because only a run that loads the whole module can see every importer.
+	// The analyzer never does, so it is not in All.
+	Overexported Rule = "overexported"
 )
 
-// All lists every rule, in the order they are reported.
+// All lists every rule the analyzer reports, in the order they are reported.
 var All = []Rule{Boundary, Qualify, Surplus, Unused, Directive, Filter}
+
+// moduleWide lists the rules only a subcommand that loads the whole module
+// reports. An ignore naming one of them decides nothing the analyzer can see,
+// so the analyzer never judges it unused, and a bare ignore does not reach
+// them: the analyzer judges a bare ignore, and would call it unused when only
+// a module-wide rule needed it.
+var moduleWide = []Rule{Overexported}
+
+// IsModuleWide reports whether only a module-wide subcommand reports r.
+func IsModuleWide(r Rule) bool { return slices.Contains(moduleWide, r) }
 
 // Parse resolves a rule name.
 func Parse(name string) (Rule, bool) {
 	r := Rule(name)
-	return r, slices.Contains(All, r)
+	return r, slices.Contains(All, r) || IsModuleWide(r)
 }
 
 // Names returns every rule name, for use in diagnostics.
 func Names() []string {
-	out := make([]string, 0, len(All))
-	for _, r := range All {
+	out := make([]string, 0, len(All)+len(moduleWide))
+	for _, r := range slices.Concat(All, moduleWide) {
 		out = append(out, string(r))
 	}
 	return out
