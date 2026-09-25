@@ -45,6 +45,12 @@ type evidence struct {
 	// exposed is every method and field another module can reach through a
 	// value that the exported API of an importable package hands out.
 	exposed map[string]bool
+	// carried is every type that a declaration used from another package
+	// carries in its type: a result, a parameter, a variable's type, an
+	// exported field or method of a type used there. The other package holds
+	// values of it, and unexporting it would leave that API returning a type
+	// its callers cannot name.
+	carried map[string]bool
 	// sites is every identifier naming a declaration inside its own
 	// package, which is everything a rename rewrites.
 	sites map[string][]evidenceSite
@@ -66,7 +72,7 @@ func evidenceCollect(m *loadedModule) (ev *evidence, err error) {
 	ev = &evidence{
 		outside: map[string]bool{}, extTest: map[string]bool{}, generated: map[string]bool{}, example: map[string]bool{},
 		satisfied: map[string]bool{}, paired: map[string]bool{}, escaped: map[string]bool{},
-		exposed: map[string]bool{}, sites: map[string][]evidenceSite{},
+		exposed: map[string]bool{}, carried: map[string]bool{}, sites: map[string][]evidenceSite{},
 	}
 	inModule := map[string]bool{}
 	for _, p := range m.pkgs {
@@ -87,8 +93,9 @@ func evidenceCollect(m *loadedModule) (ev *evidence, err error) {
 	ev.evidenceLinknames(m)
 	ev.evidenceUnnamedStructs(m)
 	roots = append(roots, evidenceInterfaceConversions(m)...)
-	evidenceWalk(m, roots, false, ev.escaped)
+	evidenceWalk(m, roots, false, ev.escaped, nil)
 	ev.evidenceExposure(m)
+	ev.evidenceCarried(m)
 	return ev, nil
 }
 
@@ -564,9 +571,11 @@ func evidenceInterfaceConversions(m *loadedModule) []types.Type {
 // methods, and fields and methods an embedding promotes. Exposure also marks
 // each such member, since a member is what another module uses.
 //
+// named, when not nil, receives every named type the walk reaches.
+//
 // An instantiation is walked through its origin and its type arguments, so
 // that a recursive generic type cannot expand without end.
-func evidenceWalk(m *loadedModule, roots []types.Type, exportedOnly bool, into map[string]bool) {
+func evidenceWalk(m *loadedModule, roots []types.Type, exportedOnly bool, into, named map[string]bool) {
 	seen := map[string]bool{}
 	var walk func(t types.Type)
 	walkSig := func(sig *types.Signature) {
@@ -588,6 +597,9 @@ func evidenceWalk(m *loadedModule, roots []types.Type, exportedOnly bool, into m
 				return
 			}
 			seen[key] = true
+			if named != nil {
+				named[key] = true
+			}
 			if !exportedOnly {
 				into[key] = true
 			}
@@ -684,5 +696,23 @@ func (ev *evidence) evidenceExposure(m *loadedModule) {
 			}
 		}
 	}
-	evidenceWalk(m, roots, true, ev.exposed)
+	evidenceWalk(m, roots, true, ev.exposed, nil)
+}
+
+// evidenceCarried marks every type a declaration used from another package
+// carries out in its type. The roots are those declarations, found in the
+// reference index. The walk follows what the other package can reach by name,
+// as exposure does, but keeps the types rather than the members: every member
+// the other package actually uses is already in the index, since this run sees
+// the whole range.
+func (ev *evidence) evidenceCarried(m *loadedModule) {
+	var roots []types.Type
+	for _, p := range m.loadWidest() {
+		for _, obj := range p.TypesInfo.Defs {
+			if obj != nil && ev.outside[keyOf(m.fset, obj)] {
+				roots = append(roots, obj.Type())
+			}
+		}
+	}
+	evidenceWalk(m, roots, true, map[string]bool{}, ev.carried)
 }

@@ -50,3 +50,12 @@ const MAX_RETRIES = 3 // want: const MAX_RETRIES is exported.*no fix: the name h
 var _ = MAX_RETRIES
 
 func parse() int { return 2 }
+
+// Made is returned by Make, which package b calls. b holds a Made without
+// naming it, and unexporting it would leave Make returning a type b cannot
+// name.
+type Made struct {
+	V int // want: field V is exported, but nothing.*uses it$
+}
+
+func Make() Made { return Made{} }

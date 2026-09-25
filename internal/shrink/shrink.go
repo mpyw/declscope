@@ -295,6 +295,11 @@ func (r *run) judgeOne(c *candidate) (Finding, bool) {
 	if ev.exposed[c.key] {
 		return Finding{}, false
 	}
+	// A type an API used from another package returns or takes is held
+	// there, and must stay nameable where it is held.
+	if c.kind == kindType && ev.carried[c.key] {
+		return Finding{}, false
+	}
 	if c.owner != nil && ev.paired[c.key] {
 		return Finding{}, false
 	}

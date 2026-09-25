@@ -1161,6 +1161,7 @@ internal/user/user.go:11:2: field Name is exported, but nothing outside example.
 | The compiler checks that its type satisfies an interface, and the method is one it needs | Not reported |
 | A value of its type reaches another module through the exported API of a package another module may import | Not reported for a method or field. `pub.Get().Method()` needs no import of the type |
 | It is embedded in a struct that such an API hands out | Not reported. `pub.Get().Inner` selects the field by the type's name |
+| An API another package uses returns it, takes it, or holds it in an exported field | Not reported for a type. The other package holds values of it, and must still be able to name the type |
 | A build-excluded file of another package imports the package and writes `pkg.Name` | Not reported |
 | Only an external test package (`package foo_test`) names it | Reported, with no fix. A declaration of an in-package `_test.go` file is not reported: that is the `export_test.go` idiom |
 
