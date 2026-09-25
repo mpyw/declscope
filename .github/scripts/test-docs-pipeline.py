@@ -207,6 +207,34 @@ class RewriteTests(unittest.TestCase):
         self.assertIn('alt="a > b"', out)  # attribute preserved intact
         self.assertIn("width:10px", out)
 
+    def test_scheme_picture_split_into_toggled_imgs(self):
+        errors: list[str] = []
+        src = (
+            '<picture>\n'
+            '  <source media="(prefers-color-scheme: dark)" srcset="d.svg">\n'
+            '  <img src="l.svg" alt="" width="8" height="8">\n'
+            '</picture>\n'
+        )
+        out = b.rewrite_links(src, {}, from_readme=True, err=errors.append)
+        self.assertNotIn("<picture", out)
+        self.assertIn('src="l.svg#only-light"', out)
+        self.assertIn('src="d.svg#only-dark"', out)
+        self.assertEqual(out.count("width:8px;height:8px"), 2)  # both keep their size
+        self.assertEqual(errors, [])
+
+    def test_picture_inside_fence_is_kept(self):
+        errors: list[str] = []
+        src = '```html\n<picture><source media="(prefers-color-scheme: dark)" srcset="d.svg"><img src="l.svg"></picture>\n```\n'
+        out = b.rewrite_links(src, {}, from_readme=True, err=errors.append)
+        self.assertEqual(out, src)
+
+    def test_picture_without_dark_source_is_kept(self):
+        errors: list[str] = []
+        src = '<picture><source media="(min-width: 600px)" srcset="w.png"><img src="n.png"></picture>\n'
+        out = b.rewrite_links(src, {}, from_readme=True, err=errors.append)
+        self.assertIn("<picture>", out)
+        self.assertNotIn("#only-", out)
+
     def test_data_width_not_mistaken_for_width(self):
         errors: list[str] = []
         out = b.rewrite_links('<img data-width="9" src="x.png">\n', {}, from_readme=True, err=errors.append)

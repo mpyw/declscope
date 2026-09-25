@@ -125,6 +125,16 @@ DETAILS_OPEN_RE = re.compile(r"""<details\b(?:[^>"']|"[^"]*"|'[^']*')*>""", re.I
 IMG_WIDTH_RE = re.compile(r'(?<![-\w])width\s*=\s*"(\d+)"', re.IGNORECASE)
 IMG_HEIGHT_RE = re.compile(r'(?<![-\w])height\s*=\s*"(\d+)"', re.IGNORECASE)
 HAS_STYLE_RE = re.compile(r'(?<![-\w])style\s*=', re.IGNORECASE)
+# A <picture> whose <source> switches on prefers-color-scheme follows the OS, not
+# the site's light/dark toggle. Material hides an <img> whose src ends in
+# #only-light or #only-dark according to the scheme the toggle picked, so the
+# picture is turned into one such <img> per scheme. GitHub keeps the <picture>.
+PICTURE_RE = re.compile(r"<picture\b[^>]*>(.*?)</picture>", re.IGNORECASE | re.DOTALL)
+DARK_SOURCE_RE = re.compile(
+    r"""<source\b(?=[^>]*\bmedia\s*=\s*"\(prefers-color-scheme:\s*dark\)")[^>]*\bsrcset\s*=\s*"([^"]+)"[^>]*>""",
+    re.IGNORECASE,
+)
+IMG_SRC_RE = re.compile(r'(?<![-\w])src\s*=\s*"([^"]+)"', re.IGNORECASE)
 HAS_MARKDOWN_ATTR_RE = re.compile(r'(?<![-\w])markdown\s*=', re.IGNORECASE)
 # Content wrapped in <!-- site:skip --> … <!-- /site:skip --> is GitHub-only: it
 # renders on the repo's README (e.g. a "Documentation" link back to this very
@@ -220,6 +230,37 @@ def size_img(tag: str) -> str:
     if tag.endswith("/>"):
         return tag[:-2].rstrip() + style + " />"
     return tag[:-1].rstrip() + style + ">"
+
+
+def split_picture(m: re.Match) -> str:
+    """Turn a <picture> with a dark <source> into two <img>s marked #only-light
+    and #only-dark (see PICTURE_RE). Any other <picture> is left as written."""
+    inner = m.group(1)
+    dark = DARK_SOURCE_RE.search(inner)
+    img = IMG_TAG_RE.search(inner)
+    if not dark or not img or not IMG_SRC_RE.search(img.group(0)):
+        return m.group(0)
+    tag = img.group(0)
+    light = IMG_SRC_RE.sub(lambda s: f'src="{s.group(1)}#only-light"', tag, count=1)
+    darkimg = IMG_SRC_RE.sub(lambda s: f'src="{dark.group(1)}#only-dark"', tag, count=1)
+    return light + darkimg
+
+
+def split_pictures(body: str) -> str:
+    """Apply split_picture outside code fences. A <picture> spans several lines,
+    so this runs over each run of prose lines, before the per-line rewrites."""
+    fences = Fences()
+    out: list[str] = []
+    prose: list[str] = []
+    for i, line in enumerate(body.splitlines(keepends=True), start=1):
+        if fences.is_code(line, i):
+            out.append(PICTURE_RE.sub(split_picture, "".join(prose)))
+            prose = []
+            out.append(line)
+        else:
+            prose.append(line)
+    out.append(PICTURE_RE.sub(split_picture, "".join(prose)))
+    return "".join(out)
 
 
 def add_div_markdown(m: re.Match) -> str:
@@ -477,6 +518,7 @@ def rewrite_links(
             text = re.sub(r"\]\((?:\.\./|\./)?README\.md\)", "](index.md)", text)
         return text
 
+    body = split_pictures(body)
     fences = Fences()
     out: list[str] = []
     for i, line in enumerate(body.splitlines(keepends=True), start=1):

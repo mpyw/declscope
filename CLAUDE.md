@@ -434,6 +434,7 @@ The GitHub Pages site is generated from `README.md` and `docs/`, the same way as
 - **Keep headings unique when they are linked.** A `#anchor` whose slug occurs on two headings is ambiguous after the split and fails the build.
 - **`<!-- site:skip -->` … `<!-- /site:skip -->` is GitHub-only.** The README's link to the site sits in one, since it would point at itself there.
 - **The logo is drawn on a 16×16 grid** (`docs/assets/logo*.svg`) so that the favicon stays sharp at 16px. `logo-light.svg` is for a light background, `logo-dark.svg` for a dark one, and `logo.svg` switches between them by `prefers-color-scheme`. Keep new coordinates on whole units.
+- **The README's `<picture>` follows the OS scheme, so the site splits it.** `build-docs-site.py` turns a `<picture>` with a `prefers-color-scheme: dark` source into two `<img>`s marked `#only-light` and `#only-dark`, which Material shows by the scheme its toggle picked. The README keeps the `<picture>`, because GitHub reads it. `check-site-links.py` checks a fragment only on a page, since the one on an image is not an anchor.
 - **`docs/assets/social-preview.png` is captured from `social-preview.html`** at 1280×640 in a headless browser. Edit the HTML and capture again rather than editing the PNG. GitHub's own social preview is uploaded by hand in the repository settings, so it has to be uploaded again after a change.
 
 ## Conventions

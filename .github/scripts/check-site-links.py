@@ -172,7 +172,9 @@ def main() -> int:
             if target is None:
                 errors.append(f"{page_rel}: {url!r} -> missing file (resolved {rel!r})")
                 continue
-            if fragment and fragment not in page_ids(target):
+            # Only a page has anchors. A fragment on an asset is not one, such
+            # as the #only-light/#only-dark Material reads off an image.
+            if fragment and target.endswith(".html") and fragment not in page_ids(target):
                 errors.append(f"{page_rel}: {url!r} -> no anchor #{fragment} in {target}")
 
     if errors:
