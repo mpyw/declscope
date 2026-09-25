@@ -321,7 +321,7 @@ func (r *run) skip(p *packages.Package) string {
 // A type an exported declaration returns, takes or holds keeps its name while
 // that declaration keeps its own, or the declaration would hand out a type
 // its callers cannot name. Which declarations keep their names is known only
-// once each is judged, so judging goes in three steps:
+// once each is judged, so judging goes in steps:
 //
 //  1. Each candidate is judged on its own, and each rename is planned without
 //     claiming its new name.
@@ -332,19 +332,19 @@ func (r *run) skip(p *packages.Package) string {
 //     fixed in the same run, so a declaration and the type it returns still
 //     go together, and one run of -fix settles the package.
 //  3. The fixes left claim their names, in order. A fix that finds its name
-//     claimed keeps its report, and step 2 runs again, since a declaration
-//     that keeps its name may carry more.
+//     claimed loses it, and judging starts again from step 2, since a
+//     declaration that keeps its name may carry more.
+//  4. A loser whose name no fix that stands has claimed lost to a fix step 2
+//     withheld since. It is released, claims first from then on, and judging
+//     starts again. Each loser is released once.
 //
-// Every repeat only takes fixes away, and there are finitely many, so it ends.
-// Names are claimed only once the types are settled, so a claim is never
-// made by a fix that step 2 later withholds.
+// Every repeat either adds a loser or releases one for good, and there are
+// finitely many, so it ends. Names are claimed only once the types are
+// settled, so a claim is never made by a fix that step 2 later withholds.
+//
+// An ignore silences a report only once the types settle: a type found
+// carried is used, and the ignore over it silenced nothing.
 func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
-	type verdict struct {
-		c    *candidate
-		f    Finding
-		plan *renamePlanned
-		used bool
-	}
 	var vs []*verdict
 	for _, c := range candidates {
 		if r.usedOutside(c) {
@@ -366,65 +366,149 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 			if c.testFile {
 				continue
 			}
-			v.f.TestOnly, v.f.Withheld = true, "external tests use it"
+			v.f.TestOnly, v.base = true, "external tests use it"
 		} else {
-			v.f.Withheld = r.withheld(c)
+			v.base = r.withheld(c)
 		}
-		if r.silencedByIgnore(c) {
-			continue
-		}
-		if v.f.Withheld == "" {
-			v.plan, v.f.Withheld = r.renamePlan(c)
+		v.silenced = ignoreCovers(c)
+		if v.base == "" && !v.silenced {
+			v.plan, v.base = r.renamePlan(c)
 		}
 		vs = append(vs, v)
 	}
-	fixable := func(v *verdict) bool { return !v.used && v.f.Withheld == "" }
+	roots := r.carrierRoots(p)
+	first := map[*verdict]bool{}
 	for {
-		for changed := true; changed; {
-			changed = false
-			fixed := map[string]bool{}
-			for _, v := range vs {
-				if fixable(v) {
-					fixed[v.c.key] = true
-				}
-			}
-			carried, kept := r.typesCarried(p, fixed)
-			for _, v := range vs {
-				switch {
-				case v.c.kind != kindType || v.used:
-				case carried[v.c.key]:
-					v.used, changed = true, true
-				case kept[v.c.key] && fixable(v):
-					v.f.Withheld, changed = "an exported declaration that keeps its name hands it out", true
-				}
+		for _, v := range vs {
+			v.used, v.kept, v.f.Withheld = false, false, v.base
+			if v.lost {
+				v.f.Withheld = v.plan.taken
 			}
 		}
+		r.settle(p.Types, vs, roots)
 		claims := &renameClaims{pkg: map[string]bool{}}
 		clashed := false
-		for _, v := range vs {
-			if fixable(v) && !r.renameClaimIn(claims, v.c, v.plan) {
-				v.f.Withheld, clashed = v.plan.taken, true
+		for _, v := range slices.Concat(verdictsFirst(vs, first, true), verdictsFirst(vs, first, false)) {
+			if v.fixable() && !r.renameClaimIn(claims, v.c, v.plan) {
+				v.lost, v.f.Withheld, clashed = true, v.plan.taken, true
 			}
 		}
-		if !clashed {
-			break
+		if clashed {
+			continue
 		}
+		released := false
+		for _, v := range vs {
+			if v.lost && !first[v] && r.renameClaimFree(claims, v.c, v.plan) {
+				v.lost, first[v], released = false, true, true
+			}
+		}
+		if released {
+			continue
+		}
+		// A kept declaration whose name a fix takes reads as taken, the way
+		// the next run, with the fix applied, reads it.
+		for _, v := range vs {
+			if v.kept && !r.renameClaimFree(claims, v.c, v.plan) {
+				v.f.Withheld = v.plan.taken
+			}
+		}
+		break
 	}
 	var findings []Finding
 	for _, v := range vs {
-		if v.used {
-			continue
+		switch {
+		case v.used:
+		case v.silenced:
+			r.ignoreSilenced(v.c)
+		default:
+			if v.fixable() {
+				v.f.Fix = v.plan.edits
+			}
+			findings = append(findings, v.f)
 		}
-		if fixable(v) {
-			v.f.Fix = v.plan.edits
-		}
-		findings = append(findings, v.f)
 	}
 	return findings
 }
 
-// typesCarried returns the types of the package that its exported
-// declarations carry, in two sets.
+// verdict is judge's working state for one candidate.
+type verdict struct {
+	c    *candidate
+	f    Finding
+	plan *renamePlanned
+	// base is why the fix is withheld before types settle, or "".
+	base string
+	// silenced marks a candidate an ignore covers. It keeps its name, and
+	// its report is dropped unless the candidate turns out used.
+	silenced bool
+	// used marks a type an API used from another package carries, and kept
+	// one another exported declaration that keeps its name carries.
+	used, kept bool
+	// lost marks a fix whose name another claimed first.
+	lost bool
+}
+
+func (v *verdict) fixable() bool { return !v.used && !v.silenced && v.f.Withheld == "" }
+
+// verdictsFirst returns the verdicts that are, or are not, in first, in
+// order.
+func verdictsFirst(vs []*verdict, first map[*verdict]bool, in bool) []*verdict {
+	var out []*verdict
+	for _, v := range vs {
+		if first[v] == in {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// settle settles which types are used and which keep their names, until
+// nothing changes. Each pass only takes fixes away.
+func (r *run) settle(within *types.Package, vs []*verdict, roots []types.Object) {
+	for changed := true; changed; {
+		changed = false
+		fixed := map[string]bool{}
+		for _, v := range vs {
+			if v.fixable() {
+				fixed[v.c.key] = true
+			}
+		}
+		carried, kept := r.typesCarried(within, roots, fixed)
+		for _, v := range vs {
+			switch {
+			case v.c.kind != kindType || v.used:
+			case carried[v.c.key]:
+				v.used, changed = true, true
+			case kept[v.c.key] && v.fixable():
+				v.kept, v.f.Withheld, changed = true, "an exported declaration that keeps its name hands it out", true
+			}
+		}
+	}
+}
+
+// carrierRoots returns every exported declaration of the package that can
+// carry a type: those at package scope, and the methods and fields another
+// package uses.
+func (r *run) carrierRoots(p *packages.Package) []types.Object {
+	var roots []types.Object
+	for _, obj := range p.TypesInfo.Defs {
+		if obj == nil || !obj.Exported() || obj.Pkg() != p.Types {
+			continue
+		}
+		switch obj.(type) {
+		case *types.Func, *types.Var, *types.Const, *types.TypeName:
+		default:
+			continue
+		}
+		if obj.Parent() != p.Types.Scope() && !r.ev.outside[keyOf(r.mod.Fset, obj)] {
+			continue
+		}
+		roots = append(roots, obj)
+	}
+	return roots
+}
+
+// typesCarried returns the types of within that the roots not in fixed
+// carry, in two sets.
 //
 // carried is what a declaration used from another package carries: a result,
 // a parameter, a variable's type, an exported field or method of a type used
@@ -434,39 +518,26 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 // A root is never in fixed, so a type it reaches of itself changes nothing,
 // and one whose own fix is withheld keeps its report.
 //
-// A declaration in fixed is no root, and a method or field in fixed is not
-// followed, since the same run unexports it. spec/shrink_settle.fsl proves
-// that settling this way ends, and leaves nothing fixed that a declaration
-// keeping its name carries.
-func (r *run) typesCarried(p *packages.Package, fixed map[string]bool) (carried, kept map[string]bool) {
+// A method or field in fixed is not followed, since the same run unexports
+// it. spec/shrink_settle.fsl proves that settling this way ends, and leaves
+// nothing fixed that a declaration keeping its name carries.
+func (r *run) typesCarried(within *types.Package, roots []types.Object, fixed map[string]bool) (carried, kept map[string]bool) {
 	fset := r.mod.Fset
 	carried, kept = map[string]bool{}, map[string]bool{}
 	follow := func(o types.Object) bool { return !fixed[keyOf(fset, o)] }
-	var roots []types.Object
-	for _, obj := range p.TypesInfo.Defs {
-		if obj == nil || !obj.Exported() || obj.Pkg() != p.Types || fixed[keyOf(fset, obj)] {
-			continue
-		}
-		switch obj.(type) {
-		case *types.Func, *types.Var, *types.Const, *types.TypeName:
-		default:
-			continue
-		}
-		if obj.Parent() != p.Types.Scope() && !r.ev.outside[keyOf(fset, obj)] {
-			continue
-		}
-		roots = append(roots, obj)
-	}
 	var outside, staying []types.Type
 	for _, root := range roots {
-		if r.ev.outside[keyOf(fset, root)] {
+		key := keyOf(fset, root)
+		switch {
+		case fixed[key]:
+		case r.ev.outside[key]:
 			outside = append(outside, root.Type())
-		} else {
+		default:
 			staying = append(staying, root.Type())
 		}
 	}
-	reach.ByName(outside, p.Types, follow, func(tn *types.TypeName) { carried[keyOf(fset, tn)] = true })
-	reach.ByName(staying, p.Types, follow, func(tn *types.TypeName) { kept[keyOf(fset, tn)] = true })
+	reach.ByName(outside, within, follow, func(tn *types.TypeName) { carried[keyOf(fset, tn)] = true })
+	reach.ByName(staying, within, follow, func(tn *types.TypeName) { kept[keyOf(fset, tn)] = true })
 	return carried, kept
 }
 

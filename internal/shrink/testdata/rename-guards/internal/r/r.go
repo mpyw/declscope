@@ -10,16 +10,25 @@ func Plain() int { return 1 } // want: func Plain is exported, but nothing.*uses
 // A Thing is fixed, and so is the name after the article.
 type Thing struct{} // want: type Thing is exported, but nothing.*uses it$
 
-// Keep keeps its name, since an example names it, so KeptID keeps its own.
-// KeptID then claims no name, and Kid, which would lower to the same, is
-// fixed with the Toy it returns, all in one run.
-func Keep() KeptID { return KeptID{} } // want: func Keep is exported.*no fix: an example function names it
+// Keep keeps its name, since an example names it, so Kept keeps its own.
+// Kept then claims no name, and KEPT, which lowers to the same, is fixed
+// with the Toy it returns, all in one run. Kept's report reads as taken,
+// the way the next run reads it once KEPT is kept.
+func Keep() Kept { return Kept{} } // want: func Keep is exported.*no fix: an example function names it
 
-type KeptID struct{} // want: type KeptID is exported.*no fix: an exported declaration that keeps its name hands it out
+type Kept struct{} // want: type Kept is exported.*no fix: the unexported name is taken or would be captured
 
-func KeptId() *Toy { return nil } // want: func KeptId is exported, but nothing.*uses it$
+func KEPT() *Toy { return nil } // want: func KEPT is exported, but nothing.*uses it$
 
 type Toy struct{} // want: type Toy is exported, but nothing.*uses it$
+
+// Wrap and WRAP both lower to wrap, and WRAP hands out Wrap. Wrap claims
+// the name first, so WRAP's fix is withheld, and WRAP, keeping its name,
+// keeps Wrap's: neither would be fixed, for a name neither takes. The claim
+// is made again with WRAP first, and Wrap's fix is the one withheld.
+type Wrap struct{} // want: type Wrap is exported.*no fix: the unexported name is taken or would be captured
+
+func WRAP() Wrap { return Wrap{} } // want: func WRAP is exported, but nothing.*uses it$
 
 // NewThing returns a Thing, and is fixed in the same run, so it keeps
 // nothing exported: one run of -fix settles both.
@@ -211,7 +220,8 @@ var (
 	_ Thing
 	_ = NewThing
 	_ = Keep
-	_ = KeptId
+	_ = KEPT
+	_ = WRAP
 	_ Alias
 	_ Level
 	_ = Asked{}.Run

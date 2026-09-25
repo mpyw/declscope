@@ -575,30 +575,41 @@ func (ev *evidence) exposure(m *module.Module) {
 }
 
 // evidenceTagged returns every struct type of the module with a field tag in
-// the key:"value" form. The tag says a marshaller reads the struct through
-// reflection, whether or not a value of it reaches one in this module yet, so
-// the struct escapes: all of its fields, tagged or not, and what they hold.
-// go vet also rejects a json or xml tag on an unexported field, so the rename
-// would not pass vet.
+// the key:"value" form, its own or one on a struct it holds without naming.
+// The tag says a marshaller reads the struct through reflection, whether or
+// not a value of it reaches one in this module yet, so the struct escapes:
+// all of its fields, tagged or not, and what they hold. go vet also rejects a
+// json or xml tag on an unexported field, so the rename would not pass vet.
 func evidenceTagged(m *module.Module) []types.Type {
 	var out []types.Type
 	for _, p := range m.Widest() {
 		for _, obj := range p.TypesInfo.Defs {
-			tn, ok := obj.(*types.TypeName)
-			if !ok || tn.IsAlias() {
-				continue
-			}
-			st, ok := tn.Type().Underlying().(*types.Struct)
-			if !ok {
-				continue
-			}
-			for i := range st.NumFields() {
-				if strings.Contains(st.Tag(i), `:"`) {
-					out = append(out, tn.Type())
-					break
-				}
+			if tn, ok := obj.(*types.TypeName); ok && !tn.IsAlias() && evidenceTagIn(tn.Type().Underlying()) {
+				out = append(out, tn.Type())
 			}
 		}
 	}
 	return out
+}
+
+// evidenceTagIn reports whether t is a struct with a tag in the key:"value"
+// form, or holds one without naming it. A named type is judged on its own.
+func evidenceTagIn(t types.Type) bool {
+	switch t := t.(type) {
+	case *types.Struct:
+		for i := range t.NumFields() {
+			if strings.Contains(t.Tag(i), `:"`) || evidenceTagIn(t.Field(i).Type()) {
+				return true
+			}
+		}
+	case *types.Pointer:
+		return evidenceTagIn(t.Elem())
+	case *types.Slice:
+		return evidenceTagIn(t.Elem())
+	case *types.Array:
+		return evidenceTagIn(t.Elem())
+	case *types.Map:
+		return evidenceTagIn(t.Key()) || evidenceTagIn(t.Elem())
+	}
+	return false
 }

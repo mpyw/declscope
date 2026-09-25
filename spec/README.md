@@ -62,6 +62,8 @@ the binary.
 | `shrink.fsl` | One pass converges: an unexported declaration is out of the rule, and no report starts after the fix | As above |
 | `shrink_settle.fsl` | Settling which types keep their names ends, and leaves no fixed type that a declaration keeping its name carries, so no exported declaration hands out an unexported type | Every combination of three declarations, which of them are judged fixable, and what carries what, self-edges included |
 | `shrink_settle.fsl` | Every type kept this way has a carrier that keeps its name, so a second run holds it again, and a declaration unexported in the same run keeps nothing: one run of `-fix` settles the package | As above |
+| `shrink_claim.fsl` | Claiming new names once the types settle ends: every round adds a loser or releases one for good, and a loser is released once | Every combination of three fixes, which of them judging leaves fixable, which pairs lower to one name, and every fix set settling can leave standing |
+| `shrink_claim.fsl` | When it ends, no two standing fixes share a name, and a loser that stays withheld without having been released has its name taken by a fix that stands, so its report reads true now and after the fix | As above |
 | `rename_sound.fsl` | **Fails** — models a guard that checks package scope only, and enumerates what a sound guard must check beyond it | As above |
 | `rename_siblings.fsl` | **Fails** — models fixes that check their target against the pre-fix names only, and shows two of them converging on one name | Every pair of rename targets |
 
@@ -118,7 +120,7 @@ step and needs gigabytes for the same claims these prove in single-digit
 megabytes.
 
 ```console
-./spec/verify.sh     # what CI runs: seventeen proved, two violated
+./spec/verify.sh     # what CI runs: eighteen proved, two violated
 ```
 
 Or one at a time:
@@ -142,6 +144,7 @@ fslc verify unused_ignore.fsl   --depth 2
 fslc verify unused_modes.fsl    --depth 6
 fslc verify shrink.fsl          --depth 6
 fslc verify shrink_settle.fsl   --depth 8
+fslc verify shrink_claim.fsl    --depth 8
 fslc verify rename_sound.fsl     --depth 2   # expected: violated
 fslc verify rename_siblings.fsl  --depth 3   # expected: violated
 ```
@@ -158,7 +161,7 @@ run prints is the shape of the model, not a failure, and `rename_guarded.fsl`
 also reports a vacuous antecedent — which is the guard working, and is stated as
 `NothingResolvedNewName` rather than left as a warning.
 
-The seventeen that pass are `proved` under `--engine induction`, which is what
+The eighteen that pass are `proved` under `--engine induction`, which is what
 `verify.sh` and CI assert. Bounded verification alone would let an invariant be
 true to a depth without being inductive, and reading the exit code alone would
 let a spec that stopped parsing pass as "violated, as intended" — `fslc` exits

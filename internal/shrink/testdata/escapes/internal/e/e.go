@@ -96,6 +96,16 @@ type Bare struct { // want: type Bare is exported, but nothing.*uses it$
 
 var _ = Bare{}.Field
 
+// Config's only tag is on a field of a struct it holds without naming it,
+// which a marshaller reads with Config.
+type Config struct {
+	Server struct {
+		Port int `yaml:"port"`
+	}
+}
+
+var _ = Config{}.Server.Port
+
 var _ = Tagged{}.Name + fmt.Sprint(Tagged{}.Count, Tagged{}.Plain)
 
 // Dead is converted only in a function literal that never runs, which is no

@@ -65,6 +65,14 @@ func stray() {
 
 func Used() int { return 1 }
 
+// Hand is called by package b, so the Handed it returns is used there, and
+// the ignore silences nothing.
+//
+//declscope:ignore overexported // want: unused //declscope:ignore overexported
+type Handed struct{}
+
+func Hand() *Handed { return nil }
+
 // Build is silenced, so it keeps its name, and the type it returns keeps its
 // own, with its report.
 //

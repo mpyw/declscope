@@ -22,8 +22,9 @@
 // A carrier is never fixable, so a type carrying itself keeps nothing, and the
 // model needs no rule against it (SelfCarryKeepsNothing).
 //
-// Rename clashes are left out. Names are claimed only once this settles, and a
-// clash starts it again with one fix fewer, which only takes fixes away.
+// Rename clashes are left out, and are shrink_claim.fsl's. Names are claimed
+// only once this settles, and a clash or a released loser starts it again
+// from the judgment, with the losers left out.
 spec ShrinkSettle {
   type Decl = 0..2
 

@@ -130,6 +130,27 @@ type renameClaims struct {
 //
 //declscope:package // the core claims each fix that stands
 func (r *run) renameClaimIn(claims *renameClaims, c *candidate, plan *renamePlanned) bool {
+	if !r.renameClaimFree(claims, c, plan) {
+		return false
+	}
+	if plan.pkgKey != "" {
+		claims.pkg[plan.pkgKey] = true
+	}
+	if plan.member != nil {
+		claims.member = append(claims.member, *plan.member)
+	}
+	return true
+}
+
+// renameClaimFree reports whether plan's name is free among what claims
+// holds, claiming nothing. A nil plan was never made, so nothing claims its
+// name.
+//
+//declscope:package // the core asks it of the fixes it withheld
+func (r *run) renameClaimFree(claims *renameClaims, c *candidate, plan *renamePlanned) bool {
+	if plan == nil {
+		return true
+	}
 	if plan.pkgKey != "" && claims.pkg[plan.pkgKey] {
 		return false
 	}
@@ -145,12 +166,6 @@ func (r *run) renameClaimIn(claims *renameClaims, c *candidate, plan *renamePlan
 				}
 			}
 		}
-	}
-	if plan.pkgKey != "" {
-		claims.pkg[plan.pkgKey] = true
-	}
-	if plan.member != nil {
-		claims.member = append(claims.member, *plan.member)
 	}
 	return true
 }

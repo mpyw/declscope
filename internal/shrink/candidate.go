@@ -38,13 +38,11 @@ func candidatesOf(p *packages.Package) ([]*candidate, map[token.Pos][]directive.
 		return ignores
 	}
 	var out []*candidate
-	add := func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore, doc *ast.CommentGroup) *candidate {
-		c := &candidate{
+	add := func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore, doc *ast.CommentGroup) {
+		out = append(out, &candidate{
 			obj: obj, key: keyOf(p.Fset, obj), kind: k, owner: owner, pkg: p, ignores: ignores, doc: doc,
 			testFile: strings.HasSuffix(p.Fset.File(obj.Pos()).Name(), "_test.go"),
-		}
-		out = append(out, c)
-		return c
+		})
 	}
 	for _, file := range p.Syntax {
 		if ast.IsGenerated(file) {
@@ -72,8 +70,8 @@ func candidatesOf(p *packages.Package) ([]*candidate, map[token.Pos][]directive.
 }
 
 // candidateAdd records one candidate with the ignores covering it and its
-// doc comment, and returns it.
-type candidateAdd func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore, doc *ast.CommentGroup) *candidate
+// doc comment.
+type candidateAdd func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore, doc *ast.CommentGroup)
 
 // candidateFunc records an exported func, or an exported method of a named
 // type that is not an interface.
