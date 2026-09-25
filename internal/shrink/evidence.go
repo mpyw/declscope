@@ -181,7 +181,7 @@ func (ev *evidence) evidenceExamples(m *loadedModule, p *packages.Package) {
 		subject = variants[0].Types
 	}
 	for _, file := range p.Syntax {
-		if !strings.HasSuffix(m.fset.Position(file.Pos()).Filename, "_test.go") {
+		if !strings.HasSuffix(m.fset.File(file.Pos()).Name(), "_test.go") {
 			continue
 		}
 		for _, decl := range file.Decls {
@@ -438,7 +438,7 @@ func (ev *evidence) evidenceLinknames(m *loadedModule) {
 		for _, p := range m.byPath[path] {
 			scope := p.Types.Scope()
 			for name := range names {
-				typ, member, isMember := strings.Cut(name, ".")
+				typ, member, isMember := evidenceLinknameMember(name)
 				obj := scope.Lookup(typ)
 				if obj == nil {
 					continue
@@ -455,6 +455,16 @@ func (ev *evidence) evidenceLinknames(m *loadedModule) {
 			}
 		}
 	}
+}
+
+// evidenceLinknameMember splits the part of a linkname target after the
+// package path: F, T.M, or (*T).M for a method on a pointer receiver.
+func evidenceLinknameMember(name string) (typ, member string, isMember bool) {
+	if rest, ok := strings.CutPrefix(name, "(*"); ok {
+		typ, member, isMember = strings.Cut(rest, ").")
+		return typ, member, isMember
+	}
+	return strings.Cut(name, ".")
 }
 
 // evidenceInterfaceConversions returns the type of every value converted to
@@ -549,6 +559,12 @@ func evidenceWalk(m *loadedModule, roots []types.Type, exportedOnly bool, into m
 				}
 				if exportedOnly && f.Exported() {
 					into[keyOf(m.fset, f)] = true
+					// An embedded field is named by its type, so another
+					// module selecting it (v.Inner, Inner: in a literal)
+					// spells the type's name.
+					if tn := embeddedTypeName(f); tn != nil {
+						into[keyOf(m.fset, tn)] = true
+					}
 				}
 				walk(f.Type())
 			}
@@ -570,14 +586,20 @@ func evidenceWalk(m *loadedModule, roots []types.Type, exportedOnly bool, into m
 	}
 }
 
-// evidenceExposure marks every method and field another module can reach.
-// The roots are the exported declarations of every package another module
-// can import: one with no internal element in its path. package main is
-// among them, since -buildmode=plugin looks its exported symbols up.
+// evidenceExposure marks every method and field another module can reach,
+// and every embedded type another module can name as a field.
+//
+// The roots are the exported declarations of every package a module this run
+// does not load may import: every package whose range rangeOf cannot vouch
+// for. That is a package outside internal/, and also an internal package
+// whose parent lies above the module or holds a nested module that may import
+// it. "No internal element in its path" is not the test: such a package can
+// hand a value out to another module just the same. package main is among the
+// roots, since -buildmode=plugin looks its exported symbols up.
 func (ev *evidence) evidenceExposure(m *loadedModule) {
 	var roots []types.Type
 	for _, path := range m.paths {
-		if _, internal := loadInternalParent(path); internal {
+		if _, judged := m.rangeOf(path); judged {
 			continue
 		}
 		// An external test package is imported by nothing.

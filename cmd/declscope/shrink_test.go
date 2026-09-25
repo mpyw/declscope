@@ -167,3 +167,15 @@ func TestShrinkRefusesUnreadableExcludedFile(t *testing.T) {
 		t.Fatalf("exit %d, want a refusal naming the file:\n%s", code, out)
 	}
 }
+
+// TestShrinkRefusesNestedModuleWithoutPath pins that a nested go.mod naming
+// no module refuses the run: whether it may import an internal package
+// depends on that path.
+func TestShrinkRefusesNestedModuleWithoutPath(t *testing.T) {
+	root := shrinkModule(t)
+	writeTree(t, root, "tools/go.mod", "go 1.25\n")
+	out, code := runIn(t, bin, root, "shrink")
+	if code != 1 || !strings.Contains(out, "no module path") {
+		t.Fatalf("exit %d, want a refusal naming the go.mod:\n%s", code, out)
+	}
+}

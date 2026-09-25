@@ -83,6 +83,18 @@ func TestShrinkEdge(t *testing.T) { shrinkCheck(t, "testdata/edge") }
 
 func TestShrinkMore(t *testing.T) { shrinkCheck(t, "testdata/more") }
 
+// TestShrinkReview holds one case per finding of the review of the first
+// version, each of which the first version got wrong.
+func TestShrinkReview(t *testing.T) { shrinkCheck(t, "testdata/review") }
+
+// TestShrinkOuter pins that a package whose path runs through internal/ is
+// still an exposure root when a module this run does not load may import it.
+func TestShrinkOuter(t *testing.T) { shrinkCheck(t, "testdata/outer") }
+
+// TestShrinkTools pins that a nested module in a directory ./... skips still
+// keeps the packages it may import unjudged.
+func TestShrinkTools(t *testing.T) { shrinkCheck(t, "testdata/tools") }
+
 // TestShrinkNested pins that a nested module under an internal parent keeps
 // every package under it unjudged: the module could import them, and this run
 // never loads it.
@@ -93,7 +105,7 @@ func TestShrinkNested(t *testing.T) { shrinkCheck(t, "testdata/nested") }
 // which also compiles the tests; every report that offered a fix is gone; and
 // no report appears that was not there before.
 func TestShrinkConverges(t *testing.T) {
-	for _, name := range []string{"basic", "edge", "more"} {
+	for _, name := range []string{"basic", "edge", "more", "review", "outer"} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			if err := os.CopyFS(dir, os.DirFS(filepath.Join("testdata", name))); err != nil {

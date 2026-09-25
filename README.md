@@ -1158,7 +1158,8 @@ internal/user/user.go:11:2: field Name is exported, but nothing outside example.
 | Another package names it, writes it in an unkeyed literal, or links it with `//go:linkname` | Not reported |
 | A struct conversion or an identical unnamed struct type pairs a field by name | Not reported |
 | The compiler checks that its type satisfies an interface, and the method is one it needs | Not reported |
-| A value of its type reaches another module through the exported API of a package outside `internal/` | Not reported for a method or field. `pub.Get().Method()` needs no import of the type |
+| A value of its type reaches another module through the exported API of a package another module may import | Not reported for a method or field. `pub.Get().Method()` needs no import of the type |
+| It is embedded in a struct that such an API hands out | Not reported. `pub.Get().Inner` selects the field by the type's name |
 | A build-excluded file of another package imports the package and writes `pkg.Name` | Not reported |
 | Only an external test package (`package foo_test`) names it | Reported, with no fix |
 
@@ -1174,6 +1175,7 @@ A fix is offered only where no use can exist outside the package. A doubt withho
 | A generated file names it | A regeneration would put the old name back |
 | An example function names it (`ExampleF`, `ExampleT_M`) | `go vet` checks that the name still resolves |
 | The new name is taken, captured, a keyword, predeclared, `init` or `main` | The rename would not compile, or would compute something else |
+| A struct embedding the type already has a field or method of the new name | The embedded field takes the type's new name, and would collide |
 
 ### What is never judged
 
@@ -1182,16 +1184,16 @@ A fix is offered only where no use can exist outside the package. A doubt withho
 | A package outside `internal/` | Another module may import it |
 | `package main` | `-buildmode=plugin` looks its exported symbols up by name |
 | A package with assembly or cgo | Those files name Go symbols where `go/types` does not look |
-| An `internal/` whose parent directory holds another module | That module may import the package, and this run never loads it |
+| An `internal/` whose parent path holds a nested module's path | That module may import the package, and this run never loads it. It counts wherever it sits, `_tools/` and `testdata/` included |
 | An interface's method names | Every implementation would have to rename too |
 | A test function of a `_test.go` file | `go test` finds it by name |
 
 > [!IMPORTANT]
-> `shrink` assumes that every module whose path extends an `internal/` parent lives under that parent's directory. Go checks `internal/` by import path. A module published from somewhere else under such a path, such as a `/v2` on another branch, could import the package unseen.
+> `shrink` assumes that every module whose path extends an `internal/` parent lives inside this module's directory tree. Go checks `internal/` by import path. A module published from somewhere else under such a path, such as a `/v2` on another branch, could import the package unseen.
 
 ### Silencing it
 
-Write `//declscope:ignore overexported` on the declaration, on a field's type, or before the package clause. A bare `//declscope:ignore` does not reach this rule. The analyzer judges a bare ignore, and would report it unused when only `shrink` needed it.
+Write `//declscope:ignore overexported` on the declaration, on a field's type, or before the package clause. On a func, a trailing comment on its first or last line counts too, as it does for the analyzer. A bare `//declscope:ignore` does not reach this rule. The analyzer judges a bare ignore, and would report it unused when only `shrink` needed it.
 
 `shrink` reports an `//declscope:ignore overexported` that silenced nothing. The analyzer never judges an ignore naming this rule, since it cannot see whether `shrink` needed it.
 

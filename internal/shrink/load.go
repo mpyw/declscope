@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/mod/modfile"
 	"golang.org/x/tools/go/packages"
 
 	"github.com/mpyw/declscope/internal/directive"
@@ -39,9 +40,10 @@ type loadedModule struct {
 	paths  []string
 	// excluded is every Go file of the module the build did not compile.
 	excluded []*loadExcludedFile
-	// nested is every directory under the module root holding a go.mod of
-	// its own. A module there may import any internal package whose parent
-	// holds it, and this run never loads it.
+	// nested is the module path of every go.mod below the module root. Go
+	// checks internal/ by import path, so a nested module whose path extends
+	// an internal parent may import the package, and this run never loads
+	// it. One with an unrelated path cannot, wherever it sits.
 	//
 	//declscope:private // only the range reads it
 	nested []string
@@ -60,10 +62,12 @@ func loadModule(dir string) (*loadedModule, error) {
 	}
 	cfg := &packages.Config{
 		Dir: root,
+		// No NeedDeps: dependencies come from export data. Only the module's
+		// own packages are judged, and a generic declared outside the module
+		// is covered by evidenceInstances rather than by its body.
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles |
-			packages.NeedImports | packages.NeedDeps | packages.NeedTypes |
-			packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedForTest |
-			packages.NeedModule,
+			packages.NeedImports | packages.NeedTypes | packages.NeedSyntax |
+			packages.NeedTypesInfo | packages.NeedForTest | packages.NeedModule,
 		Tests: true,
 	}
 	pkgs, err := packages.Load(cfg, "./...")
@@ -163,8 +167,8 @@ func loadIsTestMain(p *packages.Package) bool {
 //
 // The deepest internal element is the one that restricts: a/internal/b/
 // internal/c is importable only from a/internal/b. The tree must lie inside
-// the module, and must hold no nested module, which could import the package
-// from a module this run never loads.
+// the module, and no nested module may have a path inside it: that module
+// could import the package, and this run never loads it.
 //
 //declscope:package // the core skips a package whose importers it cannot all see
 func (m *loadedModule) rangeOf(pkgPath string) (string, bool) {
@@ -175,9 +179,8 @@ func (m *loadedModule) rangeOf(pkgPath string) (string, bool) {
 	if parent != m.path && !strings.HasPrefix(parent, m.path+"/") {
 		return "", false
 	}
-	dir := filepath.Join(m.dir, filepath.FromSlash(strings.TrimPrefix(parent, m.path)))
 	for _, n := range m.nested {
-		if n == dir || strings.HasPrefix(n, dir+string(filepath.Separator)) {
+		if n == parent || strings.HasPrefix(n, parent+"/") {
 			return "", false
 		}
 	}
@@ -186,8 +189,6 @@ func (m *loadedModule) rangeOf(pkgPath string) (string, bool) {
 
 // loadInternalParent returns the import path above the deepest internal
 // element of pkgPath.
-//
-//declscope:package // evidence.go roots the exposure walk outside internal/
 func loadInternalParent(pkgPath string) (string, bool) {
 	elems := strings.Split(pkgPath, "/")
 	for i := len(elems) - 1; i >= 0; i-- {
@@ -229,6 +230,10 @@ type loadExcludedFile struct {
 // ./... skips: testdata, directories starting with . or _, and the vendor
 // directory at the module root. A vendor directory anywhere else holds
 // ordinary packages of the module.
+//
+// A go.mod is looked for before any of that. A nested module in _tools or
+// testdata is not part of this module's build, but it can import the
+// module's internal packages all the same.
 func (m *loadedModule) loadExcluded() error {
 	compiled := map[string]bool{}
 	for _, p := range m.pkgs {
@@ -245,13 +250,17 @@ func (m *loadedModule) loadExcluded() error {
 			if path == m.dir {
 				return nil
 			}
+			if data, err := os.ReadFile(filepath.Join(path, "go.mod")); err == nil {
+				modPath := modfile.ModulePath(data)
+				if modPath == "" {
+					return fmt.Errorf("reading %s: no module path", filepath.Join(path, "go.mod"))
+				}
+				m.nested = append(m.nested, modPath)
+				return filepath.SkipDir
+			}
 			name := d.Name()
 			rootVendor := name == "vendor" && filepath.Dir(path) == m.dir
 			if name == "testdata" || rootVendor || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") {
-				return filepath.SkipDir
-			}
-			if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
-				m.nested = append(m.nested, path)
 				return filepath.SkipDir
 			}
 			return nil
@@ -397,12 +406,12 @@ func loadCandidates(pkgs []*packages.Package) []*candidate {
 		if ast.IsGenerated(file) {
 			continue
 		}
-		testFile := strings.HasSuffix(fset.Position(file.Pos()).Filename, "_test.go")
+		testFile := strings.HasSuffix(fset.File(file.Pos()).Name(), "_test.go")
 		fileIgnores := directive.ParseFile(file).Ignores
 		for _, decl := range file.Decls {
 			switch d := decl.(type) {
 			case *ast.FuncDecl:
-				loadFuncCandidate(p, d, testFile, fileIgnores, add)
+				loadFuncCandidate(p, d, testFile, slices.Concat(loadTrailing(fset, file, d), fileIgnores), add)
 			case *ast.GenDecl:
 				loadGenCandidates(p, d, fileIgnores, add)
 			}
@@ -411,10 +420,30 @@ func loadCandidates(pkgs []*packages.Package) []*candidate {
 	return out
 }
 
+// loadTrailing returns the ignores in a comment trailing a func's first or
+// last line. go/parser attaches none of them to the func, since an
+// ast.FuncDecl has no Comment field, and the analyzer reads the same two
+// lines (looseTrailing), so an ignore means the same thing to both.
+func loadTrailing(fset *token.FileSet, file *ast.File, d *ast.FuncDecl) []directive.Ignore {
+	first, last := fset.PositionFor(d.Pos(), false).Line, fset.PositionFor(d.End(), false).Line
+	var ignores []directive.Ignore
+	for _, g := range file.Comments {
+		if g.Pos() < d.Pos() || g == d.Doc {
+			continue
+		}
+		if line := fset.PositionFor(g.Pos(), false).Line; line == first || line == last {
+			ignores = append(ignores, directive.ParseDecl(g).Ignores...)
+		}
+	}
+	return ignores
+}
+
 // loadAdd records one candidate.
 type loadAdd func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore)
 
-func loadFuncCandidate(p *packages.Package, d *ast.FuncDecl, testFile bool, fileIgnores []directive.Ignore, add loadAdd) {
+// loadFuncCandidate records a func or method. outer holds the ignores the
+// func takes from outside its doc comment: a trailing comment, and the file.
+func loadFuncCandidate(p *packages.Package, d *ast.FuncDecl, testFile bool, outer []directive.Ignore, add loadAdd) {
 	if !d.Name.IsExported() {
 		return
 	}
@@ -422,7 +451,7 @@ func loadFuncCandidate(p *packages.Package, d *ast.FuncDecl, testFile bool, file
 	if !ok {
 		return
 	}
-	ignores := slices.Concat(directive.ParseDecl(d.Doc).Ignores, fileIgnores)
+	ignores := slices.Concat(directive.ParseDecl(d.Doc).Ignores, outer)
 	if d.Recv == nil {
 		if testFile && loadIsTestEntry(d.Name.Name) {
 			return

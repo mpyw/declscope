@@ -23,6 +23,7 @@ package shrink
 import (
 	"cmp"
 	"fmt"
+	"go/ast"
 	"go/token"
 	"go/types"
 	"os"
@@ -97,7 +98,7 @@ func Run(dir string, patterns []string) ([]Finding, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &run{mod: mod, ev: ev, reserved: map[string]bool{}, usedIgnores: map[token.Pos]bool{}}
+	r := &run{mod: mod, ev: ev, reserved: map[string]bool{}, facts: map[string]*renameFacts{}, usedIgnores: map[token.Pos]bool{}}
 	var findings []Finding
 	for _, path := range mod.paths {
 		if !wanted[path] {
@@ -199,6 +200,8 @@ type run struct {
 	// exported names can lower to one (Foo and FOO both become foo), and
 	// the fixes cannot see each other.
 	reserved map[string]bool
+	// facts caches what the rename guards ask of each package.
+	facts map[string]*renameFacts
 	// usedIgnores is every ignore naming overexported that silenced a report.
 	//
 	//declscope:private // only the core accounts for ignores
@@ -240,18 +243,32 @@ func (r *run) judge(pkgs []*packages.Package) []Finding {
 		if r.silenced(c) {
 			continue
 		}
+		// The rename is asked last, once the report is known to stand. It
+		// claims its new name for the rest of the run, and a silenced
+		// declaration is never renamed, so it must claim nothing.
+		if f.Withheld == "" {
+			edits, why := r.renameEdits(c)
+			if why != "" {
+				f.Withheld = why
+			} else {
+				f.Fix = edits
+			}
+		}
 		findings = append(findings, f)
 	}
 	return findings
 }
 
 // judgeOne reports one candidate, or returns false when something uses it.
+// A finding with no Withheld reason is one the rename is still to decide.
 func (r *run) judgeOne(c *candidate) (Finding, bool) {
 	ev := r.ev
 	if ev.outside[c.key] || ev.satisfied[c.key] {
 		return Finding{}, false
 	}
-	if c.kind.member() && ev.exposed[c.key] {
+	// Another module can reach a method or field through a value, and an
+	// embedded type's name as the name of the embedded field.
+	if ev.exposed[c.key] {
 		return Finding{}, false
 	}
 	if c.owner != nil && ev.paired[c.key] {
@@ -262,7 +279,7 @@ func (r *run) judgeOne(c *candidate) (Finding, bool) {
 		return Finding{}, false
 	}
 	f := Finding{
-		Pos:     r.mod.fset.Position(c.obj.Pos()),
+		Pos:     r.mod.fset.PositionFor(c.obj.Pos(), false),
 		Rule:    rule.Overexported,
 		Name:    candidateName(c),
 		Kind:    string(c.kind),
@@ -284,13 +301,6 @@ func (r *run) judgeOne(c *candidate) (Finding, bool) {
 		f.Withheld = "a generated file names it"
 	case ev.example[c.key]:
 		f.Withheld = "an example function names it"
-	default:
-		edits, why := r.renameEdits(c)
-		if why != "" {
-			f.Withheld = why
-		} else {
-			f.Fix = edits
-		}
 	}
 	return f, true
 }
@@ -330,6 +340,11 @@ func (r *run) unusedIgnores(pkgs []*packages.Package) []Finding {
 	seen := map[token.Pos]bool{}
 	for _, p := range pkgs {
 		for _, file := range p.Syntax {
+			// A generated file declares no candidate, so an ignore there
+			// could never silence one. The analyzer does not read it either.
+			if ast.IsGenerated(file) {
+				continue
+			}
 			var ignores []directive.Ignore
 			for _, g := range file.Comments {
 				ignores = append(ignores, directive.ParseDecl(g).Ignores...)
@@ -344,7 +359,7 @@ func (r *run) unusedIgnores(pkgs []*packages.Package) []Finding {
 				}
 				seen[ig.Pos] = true
 				findings = append(findings, Finding{
-					Pos:     r.mod.fset.Position(ig.Pos),
+					Pos:     r.mod.fset.PositionFor(ig.Pos, false),
 					Rule:    rule.Unused,
 					Package: p.PkgPath,
 				})
@@ -370,7 +385,7 @@ func keyOf(fset *token.FileSet, obj types.Object) string {
 	if obj == nil || !obj.Pos().IsValid() {
 		return ""
 	}
-	p := fset.Position(obj.Pos())
+	p := fset.PositionFor(obj.Pos(), false)
 	return fmt.Sprintf("%s:%d", p.Filename, p.Offset)
 }
 
