@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/mpyw/declscope"
 )
 
 // TestUsageListsEverySubcommand pins the help the driver prints: the
@@ -46,5 +48,13 @@ func TestUsageListsEverySubcommand(t *testing.T) {
 				t.Errorf("declscope %v does not list %q", c.args, s)
 			}
 		}
+	}
+}
+
+// TestUsageDocIsOneParagraph pins what usageInstall assumes: the help prints
+// the Doc whole beside the name, where the driver prints its first paragraph.
+func TestUsageDocIsOneParagraph(t *testing.T) {
+	if strings.Contains(declscope.Analyzer.Doc, "\n\n") {
+		t.Errorf("the Doc has more than one paragraph, which the help prints beside the name:\n%s", declscope.Analyzer.Doc)
 	}
 }

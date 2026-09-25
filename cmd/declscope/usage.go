@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/mpyw/declscope"
 )
@@ -47,12 +46,10 @@ func usageInstall() {
 		os.Args = append(os.Args, "-h")
 	}
 	flag.CommandLine.Usage = func() {
+		// The driver splits the Doc into paragraphs and prints the first beside
+		// the name. declscope's Doc is one paragraph, so it is printed whole.
 		a := declscope.Analyzer
-		paras := strings.Split(a.Doc, "\n\n")
-		head := fmt.Sprintf("%s: %s\n\nUsage: %s [-flag] [package]\n\n", a.Name, paras[0], a.Name)
-		if len(paras) > 1 {
-			head += strings.Join(paras[1:], "\n\n") + "\n\n"
-		}
+		head := fmt.Sprintf("%s: %s\n\nUsage: %s [-flag] [package]\n\n", a.Name, a.Doc, a.Name)
 		_, _ = io.WriteString(flag.CommandLine.Output(), head+usageSubcommands+"\nFlags:\n")
 		flag.PrintDefaults()
 		if bare {
