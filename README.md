@@ -1155,7 +1155,8 @@ $ declscope ./...
 
 Run them in the same order in CI. `shrink` exits 3 when it reports anything, as the analyzer does. With `-fix`, only the reports left without a fix count.
 
-### What it decides
+<details>
+<summary>What counts as a use, and when the fix is withheld</summary>
 
 A fix is offered only where no use can exist outside the package. Where a use may exist but cannot be proved, the report stays and says why no fix is offered.
 
@@ -1173,7 +1174,10 @@ A fix is offered only where no use can exist outside the package. Where a use ma
 
 Deleting unused code is out of scope. Once a declaration is unexported, staticcheck's `unused` and gopls' `unusedfunc` report it if nothing uses it.
 
-### What it does not judge
+</details>
+
+<details>
+<summary>Which packages it does not judge</summary>
 
 `shrink` stands down wherever an importer could be unseen. Each `internal/` package it skips is named on stderr with the reason, and the exit status ignores it.
 
@@ -1186,6 +1190,8 @@ Deleting unused code is out of scope. Once a declaration is unexported, staticch
 | An interface's method names, and the test functions of a `_test.go` file | Every implementation would rename too, and `go test` finds a test by name |
 
 A package that does not type-check refuses the whole run, since it would show no uses at all.
+
+</details>
 
 > [!IMPORTANT]
 > Two uses are outside what `shrink` can see. Silence either with the ignore below.
