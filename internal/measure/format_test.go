@@ -9,7 +9,7 @@ import (
 // TestParseFormatNamesWhatItTakes checks that a rejected value is answered
 // with the values the flag accepts, rather than with a bare failure.
 func TestParseFormatNamesWhatItTakes(t *testing.T) {
-	for _, want := range FormatSet {
+	for _, want := range formatSet {
 		if got, err := ParseFormat(string(want)); err != nil || got != want {
 			t.Errorf("ParseFormat(%q) = %q, %v", want, got, err)
 		}
@@ -29,7 +29,7 @@ func TestParseFormatNamesWhatItTakes(t *testing.T) {
 // mark only that renderer writes.
 func TestWriteFormatDispatches(t *testing.T) {
 	for format, mark := range map[Format]string{
-		FormatJSON:     `"namespaces"`,
+		formatJSON:     `"namespaces"`,
 		FormatMarkdown: "## Namespaces",
 	} {
 		var buf bytes.Buffer

@@ -28,23 +28,25 @@ const (
 	// in markdown is a bug.
 	FormatMarkdown Format = "markdown"
 
-	// FormatJSON is for an agent and for anything scripted. It is the
+	// formatJSON is for an agent and for anything scripted. It is the
 	// interface the adoption skill reads.
-	FormatJSON Format = "json"
+	//
+	//declscope:package // the golden test renders it
+	formatJSON Format = "json"
 )
 
-// FormatSet is the values the flag accepts, in the order an error names them.
-var FormatSet = []Format{FormatMarkdown, FormatJSON}
+// formatSet is the values the flag accepts, in the order an error names them.
+var formatSet = []Format{FormatMarkdown, formatJSON}
 
 // ParseFormat resolves the flag value, and names what it takes when it cannot.
 func ParseFormat(s string) (Format, error) {
-	for _, f := range FormatSet {
+	for _, f := range formatSet {
 		if Format(s) == f {
 			return f, nil
 		}
 	}
-	names := make([]string, 0, len(FormatSet))
-	for _, f := range FormatSet {
+	names := make([]string, 0, len(formatSet))
+	for _, f := range formatSet {
 		names = append(names, string(f))
 	}
 	return "", fmt.Errorf("unknown format %q: this flag takes %s", s, strings.Join(names, ", "))
@@ -54,7 +56,7 @@ func ParseFormat(s string) (Format, error) {
 // the renderers are reached through it, so that a caller cannot pick one and
 // bypass the choice the flag records.
 func (p Package) WriteFormat(w io.Writer, f Format) error {
-	if f == FormatJSON {
+	if f == formatJSON {
 		return p.writeJSON(w)
 	}
 	return p.writeMarkdown(w)
@@ -62,7 +64,7 @@ func (p Package) WriteFormat(w io.Writer, f Format) error {
 
 // WriteFormat renders a whole run in the chosen format.
 func (s Summary) WriteFormat(w io.Writer, f Format) error {
-	if f == FormatJSON {
+	if f == formatJSON {
 		return s.writeJSON(w)
 	}
 	return s.writeMarkdown(w)

@@ -55,6 +55,12 @@ run_test "toolchain" \
 run_test "lint" \
     golangci-lint run ./...
 
+# declscope shrink first: a declaration it unexports becomes private to its
+# namespace, which only the analyzer then checks. Fixing in this order
+# converges, so the checks run in it too.
+run_test "shrink" \
+    go run ./cmd/declscope shrink
+
 # declscope is subject to its own rules, at the strictest setting. Silence is
 # the assertion: every namespace crossing inside the tool is stated in the
 # source, so anything printed here is a boundary nobody wrote down.

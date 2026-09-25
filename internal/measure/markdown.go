@@ -44,9 +44,9 @@ func (p Package) writeMarkdown(w io.Writer) error {
 }
 
 func writeMarkdownCrossings(out *sink, p Package, asked bool) {
-	crossings := p.Crossings()
+	crossings := p.crossings()
 	if len(crossings) == 0 {
-		open := p.DeclarationsCrossing(EdgeOpen)
+		open := p.declarationsCrossing(EdgeOpen)
 		if open == 0 {
 			out.print("## Crossings\n\nNothing crosses a namespace in this package.\n\n")
 		} else {
@@ -66,16 +66,16 @@ func writeMarkdownCrossings(out *sink, p Package, asked bool) {
 		})
 	}
 	writeMarkdownTable(out, "Crossings", rows)
-	if open := p.DeclarationsCrossing(EdgeOpen); open > 0 {
+	if open := p.declarationsCrossing(EdgeOpen); open > 0 {
 		out.printf("%s further: open, package-scoped by default rather than by decision, so left out of the table and of the diagram.\n",
 			cellPlural(open, "declaration is", "declarations are"))
 	}
 	out.print("\n")
 	if asked {
 		out.printf("Declarations crossed: %d reported, %d baselined, %d declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.\n\n",
-			p.DeclarationsCrossing(EdgeReported),
-			p.DeclarationsCrossing(EdgeBaselined),
-			p.DeclarationsCrossing(EdgeDeclared))
+			p.declarationsCrossing(EdgeReported),
+			p.declarationsCrossing(EdgeBaselined),
+			p.declarationsCrossing(EdgeDeclared))
 	}
 	writeMarkdownMermaid(out, crossings)
 }
@@ -131,7 +131,7 @@ func markdownArrow(c Crossing) string {
 }
 
 func writeMarkdownReach(out *sink, p Package) {
-	reached := p.MostReached(10)
+	reached := p.mostReached(10)
 	if len(reached) == 0 {
 		return
 	}
@@ -151,7 +151,7 @@ func writeMarkdownQualify(out *sink, p Package, asked bool) {
 		return
 	}
 	rows := [][]string{{"namespace", "exempt", "baselined", "reported", "saturation"}}
-	for _, q := range p.QualifyRows() {
+	for _, q := range p.qualifyRows() {
 		if q.Core || q.Targets == 0 {
 			// Nothing was examined here, so nothing was excused either:
 			// printing 0 would answer a question that was not put.
@@ -173,7 +173,7 @@ func writeMarkdownQualify(out *sink, p Package, asked bool) {
 func (s Summary) writeMarkdown(w io.Writer) error {
 	out := newSink(w)
 	rows := [][]string{{"check", "value", "packages"}}
-	for _, c := range s.Checks.Configs {
+	for _, c := range s.checks.Configs {
 		chain := "built-in defaults"
 		if len(c.Chain) > 0 {
 			chain = "`" + strings.Join(c.Chain, "` + `") + "`"
@@ -187,16 +187,16 @@ func (s Summary) writeMarkdown(w io.Writer) error {
 			[]string{"rules", fmt.Sprintf("boundary %s, qualify %s, surplus %s, unused %s",
 				cellOnOff(c.Boundary), qualify, c.Surplus, c.Unused), fmt.Sprint(c.Packages)})
 	}
-	for _, b := range s.Checks.Baselines {
+	for _, b := range s.checks.Baselines {
 		rows = append(rows, []string{"baseline",
 			fmt.Sprintf("`%s`, %s", b.Path, cellPlural(b.Entries, "entry", "entries")), ""})
 	}
-	rows = append(rows, []string{"type check", cellTypeCheck(s.Checks.TypeCheck), ""})
+	rows = append(rows, []string{"type check", cellTypeCheck(s.checks.TypeCheck), ""})
 	writeMarkdownTable(out, "Checks in force", rows)
 
 	findings := [][]string{{"rule", "found", "ignored", "baselined", "reported"}}
 	for _, r := range rule.All {
-		count, ok := s.Totals[r]
+		count, ok := s.totals[r]
 		if !ok {
 			continue
 		}
@@ -212,7 +212,7 @@ func (s Summary) writeMarkdown(w io.Writer) error {
 	writeMarkdownTable(out, "Findings", findings)
 
 	boundary := [][]string{{"package", "reported", "baselined", "declared", "largest crossing"}}
-	for _, r := range s.Rows {
+	for _, r := range s.rows {
 		name := "`" + r.Package + "`"
 		switch {
 		case r.Namespaces == 0:
@@ -237,7 +237,7 @@ func (s Summary) writeMarkdown(w io.Writer) error {
 	writeMarkdownTable(out, "Packages — boundary", boundary)
 
 	qualify := [][]string{{"package", "reported", "baselined", "exempt", "worst namespace"}}
-	for _, r := range s.Rows {
+	for _, r := range s.rows {
 		if !r.QualifyAsked {
 			qualify = append(qualify, []string{"`" + r.Package + "`", "-", "-", "-", "-"})
 			continue

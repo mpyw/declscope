@@ -7,7 +7,7 @@ import "testing"
 // both are marked. Folding them would lose the asymmetry that says one
 // namespace holds the working parts of the other.
 func TestCrossingsFoldsEachDirectionSeparately(t *testing.T) {
-	got := fixturePackage().Crossings()
+	got := fixturePackage().crossings()
 
 	byPair := map[[2]string]Crossing{}
 	for _, c := range got {
@@ -33,12 +33,12 @@ func TestCrossingsFoldsEachDirectionSeparately(t *testing.T) {
 // neither a row nor part of a ratio, and is counted where the note reads it.
 func TestCrossingsLeaveOpenOut(t *testing.T) {
 	pkg := fixturePackage()
-	for _, c := range pkg.Crossings() {
+	for _, c := range pkg.crossings() {
 		if c.From == "completion" && c.To == "(core)" {
 			t.Error("an open crossing was listed as a row")
 		}
 	}
-	if got := pkg.DeclarationsCrossing(EdgeOpen); got != 1 {
+	if got := pkg.declarationsCrossing(EdgeOpen); got != 1 {
 		t.Errorf("OpenCrossings = %d, want 1", got)
 	}
 }
@@ -46,7 +46,7 @@ func TestCrossingsLeaveOpenOut(t *testing.T) {
 // TestCrossingsAreHeaviestFirst pins the order the whole report reads by: the
 // first row is where to look, and breadth decides it rather than depth.
 func TestCrossingsAreHeaviestFirst(t *testing.T) {
-	got := fixturePackage().Crossings()
+	got := fixturePackage().crossings()
 	for i := 1; i < len(got); i++ {
 		if got[i-1].Reached < got[i].Reached {
 			t.Errorf("row %d reaches fewer declarations than row %d", i-1, i)

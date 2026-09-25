@@ -16,13 +16,20 @@ import (
 // namespace is named here it is named inside a row that names its package,
 // which is what makes it unambiguous.
 type Summary struct {
-	Checks Checks
+	// checks is what was in force for the run.
+	//
+	//declscope:package // json.go and markdown.go render it
+	checks Checks
 
-	// Totals is one tally per rule, across every package.
-	Totals map[rule.Rule]Count
+	// totals is one tally per rule, across every package.
+	//
+	//declscope:package // json.go and markdown.go render it
+	totals map[rule.Rule]Count
 
-	// Rows are the packages, heaviest first.
-	Rows []SummaryRow
+	// rows are the packages, heaviest first.
+	//
+	//declscope:package // json.go and markdown.go render it
+	rows []SummaryRow
 }
 
 // SummaryRow is one package, with what it would cost to open it.
@@ -75,11 +82,11 @@ func (r SummaryRow) Weight() int {
 // because which config files applied and whether the code compiled are facts
 // about the run, not about any package's syntax.
 func SummaryOf(pkgs []Package, checks Checks) Summary {
-	out := Summary{Checks: checks, Totals: map[rule.Rule]Count{}}
+	out := Summary{checks: checks, totals: map[rule.Rule]Count{}}
 
 	for _, p := range pkgs {
 		for r, count := range p.Findings {
-			total := out.Totals[r]
+			total := out.totals[r]
 			total.Found += count.Found
 			total.Ignored += count.Ignored
 			total.Baselined += count.Baselined
@@ -93,12 +100,12 @@ func SummaryOf(pkgs []Package, checks Checks) Summary {
 			// A property of the rule, not of the package, so the fold must
 			// not let the last package seen decide it.
 			total.Keyable = total.Keyable || count.Keyable
-			out.Totals[r] = total
+			out.totals[r] = total
 		}
-		out.Rows = append(out.Rows, summaryRowOf(p))
+		out.rows = append(out.rows, summaryRowOf(p))
 	}
 
-	slices.SortFunc(out.Rows, func(a, b SummaryRow) int {
+	slices.SortFunc(out.rows, func(a, b SummaryRow) int {
 		return cmp.Or(
 			-cmp.Compare(a.Weight(), b.Weight()),
 			cmp.Compare(a.Package, b.Package),
@@ -140,9 +147,9 @@ func summaryRowOf(p Package) SummaryRow {
 			row.QualifyExempt++
 		}
 	}
-	if crossings := p.Crossings(); len(crossings) > 0 {
+	if crossings := p.crossings(); len(crossings) > 0 {
 		row.Largest, row.HasLargest = crossings[0], true
 	}
-	row.Worst, row.HasWorst = p.WorstQualified()
+	row.Worst, row.HasWorst = p.worstQualified()
 	return row
 }

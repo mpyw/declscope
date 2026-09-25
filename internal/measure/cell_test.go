@@ -31,7 +31,7 @@ func TestCellTableAlignsARaggedColumn(t *testing.T) {
 // reads as off in the checks in force, rather than disappearing.
 func TestMarkdownNamesARuleSwitchedOff(t *testing.T) {
 	var buf bytes.Buffer
-	s := Summary{Checks: Checks{Configs: []ConfigUse{{
+	s := Summary{checks: Checks{Configs: []ConfigUse{{
 		Packages: 1, Boundary: false, Surplus: "loose", Unused: "off", Qualify: "never",
 	}}}}
 	if err := s.writeMarkdown(&buf); err != nil {

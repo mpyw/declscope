@@ -29,13 +29,13 @@ func TestSummaryRanksByWhatIsUndecided(t *testing.T) {
 	}
 	got := SummaryOf([]Package{settled, deferred}, Checks{})
 
-	if got.Rows[0].Package != deferred.Path {
-		t.Errorf("first row is %q, want the package with thirty deferred findings", got.Rows[0].Package)
+	if got.rows[0].Package != deferred.Path {
+		t.Errorf("first row is %q, want the package with thirty deferred findings", got.rows[0].Package)
 	}
-	if n := got.Rows[1].BoundaryDeclared; n != 1 {
+	if n := got.rows[1].BoundaryDeclared; n != 1 {
 		t.Errorf("declared counts %d, want 1: one declaration shared with two namespaces is one decision", n)
 	}
-	if n := got.Totals[rule.Boundary].Found; n != 32 {
+	if n := got.totals[rule.Boundary].Found; n != 32 {
 		t.Errorf("the totals summed to %d, want 32", n)
 	}
 }
@@ -49,10 +49,10 @@ func TestSummaryAsksIfAnyPackageAsked(t *testing.T) {
 		{Path: "b", Findings: map[rule.Rule]Count{rule.Qualify: {Asked: true, Keyable: true, Found: 1, Reported: 1}}},
 	}, Checks{})
 
-	if !got.Totals[rule.Qualify].Asked {
+	if !got.totals[rule.Qualify].Asked {
 		t.Error("the qualify total reads as not asked, though one package asked it")
 	}
-	for _, row := range got.Rows {
+	for _, row := range got.rows {
 		if row.Package == "a" && row.QualifyAsked {
 			t.Error("a package the rule is inert in reads as having been asked")
 		}
@@ -68,7 +68,7 @@ func TestSummaryKeepsBoundaryAskedPerPackage(t *testing.T) {
 		{Path: "checked", Findings: map[rule.Rule]Count{rule.Boundary: {Asked: true, Keyable: true}}},
 	}, Checks{})
 
-	for _, row := range got.Rows {
+	for _, row := range got.rows {
 		if row.Package == "unchecked" && row.BoundaryAsked {
 			t.Error("a package where boundary was disabled reads as checked")
 		}
