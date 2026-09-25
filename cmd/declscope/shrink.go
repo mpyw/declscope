@@ -41,17 +41,22 @@ func shrinkRun(args []string) {
 	if err != nil {
 		shrinkFail(err)
 	}
-	findings, err := shrink.Run(dir, fs.Args())
+	res, err := shrink.Run(dir, fs.Args())
 	if err != nil {
 		shrinkFail(err)
 	}
+	// On stderr: a package not judged is no finding, but saying nothing
+	// would read as nothing overexported there.
+	for _, s := range res.Skipped {
+		fmt.Fprintf(os.Stderr, "declscope shrink: not judged: %s: %s\n", s.Package, s.Reason)
+	}
 	if *fix {
-		if err := shrink.Apply(findings); err != nil {
+		if err := shrink.Apply(res.Findings); err != nil {
 			shrinkFail(err)
 		}
 	}
 	printed := 0
-	for _, f := range findings {
+	for _, f := range res.Findings {
 		if *fix && f.Fix != nil {
 			continue
 		}

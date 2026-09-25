@@ -72,8 +72,11 @@ func evidenceCollect(m *loadedModule) (ev *evidence, err error) {
 	for _, p := range m.pkgs {
 		inModule[p.Types.Path()] = true
 	}
+	// One variant per import path: the widest holds every file the others
+	// do, parsed once and shared, so reading the others would find the same
+	// references, satisfactions and conversions again.
 	var roots []types.Type
-	for _, p := range m.pkgs {
+	for _, p := range m.loadWidest() {
 		ev.evidenceReferences(m, p)
 		ev.evidenceExamples(m, p)
 		roots = append(roots, ev.evidenceInstances(m, p, inModule)...)
@@ -294,7 +297,7 @@ func (ev *evidence) evidenceUnnamedStructs(m *loadedModule) {
 	var unnamed typeutil.Map
 	var named []*types.Struct
 	seenNamed := map[*types.Struct]bool{}
-	for _, p := range m.pkgs {
+	for _, p := range m.loadWidest() {
 		// The struct literal a defined type is declared with is recorded as a
 		// type expression too, but it is that type's own struct, not an
 		// unnamed one it could be assigned to.
@@ -323,16 +326,33 @@ func (ev *evidence) evidenceUnnamedStructs(m *loadedModule) {
 			}
 		}
 	}
+	// Only structs with the same field names in the same order can be
+	// identical, so each named struct is compared with its bucket alone.
+	buckets := map[string][]*types.Struct{}
+	unnamed.Iterate(func(t types.Type, _ any) {
+		u := t.(*types.Struct)
+		buckets[evidenceFieldNames(u)] = append(buckets[evidenceFieldNames(u)], u)
+	})
 	for _, st := range named {
-		unnamed.Iterate(func(t types.Type, _ any) {
-			u := t.(*types.Struct)
+		for _, u := range buckets[evidenceFieldNames(st)] {
 			if u != st && types.IdenticalIgnoreTags(st, u) {
 				for i := range st.NumFields() {
 					ev.paired[keyOf(m.fset, st.Field(i))] = true
 				}
+				break
 			}
-		})
+		}
 	}
+}
+
+// evidenceFieldNames spells a struct's field names in order, which two
+// identical structs share.
+func evidenceFieldNames(st *types.Struct) string {
+	names := make([]string, st.NumFields())
+	for i := range st.NumFields() {
+		names[i] = st.Field(i).Name()
+	}
+	return strings.Join(names, ",")
 }
 
 // evidenceCollectUnnamed adds every unnamed struct type inside t. A named
@@ -469,7 +489,7 @@ func (ev *evidence) evidenceLinknames(m *loadedModule) {
 			}
 		}
 	}
-	for _, p := range m.pkgs {
+	for _, p := range m.loadWidest() {
 		for _, f := range p.Syntax {
 			add(f)
 		}
@@ -520,7 +540,7 @@ func evidenceLinknameMember(name string) (typ, member string, isMember bool) {
 // one is seen with the concrete type. One declared outside the module has no
 // body here, and evidenceInstances covers it.
 func evidenceInterfaceConversions(m *loadedModule) []types.Type {
-	prog, _ := ssautil.Packages(m.pkgs, ssa.InstantiateGenerics)
+	prog, _ := ssautil.Packages(m.loadWidest(), ssa.InstantiateGenerics)
 	prog.Build()
 	var roots []types.Type
 	for fn := range ssautil.AllFunctions(prog) {

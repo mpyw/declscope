@@ -26,10 +26,12 @@ import (
 //
 //declscope:package // the core offers the fix it returns
 func (r *run) renameEdits(c *candidate) ([]Edit, string) {
-	newName := namespace.Unexported(c.obj.Name())
+	newName, spelled := namespace.Unexported(c.obj.Name())
 	variants := r.mod.byPath[c.pkg.PkgPath]
 	facts := r.renameFactsOf(c.pkg.PkgPath)
 	switch {
+	case !spelled:
+		return nil, "the name has no unexported spelling Go would use"
 	case newName == c.obj.Name() || newName == "_" || token.IsKeyword(newName):
 		return nil, "the unexported name is not an identifier"
 	case types.Universe.Lookup(newName) != nil:
@@ -234,8 +236,12 @@ func renameMemberFree(m *loadedModule, facts *renameFacts, c *candidate, newName
 	}
 	// An unnamed struct promotes members too: struct{ Named; size int }.
 	for _, t := range slices.Concat(facts.named, facts.structs) {
-		sel, _, _ := types.LookupFieldOrMethod(t.typ, true, t.pkg, c.obj.Name())
-		if sel == nil || keyOf(m.fset, origin(sel)) != c.key {
+		// An ambiguous old name (T.F and U.F both embedded) finds nothing,
+		// yet the member may be one of the two, and the new name can make a
+		// selector that resolves today ambiguous. Such a type is checked too.
+		sel, index, _ := types.LookupFieldOrMethod(t.typ, true, t.pkg, c.obj.Name())
+		ambiguous := sel == nil && index != nil
+		if !ambiguous && (sel == nil || keyOf(m.fset, origin(sel)) != c.key) {
 			continue
 		}
 		if found, _, _ := types.LookupFieldOrMethod(t.typ, true, t.pkg, newName); found != nil {

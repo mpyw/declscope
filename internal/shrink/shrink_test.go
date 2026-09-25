@@ -54,10 +54,11 @@ func shrinkCheck(t *testing.T, dir string) []shrink.Finding {
 	if err != nil {
 		t.Fatal(err)
 	}
-	findings, err := shrink.Run(abs, nil)
+	res, err := shrink.Run(abs, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	findings := res.Findings
 	wants := shrinkWants(t, abs)
 	for _, f := range findings {
 		at := f.Pos.Filename + ":" + strconv.Itoa(f.Pos.Line)
@@ -102,6 +103,26 @@ func TestShrinkReview2(t *testing.T) { shrinkCheck(t, "testdata/review2") }
 // still keeps the packages it may import unjudged.
 func TestShrinkDeep(t *testing.T) { shrinkCheck(t, "testdata/deep") }
 
+// TestShrinkReview3 holds one case per finding of the third review.
+func TestShrinkReview3(t *testing.T) { shrinkCheck(t, "testdata/review3") }
+
+// TestShrinkSkipped pins that an internal package left unjudged is named
+// with the reason, rather than read as nothing overexported.
+func TestShrinkSkipped(t *testing.T) {
+	dir, err := filepath.Abs("testdata/tools")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := shrink.Run(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Skipped) != 1 || res.Skipped[0].Package != "example.com/tl/internal/a" ||
+		!strings.Contains(res.Skipped[0].Reason, "importers") {
+		t.Errorf("skipped = %+v, want internal/a with the reason", res.Skipped)
+	}
+}
+
 // TestShrinkNested pins that a nested module under an internal parent keeps
 // every package under it unjudged: the module could import them, and this run
 // never loads it.
@@ -112,17 +133,18 @@ func TestShrinkNested(t *testing.T) { shrinkCheck(t, "testdata/nested") }
 // which also compiles the tests; every report that offered a fix is gone; and
 // no report appears that was not there before.
 func TestShrinkConverges(t *testing.T) {
-	for _, name := range []string{"basic", "edge", "more", "review", "outer", "review2"} {
+	for _, name := range []string{"basic", "edge", "more", "review", "outer", "review2", "review3"} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			if err := os.CopyFS(dir, os.DirFS(filepath.Join("testdata", name))); err != nil {
 				t.Fatal(err)
 			}
 			dir, _ = filepath.EvalSymlinks(dir)
-			before, err := shrink.Run(dir, nil)
+			res, err := shrink.Run(dir, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
+			before := res.Findings
 			fixed := 0
 			kept := map[string]bool{}
 			for _, f := range before {
@@ -145,10 +167,11 @@ func TestShrinkConverges(t *testing.T) {
 			if out, err := vet.CombinedOutput(); err != nil {
 				t.Fatalf("go vet after the fix: %v\n%s", err, out)
 			}
-			after, err := shrink.Run(dir, nil)
+			res, err = shrink.Run(dir, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
+			after := res.Findings
 			for _, f := range after {
 				at := f.Pos.Filename + ":" + strconv.Itoa(f.Pos.Line) + " " + f.Message()
 				if !kept[at] {

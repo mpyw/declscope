@@ -82,39 +82,59 @@ func (f Finding) Message() string {
 	return msg
 }
 
+// Result is what one run found.
+type Result struct {
+	Findings []Finding
+	// Skipped lists the internal packages the patterns named that were not
+	// judged, and why. Saying nothing about them would read as nothing
+	// overexported.
+	Skipped []Skipped
+}
+
+// Skipped is an internal package that was not judged.
+type Skipped struct {
+	Package, Reason string
+}
+
 // Run loads the module containing dir and reports on the packages the
 // patterns name, resolved from dir. Every package of the module is loaded
 // whatever the patterns say, since an importer outside them still counts.
-func Run(dir string, patterns []string) ([]Finding, error) {
+func Run(dir string, patterns []string) (Result, error) {
 	mod, err := loadModule(dir)
 	if err != nil {
-		return nil, err
+		return Result{}, err
 	}
 	wanted, err := loadWanted(dir, patterns)
 	if err != nil {
-		return nil, err
+		return Result{}, err
 	}
 	ev, err := evidenceCollect(mod)
 	if err != nil {
-		return nil, err
+		return Result{}, err
 	}
 	r := &run{mod: mod, ev: ev, reserved: map[string]bool{}, facts: map[string]*renameFacts{}, usedIgnores: map[token.Pos]bool{}}
-	var findings []Finding
+	var res Result
 	for _, path := range mod.paths {
 		if !wanted[path] {
 			continue
 		}
 		pkgs := mod.byPath[path]
 		if why := r.skip(pkgs); why != "" {
+			// A package outside internal/ is never judged, and listing every
+			// one would bury the packages a reader expected judged.
+			if _, internal := loadInternalParent(path); internal {
+				res.Skipped = append(res.Skipped, Skipped{Package: path, Reason: why})
+			}
 			continue
 		}
-		findings = append(findings, r.judge(pkgs)...)
-		findings = append(findings, r.unusedIgnores(pkgs)...)
+		candidates, siblings := loadCandidates(pkgs)
+		res.Findings = append(res.Findings, r.judge(candidates)...)
+		res.Findings = append(res.Findings, r.unusedIgnores(pkgs, siblings)...)
 	}
-	slices.SortFunc(findings, func(a, b Finding) int {
+	slices.SortFunc(res.Findings, func(a, b Finding) int {
 		return cmp.Or(strings.Compare(a.Pos.Filename, b.Pos.Filename), cmp.Compare(a.Pos.Offset, b.Pos.Offset))
 	})
-	return findings, nil
+	return res, nil
 }
 
 // Apply writes every fix the findings carry.
@@ -188,6 +208,8 @@ type candidate struct {
 	// tests, when it has any.
 	pkg     *packages.Package
 	ignores []directive.Ignore
+	// testFile marks a declaration of an in-package _test.go file.
+	testFile bool
 }
 
 // run is the state one invocation shares across the packages it judges.
@@ -235,9 +257,9 @@ func (r *run) skip(pkgs []*packages.Package) string {
 }
 
 // judge reports every candidate of one package.
-func (r *run) judge(pkgs []*packages.Package) []Finding {
+func (r *run) judge(candidates []*candidate) []Finding {
 	var findings []Finding
-	for _, c := range loadCandidates(pkgs) {
+	for _, c := range candidates {
 		f, ok := r.judgeOne(c)
 		if !ok {
 			continue
@@ -288,6 +310,11 @@ func (r *run) judgeOne(c *candidate) (Finding, bool) {
 		Package: c.pkg.PkgPath,
 	}
 	if ev.extTest[c.key] {
+		// Exporting from an in-package _test.go file for the external tests
+		// is the export_test.go idiom, and doing its job.
+		if c.testFile {
+			return Finding{}, false
+		}
 		f.TestOnly = true
 		f.Withheld = "external tests use it"
 		return f, true
@@ -303,6 +330,8 @@ func (r *run) judgeOne(c *candidate) (Finding, bool) {
 		f.Withheld = "a generated file names it"
 	case ev.example[c.key]:
 		f.Withheld = "an example function names it"
+	case candidateLinkerSet(c):
+		f.Withheld = "a string variable may be set by -ldflags -X, which names it"
 	}
 	return f, true
 }
@@ -345,7 +374,7 @@ func (r *run) silenced(c *candidate) bool {
 // by an ignore beside it naming unused, or by a file-level ignore covering
 // unused, bare or named. The analyzer in turn never calls such an answer
 // unused, since it cannot see the report it answers.
-func (r *run) unusedIgnores(pkgs []*packages.Package) []Finding {
+func (r *run) unusedIgnores(pkgs []*packages.Package, siblings map[token.Pos][]directive.Ignore) []Finding {
 	var findings []Finding
 	seen := map[token.Pos]bool{}
 	for _, p := range pkgs {
@@ -363,7 +392,14 @@ func (r *run) unusedIgnores(pkgs []*packages.Package) []Finding {
 						continue
 					}
 					seen[ig.Pos] = true
-					if unusedAnswered(ig, group, fileIgnores) {
+					// The siblings are those of the binding the ignore was read
+					// in, doc and trailing comment together. An ignore bound to
+					// no candidate has only its own comment group.
+					beside, ok := siblings[ig.Pos]
+					if !ok {
+						beside = group
+					}
+					if unusedAnswered(ig, beside, fileIgnores) {
 						continue
 					}
 					findings = append(findings, Finding{
@@ -385,10 +421,10 @@ func unusedJudged(ig directive.Ignore) bool {
 }
 
 // unusedAnswered reports whether another ignore answers ig's unused report:
-// one in its comment group naming unused, or a file-level one covering it.
-// No ignore answers its own report.
-func unusedAnswered(ig directive.Ignore, group, fileIgnores []directive.Ignore) bool {
-	for _, other := range group {
+// one beside it naming unused, or a file-level one covering it. No ignore
+// answers its own report.
+func unusedAnswered(ig directive.Ignore, beside, fileIgnores []directive.Ignore) bool {
+	for _, other := range beside {
 		if other.Pos != ig.Pos && slices.Contains(other.Rules, rule.Unused) {
 			return true
 		}
@@ -399,6 +435,20 @@ func unusedAnswered(ig directive.Ignore, group, fileIgnores []directive.Ignore) 
 		}
 	}
 	return false
+}
+
+// candidateLinkerSet reports whether the candidate is a package-level string
+// variable, which `go build -ldflags "-X path.Name=value"` sets by name. A
+// build file passes the flag, where go/types never looks, and the linker
+// ignores a -X whose name no longer exists, so the rename would break the
+// release silently.
+func candidateLinkerSet(c *candidate) bool {
+	v, ok := c.obj.(*types.Var)
+	if !ok || c.kind != kindVar {
+		return false
+	}
+	b, ok := v.Type().Underlying().(*types.Basic)
+	return ok && b.Kind() == types.String
 }
 
 // candidateName is the name the message uses. A method or field is named

@@ -113,6 +113,18 @@ func loadModule(dir string) (*loadedModule, error) {
 	return m, nil
 }
 
+// loadWidest returns one variant per import path, the one with the most
+// files, which holds every file the others do.
+//
+//declscope:package // evidence.go reads each package once through it
+func (m *loadedModule) loadWidest() []*packages.Package {
+	out := make([]*packages.Package, 0, len(m.paths))
+	for _, path := range m.paths {
+		out = append(out, m.byPath[path][0])
+	}
+	return out
+}
+
 // loadModuleRoot asks the go command for the module holding dir.
 func loadModuleRoot(dir string) (root, path string, err error) {
 	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}\t{{.Path}}")
@@ -189,6 +201,8 @@ func (m *loadedModule) rangeOf(pkgPath string) (string, bool) {
 
 // loadInternalParent returns the import path above the deepest internal
 // element of pkgPath.
+//
+//declscope:package // the core names a skipped package only when it is internal
 func loadInternalParent(pkgPath string) (string, bool) {
 	elems := strings.Split(pkgPath, "/")
 	for i := len(elems) - 1; i >= 0; i-- {
@@ -208,10 +222,9 @@ func loadInternalParent(pkgPath string) (string, bool) {
 type loadExcludedFile struct {
 	path, dir, pkgName string
 	// imports maps the name each import is spelled with to its path. A dot
-	// import is recorded under ".". An unnamed import is recorded under the
-	// last element of its path, which may not be the package's name; the
-	// qualified check then misses it, and misses only in the direction of
-	// reporting.
+	// import is recorded under ".", and one with no name of its own under "",
+	// since the name it binds is the imported package's, which only the
+	// package itself knows: internal/go-foo may well declare package foo.
 	imports map[string][]string
 	idents  map[string]bool
 	// selected is every name written after a dot, and qualified every
@@ -299,7 +312,7 @@ func loadReadExcluded(path string, f *ast.File) *loadExcludedFile {
 		if err != nil {
 			continue
 		}
-		name := p[strings.LastIndex(p, "/")+1:]
+		name := ""
 		if spec.Name != nil {
 			name = spec.Name.Name
 		}
@@ -342,6 +355,9 @@ func loadQualifiedInExcluded(xs []*loadExcludedFile, c *candidate) bool {
 		for name, paths := range x.imports {
 			if name == "." || name == "_" || !slices.Contains(paths, c.pkg.PkgPath) {
 				continue
+			}
+			if name == "" {
+				name = c.pkg.Types.Name()
 			}
 			if x.qualified[name][c.obj.Name()] {
 				return true
@@ -395,7 +411,7 @@ func loadPackageDir(p *packages.Package) string {
 }
 
 // loadCandidates lists every exported declaration of one package that the
-// rule judges.
+// rule judges, and for every ignore it read, the ignores parsed beside it.
 //
 // Its variants share their non-test files, so the widest variant (the first)
 // holds every declaration. Left out: declarations in generated files, which
@@ -405,56 +421,118 @@ func loadPackageDir(p *packages.Package) string {
 // fields of a struct type the declaration does not write itself, which are
 // the fields of another type's declaration.
 //
+// Ignores are bound where the analyzer binds them: a doc comment, a trailing
+// comment go/parser attaches, and a comment on a declaration's first or last
+// line that it attaches to nothing (looseTrailingComments), such as one after
+// `struct {`, after `var (`, or after a func's closing brace. The ignores of
+// one binding are siblings, the way the analyzer's ignoreSite.siblings are, so
+// that an ignore naming unused answers the same reports in both tools.
+//
 //declscope:package // the core judges each of them
-func loadCandidates(pkgs []*packages.Package) []*candidate {
+func loadCandidates(pkgs []*packages.Package) ([]*candidate, map[token.Pos][]directive.Ignore) {
 	p := pkgs[0]
-	fset := p.Fset
+	l := &loadBinder{fset: p.Fset, siblings: map[token.Pos][]directive.Ignore{}}
 	var out []*candidate
 	add := func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore) {
-		out = append(out, &candidate{obj: obj, key: keyOf(fset, obj), kind: k, owner: owner, pkg: p, ignores: ignores})
+		testFile := strings.HasSuffix(l.fset.File(obj.Pos()).Name(), "_test.go")
+		out = append(out, &candidate{obj: obj, key: keyOf(l.fset, obj), kind: k, owner: owner, pkg: p, ignores: ignores, testFile: testFile})
 	}
 	for _, file := range p.Syntax {
 		if ast.IsGenerated(file) {
 			continue
 		}
-		testFile := strings.HasSuffix(fset.File(file.Pos()).Name(), "_test.go")
+		l.index(file)
+		testFile := strings.HasSuffix(l.fset.File(file.Pos()).Name(), "_test.go")
 		fileIgnores := directive.ParseFile(file).Ignores
 		for _, decl := range file.Decls {
 			switch d := decl.(type) {
 			case *ast.FuncDecl:
-				loadFuncCandidate(p, d, testFile, slices.Concat(loadTrailing(fset, file, d), fileIgnores), add)
+				// One binding, as the analyzer parses it: the doc comment and
+				// the loose trailing comments together.
+				own := l.parse(append([]*ast.CommentGroup{d.Doc}, l.loose(d)...)...)
+				loadFuncCandidate(p, d, testFile, slices.Concat(own, fileIgnores), add)
 			case *ast.GenDecl:
-				loadGenCandidates(p, d, fileIgnores, add)
+				loadGenCandidates(p, l, d, fileIgnores, add)
 			}
 		}
+	}
+	return out, l.siblings
+}
+
+// loadBinder binds comments to declarations for one package, one file at a
+// time.
+type loadBinder struct {
+	fset *token.FileSet
+	// lines is the first comment group starting on each line of the file,
+	// as the analyzer's fileInfo.lineComments holds it.
+	lines map[int]*ast.CommentGroup
+	// siblings maps each ignore to every ignore of the same binding.
+	siblings map[token.Pos][]directive.Ignore
+}
+
+func (l *loadBinder) index(file *ast.File) {
+	l.lines = map[int]*ast.CommentGroup{}
+	for _, g := range file.Comments {
+		line := l.fset.PositionFor(g.Pos(), false).Line
+		if _, seen := l.lines[line]; !seen {
+			l.lines[line] = g
+		}
+	}
+}
+
+// parse reads the ignores of one binding and records them as siblings.
+func (l *loadBinder) parse(groups ...*ast.CommentGroup) []directive.Ignore {
+	ignores := directive.ParseDecl(groups...).Ignores
+	for _, ig := range ignores {
+		l.siblings[ig.Pos] = ignores
+	}
+	return ignores
+}
+
+// loose returns the comment groups trailing node's first or last line that
+// go/parser attached to nothing, leaving out those attached inside it.
+func (l *loadBinder) loose(node ast.Node, attached ...*ast.CommentGroup) []*ast.CommentGroup {
+	var out []*ast.CommentGroup
+	for _, pos := range []token.Pos{node.Pos(), node.End()} {
+		g, ok := l.lines[l.fset.PositionFor(pos, false).Line]
+		if !ok || g.Pos() < pos || slices.Contains(attached, g) || slices.Contains(out, g) {
+			continue
+		}
+		out = append(out, g)
 	}
 	return out
 }
 
-// loadTrailing returns the ignores in a comment trailing a func's first or
-// last line. go/parser attaches none of them to the func, since an
-// ast.FuncDecl has no Comment field, and the analyzer reads the same two
-// lines (looseTrailing), so an ignore means the same thing to both.
-func loadTrailing(fset *token.FileSet, file *ast.File, d *ast.FuncDecl) []directive.Ignore {
-	first, last := fset.PositionFor(d.Pos(), false).Line, fset.PositionFor(d.End(), false).Line
-	var ignores []directive.Ignore
-	for _, g := range file.Comments {
-		if g.Pos() < d.Pos() || g == d.Doc {
-			continue
+// loadAttached returns the comment groups go/parser hung on a spec or on
+// anything inside it, which a loose comment never claims.
+func loadAttached(spec ast.Spec) []*ast.CommentGroup {
+	switch spec := spec.(type) {
+	case *ast.ValueSpec:
+		return []*ast.CommentGroup{spec.Doc, spec.Comment}
+	case *ast.TypeSpec:
+		out := []*ast.CommentGroup{spec.Doc, spec.Comment}
+		var fields *ast.FieldList
+		switch t := spec.Type.(type) {
+		case *ast.StructType:
+			fields = t.Fields
+		case *ast.InterfaceType:
+			fields = t.Methods
 		}
-		if line := fset.PositionFor(g.Pos(), false).Line; line == first || line == last {
-			ignores = append(ignores, directive.ParseDecl(g).Ignores...)
+		if fields != nil {
+			for _, f := range fields.List {
+				out = append(out, f.Doc, f.Comment)
+			}
 		}
+		return out
 	}
-	return ignores
+	return nil
 }
 
 // loadAdd records one candidate.
 type loadAdd func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore)
 
-// loadFuncCandidate records a func or method. outer holds the ignores the
-// func takes from outside its doc comment: a trailing comment, and the file.
-func loadFuncCandidate(p *packages.Package, d *ast.FuncDecl, testFile bool, outer []directive.Ignore, add loadAdd) {
+// loadFuncCandidate records a func or method with the ignores covering it.
+func loadFuncCandidate(p *packages.Package, d *ast.FuncDecl, testFile bool, ignores []directive.Ignore, add loadAdd) {
 	if !d.Name.IsExported() {
 		return
 	}
@@ -462,7 +540,6 @@ func loadFuncCandidate(p *packages.Package, d *ast.FuncDecl, testFile bool, oute
 	if !ok {
 		return
 	}
-	ignores := slices.Concat(directive.ParseDecl(d.Doc).Ignores, outer)
 	if d.Recv == nil {
 		if testFile && loadIsTestEntry(d.Name.Name) {
 			return
@@ -485,11 +562,29 @@ func loadFuncCandidate(p *packages.Package, d *ast.FuncDecl, testFile bool, oute
 	add(fn, kindMethod, named.Origin().Obj(), ignores)
 }
 
-func loadGenCandidates(p *packages.Package, d *ast.GenDecl, fileIgnores []directive.Ignore, add loadAdd) {
+func loadGenCandidates(p *packages.Package, l *loadBinder, d *ast.GenDecl, fileIgnores []directive.Ignore, add loadAdd) {
+	// The block's doc comment reaches every spec, and so does a comment on
+	// the lines of `var (` and `)`. Without parentheses those lines are the
+	// one spec's, and are read with it below, as the analyzer reads them.
+	block := l.parse(d.Doc)
+	if d.Lparen.IsValid() && len(d.Specs) > 0 {
+		attached := slices.Concat(loadAttached(d.Specs[0]), loadAttached(d.Specs[len(d.Specs)-1]))
+		block = slices.Concat(block, l.parse(l.loose(d, attached...)...))
+	}
 	for _, spec := range d.Specs {
+		var docs []*ast.CommentGroup
 		switch s := spec.(type) {
 		case *ast.ValueSpec:
-			ignores := slices.Concat(directive.ParseDecl(d.Doc, s.Doc, s.Comment).Ignores, fileIgnores)
+			docs = []*ast.CommentGroup{s.Doc, s.Comment}
+		case *ast.TypeSpec:
+			docs = []*ast.CommentGroup{s.Doc, s.Comment}
+		default:
+			continue
+		}
+		own := l.parse(slices.Concat(docs, l.loose(spec, loadAttached(spec)...))...)
+		switch s := spec.(type) {
+		case *ast.ValueSpec:
+			ignores := slices.Concat(own, block, fileIgnores)
 			for _, name := range s.Names {
 				if !name.IsExported() {
 					continue
@@ -502,7 +597,7 @@ func loadGenCandidates(p *packages.Package, d *ast.GenDecl, fileIgnores []direct
 				}
 			}
 		case *ast.TypeSpec:
-			typeIgnores := directive.ParseDecl(d.Doc, s.Doc, s.Comment).Ignores
+			typeIgnores := slices.Concat(own, block)
 			tn, ok := p.TypesInfo.Defs[s.Name].(*types.TypeName)
 			if !ok {
 				continue
@@ -515,7 +610,7 @@ func loadGenCandidates(p *packages.Package, d *ast.GenDecl, fileIgnores []direct
 				continue
 			}
 			for _, field := range st.Fields.List {
-				fieldIgnores := slices.Concat(directive.ParseDecl(field.Doc, field.Comment).Ignores, typeIgnores, fileIgnores)
+				fieldIgnores := slices.Concat(l.parse(field.Doc, field.Comment), typeIgnores, fileIgnores)
 				for _, name := range field.Names {
 					if !name.IsExported() {
 						continue

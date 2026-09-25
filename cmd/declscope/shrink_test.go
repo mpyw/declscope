@@ -132,8 +132,8 @@ func TestShrinkModuleUnderInternal(t *testing.T) {
 	writeTree(t, root, "go.mod", "module example.com/x/internal/y\n\ngo 1.25\n")
 	writeTree(t, root, "y.go", "package y\n\nfunc Unused() {}\n")
 	out, code := runIn(t, bin, root, "shrink")
-	if code != 0 || out != "" {
-		t.Fatalf("exit %d, want nothing judged:\n%s", code, out)
+	if code != 0 || !strings.Contains(out, "not judged: example.com/x/internal/y:") || strings.Contains(out, "Unused is exported") {
+		t.Fatalf("exit %d, want nothing judged, and the package named as such:\n%s", code, out)
 	}
 }
 
@@ -177,5 +177,25 @@ func TestShrinkRefusesNestedModuleWithoutPath(t *testing.T) {
 	out, code := runIn(t, bin, root, "shrink")
 	if code != 1 || !strings.Contains(out, "no module path") {
 		t.Fatalf("exit %d, want a refusal naming the go.mod:\n%s", code, out)
+	}
+}
+
+// TestShrinkNamesSkippedPackages pins that an internal package left
+// unjudged is named on stderr with the reason, while the exit status still
+// says nothing was reported.
+func TestShrinkNamesSkippedPackages(t *testing.T) {
+	root := shrinkModule(t)
+	writeTree(t, root, "tools/go.mod", "module example.com/declscopetest/tools\n\ngo 1.25\n")
+	cmd := exec.Command(bin, "shrink")
+	cmd.Dir = root
+	coverEnv(cmd)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil || len(out) != 0 {
+		t.Fatalf("err %v, want a silent success on stdout:\n%s", err, out)
+	}
+	if !strings.Contains(stderr.String(), "not judged: example.com/declscopetest/internal/a:") {
+		t.Errorf("stderr does not name the skipped package:\n%s", stderr.String())
 	}
 }

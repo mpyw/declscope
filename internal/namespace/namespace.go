@@ -101,11 +101,51 @@ func Qualify(name, ns string) string {
 	return out
 }
 
-// Unexported returns the unexported spelling of an exported name, the way Go
-// spells an identifier that begins with an initialism: Load becomes load,
-// HTTPClient becomes httpClient and ID becomes id. An unexported name is
-// returned unchanged. declscope shrink renames with it.
-func Unexported(name string) string { return lowerLeading(name) }
+// Unexported returns the unexported spelling of an exported name the way Go
+// spells an identifier, and whether there is one. declscope shrink renames
+// with it.
+//
+//	Load        -> load
+//	HTTPClient  -> httpClient   (an initialism opens the name)
+//	ID, IDs     -> id, ids      (an initialism, singular or plural)
+//	HTTP2Client -> http2Client  (an initialism before a digit)
+//	IPv4        -> ipv4
+//	MAX         -> max
+//	MAX_RETRIES -> none         (an underscore has no camel-case spelling)
+//
+// A name that is already unexported is returned unchanged.
+func Unexported(name string) (string, bool) {
+	if strings.Contains(name, "_") {
+		return "", false
+	}
+	runes := []rune(name)
+	upper := 0
+	for upper < len(runes) && unicode.IsUpper(runes[upper]) {
+		upper++
+	}
+	lower := func(n int) string { return strings.ToLower(string(runes[:n])) + string(runes[n:]) }
+	switch {
+	case upper == 0:
+		return name, true
+	case upper == len(runes) || !unicode.IsLower(runes[upper]):
+		// ID, MAX, HTTP2Client: nothing lower-case follows the run, so it is
+		// one word.
+		return lower(upper), true
+	case upper == 1:
+		return lower(1), true
+	case isInitialism(string(runes[:upper-1])):
+		// HTTPServer, URLPath: an initialism, then a word opened by the last
+		// capital. HTTPS is an initialism too, which is why this is asked
+		// first.
+		return lower(upper - 1), true
+	case isInitialism(string(runes[:upper])):
+		// IDs, URLs, IPv4: the whole run is the initialism.
+		return lower(upper), true
+	default:
+		// OAuth: the last capital opens the next word.
+		return lower(upper - 1), true
+	}
+}
 
 // trimSegment drops the final underscore-separated segment when match accepts
 // it. The segment is only dropped when something would remain, mirroring

@@ -1148,6 +1148,7 @@ internal/user/user.go:11:2: field Name is exported, but nothing outside example.
 | --- | --- |
 | What is loaded | Every package of the module, with its tests. The patterns only choose what to report on |
 | Exit status | 3 when anything is reported, as the analyzer's drivers do. With `-fix`, only the reports left without a fix count |
+| A package not judged | An `internal/` package the patterns name but `shrink` cannot judge is named on stderr, with the reason. The exit status ignores it |
 | A load error | The run refuses. A package that does not type-check shows no uses, which would read as nothing using a declaration |
 | Deleting unused code | Out of scope. Once a declaration is unexported, staticcheck's `unused` and gopls' `unusedfunc` report it if nothing uses it |
 
@@ -1161,7 +1162,7 @@ internal/user/user.go:11:2: field Name is exported, but nothing outside example.
 | A value of its type reaches another module through the exported API of a package another module may import | Not reported for a method or field. `pub.Get().Method()` needs no import of the type |
 | It is embedded in a struct that such an API hands out | Not reported. `pub.Get().Inner` selects the field by the type's name |
 | A build-excluded file of another package imports the package and writes `pkg.Name` | Not reported |
-| Only an external test package (`package foo_test`) names it | Reported, with no fix |
+| Only an external test package (`package foo_test`) names it | Reported, with no fix. A declaration of an in-package `_test.go` file is not reported: that is the `export_test.go` idiom |
 
 ### When the fix is withheld
 
@@ -1175,6 +1176,8 @@ A fix is offered only where no use can exist outside the package. A doubt withho
 | A generated file names it | A regeneration would put the old name back |
 | An example function names it (`ExampleF`, `ExampleT_M`) | `go vet` checks that the name still resolves |
 | The new name is taken, captured, a keyword, predeclared, `init` or `main` | The rename would not compile, or would compute something else |
+| The name has no unexported spelling Go would use, such as `MAX_RETRIES` | The fix would write a name nobody would. `HTTPServer`, `IDs` and `IPv4` become `httpServer`, `ids` and `ipv4` |
+| It is a package-level `string` variable | `go build -ldflags "-X path.Name=value"` sets it by name, and ignores a name that no longer exists |
 | A struct embedding the type already has a field or method of the new name | The embedded field takes the type's new name, and would collide |
 
 ### What is never judged
@@ -1193,7 +1196,7 @@ A fix is offered only where no use can exist outside the package. A doubt withho
 
 ### Silencing it
 
-Write `//declscope:ignore overexported` on the declaration, on a field's type, or before the package clause. On a func, a trailing comment on its first or last line counts too, as it does for the analyzer. A bare `//declscope:ignore` does not reach this rule. The analyzer judges a bare ignore, and would report it unused when only `shrink` needed it.
+Write `//declscope:ignore overexported` on the declaration, on a field's type, or before the package clause. A trailing comment on a declaration's first or last line counts too, such as after `struct {` or `var (`, as it does for the analyzer. A bare `//declscope:ignore` does not reach this rule. The analyzer judges a bare ignore, and would report it unused when only `shrink` needed it.
 
 `shrink` reports an `//declscope:ignore overexported` that silenced nothing. An ignore beside it naming `unused`, or a file-level one covering `unused`, answers that report, as it does for the analyzer. The analyzer never judges an ignore naming this rule, or one that may be answering it, since it cannot see whether `shrink` needed it.
 
