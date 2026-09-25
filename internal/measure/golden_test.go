@@ -33,9 +33,9 @@ func TestGoldens(t *testing.T) {
 		name   string
 		render func(*bytes.Buffer) error
 	}{
-		{"inspect.json", func(b *bytes.Buffer) error { return pkg.WriteFormat(b, FormatJSON) }},
+		{"inspect.json", func(b *bytes.Buffer) error { return pkg.WriteFormat(b, formatJSON) }},
 		{"inspect.md", func(b *bytes.Buffer) error { return pkg.WriteFormat(b, FormatMarkdown) }},
-		{"survey.json", func(b *bytes.Buffer) error { return summary.WriteFormat(b, FormatJSON) }},
+		{"survey.json", func(b *bytes.Buffer) error { return summary.WriteFormat(b, formatJSON) }},
 		{"survey.md", func(b *bytes.Buffer) error { return summary.WriteFormat(b, FormatMarkdown) }},
 		// A package where both rules were switched off, and one where every
 		// file joined the core: between them they reach the branches that
@@ -120,8 +120,8 @@ func TestMarkdownIsDerivableFromJSON(t *testing.T) {
 					open++
 				}
 			}
-			if open != pkg.DeclarationsCrossing(EdgeOpen) {
-				t.Errorf("the JSON carries %d open crossings, the model holds %d", open, pkg.DeclarationsCrossing(EdgeOpen))
+			if open != pkg.declarationsCrossing(EdgeOpen) {
+				t.Errorf("the JSON carries %d open crossings, the model holds %d", open, pkg.declarationsCrossing(EdgeOpen))
 			}
 		})
 	}
@@ -130,10 +130,10 @@ func TestMarkdownIsDerivableFromJSON(t *testing.T) {
 // TestMostReachedHonoursItsLimit pins the truncation, which no golden reaches.
 func TestMostReachedHonoursItsLimit(t *testing.T) {
 	pkg := fixturePackage()
-	if got := len(pkg.MostReached(2)); got != 2 {
+	if got := len(pkg.mostReached(2)); got != 2 {
 		t.Errorf("MostReached(2) returned %d rows", got)
 	}
-	if all, none := len(pkg.MostReached(0)), len(pkg.MostReached(99)); all != none || all < 3 {
+	if all, none := len(pkg.mostReached(0)), len(pkg.mostReached(99)); all != none || all < 3 {
 		t.Errorf("MostReached(0) returned %d rows and MostReached(99) returned %d", all, none)
 	}
 }

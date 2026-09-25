@@ -47,12 +47,12 @@ import (
 	"github.com/mpyw/declscope/internal/scope"
 )
 
-// Names are tried in order in each directory.
-var Names = []string{".declscope.yaml", ".declscope.yml"}
+// names are tried in order in each directory.
+var names = []string{".declscope.yaml", ".declscope.yml"}
 
-// BaselineNames are the default baseline file names, discovered the same way
+// baselineNames are the default baseline file names, discovered the same way
 // as the config file when none is configured explicitly.
-var BaselineNames = []string{".declscope-baseline.yaml", ".declscope-baseline.yml"}
+var baselineNames = []string{".declscope-baseline.yaml", ".declscope-baseline.yml"}
 
 // The values rules.naming.qualify accepts.
 var qualifyModes = rule.QualifyModeSet{rule.QualifyModeAlways, rule.QualifyModeNever, rule.QualifyModeOnDemand}
@@ -223,7 +223,7 @@ func resolve(dir, explicit string) (internal.Options, string, error) {
 func FindChain(dir string) []string {
 	var found []string
 	for dir != "" {
-		for _, name := range Names {
+		for _, name := range names {
 			if path := filepath.Join(dir, name); isFile(path) {
 				found = append(found, path)
 				break
@@ -245,12 +245,16 @@ func FindChain(dir string) []string {
 // Find walks up from dir looking for a config file and returns its path, or
 // "" when there is none. The search stops at a module root, so a stray config
 // file somewhere above the module cannot silently change its rules.
-func Find(dir string) string { return findUp(dir, Names) }
+//
+//declscope:ignore overexported // config_test drives the lookup through it
+func Find(dir string) string { return findUp(dir, names) }
 
 // FindBaseline walks up from dir looking for a default-named baseline file.
 // Its presence is what enables suppression, so the name is fixed and the
 // search stops at the module root, exactly like the config lookup.
-func FindBaseline(dir string) string { return findUp(dir, BaselineNames) }
+//
+//declscope:ignore overexported // config_test drives the lookup through it
+func FindBaseline(dir string) string { return findUp(dir, baselineNames) }
 
 // DefaultBaseline returns where the entries of a package in dir belong when no
 // config file names a baseline: the nearest existing default-named file
@@ -273,7 +277,7 @@ func DefaultBaseline(dir, root string) (string, bool) {
 	found := ""
 	for dir != "" {
 		if found == "" {
-			for _, name := range BaselineNames {
+			for _, name := range baselineNames {
 				if path := filepath.Join(dir, name); isFile(path) {
 					found = path
 					break
@@ -284,7 +288,7 @@ func DefaultBaseline(dir, root string) (string, bool) {
 			if found != "" {
 				return found, true
 			}
-			return filepath.Join(root, BaselineNames[0]), true
+			return filepath.Join(root, baselineNames[0]), true
 		}
 		if isFile(filepath.Join(dir, "go.mod")) {
 			return "", false
@@ -336,6 +340,8 @@ func sameDir(a, b string) bool {
 }
 
 // Load reads and parses a config file.
+//
+//declscope:ignore overexported // config_test parses files through it
 func Load(path string) (*File, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

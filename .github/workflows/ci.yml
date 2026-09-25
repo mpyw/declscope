@@ -107,6 +107,15 @@ jobs:
         with:
           cache: true
 
+      # declscope shrink goes first, since its fix is the one that feeds the
+      # analyzer: a declaration it unexports becomes private to its namespace,
+      # and a boundary crossing only the analyzer then reports. Fixing in this
+      # order converges in one pass each, so CI checks in the same order.
+      # Silence is the assertion here too: nothing exported inside internal/
+      # goes unused outside its package without an ignore that says why.
+      - name: Run declscope shrink on itself
+        run: go run ./cmd/declscope shrink
+
       # declscope is subject to its own rules, at the strictest setting.
       # Silence is the assertion: every namespace crossing inside the tool is
       # stated in the source, so anything printed here is one nobody wrote down.

@@ -57,6 +57,7 @@ A third review found more:
 - **Evidence is read from one variant per import path** (`module.Widest`), and unnamed structs are compared within buckets of equal field names.
 - **A type carried out by an API used from another package is used** (`evidence.carry`). Dogfooding renamed `shrink.Result` to `result`, because `cmd/declscope` calls `shrink.Run` and never spells the type. That compiles, and leaves an exported function returning a type its callers cannot name, which revive's `unexported-return` flags. The walk is exposure's, rooted at every declaration another package uses, but it keeps types and not members: every member another package actually uses is already in the index.
 - **The rename rewrites the name a doc comment opens with** (`renameDoc`): `// Name ...`, and after `A`, `An` or `The`. Only a whole word counts, so `// Loader ...` over `Load` is left alone. The rest of the comment is prose and is never touched.
+- **declscope holds itself to `shrink` in CI and `test_all.sh`, run before the analyzer.** The order is the order fixes converge in: a declaration `shrink -fix` unexports becomes private to its namespace, and `-fix` of the analyzer then states the crossings it leaves (dogfooding needed nine `//declscope:package` directives that way). The reverse order leaves the second run with new reports. A declaration only external tests use carries `//declscope:ignore overexported` with the reason.
 - **The one unchecked assumption is in the README.** Every module whose path extends an `internal/` parent is taken to live under that parent's directory. Go checks `internal/` by import path, so a `/v2` published from another branch could import the package unseen.
 
 **A receiver-ignoring method is a way to dodge the naming rule, and golangci-lint closes it.** Methods are exempt from `qualify` because a method is never read bare. Writing a free helper as a method whose body never names its receiver takes that exemption without earning it, and it happened here once already. `revive`'s `unused-receiver` is enabled for exactly this; declscope has no business knowing about the shape. Do not add a receiver to silence the rule.
@@ -383,7 +384,7 @@ The analyzer deliberately does **not** report unmatched baseline entries. A pack
 ```bash
 go test ./...          # analysistest + unit tests
 ./coverage.sh          # the same tests, printing the merged coverage per package
-mise x -- ./test_all.sh   # tests with coverage, golangci-lint, dogfooding and the specs
+mise x -- ./test_all.sh   # tests with coverage, golangci-lint, shrink and dogfooding, and the specs
 ```
 
 - `testdata/src/*` are `analysistest` packages. Most carry their own `.declscope.yaml`, which also exercises config discovery end to end — the naming rule is off by default, so every package asserting qualify behavior (including the unused-ignore accounting for it) has to state `qualify: ondemand` or `always`. `qualifydefault/` deliberately carries none: it pins the default itself.

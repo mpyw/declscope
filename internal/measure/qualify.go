@@ -34,10 +34,12 @@ type QualifyRow struct {
 // is a judgment, and this package reports the ratio.
 func (q QualifyRow) Saturation() int { return q.Baselined + q.Reported }
 
-// QualifyRows folds the naming findings per namespace, worst first, and lists
+// qualifyRows folds the naming findings per namespace, worst first, and lists
 // every namespace, including those with nothing against them: a namespace the
 // rule is satisfied by is the evidence that it was asked at all.
-func (p Package) QualifyRows() []QualifyRow {
+//
+//declscope:package // markdown.go renders the rows
+func (p Package) qualifyRows() []QualifyRow {
 	byNamespace := map[string]*QualifyRow{}
 	out := make([]QualifyRow, 0, len(p.Namespaces))
 	for _, ns := range p.Namespaces {
@@ -70,7 +72,7 @@ func (p Package) QualifyRows() []QualifyRow {
 	return out
 }
 
-// WorstQualified is the namespace holding the most of a package's naming work,
+// worstQualified is the namespace holding the most of a package's naming work,
 // with its ratio beside it, and whether there is one at all.
 //
 // The count leads and the ratio breaks ties, because the other way round sends
@@ -82,10 +84,12 @@ func (p Package) QualifyRows() []QualifyRow {
 // Naming one namespace is what a package-level report does instead of counting
 // namespaces past a threshold, which would hide a cutoff that one ignore
 // directive can flip.
-func (p Package) WorstQualified() (QualifyRow, bool) {
+//
+//declscope:package // summary.go names it for each package
+func (p Package) worstQualified() (QualifyRow, bool) {
 	var worst QualifyRow
 	found := false
-	for _, row := range p.QualifyRows() {
+	for _, row := range p.qualifyRows() {
 		if row.Core || row.Targets == 0 || row.Saturation() == 0 {
 			continue
 		}

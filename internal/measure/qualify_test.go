@@ -23,7 +23,7 @@ func TestWorstQualifiedNamesTheWork(t *testing.T) {
 			{Namespace: "large", Declaration: "e", State: NameBaselined},
 		},
 	}
-	worst, ok := pkg.WorstQualified()
+	worst, ok := pkg.worstQualified()
 	if !ok {
 		t.Fatal("no worst namespace where two of them fail")
 	}
@@ -52,7 +52,7 @@ func TestWorstQualifiedBreaksTiesByShare(t *testing.T) {
 			{Namespace: "part", Declaration: "d", State: NameReported},
 		},
 	}
-	worst, ok := pkg.WorstQualified()
+	worst, ok := pkg.worstQualified()
 	if !ok || worst.Namespace != "whole" {
 		t.Errorf("worst is %q, want whole: two of two is cleared by renaming the file", worst.Namespace)
 	}
@@ -69,7 +69,7 @@ func TestWorstQualifiedSkipsWhatWasNotAsked(t *testing.T) {
 		},
 		Names: []NameFinding{{Namespace: "(core)", Declaration: "a", State: NameReported}},
 	}
-	if worst, ok := pkg.WorstQualified(); ok {
+	if worst, ok := pkg.worstQualified(); ok {
 		t.Errorf("WorstQualified named %q, where nothing was asked", worst.Namespace)
 	}
 }
@@ -78,7 +78,7 @@ func TestWorstQualifiedSkipsWhatWasNotAsked(t *testing.T) {
 // not counted as failing: the two are different answers, and the exempt column
 // exists so a reader can tell them apart.
 func TestQualifyRowsCountExemptApart(t *testing.T) {
-	rows := fixturePackage().QualifyRows()
+	rows := fixturePackage().qualifyRows()
 	for _, row := range rows {
 		if row.Namespace != "completion" {
 			continue
@@ -105,7 +105,7 @@ func TestQualifyRowsSkipANameWithNoNamespaceRow(t *testing.T) {
 			{Namespace: "user", Declaration: "load", State: NameReported},
 		},
 	}
-	rows := pkg.QualifyRows()
+	rows := pkg.qualifyRows()
 	if len(rows) != 1 || rows[0].Namespace != "user" || rows[0].Reported != 1 {
 		t.Errorf("rows = %+v, want user alone with one reported name", rows)
 	}

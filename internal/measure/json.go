@@ -110,7 +110,7 @@ func (p Package) writeJSON(w io.Writer) error {
 			QualifyTargets: ns.QualifyTargets,
 		})
 	}
-	for _, c := range p.Crossings() {
+	for _, c := range p.crossings() {
 		out.Crossings = append(out.Crossings, jsonCrossing(c))
 	}
 	for _, e := range p.Edges {
@@ -238,15 +238,15 @@ func (s Summary) writeJSON(w io.Writer) error {
 	out := jsonSummary{
 		Checks: jsonChecks{
 			TypeCheck: jsonTypeCheck{
-				Packages: s.Checks.TypeCheck.Packages,
-				Failed:   jsonStrings(s.Checks.TypeCheck.Failed),
+				Packages: s.checks.TypeCheck.Packages,
+				Failed:   jsonStrings(s.checks.TypeCheck.Failed),
 			},
-			Configs:   make([]jsonConfig, 0, len(s.Checks.Configs)),
-			Baselines: make([]jsonBaseline, 0, len(s.Checks.Baselines)),
+			Configs:   make([]jsonConfig, 0, len(s.checks.Configs)),
+			Baselines: make([]jsonBaseline, 0, len(s.checks.Baselines)),
 		},
-		Packages: make([]jsonSummaryPackage, 0, len(s.Rows)),
+		Packages: make([]jsonSummaryPackage, 0, len(s.rows)),
 	}
-	for _, c := range s.Checks.Configs {
+	for _, c := range s.checks.Configs {
 		out.Checks.Configs = append(out.Checks.Configs, jsonConfig{
 			Chain:    jsonStrings(c.Chain),
 			Packages: c.Packages,
@@ -259,14 +259,14 @@ func (s Summary) writeJSON(w io.Writer) error {
 			},
 		})
 	}
-	for _, b := range s.Checks.Baselines {
+	for _, b := range s.checks.Baselines {
 		// The conversion holds only while the two shapes agree: give the model
 		// a field the JSON does not carry, and this stops compiling, which is
 		// where the explicit mapping goes back in.
 		out.Checks.Baselines = append(out.Checks.Baselines, jsonBaseline(b))
 	}
-	out.Totals = jsonCounts(s.Totals)
-	for _, row := range s.Rows {
+	out.Totals = jsonCounts(s.totals)
+	for _, row := range s.rows {
 		pkg := jsonSummaryPackage{
 			Package:    row.Package,
 			Namespaces: row.Namespaces,
