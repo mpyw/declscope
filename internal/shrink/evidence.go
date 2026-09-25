@@ -241,11 +241,16 @@ func (ev *evidence) unkeyed(m *module.Module, p *packages.Package, lit *ast.Comp
 	if evidenceClassify(p, owner.Pkg().Path()) == evidenceSame {
 		return
 	}
+	uses := ev.outside
+	if evidenceClassify(p, owner.Pkg().Path()) == evidenceExtTest {
+		uses = ev.extTest
+	}
 	for i := range min(len(lit.Elts), st.NumFields()) {
-		if evidenceClassify(p, owner.Pkg().Path()) == evidenceExtTest {
-			ev.extTest[keyOf(m.Fset, st.Field(i))] = true
-		} else {
-			ev.outside[keyOf(m.Fset, st.Field(i))] = true
+		uses[keyOf(m.Fset, st.Field(i))] = true
+		// An embedded field is named by its type, and a literal writing it
+		// by position would write an unexported field once the type is fixed.
+		if tn := embeddedTypeName(st.Field(i)); tn != nil {
+			uses[keyOf(m.Fset, tn)] = true
 		}
 	}
 }
@@ -593,9 +598,11 @@ func evidenceTagged(m *module.Module) []types.Type {
 }
 
 // evidenceTagIn reports whether t is a struct with a tag in the key:"value"
-// form, or holds one without naming it. A named type is judged on its own.
+// form, or holds one without naming it. A named type is judged on its own,
+// and an alias is not a name of its own: type Conf = struct{ ... } is held
+// unnamed wherever it is written.
 func evidenceTagIn(t types.Type) bool {
-	switch t := t.(type) {
+	switch t := types.Unalias(t).(type) {
 	case *types.Struct:
 		for i := range t.NumFields() {
 			if strings.Contains(t.Tag(i), `:"`) || evidenceTagIn(t.Field(i).Type()) {
@@ -607,6 +614,8 @@ func evidenceTagIn(t types.Type) bool {
 	case *types.Slice:
 		return evidenceTagIn(t.Elem())
 	case *types.Array:
+		return evidenceTagIn(t.Elem())
+	case *types.Chan:
 		return evidenceTagIn(t.Elem())
 	case *types.Map:
 		return evidenceTagIn(t.Key()) || evidenceTagIn(t.Elem())

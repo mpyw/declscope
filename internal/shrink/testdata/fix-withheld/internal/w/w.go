@@ -61,15 +61,21 @@ type Child struct { // want: type Child is exported.*no fix: an exported declara
 
 func (Child) Back() *Parent { return nil } // want: method Back is exported.*no fix: the unexported name is taken on its type
 
-// Outer keeps its name, since an example names it, and embeds Inner. A
-// value of Outer hands out no value of Inner that code outside could name
-// without spelling the field, which would be a use of Inner, so Inner is
-// fixed, and the field with it.
+// Outer keeps its name, since an example names it, and embeds Inner. Code
+// holding an Outer names Inner only by spelling the field, which would be a
+// use of Inner, or writes it by position, which is one too (Framed below).
+// Neither happens, so Inner is fixed, and the field with it.
 type Outer struct { // want: type Outer is exported.*no fix: an example function names it
 	Inner
 }
 
 type Inner struct{} // want: type Inner is exported, but nothing.*uses it$
+
+// The external tests write a Framed by position, which writes its embedded
+// Frame too: unexported, it could not be written there.
+type Framed struct{ Frame } // want: type Framed is exported, but only the external tests.*no fix: external tests use it
+
+type Frame int // want: type Frame is exported, but only the external tests.*no fix: external tests use it
 
 var (
 	_ = Parent{}.Kid

@@ -335,11 +335,12 @@ func (r *run) skip(p *packages.Package) string {
 //     claimed loses it, and judging starts again from step 2, since a
 //     declaration that keeps its name may carry more.
 //  4. A loser whose name no fix that stands has claimed lost to a fix step 2
-//     withheld since. It is released, claims first from then on, and judging
-//     starts again. Each loser is released once.
+//     withheld since. The first such loser is released, claims first from
+//     then on, and judging starts again. Each loser is released once, and one
+//     released can lose again, to another released before it.
 //
-// Every repeat either adds a loser or releases one for good, and there are
-// finitely many, so it ends. Names are claimed only once the types are
+// Every repeat either adds a loser or releases one, a candidate is released
+// at most once, and between releases the losers only grow, so it ends. Names are claimed only once the types are
 // settled, so a claim is never made by a fix that step 2 later withholds.
 //
 // An ignore silences a report only once the types settle: a type found
@@ -396,13 +397,13 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 		if clashed {
 			continue
 		}
-		released := false
-		for _, v := range vs {
-			if v.lost && !first[v] && r.renameClaimFree(claims, v.c, v.plan) {
-				v.lost, first[v], released = false, true, true
-			}
-		}
-		if released {
+		// One at a time: two losers that clash with each other would both be
+		// free, and the later one would lose again.
+		i := slices.IndexFunc(vs, func(v *verdict) bool {
+			return v.lost && !first[v] && r.renameClaimFree(claims, v.c, v.plan)
+		})
+		if i >= 0 {
+			vs[i].lost, first[vs[i]] = false, true
 			continue
 		}
 		// A kept declaration whose name a fix takes reads as taken, the way
@@ -438,7 +439,8 @@ type verdict struct {
 	// base is why the fix is withheld before types settle, or "".
 	base string
 	// silenced marks a candidate an ignore covers. It keeps its name, and
-	// its report is dropped unless the candidate turns out used.
+	// its report is dropped. The ignore counts as used unless the candidate
+	// turns out used, when it silenced nothing.
 	silenced bool
 	// used marks a type an API used from another package carries, and kept
 	// one another exported declaration that keeps its name carries.

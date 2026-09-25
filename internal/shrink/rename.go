@@ -214,22 +214,72 @@ type renameClaim struct {
 	reach func(renameTyped) bool
 }
 
-// renameReach returns whether a type holds c under its current name. For a
-// method or field that is a selection of it, and for a type an embedded
-// field named by it. An ambiguous selection counts, since c may be one of the
-// candidates it is ambiguous between.
+// renameReach returns whether a type holds c, under its current name or
+// not: for a method or field, the type is c's owner or embeds it at any
+// depth, and for a type, it embeds c at any depth. A selection the name
+// makes today does not decide it: a shallower member of that name hides c,
+// and an ambiguous one finds nothing, yet c takes its new name in that type
+// all the same, where it can hide another member or make a selector
+// ambiguous. The guards and the claims ask this one test, so a name the
+// claims call taken is one the guards of the next run find taken too.
 func renameReach(m *module.Module, c *candidate) func(renameTyped) bool {
-	return func(t renameTyped) bool {
-		obj, index, _ := types.LookupFieldOrMethod(t.typ, true, t.pkg, c.obj.Name())
-		if obj == nil {
-			return index != nil
+	match := func(tn *types.TypeName) bool { return tn != nil && keyOf(m.Fset, tn) == c.key }
+	if c.kind.member() {
+		owner := keyOf(m.Fset, c.owner)
+		match = func(tn *types.TypeName) bool {
+			if tn == nil {
+				return false
+			}
+			if named, ok := types.Unalias(tn.Type()).(*types.Named); ok {
+				tn = named.Origin().Obj()
+			}
+			return keyOf(m.Fset, tn) == owner
 		}
-		if c.kind == kindType {
-			tn := embeddedTypeName(obj)
-			return tn != nil && keyOf(m.Fset, tn) == c.key
+		return func(t renameTyped) bool {
+			if named, ok := types.Unalias(t.typ).(*types.Named); ok && match(named.Origin().Obj()) {
+				return true
+			}
+			return renameEmbeds(t.typ, match, map[types.Type]bool{})
 		}
-		return keyOf(m.Fset, origin(obj)) == c.key
 	}
+	return func(t renameTyped) bool { return renameEmbeds(t.typ, match, map[types.Type]bool{}) }
+}
+
+// renameEmbeds reports whether t embeds, at any depth, a field whose type
+// name match accepts: the name the field is spelled with, an alias or not.
+func renameEmbeds(t types.Type, match func(*types.TypeName) bool, seen map[types.Type]bool) bool {
+	if ptr, ok := types.Unalias(t).(*types.Pointer); ok {
+		t = ptr.Elem()
+	}
+	t = types.Unalias(t)
+	if named, ok := t.(*types.Named); ok {
+		t = named.Origin()
+	}
+	if seen[t] {
+		return false
+	}
+	seen[t] = true
+	st, ok := t.Underlying().(*types.Struct)
+	if !ok {
+		return false
+	}
+	for i := range st.NumFields() {
+		f := st.Field(i)
+		if !f.Embedded() {
+			continue
+		}
+		if match(embeddedTypeName(f)) || renameEmbeds(f.Type(), match, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+// renameNameIn reports whether newName selects anything on t, ambiguously
+// or not.
+func renameNameIn(t renameTyped, newName string) bool {
+	found, index, _ := types.LookupFieldOrMethod(t.typ, true, t.pkg, newName)
+	return found != nil || index != nil
 }
 
 // renameFacts is what the guards ask of one package, gathered once over all
@@ -328,28 +378,14 @@ func renamePackageFree(variants []*packages.Package, sites []evidenceSite, newNa
 	return true
 }
 
-// renameEmbeddingFree reports whether newName is free on every struct of the
-// package that embeds the type, and on every named type declared with one.
-// The embedded field takes the type's new name, and would collide with a
-// field or method already called that, at any depth.
+// renameEmbeddingFree reports whether newName is free on every type of the
+// package that embeds the type at any depth, named or not. The embedded field
+// takes the type's new name, and would collide with a field or method already
+// called that, or make a selector of it ambiguous.
 func renameEmbeddingFree(m *module.Module, facts *renameFacts, c *candidate, newName string) bool {
-	embeds := func(t types.Type) bool {
-		st, ok := t.Underlying().(*types.Struct)
-		if !ok {
-			return false
-		}
-		for i := range st.NumFields() {
-			if tn := embeddedTypeName(st.Field(i)); tn != nil && keyOf(m.Fset, tn) == c.key {
-				return true
-			}
-		}
-		return false
-	}
+	holds := renameReach(m, c)
 	for _, t := range slices.Concat(facts.structs, facts.named) {
-		if !embeds(t.typ) {
-			continue
-		}
-		if found, _, _ := types.LookupFieldOrMethod(t.typ, true, t.pkg, newName); found != nil {
+		if holds(t) && renameNameIn(t, newName) {
 			return false
 		}
 	}
@@ -370,17 +406,12 @@ func renameMemberFree(m *module.Module, facts *renameFacts, c *candidate, newNam
 			return false
 		}
 	}
-	// An unnamed struct promotes members too: struct{ Named; size int }.
+	// Every type holding the member takes the new name, including one where
+	// the old name is hidden or ambiguous. An unnamed struct promotes members
+	// too: struct{ Named; size int }.
+	holds := renameReach(m, c)
 	for _, t := range slices.Concat(facts.named, facts.structs) {
-		// An ambiguous old name (T.F and U.F both embedded) finds nothing,
-		// yet the member may be one of the two, and the new name can make a
-		// selector that resolves today ambiguous. Such a type is checked too.
-		sel, index, _ := types.LookupFieldOrMethod(t.typ, true, t.pkg, c.obj.Name())
-		ambiguous := sel == nil && index != nil
-		if !ambiguous && (sel == nil || keyOf(m.Fset, origin(sel)) != c.key) {
-			continue
-		}
-		if found, _, _ := types.LookupFieldOrMethod(t.typ, true, t.pkg, newName); found != nil {
+		if holds(t) && renameNameIn(t, newName) {
 			return false
 		}
 	}

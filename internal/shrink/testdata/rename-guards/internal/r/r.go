@@ -30,6 +30,38 @@ type Wrap struct{} // want: type Wrap is exported.*no fix: the unexported name i
 
 func WRAP() Wrap { return Wrap{} } // want: func WRAP is exported, but nothing.*uses it$
 
+// Nest is embedded two levels down in stack, beside hopper, whose method
+// nest sits at the depth Nest's field would take: renaming Nest would make
+// stack{}.nest() ambiguous.
+type Nest struct{} // want: type Nest is exported.*no fix: the unexported name is taken or would be captured
+
+type hopper struct{}
+
+func (hopper) nest() int { return 0 }
+
+type nested struct{ Nest }
+
+type stack struct {
+	nested
+	hopper
+}
+
+// Span and SPAN both lower to span, and meet only in spanOut, one level down
+// from Span's field. SPAN claims the name first, and Span's report reads as
+// taken, the way the next run, with SPAN fixed, reads it.
+type Pv struct{} // want: type Pv is exported, but nothing.*uses it$
+
+func (Pv) SPAN() {} // want: method SPAN is exported, but nothing.*uses it$
+
+type Span struct{} // want: type Span is exported.*no fix: the unexported name is taken or would be captured
+
+type spanIn struct{ Span }
+
+type spanOut struct {
+	spanIn
+	Pv
+}
+
 // NewThing returns a Thing, and is fixed in the same run, so it keeps
 // nothing exported: one run of -fix settles both.
 func NewThing() *Thing { return nil } // want: func NewThing is exported, but nothing.*uses it$
@@ -221,6 +253,8 @@ var (
 	_ = NewThing
 	_ = Keep
 	_ = KEPT
+	_ = stack{}.nest()
+	_ = spanOut{}
 	_ = WRAP
 	_ Alias
 	_ Level
