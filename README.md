@@ -1192,6 +1192,9 @@ A fix is offered only where no use can exist outside the package. A doubt withho
 | A test function of a `_test.go` file | `go test` finds it by name |
 
 > [!IMPORTANT]
+> `shrink` cannot see a name written as a string outside Go's type system. A template naming a field, a constant passed to `reflect.Value.MethodByName`, or a script calling `go tool nm` all use a declaration by name. When the value reaches them through an interface, the fix is already withheld. Otherwise, silence the report with `//declscope:ignore overexported` on the declaration.
+
+> [!IMPORTANT]
 > `shrink` assumes that every module whose path extends an `internal/` parent lives inside this module's directory tree. Go checks `internal/` by import path. A module published from somewhere else under such a path, such as a `/v2` on another branch, could import the package unseen.
 
 ### Silencing it
