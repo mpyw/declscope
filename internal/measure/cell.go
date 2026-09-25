@@ -87,16 +87,16 @@ func cellTable(rows [][]string) []string {
 
 	out := make([]string, 0, len(rows)+1)
 	for n, row := range rows {
-		line := ""
+		var line strings.Builder
 		for i, cell := range row {
 			pad := strings.Repeat(" ", widths[i]-len([]rune(cell)))
 			if numeric[i] {
-				line += "| " + pad + cell + " "
+				line.WriteString("| " + pad + cell + " ")
 			} else {
-				line += "| " + cell + pad + " "
+				line.WriteString("| " + cell + pad + " ")
 			}
 		}
-		out = append(out, line+"|")
+		out = append(out, line.String()+"|")
 		if n == 0 {
 			out = append(out, cellRule(widths, numeric))
 		}
@@ -117,7 +117,7 @@ func cellColumnIsNumeric(rows [][]string, i int) bool {
 		if cell == "" || cell == "-" {
 			continue
 		}
-		for _, word := range strings.Fields(strings.ReplaceAll(cell, "of", " ")) {
+		for word := range strings.FieldsSeq(strings.ReplaceAll(cell, "of", " ")) {
 			if strings.TrimLeft(word, "0123456789") != "" {
 				return false
 			}
@@ -131,14 +131,14 @@ func cellColumnIsNumeric(rows [][]string, i int) bool {
 //
 //declscope:private // cellTable's own step; the renderers call cellTable
 func cellRule(widths []int, numeric []bool) string {
-	line := ""
+	var line strings.Builder
 	for i, width := range widths {
 		dashes := strings.Repeat("-", max(width, 3))
 		if numeric[i] {
-			line += "| " + dashes[:len(dashes)-1] + ": "
+			line.WriteString("| " + dashes[:len(dashes)-1] + ": ")
 		} else {
-			line += "| " + dashes + " "
+			line.WriteString("| " + dashes + " ")
 		}
 	}
-	return line + "|"
+	return line.String() + "|"
 }

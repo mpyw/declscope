@@ -76,7 +76,7 @@ func compileFilter(pattern string, bases []string) (filterMatcher, error) {
 		// directory called ".".
 		p = p[2:]
 	}
-	for _, seg := range strings.Split(p, "/") {
+	for seg := range strings.SplitSeq(p, "/") {
 		if seg == ".." {
 			// A pattern is matched against a path taken from the config
 			// directory, which never contains a "..". Accepting one would

@@ -1,9 +1,9 @@
 # Pins the tools so that CI and a local checkout run the same ones.
 #
-# go must match the toolchain line in go.mod. golangci-lint refuses to load a
+# go must match the go directive in go.mod. golangci-lint refuses to load a
 # module whose go directive is newer than its own, so a mismatch between this
 # file and go.mod makes lint fail for a reason that is hard to read. The
-# "toolchain" check in test_all.sh compares the two.
+# "Go version" check in test_all.sh compares the two.
 [tools]
 go = "1.27.0"
 golangci-lint = "2.13.1"

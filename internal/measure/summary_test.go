@@ -82,7 +82,7 @@ func TestSummaryKeepsBoundaryAskedPerPackage(t *testing.T) {
 		t.Fatal(err)
 	}
 	foundBoundaryRow := false
-	for _, line := range strings.Split(markdown.String(), "\n") {
+	for line := range strings.SplitSeq(markdown.String(), "\n") {
 		cells := strings.Split(strings.Trim(strings.TrimSpace(line), "|"), "|")
 		if len(cells) != 5 || strings.TrimSpace(cells[0]) != "`unchecked`" {
 			continue

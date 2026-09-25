@@ -386,7 +386,7 @@ func (f *File) ignore(pos token.Pos, arg string) {
 // only, or everything when it names none.
 func parseIgnore(pos token.Pos, arg string) (Ignore, *Problem) {
 	ignore := Ignore{Pos: pos}
-	for _, name := range strings.Split(arg, ",") {
+	for name := range strings.SplitSeq(arg, ",") {
 		name = strings.TrimSpace(name)
 		if name == "" {
 			continue

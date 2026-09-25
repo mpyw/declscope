@@ -36,9 +36,9 @@ func TestSectionsNameEveryStruct(t *testing.T) {
 		if _, ok := sections[typ.String()]; !ok {
 			t.Errorf("sections has no entry for %s", typ)
 		}
-		for i := range typ.NumField() {
-			if typ.Field(i).IsExported() {
-				walk(typ.Field(i).Type)
+		for field := range typ.Fields() {
+			if field.IsExported() {
+				walk(field.Type)
 			}
 		}
 	}

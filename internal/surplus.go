@@ -330,8 +330,7 @@ func surplusSatisfies(pass *analysis.Pass, reached map[types.Object]bool, interf
 			if !types.Implements(t, iface) && !types.Implements(types.NewPointer(t), iface) {
 				continue
 			}
-			for i := range iface.NumMethods() {
-				want := iface.Method(i)
+			for want := range iface.Methods() {
 				obj, _, _ := types.LookupFieldOrMethod(t, true, pass.Pkg, want.Name())
 				fn, ok := obj.(*types.Func)
 				if !ok || fn == want {
@@ -364,8 +363,8 @@ func surplusCarried(pass *analysis.Pass, reached map[types.Object]bool) {
 		}
 		t := types.Unalias(tn.Type())
 		for _, ms := range []*types.MethodSet{types.NewMethodSet(t), types.NewMethodSet(types.NewPointer(t))} {
-			for i := range ms.Len() {
-				fn := ms.At(i).Obj()
+			for method := range ms.Methods() {
+				fn := method.Obj()
 				if !isExported(fn.Name()) {
 					reached[origin(fn)] = true
 				}
@@ -387,8 +386,8 @@ func (c *collection) surplusConversions(pass *analysis.Pass, reached map[types.O
 		if !ok {
 			return
 		}
-		for i := range st.NumFields() {
-			f := origin(st.Field(i))
+		for field := range st.Fields() {
+			f := origin(field)
 			target, tracked := c.byObj[f]
 			if tracked && target.file.key() != fi.key() {
 				reached[f] = true

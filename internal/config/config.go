@@ -32,6 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -413,8 +414,8 @@ func namedKeys(err error) error {
 func keysOf(section any) []string {
 	t := reflect.TypeOf(section)
 	names := make([]string, 0, t.NumField())
-	for i := range t.NumField() {
-		if tag, ok := t.Field(i).Tag.Lookup("yaml"); ok {
+	for field := range t.Fields() {
+		if tag, ok := field.Tag.Lookup("yaml"); ok {
 			names = append(names, strings.Split(tag, ",")[0])
 		}
 	}
@@ -445,12 +446,8 @@ func (f *File) Apply(opts *internal.Options) error {
 	// nested config should not cost restating every other.
 	if len(f.Rules.Naming.Vocabulary) > 0 {
 		merged := make(map[string][]string, len(opts.Vocabulary)+len(f.Rules.Naming.Vocabulary))
-		for ns, words := range opts.Vocabulary {
-			merged[ns] = words
-		}
-		for ns, words := range f.Rules.Naming.Vocabulary {
-			merged[ns] = words
-		}
+		maps.Copy(merged, opts.Vocabulary)
+		maps.Copy(merged, f.Rules.Naming.Vocabulary)
 		opts.Vocabulary = merged
 	}
 	if f.Rules.Boundary != "" {

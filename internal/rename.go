@@ -170,8 +170,8 @@ func (c *collection) reserveForRename(name string) {
 // renameBoundByImport reports whether any file scope of the package binds name,
 // which is where imports live.
 func renameBoundByImport(pkg *types.Scope, name string) bool {
-	for i := range pkg.NumChildren() {
-		if pkg.Child(i).Lookup(name) != nil {
+	for child := range pkg.Children() {
+		if child.Lookup(name) != nil {
 			return true
 		}
 	}

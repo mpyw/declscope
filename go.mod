@@ -1,8 +1,6 @@
 module github.com/mpyw/declscope
 
-go 1.26.0
-
-toolchain go1.27.0
+go 1.27.0
 
 require (
 	github.com/mpyw/go-skill-embed v0.2.1

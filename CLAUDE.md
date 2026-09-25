@@ -440,7 +440,7 @@ The GitHub Pages site is generated from `README.md` and `docs/`, the same way as
 ## Conventions
 
 - Module: `github.com/mpyw/declscope`, matching the layout of `mpyw/gormreuse` and `mpyw/zerologlintctx`.
-- `go.mod` pins `toolchain go1.27.0` while keeping the `go` directive at 1.25.0, because golangci-lint refuses to load a module whose `go` directive is newer than the Go it was built with.
-  The pin governs builds made inside this module, including the release build. It does not reach `go install pkg@version` or `go run pkg@version`, which ignore a dependency module's `toolchain` directive and treat its `go` directive as a lower bound only, so those commands build declscope with the user's own `go` release.
+- `go.mod` requires Go 1.27.0; `mise.toml` selects the same version for development and CI.
+  The `go` directive also applies to `go install pkg@version` and `go run pkg@version`.
 - Distribution is via GitHub Releases (goreleaser) with **mise as the recommended install path**; `go install` / `go tool` / `go vet -vettool` also work.
 - `-V=full` is answered by `cmd/declscope/version.go`, not by `x/tools`, whose `addVersionFlag` hardcodes `devel` and is skipped when a `-V` is already registered. Releases stamp `-X main.version` from `.goreleaser.yaml`; `go install pkg@v` reaches no linker flag, so `debug.ReadBuildInfo` is the fallback. Keep the printed line in the shape the go command's tool-ID protocol reads: `<progname> version <version> ... buildID=<id>`, with the buildID last so a `devel` binary still identifies itself.

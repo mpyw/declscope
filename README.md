@@ -156,8 +156,8 @@ The three compose. `depguard` keeps the package graph honest, declscope keeps ea
 | Method | Command | Needs |
 | --- | --- | --- |
 | **[mise](https://mise.jdx.dev/)** *(recommended)* | `mise use "github:mpyw/declscope@0.13.4"` | Nothing. Installs the prebuilt binary |
-| `go tool` | `go get -tool github.com/mpyw/declscope/cmd/declscope@latest` | Go 1.24+ |
-| `go install` | `go install github.com/mpyw/declscope/cmd/declscope@latest` | A Go toolchain |
+| `go tool` | `go get -tool github.com/mpyw/declscope/cmd/declscope@latest` | Go 1.27+ |
+| `go install` | `go install github.com/mpyw/declscope/cmd/declscope@latest` | Go 1.27+ |
 | Release archive | See below | Nothing |
 
 ```bash

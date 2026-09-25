@@ -37,19 +37,18 @@ echo ""
 run_test "analyzer" \
     env GOTESTFLAGS=-v ./coverage.sh
 
-## go.mod's toolchain and mise.toml's go say the same thing in two places,
-## which is the cost of pinning Go with mise. golangci-lint refuses to load a
-## module whose go directive is newer than the Go it was built with, so a drift
-## here surfaces as an unrelated-looking lint failure. Check it first instead.
-run_test "toolchain" \
+## Keep the required Go version and mise's Go in sync.
+## golangci-lint refuses to load a module whose go directive is newer than
+## the Go it was built with, so check for drift before lint runs.
+run_test "Go version" \
     bash -c '
-      mod=$(sed -n "s/^toolchain go//p" go.mod)
+      required=$(sed -n "s/^go //p" go.mod)
       mise=$(sed -n "s/^go = \"\(.*\)\"/\1/p" mise.toml)
-      if [ "$mod" != "$mise" ]; then
-        echo "go.mod toolchain=$mod but mise.toml go=$mise" >&2
+      if [ "$required" != "$mise" ]; then
+        echo "go.mod go=$required but mise.toml go=$mise" >&2
         exit 1
       fi
-      echo "toolchain $mod"
+      echo "Go $required"
     '
 
 run_test "lint" \

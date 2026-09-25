@@ -40,7 +40,7 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		// Only this file's own half is built here. ignore.go and scopesite.go
 		// fill theirs on first use, the way rename.go already did, so the
 		// constructor never reaches into another stage's state.
-		collectingBook: collectingBook{consumed: make(map[*ast.CommentGroup]bool)},
+		consumed: make(map[*ast.CommentGroup]bool),
 	}
 	cores := make(map[string]bool)
 	// A filter that leaves a package with nothing to read is usually the

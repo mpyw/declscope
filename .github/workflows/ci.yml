@@ -28,7 +28,7 @@ jobs:
 
       # Every tool is pinned in mise.toml, so CI and a contributor's machine run
       # the same binaries. test_all.sh checks that mise.toml's go still matches
-      # go.mod's toolchain, which golangci-lint is strict about.
+      # go.mod's go directive.
       - uses: jdx/mise-action@v4
         with:
           cache: true

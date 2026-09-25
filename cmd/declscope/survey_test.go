@@ -229,7 +229,7 @@ func TestSurveyLeavesTheSurplusRuleAloneWhereTheAnalyzerDoes(t *testing.T) {
 // given cell. The cells are padded to their column, so the check reads them
 // rather than the spacing.
 func surveyTestRuleRow(out, rule, found string) bool {
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		cells := strings.Split(strings.Trim(strings.TrimSpace(line), "|"), "|")
 		if len(cells) < 2 || strings.Trim(strings.TrimSpace(cells[0]), "`") != rule {
 			continue
