@@ -104,7 +104,17 @@ type Config struct {
 	}
 }
 
-var _ = Config{}.Server.Port
+// Conf names a tagged struct through an alias, which is no name of its own,
+// so Relay, holding a Conf, escapes as Config does. Relay keeps Conf.
+type Conf = struct { // want: type Conf is exported.*no fix: an exported declaration that keeps its name hands it out
+	Port int `yaml:"port"`
+}
+
+type Relay struct {
+	Server Conf
+}
+
+var _ = Config{}.Server.Port + Relay{}.Server.Port
 
 var _ = Tagged{}.Name + fmt.Sprint(Tagged{}.Count, Tagged{}.Plain)
 
