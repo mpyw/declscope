@@ -83,13 +83,10 @@ func (r *run) renameEdits(c *candidate) ([]Edit, string) {
 		r.reserved[key] = true
 	}
 
+	// Evidence is read from one variant per import path, so each identifier
+	// is a site once.
 	var edits []Edit
-	seen := map[token.Pos]bool{}
 	for _, s := range r.ev.sites[c.key] {
-		if seen[s.ident.Pos()] {
-			continue
-		}
-		seen[s.ident.Pos()] = true
 		p := r.mod.fset.PositionFor(s.ident.Pos(), false)
 		edits = append(edits, Edit{Filename: p.Filename, Start: p.Offset, End: p.Offset + len(s.ident.Name), NewText: newName})
 	}

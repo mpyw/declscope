@@ -199,3 +199,40 @@ func TestShrinkNamesSkippedPackages(t *testing.T) {
 		t.Errorf("stderr does not name the skipped package:\n%s", stderr.String())
 	}
 }
+
+// TestShrinkSkipsGitAndAcceptsMissingExamples pins two things a module can
+// hold that ./... never builds. The walk does not enter .git, so a Go file
+// there is no excluded file. An example function naming nothing is left
+// alone, though go vet would reject it.
+func TestShrinkSkipsGitAndAcceptsMissingExamples(t *testing.T) {
+	root := shrinkModule(t)
+	writeTree(t, root, ".git/x.go", "package x\n\nfunc {\n")
+	writeTree(t, root, "internal/a/a_test.go", "package a\n\nfunc ExampleMissing() {}\n")
+	out, code := runIn(t, bin, root, "shrink")
+	if code != 3 || !strings.Contains(out, "func Lonely is exported, but nothing outside") {
+		t.Fatalf("exit %d, want Lonely reported and nothing refused:\n%s", code, out)
+	}
+}
+
+func TestShrinkRefusesEmptyModule(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", testModule)
+	out, code := runIn(t, bin, root, "shrink")
+	if code != 1 || !strings.Contains(out, "no package found") {
+		t.Fatalf("exit %d, want a refusal for a module with no package:\n%s", code, out)
+	}
+}
+
+// TestShrinkSkipsCgo pins that a package using cgo is named as not judged.
+// It needs a C toolchain, so it is skipped where cgo is off.
+func TestShrinkSkipsCgo(t *testing.T) {
+	if out, err := exec.Command("go", "env", "CGO_ENABLED").Output(); err != nil || strings.TrimSpace(string(out)) != "1" {
+		t.Skip("cgo is not enabled")
+	}
+	root := shrinkModule(t)
+	writeTree(t, root, "internal/c/c.go", "package c\n\n// int one(void) { return 1; }\nimport \"C\"\n\nfunc One() int { return int(C.one()) }\n")
+	out, code := runIn(t, bin, root, "shrink")
+	if code != 3 || !strings.Contains(out, "not judged: example.com/declscopetest/internal/c: the package uses cgo") || strings.Contains(out, "func One is") {
+		t.Fatalf("exit %d, want internal/c named as not judged for cgo:\n%s", code, out)
+	}
+}

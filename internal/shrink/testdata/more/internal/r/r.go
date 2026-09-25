@@ -159,3 +159,16 @@ var _ = derived{}.hop
 type Linked struct{}
 
 func (Linked) Pulled() {}
+
+// An ignore bound to no declaration silences nothing, and nothing beside it
+// answers its unused report.
+func stray() {
+	//declscope:ignore overexported // want: unused //declscope:ignore overexported
+}
+
+var _ = stray
+
+// A predeclared type embedded by name is no declaration of the package.
+type basic struct{ int }
+
+var _ = basic{}.int
