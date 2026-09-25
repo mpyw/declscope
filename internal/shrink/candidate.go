@@ -134,7 +134,7 @@ func candidateSpec(p *packages.Package, d *ast.GenDecl, spec ast.Spec, own, file
 			ignores := slices.Concat(parse(field.Doc, field.Comment), own, fileIgnores)
 			for _, name := range field.Names {
 				if v, ok := p.TypesInfo.Defs[name].(*types.Var); ok && name.IsExported() {
-					add(v, kindField, tn, ignores, candidateDoc(nil, field.Doc, len(field.Names))).tagged = field.Tag != nil
+					add(v, kindField, tn, ignores, candidateDoc(nil, field.Doc, len(field.Names)))
 				}
 			}
 		}

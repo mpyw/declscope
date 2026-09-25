@@ -46,12 +46,6 @@ type evidence struct {
 	// exposed is every method and field another module can reach through a
 	// value that the exported API of an importable package hands out.
 	exposed map[string]bool
-	// carried is every type that a declaration used from another package
-	// carries in its type: a result, a parameter, a variable's type, an
-	// exported field or method of a type used there. The other package holds
-	// values of it, and unexporting it would leave that API returning a type
-	// its callers cannot name.
-	carried map[string]bool
 	// sites is every identifier naming a declaration inside its own
 	// package, which is everything a rename rewrites.
 	sites map[string][]evidenceSite
@@ -73,7 +67,7 @@ func evidenceCollect(m *module.Module) (ev *evidence, err error) {
 	ev = &evidence{
 		outside: map[string]bool{}, extTest: map[string]bool{}, generated: map[string]bool{}, example: map[string]bool{},
 		satisfied: map[string]bool{}, paired: map[string]bool{}, escaped: map[string]bool{},
-		exposed: map[string]bool{}, carried: map[string]bool{}, sites: map[string][]evidenceSite{},
+		exposed: map[string]bool{}, sites: map[string][]evidenceSite{},
 	}
 	inModule := map[string]bool{}
 	for _, p := range m.Pkgs {
@@ -93,12 +87,13 @@ func evidenceCollect(m *module.Module) (ev *evidence, err error) {
 	}
 	ev.linknames(m)
 	ev.unnamedStructs(m)
-	// What escapes into an interface: every conversion SSA sees, and every
-	// type argument of a generic whose body it cannot see.
+	// What escapes into an interface: every conversion SSA sees, every type
+	// argument of a generic whose body it cannot see, and every struct type a
+	// tag declares reflection reads.
 	roots = append(roots, reach.Conversions(m.Widest())...)
+	roots = append(roots, evidenceTagged(m)...)
 	reach.Reflect(roots, func(obj types.Object) { ev.escaped[keyOf(m.Fset, obj)] = true })
 	ev.exposure(m)
-	ev.carry(m)
 	return ev, nil
 }
 
@@ -568,7 +563,7 @@ func (ev *evidence) exposure(m *module.Module) {
 			}
 		}
 	}
-	reach.ByName(roots, func(obj types.Object) bool {
+	reach.ByName(roots, nil, func(obj types.Object) bool {
 		ev.exposed[keyOf(m.Fset, obj)] = true
 		// An embedded field is named by its type, so another module selecting
 		// it (v.Inner, or Inner: in a literal) spells the type's name.
@@ -579,22 +574,31 @@ func (ev *evidence) exposure(m *module.Module) {
 	}, func(*types.TypeName) {})
 }
 
-// carry marks every type a declaration used from another package carries out
-// in its type. The roots are those declarations, found in the reference
-// index. The walk follows what the other package can reach by name, as
-// exposure does, but keeps the types rather than the members: every member
-// the other package actually uses is already in the index, since this run
-// sees the whole range.
-func (ev *evidence) carry(m *module.Module) {
-	var roots []types.Type
+// evidenceTagged returns every struct type of the module with a field tag in
+// the key:"value" form. The tag says a marshaller reads the struct through
+// reflection, whether or not a value of it reaches one in this module yet, so
+// the struct escapes: all of its fields, tagged or not, and what they hold.
+// go vet also rejects a json or xml tag on an unexported field, so the rename
+// would not pass vet.
+func evidenceTagged(m *module.Module) []types.Type {
+	var out []types.Type
 	for _, p := range m.Widest() {
 		for _, obj := range p.TypesInfo.Defs {
-			if obj != nil && ev.outside[keyOf(m.Fset, obj)] {
-				roots = append(roots, obj.Type())
+			tn, ok := obj.(*types.TypeName)
+			if !ok || tn.IsAlias() {
+				continue
+			}
+			st, ok := tn.Type().Underlying().(*types.Struct)
+			if !ok {
+				continue
+			}
+			for i := range st.NumFields() {
+				if strings.Contains(st.Tag(i), `:"`) {
+					out = append(out, tn.Type())
+					break
+				}
 			}
 		}
 	}
-	reach.ByName(roots, func(types.Object) bool { return true }, func(tn *types.TypeName) {
-		ev.carried[keyOf(m.Fset, tn)] = true
-	})
+	return out
 }

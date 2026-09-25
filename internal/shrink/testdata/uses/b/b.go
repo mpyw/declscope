@@ -26,6 +26,7 @@ var (
 	_             = &a.Point{1, 2}
 	_             = a.Make()
 	_             = a.MakeHandle()
+	_             a.Spelled2
 )
 
 func init() { a.Spelled() }

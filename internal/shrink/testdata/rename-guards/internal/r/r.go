@@ -10,6 +10,17 @@ func Plain() int { return 1 } // want: func Plain is exported, but nothing.*uses
 // A Thing is fixed, and so is the name after the article.
 type Thing struct{} // want: type Thing is exported, but nothing.*uses it$
 
+// Keep keeps its name, since an example names it, so KeptID keeps its own.
+// KeptID then claims no name, and Kid, which would lower to the same, is
+// fixed with the Toy it returns, all in one run.
+func Keep() KeptID { return KeptID{} } // want: func Keep is exported.*no fix: an example function names it
+
+type KeptID struct{} // want: type KeptID is exported.*no fix: an exported declaration that keeps its name hands it out
+
+func KeptId() *Toy { return nil } // want: func KeptId is exported, but nothing.*uses it$
+
+type Toy struct{} // want: type Toy is exported, but nothing.*uses it$
+
 // NewThing returns a Thing, and is fixed in the same run, so it keeps
 // nothing exported: one run of -fix settles both.
 func NewThing() *Thing { return nil } // want: func NewThing is exported, but nothing.*uses it$
@@ -199,6 +210,8 @@ func uses() int {
 var (
 	_ Thing
 	_ = NewThing
+	_ = Keep
+	_ = KeptId
 	_ Alias
 	_ Level
 	_ = Asked{}.Run

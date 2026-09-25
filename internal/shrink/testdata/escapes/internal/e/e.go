@@ -79,14 +79,22 @@ func (Wr) Write(p []byte) (int, error) { return len(p), nil }
 
 var _ io.Writer = Wr{}
 
-// Tagged is never converted to an interface here, but its struct tags say
-// reflection reads its fields, and go vet rejects a json tag on an unexported
-// field. The tags are a use, so the fields are not reported.
-type Tagged struct { // want: type Tagged is exported, but nothing.*uses it$
+// Tagged is never converted to an interface here, but its struct tags say a
+// marshaller reads it through reflection, so it escapes: its untagged field
+// too, which encoding/json would drop once unexported. go vet also rejects a
+// json tag on an unexported field. An empty tag declares nothing, and Bare
+// is reported.
+type Tagged struct {
 	Name  string `json:"name"`
 	Count int    `xml:"count"`
-	Plain int // want: field Plain is exported, but nothing.*uses it$
+	Plain int
 }
+
+type Bare struct { // want: type Bare is exported, but nothing.*uses it$
+	Field int `` // want: field Field is exported, but nothing.*uses it$
+}
+
+var _ = Bare{}.Field
 
 var _ = Tagged{}.Name + fmt.Sprint(Tagged{}.Count, Tagged{}.Plain)
 

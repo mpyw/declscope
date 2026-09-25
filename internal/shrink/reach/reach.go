@@ -70,15 +70,20 @@ func Reflect(roots []types.Type, mark func(types.Object)) {
 // holding a value of one of roots can name, and typ with every named type and
 // alias it reaches on the way. A member is followed into its type only when
 // member returns true, so a caller can leave out one that will not stay
-// exported. That code need not import the package: pub.Get().M()
+// exported.
+//
+// With within set, a named type of another package is not entered, only its
+// type arguments are. A caller asking about the types of one package loses
+// nothing by it: another package's type can hold them only through a type
+// argument, since that package cannot import this one and be imported by it. That code need not import the package: pub.Get().M()
 // calls M on a type another module cannot spell.
 //
 // An embedded field is passed to member whether its type is exported or
 // not, since the fields and methods it promotes are named through it. An
 // interface's methods are followed for what they hand out. The value held in
 // an interface was converted where it was put there, which Reflect covers.
-func ByName(roots []types.Type, member func(types.Object) bool, typ func(*types.TypeName)) {
-	w := &walker{seen: map[*types.TypeName]bool{}}
+func ByName(roots []types.Type, within *types.Package, member func(types.Object) bool, typ func(*types.TypeName)) {
+	w := &walker{seen: map[*types.TypeName]bool{}, within: within}
 	w.named = func(o *types.Named) {
 		typ(o.Obj())
 		ms := types.NewMethodSet(types.NewPointer(o))
@@ -117,11 +122,13 @@ func ByName(roots []types.Type, member func(types.Object) bool, typ func(*types.
 // named type and on a field, and ByName what to do on an interface and on an
 // alias.
 type walker struct {
-	seen  map[*types.TypeName]bool
-	named func(*types.Named)
-	field func(*types.Var)
-	iface func(*types.Interface)
-	alias func(*types.TypeName)
+	seen map[*types.TypeName]bool
+	// within, when not nil, is the one package whose named types are entered.
+	within *types.Package
+	named  func(*types.Named)
+	field  func(*types.Var)
+	iface  func(*types.Interface)
+	alias  func(*types.TypeName)
 }
 
 func (w *walker) walk(t types.Type) {
@@ -136,7 +143,7 @@ func (w *walker) walk(t types.Type) {
 			w.walk(t.TypeArgs().At(i))
 		}
 		o := t.Origin()
-		if w.seen[o.Obj()] {
+		if w.seen[o.Obj()] || w.within != nil && o.Obj().Pkg() != w.within {
 			return
 		}
 		w.seen[o.Obj()] = true

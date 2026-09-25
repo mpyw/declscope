@@ -34,20 +34,37 @@ var Version = "dev" // want: var Version is exported.*no fix: a string variable 
 
 func current() string { return Version }
 
-// Made stays exported, since an example function names it, so the type it
-// returns stays nameable: Produced is not reported, though an example names
-// it too. Deeper stays exported for the same reason, so Deep, which it hands
-// out, is kept as well. Unused, a method
-// like Deeper would be unexported with Deep in the same run.
+// Made keeps its name, since an example function names it, so the type it
+// returns must stay nameable. Deeper keeps its name for the same reason, so
+// Deep, which it hands out, keeps its name too, with its report. Unused, a
+// method like Deeper would be unexported with Deep in the same run.
 func Made() Produced { return Produced{} } // want: func Made is exported.*no fix: an example function names it
 
-type Produced struct{}
+type Produced struct{} // want: type Produced is exported.*no fix: an example function names it
 
 func (Produced) Deeper() *Deep { return nil } // want: method Deeper is exported.*no fix: an example function names it
 
-type Deep struct{}
+type Deep struct{} // want: type Deep is exported.*no fix: an exported declaration that keeps its name hands it out
+
+// Parent keeps its name, and so does its method Kid, since an example names
+// both, so Child, which Kid hands out, keeps its name with its report.
+// Child's method Back hands Parent back, and keeps its name because the
+// unexported one is taken. A type kept only through what it keeps holds
+// nothing up, so Parent's own report stays.
+type Parent struct{} // want: type Parent is exported.*no fix: an example function names it
+
+func (Parent) Kid() *Child { return nil } // want: method Kid is exported.*no fix: an example function names it
+
+type Child struct { // want: type Child is exported.*no fix: an exported declaration that keeps its name hands it out
+	back int
+}
+
+func (Child) Back() *Parent { return nil } // want: method Back is exported.*no fix: the unexported name is taken on its type
 
 var (
+	_ = Parent{}.Kid
+	_ = Child{}.Back
+	_ = Child{}.back
 	_ = Made
 	_ = Lonely() + WinRef + GenRef + Dotted + Helper()
 	_ = Picker{}.Pick

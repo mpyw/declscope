@@ -65,13 +65,13 @@ func stray() {
 
 func Used() int { return 1 }
 
-// Build is silenced, so it stays exported, and the type it returns stays
-// nameable.
+// Build is silenced, so it keeps its name, and the type it returns keeps its
+// own, with its report.
 //
 //declscope:ignore overexported
 func Build() *Built { return nil }
 
-type Built struct{}
+type Built struct{} // want: type Built is exported.*no fix: an exported declaration that keeps its name hands it out
 
 var (
 	_ = Braced{}.n
