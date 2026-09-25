@@ -60,6 +60,10 @@ the binary.
 | `shrink.fsl` | `declscope shrink` (#112) never unexports a declaration that anything outside its package uses, by any path: a spelled use, an external test, a static interface satisfaction, an importer no loaded package shows, a value of its type that the exported API of an importable package hands out, or a use through reflection. Nor does it unexport one whose rename something inside the package would break | Every combination of the kind of declaration, where it sits, what the loaded code shows about a use from another package, the doubts the tool can raise but not settle, and the three reasons a rename is unsafe inside the package |
 | `shrink.fsl` | The report and the fix are held to different standards. The report may be wrong where a use is possible but not provable, and each such doubt withholds the fix and leaves the report. An escape into an interface is a use, and silences the report. Outside `internal/`, in package main, over a nested module or after a load error, nothing is said at all | As above |
 | `shrink.fsl` | One pass converges: an unexported declaration is out of the rule, and no report starts after the fix | As above |
+| `shrink_settle.fsl` | Settling which types keep their names ends, and leaves no fixed type that a declaration keeping its name carries, so no exported declaration hands out an unexported type | Every combination of three declarations, which of them are judged fixable, and what carries what, self-edges included |
+| `shrink_settle.fsl` | Every type kept this way has a carrier that keeps its name, so a second run holds it again, and a declaration unexported in the same run keeps nothing: one run of `-fix` settles the package | As above |
+| `shrink_claim.fsl` | Claiming new names once the types settle ends: every round adds a loser or releases one for good, and a loser is released once | Every combination of three fixes, which of them judging leaves fixable, which pairs lower to one name, and every fix set settling can leave standing |
+| `shrink_claim.fsl` | When it ends, no two standing fixes share a name, and a loser that stays withheld without having been released has its name taken by a fix that stands, so its report reads true now and after the fix | As above |
 | `rename_sound.fsl` | **Fails** — models a guard that checks package scope only, and enumerates what a sound guard must check beyond it | As above |
 | `rename_siblings.fsl` | **Fails** — models fixes that check their target against the pre-fix names only, and shows two of them converging on one name | Every pair of rename targets |
 
@@ -116,7 +120,7 @@ step and needs gigabytes for the same claims these prove in single-digit
 megabytes.
 
 ```console
-./spec/verify.sh     # what CI runs: sixteen proved, two violated
+./spec/verify.sh     # what CI runs: eighteen proved, two violated
 ```
 
 Or one at a time:
@@ -139,6 +143,8 @@ fslc verify unused_bind.fsl     --depth 4
 fslc verify unused_ignore.fsl   --depth 2
 fslc verify unused_modes.fsl    --depth 6
 fslc verify shrink.fsl          --depth 6
+fslc verify shrink_settle.fsl   --depth 8
+fslc verify shrink_claim.fsl    --depth 8
 fslc verify rename_sound.fsl     --depth 2   # expected: violated
 fslc verify rename_siblings.fsl  --depth 3   # expected: violated
 ```
@@ -155,7 +161,7 @@ run prints is the shape of the model, not a failure, and `rename_guarded.fsl`
 also reports a vacuous antecedent — which is the guard working, and is stated as
 `NothingResolvedNewName` rather than left as a warning.
 
-The sixteen that pass are `proved` under `--engine induction`, which is what
+The eighteen that pass are `proved` under `--engine induction`, which is what
 `verify.sh` and CI assert. Bounded verification alone would let an invariant be
 true to a depth without being inductive, and reading the exit code alone would
 let a spec that stopped parsing pass as "violated, as intended" — `fslc` exits
@@ -221,6 +227,9 @@ is a semantics that contradicts the documented one; each was run:
 | A build-excluded name silences the `shrink` report instead of withholding only the fix | `reachable_failed` (`WithheldOnExcludedName`, `ReportedDespiteADynamicUse`) |
 | `shrink` fixes a declaration only external tests use | `violated` (`FixFollowsReport`) |
 | `fair` is dropped from the `shrink` fix | `violated` (`EventuallyFixed`) |
+| `shrink` fixes a type that an exported declaration keeping its name hands out | `violated` (`FixNeverBreaks`) |
+| Settling stops before no carrier that keeps its name is left | `violated` (`Sound`) |
+| A fixed declaration counts as a carrier, so a declaration and the type it returns never go together | `reachable_failed` (`FixedTogether`) |
 | `strict` keeps `loose`'s quantifier over configurations | `reachable_failed` |
 | `strict` reports under `loose` | `violated` (`LooseIsUnusedBind`) |
 | `strict` drops the reports `loose` makes | `violated` (`LooseIsUnusedBind`) |

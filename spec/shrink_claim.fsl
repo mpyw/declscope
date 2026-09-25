@@ -1,0 +1,137 @@
+// shrink_claim models how declscope shrink claims new names once the types
+// of one package settle: steps 3 and 4 of run.judge in
+// internal/shrink/shrink.go. shrink_settle.fsl is step 2, and is abstracted
+// here to any choice of standing fixes that leaves every loser out.
+//
+// Two fixes clash when their declarations lower to one name (Foo and FOO both
+// become foo). The fixes that stand claim their names in order, with the ones
+// released earlier first, and a fix that finds its name claimed loses it:
+// its fix is withheld, and settling starts again. A loser keeps its name, so
+// settling can then withhold its winner, which leaves the loser withheld for a
+// name that no fix takes. Such a loser is released, claims first from then
+// on, and settling starts again. Each loser is released once.
+//
+//   Terminates  every round adds a loser or releases one for good
+//   Honest      once it ends, a loser still withheld, and never released, has
+//               its name taken by a fix that stands, so its report reads true,
+//               and the next run, with the fix applied, reads it the same
+//
+// A released loser that loses again is left withheld, true or not: releasing
+// it twice would let two fixes that clash take turns without end.
+spec ShrinkClaim {
+  type Decl = 0..2
+
+  state {
+    phase: Int,
+    // eligible is what judging each declaration on its own leaves fixable.
+    eligible: Map<Decl, Bool>,
+    // Which pairs of fixes lower to one name.
+    c01: Bool,
+    c02: Bool,
+    c12: Bool,
+    standing: Map<Decl, Bool>,
+    lost: Map<Decl, Bool>,
+    first: Map<Decl, Bool>
+  }
+
+  init {
+    phase = 0
+    forall d: Decl { eligible[d] = false }
+    forall d: Decl { standing[d] = false }
+    forall d: Decl { lost[d] = false }
+    forall d: Decl { first[d] = false }
+    c01 = false
+    c02 = false
+    c12 = false
+  }
+
+  // What judging leaves fixable, and which fixes clash, in one step, so the
+  // witnesses below fit the default depth.
+  action configure(e0: Bool, e1: Bool, e2: Bool, k01: Bool, k02: Bool, k12: Bool) {
+    requires phase == 0
+    eligible[0] = e0
+    eligible[1] = e1
+    eligible[2] = e2
+    c01 = k01
+    c02 = k02
+    c12 = k12
+    phase = 1
+  }
+
+  def clashing(a: Decl, b: Decl) =
+    (c01 and ((a == 0 and b == 1) or (a == 1 and b == 0)))
+    or (c02 and ((a == 0 and b == 2) or (a == 2 and b == 0)))
+    or (c12 and ((a == 1 and b == 2) or (a == 2 and b == 1)))
+  def mayStand(d: Decl, s: Bool) = s => (eligible[d] and not lost[d])
+  // Claim order: released fixes first, then by position.
+  def before(w: Decl, d: Decl) = (first[w] and not first[d]) or (first[w] == first[d] and w < d)
+  def anyClash() = exists a: Decl { exists b: Decl { standing[a] and standing[b] and clashing(a, b) } }
+  def freeOf(d: Decl) = not (exists w: Decl { standing[w] and clashing(d, w) })
+
+  // Step 2, abstracted: any fix set that leaves the losers out.
+  fair action settle(s0: Bool, s1: Bool, s2: Bool) {
+    requires phase == 1
+    requires mayStand(0, s0) and mayStand(1, s1) and mayStand(2, s2)
+    standing[0] = s0
+    standing[1] = s1
+    standing[2] = s2
+    phase = 2
+  }
+  // Step 3: the later of two clashing claimants loses.
+  fair action lose(d: Decl, w: Decl) {
+    requires phase == 2
+    requires standing[d] and standing[w] and clashing(d, w) and before(w, d)
+    lost[d] = true
+    phase = 1
+  }
+  // Step 4: a loser no standing fix clashes with is released, once.
+  fair action release(d: Decl) {
+    requires phase == 2
+    requires not anyClash()
+    requires lost[d] and not first[d] and freeOf(d)
+    lost[d] = false
+    first[d] = true
+    phase = 1
+  }
+  fair action finish() {
+    requires phase == 2
+    requires not anyClash()
+    requires not (exists d: Decl { lost[d] and not first[d] and freeOf(d) })
+    phase = 3
+  }
+
+  terminal { phase == 3 }
+
+  invariant PhaseInRange { phase >= 0 and phase <= 3 }
+  // Nothing is claimed before judging configures the package.
+  invariant NothingBeforeStart {
+    phase == 0 => forall d: Decl { not standing[d] and not lost[d] and not first[d] }
+  }
+  invariant LostOnlyWhenEligible { forall d: Decl { lost[d] => eligible[d] } }
+  invariant ReleasedOnlyWhenEligible { forall d: Decl { first[d] => eligible[d] } }
+  invariant LoserNeverStands { phase >= 2 => forall d: Decl { standing[d] => not lost[d] } }
+  invariant StandsOnlyWhenEligible { forall d: Decl { standing[d] => eligible[d] } }
+  invariant NoClashWhenDone { phase == 3 => not anyClash() }
+  invariant Honest {
+    phase == 3 => forall d: Decl {
+      (lost[d] and not first[d]) => exists w: Decl { standing[w] and clashing(d, w) }
+    }
+  }
+
+  // Each settle counts one down, each round adds a loser or releases one for
+  // good, and finish ends it.
+  leadsTo Terminates {
+    phase >= 1 ~> phase == 3
+    decreases 16 * count(d: Decl where not first[d]) + 4 * count(d: Decl where not lost[d]) + count(d: Decl where d == 0 and phase == 1)
+  }
+
+  // Wrap and WRAP: WRAP loses, keeps its name and keeps Wrap, so nothing
+  // stands. WRAP is released and claims first, and stands.
+  reachable ReleasedStands {
+    phase == 3 and first[1] and standing[1]
+  }
+  // Of two fixes that clash, the first to claim stands.
+  reachable OneOfTwoStands {
+    phase == 3 and clashing(0, 1) and standing[0] and lost[1]
+  }
+}

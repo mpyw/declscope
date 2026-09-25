@@ -11,20 +11,27 @@ import (
 	"github.com/mpyw/declscope/internal/rule"
 )
 
-// silencedByIgnore reports whether an ignore naming overexported covers the
-// candidate, and records every one that does. A bare ignore does not reach a
-// module-wide rule: see rule.IsModuleWide.
+// ignoreCovers reports whether an ignore naming overexported covers the
+// candidate. A bare ignore does not reach a module-wide rule: see
+// rule.IsModuleWide.
 //
-//declscope:package // the core consults it before every report
-func (r *run) silencedByIgnore(c *candidate) bool {
-	hit := false
+//declscope:package // the core asks it of every candidate
+func ignoreCovers(c *candidate) bool {
+	return slices.ContainsFunc(c.ignores, func(ig directive.Ignore) bool {
+		return slices.Contains(ig.Rules, rule.Overexported)
+	})
+}
+
+// ignoreSilenced records every ignore naming overexported that covers the
+// candidate as used: it silenced the candidate's report.
+//
+//declscope:package // the core calls it once the report stands
+func (r *run) ignoreSilenced(c *candidate) {
 	for _, ig := range c.ignores {
 		if slices.Contains(ig.Rules, rule.Overexported) {
 			r.usedIgnores[ig.Pos] = true
-			hit = true
 		}
 	}
-	return hit
 }
 
 // unusedIgnores reports every ignore naming nothing but overexported, in the

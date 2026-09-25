@@ -119,26 +119,27 @@ func (m *Module) Widest() []*packages.Package {
 }
 
 // Range returns the import path of the tree allowed to import the package at
-// path, and whether this run loads every package that tree could hold.
+// path, or why this run cannot load every package that tree could hold.
 //
 // The deepest internal element is the one that restricts: a/internal/b/
 // internal/c is importable only from a/internal/b. The tree must lie inside
 // the module, and no nested module may have a path inside it: that module
-// could import the package, and this run never loads it.
-func (m *Module) Range(path string) (string, bool) {
+// could import the package, and this run never loads it. The reason names
+// that module, since nothing else would lead a reader to it.
+func (m *Module) Range(path string) (parent, why string) {
 	parent, ok := InternalParent(path)
 	if !ok {
-		return "", false
+		return "", "not inside internal/, so another module may import it"
 	}
 	if parent != m.path && !strings.HasPrefix(parent, m.path+"/") {
-		return "", false
+		return "", fmt.Sprintf("its internal/ parent %s lies above the module %s", parent, m.path)
 	}
 	for _, n := range m.nested {
 		if n == parent || strings.HasPrefix(n, parent+"/") {
-			return "", false
+			return "", fmt.Sprintf("the nested module %s may import it, and this run does not load it", n)
 		}
 	}
-	return parent, true
+	return parent, ""
 }
 
 // InternalParent returns the import path above the deepest internal element

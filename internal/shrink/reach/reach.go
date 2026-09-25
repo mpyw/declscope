@@ -67,37 +67,46 @@ func Reflect(roots []types.Type, mark func(types.Object)) {
 }
 
 // ByName calls member with every exported method and field that code
-// holding a value of one of roots can name, and typ with every named type it
-// reaches on the way. That code need not import the package: pub.Get().M()
-// calls M on a type another module cannot spell.
+// holding a value of one of roots can name, and typ with every named type and
+// alias it reaches on the way. That code need not import the package:
+// pub.Get().M() calls M on a type another module cannot spell. A member is
+// followed into its type only when member returns true, so a caller can leave
+// out one that will not stay exported.
 //
-// An embedded field is passed to member whether its type is exported or
-// not, since the fields and methods it promotes are named through it. An
-// interface's methods are followed for what they hand out. The value held in
-// an interface was converted where it was put there, which Reflect covers.
-func ByName(roots []types.Type, member func(types.Object), typ func(*types.TypeName)) {
-	w := &walker{seen: map[*types.TypeName]bool{}}
+// An embedded field is followed whatever its type, since the fields and
+// methods it promotes are named through it, and passed to member when it is
+// exported. Its type is not passed to typ for that alone: code naming the
+// field names the type, which is a use of it. An interface's methods are
+// followed for what they hand out. The value held in an interface was
+// converted where it was put there, which Reflect covers.
+//
+// With within set, a named type of another package is not entered, only its
+// type arguments are. A caller asking about the types of one package loses
+// nothing by it: another package's type can hold them only through a type
+// argument, since that package cannot import this one and be imported by it.
+func ByName(roots []types.Type, within *types.Package, member func(types.Object) bool, typ func(*types.TypeName)) {
+	w := &walker{seen: map[*types.TypeName]bool{}, within: within, typ: typ}
 	w.named = func(o *types.Named) {
-		typ(o.Obj())
 		ms := types.NewMethodSet(types.NewPointer(o))
 		for i := range ms.Len() {
 			fn := ms.At(i).Obj().(*types.Func)
 			if !fn.Exported() {
 				continue
 			}
-			member(fn.Origin())
-			w.signature(fn.Signature())
+			if member(fn.Origin()) {
+				w.signature(fn.Signature())
+			}
 		}
 		w.walk(o.Underlying())
 	}
 	w.field = func(f *types.Var) {
-		if !f.Exported() && !f.Embedded() {
-			return
+		switch {
+		case f.Exported() && !member(f):
+		case f.Embedded():
+			w.visit(f.Type(), true)
+		case f.Exported():
+			w.walk(f.Type())
 		}
-		if f.Exported() {
-			member(f)
-		}
-		w.walk(f.Type())
 	}
 	w.iface = func(t *types.Interface) {
 		for i := range t.NumMethods() {
@@ -110,28 +119,49 @@ func ByName(roots []types.Type, member func(types.Object), typ func(*types.TypeN
 }
 
 // walker is the traversal the two walks share. Each supplies what to do on a
-// named type and on a field, and ByName what to do on an interface.
+// named type and on a field, and ByName what to do on an interface, and typ,
+// which it calls on every named type and alias reached.
 type walker struct {
-	seen  map[*types.TypeName]bool
-	named func(*types.Named)
-	field func(*types.Var)
-	iface func(*types.Interface)
+	seen map[*types.TypeName]bool
+	// within, when not nil, is the one package whose named types are entered.
+	within *types.Package
+	named  func(*types.Named)
+	field  func(*types.Var)
+	iface  func(*types.Interface)
+	typ    func(*types.TypeName)
 }
 
-func (w *walker) walk(t types.Type) {
+func (w *walker) walk(t types.Type) { w.visit(t, false) }
+
+// visit walks t. embedded marks the type of an embedded field, which is not
+// passed to typ, though what it holds is.
+func (w *walker) visit(t types.Type, embedded bool) {
+	// An alias is its own name for the type it denotes. Code holding a value
+	// through type T = x[int] names T, so ByName reports T before following x.
+	if a, ok := t.(*types.Alias); ok && w.typ != nil && !embedded {
+		w.typ(a.Obj())
+	}
 	switch t := types.Unalias(t).(type) {
 	case *types.Named:
 		for i := range t.TypeArgs().Len() {
 			w.walk(t.TypeArgs().At(i))
 		}
 		o := t.Origin()
+		if w.within != nil && o.Obj().Pkg() != w.within {
+			return
+		}
+		// Asked before seen, since a type first reached as an embedded field
+		// may be reached again another way.
+		if w.typ != nil && !embedded {
+			w.typ(o.Obj())
+		}
 		if w.seen[o.Obj()] {
 			return
 		}
 		w.seen[o.Obj()] = true
 		w.named(o)
 	case *types.Pointer:
-		w.walk(t.Elem())
+		w.visit(t.Elem(), embedded)
 	case *types.Slice:
 		w.walk(t.Elem())
 	case *types.Array:

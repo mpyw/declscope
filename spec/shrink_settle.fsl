@@ -1,0 +1,126 @@
+// shrink_settle models how declscope shrink settles which types of one
+// package keep their names: step 2 of run.judge in internal/shrink/shrink.go.
+//
+// Each declaration is first judged on its own, and fixable0 says it would be
+// unexported. A declaration that keeps its name holds every type it carries,
+// by returning it, taking it, or holding it in an exported field or method.
+// Unexporting such a type would leave that declaration handing out a type its
+// callers cannot name. carries is that relation, one step at a time: a type
+// kept this way keeps its name too, and carries further on the next step.
+//
+// settle takes one type out of the fix set when a declaration outside it,
+// other than itself, carries it. It is the only move, so the fix set only
+// shrinks, and the loop ends (Settles). Once no settle is enabled the
+// judgment is done, and two properties hold:
+//
+//   Sound  no fixed declaration is carried by one that keeps its name, so no
+//          exported declaration is left handing out an unexported type
+//   Tight  every declaration judged fixable but not fixed has a carrier that
+//          keeps its name. A second run, after the fixes, finds the same
+//          carrier and holds it again, so one run of -fix settles the package
+//
+// A carrier is never fixable, so a type carrying itself keeps nothing, and the
+// model needs no rule against it (SelfCarryKeepsNothing).
+//
+// Rename clashes are left out, and are shrink_claim.fsl's. Names are claimed
+// only once this settles, and a clash or a released loser starts it again
+// from the judgment, with the losers left out.
+spec ShrinkSettle {
+  type Decl = 0..2
+
+  state {
+    phase: Int,
+    fixable0: Map<Decl, Bool>,
+    carries: relation Decl -> Decl,
+    fixable: Map<Decl, Bool>
+  }
+
+  init {
+    phase = 0
+    forall d: Decl { fixable0[d] = false }
+    forall d: Decl { fixable[d] = false }
+    carries = Set {}
+  }
+
+  // The judgment of each declaration on its own, and what carries what. A
+  // self-edge is allowed: a method of T can return T.
+  action configure(d: Decl, f: Bool) {
+    requires phase == 0
+    fixable0[d] = f
+    fixable[d] = f
+  }
+  action carry(a: Decl, b: Decl) {
+    requires phase == 0
+    carries = carries.add(a, b)
+  }
+  action start() {
+    requires phase == 0
+    phase = 1
+  }
+
+  def carriedByAKeeper(e: Decl) =
+    exists d: Decl { carries.contains(d, e) and not fixable[d] }
+
+  fair action settle(e: Decl) {
+    requires phase == 1
+    requires fixable[e]
+    requires carriedByAKeeper(e)
+    fixable[e] = false
+  }
+  fair action finish() {
+    requires phase == 1
+    requires not (exists e: Decl { fixable[e] and carriedByAKeeper(e) })
+    phase = 2
+  }
+
+  terminal { phase == 2 }
+
+  invariant PhaseInRange { phase >= 0 and phase <= 2 }
+  invariant FixedOnlyWhenJudged { forall d: Decl { fixable[d] => fixable0[d] } }
+  // Before settling starts, the fix set is the judgment itself.
+  invariant UnsettledBeforeStart { phase == 0 => forall d: Decl { fixable[d] == fixable0[d] } }
+
+  // Once settling starts, the fix set only shrinks.
+  trans FixesOnlyShrink {
+    old(phase) >= 1 => forall d: Decl { fixable[d] => old(fixable[d]) }
+  }
+  trans CarriesFrozen {
+    old(phase) >= 1 => forall a: Decl { forall b: Decl {
+      carries.contains(a, b) == old(carries.contains(a, b))
+    } }
+  }
+
+  invariant Sound {
+    phase == 2 => forall e: Decl { fixable[e] => forall d: Decl {
+      carries.contains(d, e) => fixable[d]
+    } }
+  }
+  invariant Tight {
+    phase >= 1 => forall e: Decl {
+      (fixable0[e] and not fixable[e]) => carriedByAKeeper(e)
+    }
+  }
+
+  // The fix set counts down, and finish ends it.
+  leadsTo Settles {
+    phase == 1 ~> phase == 2
+    decreases count(d: Decl where fixable[d])
+  }
+
+  // A type kept through another kept type: the chain settles in two steps.
+  reachable ChainKept {
+    phase == 2 and not fixable0[0] and fixable0[1] and fixable0[2]
+    and carries.contains(0, 1) and carries.contains(1, 2)
+    and not fixable[1] and not fixable[2]
+  }
+  // A declaration and the type it returns go together: nothing that keeps its
+  // name carries either.
+  reachable FixedTogether {
+    phase == 2 and fixable0[0] and fixable0[1] and carries.contains(0, 1)
+    and fixable[0] and fixable[1]
+  }
+  // A type that returns itself keeps nothing.
+  reachable SelfCarryKeepsNothing {
+    phase == 2 and fixable0[0] and carries.contains(0, 0) and fixable[0]
+  }
+}

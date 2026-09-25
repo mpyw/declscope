@@ -10,6 +10,30 @@ func Plain() int { return 1 } // want: func Plain is exported, but nothing.*uses
 // A Thing is fixed, and so is the name after the article.
 type Thing struct{} // want: type Thing is exported, but nothing.*uses it$
 
+// Keep keeps its name, since an example names it, so Kept keeps its own.
+// Kept then claims no name, and KEPT, which lowers to the same, is fixed
+// with the Toy it returns, all in one run. Kept's report reads as taken,
+// the way the next run reads it once KEPT is kept.
+func Keep() Kept { return Kept{} } // want: func Keep is exported.*no fix: an example function names it
+
+type Kept struct{} // want: type Kept is exported.*no fix: the unexported name is taken or would be captured
+
+func KEPT() *Toy { return nil } // want: func KEPT is exported, but nothing.*uses it$
+
+type Toy struct{} // want: type Toy is exported, but nothing.*uses it$
+
+// Wrap and WRAP both lower to wrap, and WRAP hands out Wrap. Wrap claims
+// the name first, so WRAP's fix is withheld, and WRAP, keeping its name,
+// keeps Wrap's: neither would be fixed, for a name neither takes. The claim
+// is made again with WRAP first, and Wrap's fix is the one withheld.
+type Wrap struct{} // want: type Wrap is exported.*no fix: the unexported name is taken or would be captured
+
+func WRAP() Wrap { return Wrap{} } // want: func WRAP is exported, but nothing.*uses it$
+
+// NewThing returns a Thing, and is fixed in the same run, so it keeps
+// nothing exported: one run of -fix settles both.
+func NewThing() *Thing { return nil } // want: func NewThing is exported, but nothing.*uses it$
+
 // Svc's method is fixed, and so is the name its doc comment opens with.
 type Svc struct{} // want: type Svc is exported, but nothing.*uses it$
 
@@ -194,6 +218,10 @@ func uses() int {
 
 var (
 	_ Thing
+	_ = NewThing
+	_ = Keep
+	_ = KEPT
+	_ = WRAP
 	_ Alias
 	_ Level
 	_ = Asked{}.Run

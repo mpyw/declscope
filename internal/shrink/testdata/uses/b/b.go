@@ -25,6 +25,8 @@ var (
 	_, _, _, _, _ = linked, byValue, byPointer, nodot, missing
 	_             = &a.Point{1, 2}
 	_             = a.Make()
+	_             = a.MakeHandle()
+	_             a.Spelled2
 )
 
 func init() { a.Spelled() }

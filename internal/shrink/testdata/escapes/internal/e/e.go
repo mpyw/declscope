@@ -1,6 +1,6 @@
 // Package e holds values that escape into an interface, where fmt,
 // encoding/json and reflect find methods and fields at run time. An escape is
-// a use, so none of them is reported.
+// a use, so none of them is reported. So is a struct tag, which declares one.
 package e
 
 import (
@@ -78,6 +78,35 @@ type Wr struct{} // want: type Wr is exported, but nothing.*uses it$
 func (Wr) Write(p []byte) (int, error) { return len(p), nil }
 
 var _ io.Writer = Wr{}
+
+// Tagged is never converted to an interface here, but its struct tags say a
+// marshaller reads it through reflection, so it escapes: its untagged field
+// too, which encoding/json would drop once unexported. go vet also rejects a
+// json tag on an unexported field. An empty tag declares nothing, and Bare
+// is reported.
+type Tagged struct {
+	Name  string `json:"name"`
+	Count int    `xml:"count"`
+	Plain int
+}
+
+type Bare struct { // want: type Bare is exported, but nothing.*uses it$
+	Field int `` // want: field Field is exported, but nothing.*uses it$
+}
+
+var _ = Bare{}.Field
+
+// Config's only tag is on a field of a struct it holds without naming it,
+// which a marshaller reads with Config.
+type Config struct {
+	Server struct {
+		Port int `yaml:"port"`
+	}
+}
+
+var _ = Config{}.Server.Port
+
+var _ = Tagged{}.Name + fmt.Sprint(Tagged{}.Count, Tagged{}.Plain)
 
 // Dead is converted only in a function literal that never runs, which is no
 // escape either.

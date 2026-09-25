@@ -9,7 +9,8 @@
 //   the report may be wrong where a use is possible but not provable: a
 //     method or field whose name alone a build-excluded file of another
 //     package writes
-//   an escape into an interface is taken as a use and reported not at all.
+//   an escape into an interface is taken as a use and reported not at all,
+//     and so is a struct tag, which declares a use through reflection.
 //     fmt, encoding/json and reflect find methods and fields at run time,
 //     and dogfooding found no such report anyone could act on: nearly all
 //     were fields of structs written as JSON or printed with %+v
@@ -67,7 +68,7 @@ spec Shrink {
     phase: Int,
     kind: Kind, placement: Placement, exposed: Bool, hiddenUse: Bool,
     outside: Outside, doubt: Doubt, dynamicUse: Bool, staticSatisfaction: Bool,
-    excludedSamePkg: Bool, generatedRef: Bool, renameUnsafe: Bool,
+    excludedSamePkg: Bool, generatedRef: Bool, renameUnsafe: Bool, kept: Bool,
     exported: Bool,
     reported: Bool, reportedTestOnly: Bool, fixed: Bool, stalled: Bool
   }
@@ -76,7 +77,7 @@ spec Shrink {
     phase = 0
     kind = Value  placement = Internal  exposed = false  hiddenUse = false
     outside = None  doubt = NoDoubt  dynamicUse = false  staticSatisfaction = false
-    excludedSamePkg = false  generatedRef = false  renameUnsafe = false
+    excludedSamePkg = false  generatedRef = false  renameUnsafe = false  kept = false
     exported = true
     reported = false  reportedTestOnly = false  fixed = false  stalled = false
   }
@@ -106,10 +107,15 @@ spec Shrink {
   }
   // gen is a generated file or an example function of the package naming
   // the declaration: a regeneration would put the old name back, and go vet
-  // checks that ExampleF still names F.
-  action configureFix(ex: Bool, gen: Bool, un: Bool) {
+  // checks that ExampleF still names F. kp is an exported declaration that
+  // keeps its name handing the type out: unexporting it would leave that
+  // declaration returning a type its callers cannot name. Which declarations
+  // keep their names is settled across the package; shrink_settle.fsl is that
+  // model, and here it is one input.
+  action configureFix(ex: Bool, gen: Bool, un: Bool, kp: Bool) {
     requires phase == 2
-    phase = 3  excludedSamePkg = ex  generatedRef = gen  renameUnsafe = un
+    requires not (kp and kind != Type)
+    phase = 3  excludedSamePkg = ex  generatedRef = gen  renameUnsafe = un  kept = kp
   }
 
   def configured() = phase == 3
@@ -125,12 +131,12 @@ spec Shrink {
   def escapes() = doubt == Escapes
   def fires() = exported and inRange() and not exposed and outside == None and not satisfied() and not escapes()
   def testOnlyFires() = exported and inRange() and not exposed and outside == ExtTestOnly and not satisfied() and not escapes()
-  def fixBlocked() = doubt != NoDoubt or excludedSamePkg or generatedRef or renameUnsafe
+  def fixBlocked() = doubt != NoDoubt or excludedSamePkg or generatedRef or renameUnsafe or kept
   def fixable() = fires() and not fixBlocked()
 
   // --- the truth the tool never reads -------------------------------------
   def usedOutside() = outside != None or hiddenUse or dynamicUse or satisfied()
-  def breaksInside() = excludedSamePkg or generatedRef or renameUnsafe
+  def breaksInside() = excludedSamePkg or generatedRef or renameUnsafe or kept
   def fixBreaks() = usedOutside() or breaksInside()
 
   fair action report() {
@@ -163,7 +169,7 @@ spec Shrink {
                   and not dynamicUse and not staticSatisfaction
   }
   invariant FixInputsUnsetBeforeTheirStep {
-    phase <= 2 => not excludedSamePkg and not generatedRef and not renameUnsafe
+    phase <= 2 => not excludedSamePkg and not generatedRef and not renameUnsafe and not kept
   }
   invariant NothingHiddenInRangeUnlessExposed {
     hiddenUse => placement != Internal or exposed
@@ -220,19 +226,23 @@ spec Shrink {
   def onlyBlocker() = configured() and fires()
   reachable WithheldOnExcludedName {
     onlyBlocker() and doubt == ExcludedName
-    and not excludedSamePkg and not generatedRef and not renameUnsafe and not fixable()
+    and not excludedSamePkg and not generatedRef and not renameUnsafe and not kept and not fixable()
   }
   reachable WithheldOnExcludedSamePackage {
     onlyBlocker() and doubt == NoDoubt
-    and excludedSamePkg and not generatedRef and not renameUnsafe and not fixable()
+    and excludedSamePkg and not generatedRef and not renameUnsafe and not kept and not fixable()
   }
   reachable WithheldOnGeneratedReference {
     onlyBlocker() and doubt == NoDoubt
-    and not excludedSamePkg and generatedRef and not renameUnsafe and not fixable()
+    and not excludedSamePkg and generatedRef and not renameUnsafe and not kept and not fixable()
   }
   reachable WithheldOnUnsafeRename {
     onlyBlocker() and doubt == NoDoubt
-    and not excludedSamePkg and not generatedRef and renameUnsafe and not fixable()
+    and not excludedSamePkg and not generatedRef and renameUnsafe and not kept and not fixable()
+  }
+  reachable WithheldOnKeptByAnExport {
+    onlyBlocker() and doubt == NoDoubt
+    and not excludedSamePkg and not generatedRef and not renameUnsafe and kept and not fixable()
   }
   // An escape is a use for a type too, whose name reflect reads, and the
   // report stays out.

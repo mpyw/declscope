@@ -118,6 +118,24 @@ type Made struct {
 
 func Make() Made { return Made{} }
 
+// Handle is an alias, returned by MakeHandle, which package b calls. The
+// alias is the name b would write, so it is carried like a defined type.
+type Handle = generic[int]
+
+type generic[T any] struct{ v T }
+
+func MakeHandle() *Handle { return &Handle{} }
+
+// Spelled2 is named by package b, but its method Build is not, so Build is
+// fixed, and Product, which only Build returns, goes in the same run.
+type Spelled2 struct{}
+
+func (Spelled2) Build() *Product { return nil } // want: method Build is exported, but nothing.*uses it$
+
+type Product struct{} // want: type Product is exported, but nothing.*uses it$
+
+var _ = Spelled2{}.Build
+
 // ExclQual is named only by a build-excluded file of package b.
 var ExclQual = 1
 
