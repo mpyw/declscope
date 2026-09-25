@@ -118,6 +118,14 @@ type Made struct {
 
 func Make() Made { return Made{} }
 
+// Handle is an alias, returned by MakeHandle, which package b calls. The
+// alias is the name b would write, so it is carried like a defined type.
+type Handle = generic[int]
+
+type generic[T any] struct{ v T }
+
+func MakeHandle() *Handle { return &Handle{} }
+
 // ExclQual is named only by a build-excluded file of package b.
 var ExclQual = 1
 

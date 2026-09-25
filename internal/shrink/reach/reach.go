@@ -67,8 +67,8 @@ func Reflect(roots []types.Type, mark func(types.Object)) {
 }
 
 // ByName calls member with every exported method and field that code
-// holding a value of one of roots can name, and typ with every named type it
-// reaches on the way. That code need not import the package: pub.Get().M()
+// holding a value of one of roots can name, and typ with every named type and
+// alias it reaches on the way. That code need not import the package: pub.Get().M()
 // calls M on a type another module cannot spell.
 //
 // An embedded field is passed to member whether its type is exported or
@@ -104,21 +104,29 @@ func ByName(roots []types.Type, member func(types.Object), typ func(*types.TypeN
 			w.signature(t.Method(i).Signature())
 		}
 	}
+	w.alias = typ
 	for _, r := range roots {
 		w.walk(r)
 	}
 }
 
 // walker is the traversal the two walks share. Each supplies what to do on a
-// named type and on a field, and ByName what to do on an interface.
+// named type and on a field, and ByName what to do on an interface and on an
+// alias.
 type walker struct {
 	seen  map[*types.TypeName]bool
 	named func(*types.Named)
 	field func(*types.Var)
 	iface func(*types.Interface)
+	alias func(*types.TypeName)
 }
 
 func (w *walker) walk(t types.Type) {
+	// An alias is its own name for the type it denotes. Code holding a value
+	// through type T = x[int] names T, so ByName reports T before following x.
+	if a, ok := t.(*types.Alias); ok && w.alias != nil {
+		w.alias(a.Obj())
+	}
 	switch t := types.Unalias(t).(type) {
 	case *types.Named:
 		for i := range t.TypeArgs().Len() {
