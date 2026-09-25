@@ -9,6 +9,7 @@ import (
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/ssa/ssautil"
+	"golang.org/x/tools/go/types/typeutil"
 	"golang.org/x/tools/refactor/satisfy"
 )
 
@@ -283,9 +284,16 @@ func evidenceStructOf(t types.Type) (*types.Struct, *types.TypeName) {
 // evidenceUnnamedStructs pairs the fields of every named struct type whose
 // struct is identical to an unnamed struct type written somewhere: a value
 // of one is assignable to the other only while the field names agree.
+//
+// An unnamed struct is looked for inside every type an expression has, not
+// only at the top. One in a parameter of a dependency's function, loaded
+// from export data, appears only inside the type of the expression naming
+// that function. Identical ones are kept once, so a table-driven test
+// writing the same struct in every row costs one comparison.
 func (ev *evidence) evidenceUnnamedStructs(m *loadedModule) {
-	var unnamed []*types.Struct
+	var unnamed typeutil.Map
 	var named []*types.Struct
+	seenNamed := map[*types.Struct]bool{}
 	for _, p := range m.pkgs {
 		// The struct literal a defined type is declared with is recorded as a
 		// type expression too, but it is that type's own struct, not an
@@ -300,11 +308,8 @@ func (ev *evidence) evidenceUnnamedStructs(m *loadedModule) {
 			})
 		}
 		for expr, tv := range p.TypesInfo.Types {
-			if defining[expr] {
-				continue
-			}
-			if st, ok := types.Unalias(tv.Type).(*types.Struct); ok && st.NumFields() > 0 {
-				unnamed = append(unnamed, st)
+			if !defining[expr] {
+				evidenceCollectUnnamed(tv.Type, &unnamed, map[types.Type]bool{})
 			}
 		}
 		for _, obj := range p.TypesInfo.Defs {
@@ -312,19 +317,57 @@ func (ev *evidence) evidenceUnnamedStructs(m *loadedModule) {
 			if !ok || tn.IsAlias() {
 				continue
 			}
-			if st, ok := tn.Type().Underlying().(*types.Struct); ok {
+			if st, ok := tn.Type().Underlying().(*types.Struct); ok && !seenNamed[st] {
+				seenNamed[st] = true
 				named = append(named, st)
 			}
 		}
 	}
 	for _, st := range named {
-		for _, u := range unnamed {
+		unnamed.Iterate(func(t types.Type, _ any) {
+			u := t.(*types.Struct)
 			if u != st && types.IdenticalIgnoreTags(st, u) {
 				for i := range st.NumFields() {
 					ev.paired[keyOf(m.fset, st.Field(i))] = true
 				}
-				break
 			}
+		})
+	}
+}
+
+// evidenceCollectUnnamed adds every unnamed struct type inside t. A named
+// type is not entered: its struct is its own, and its fields are declared
+// where it is.
+func evidenceCollectUnnamed(t types.Type, into *typeutil.Map, seen map[types.Type]bool) {
+	if t == nil || seen[t] {
+		return
+	}
+	seen[t] = true
+	switch t := types.Unalias(t).(type) {
+	case *types.Struct:
+		if t.NumFields() > 0 {
+			into.Set(t, true)
+		}
+		for i := range t.NumFields() {
+			evidenceCollectUnnamed(t.Field(i).Type(), into, seen)
+		}
+	case *types.Pointer:
+		evidenceCollectUnnamed(t.Elem(), into, seen)
+	case *types.Slice:
+		evidenceCollectUnnamed(t.Elem(), into, seen)
+	case *types.Array:
+		evidenceCollectUnnamed(t.Elem(), into, seen)
+	case *types.Chan:
+		evidenceCollectUnnamed(t.Elem(), into, seen)
+	case *types.Map:
+		evidenceCollectUnnamed(t.Key(), into, seen)
+		evidenceCollectUnnamed(t.Elem(), into, seen)
+	case *types.Signature:
+		evidenceCollectUnnamed(t.Params(), into, seen)
+		evidenceCollectUnnamed(t.Results(), into, seen)
+	case *types.Tuple:
+		for i := range t.Len() {
+			evidenceCollectUnnamed(t.At(i).Type(), into, seen)
 		}
 	}
 }
@@ -557,6 +600,12 @@ func evidenceWalk(m *loadedModule, roots []types.Type, exportedOnly bool, into m
 				if exportedOnly && !f.Exported() && !f.Embedded() {
 					continue
 				}
+				// A field is marked for itself, not only through its type:
+				// type Wire Record shares Record's fields, and Wire escaping
+				// exposes them to reflection under either name.
+				if !exportedOnly {
+					into[keyOf(m.fset, f)] = true
+				}
 				if exportedOnly && f.Exported() {
 					into[keyOf(m.fset, f)] = true
 					// An embedded field is named by its type, so another
@@ -594,16 +643,17 @@ func evidenceWalk(m *loadedModule, roots []types.Type, exportedOnly bool, into m
 // for. That is a package outside internal/, and also an internal package
 // whose parent lies above the module or holds a nested module that may import
 // it. "No internal element in its path" is not the test: such a package can
-// hand a value out to another module just the same. package main is among the
-// roots, since -buildmode=plugin looks its exported symbols up.
+// hand a value out to another module just the same. package main is always
+// among the roots, inside internal/ or not, since -buildmode=plugin looks its
+// exported symbols up.
 func (ev *evidence) evidenceExposure(m *loadedModule) {
 	var roots []types.Type
 	for _, path := range m.paths {
-		if _, judged := m.rangeOf(path); judged {
+		p := m.byPath[path][0]
+		if _, judged := m.rangeOf(path); judged && p.Name != "main" {
 			continue
 		}
 		// An external test package is imported by nothing.
-		p := m.byPath[path][0]
 		if p.ForTest != "" && p.PkgPath != p.ForTest {
 			continue
 		}

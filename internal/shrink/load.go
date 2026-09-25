@@ -226,14 +226,14 @@ type loadExcludedFile struct {
 // and every nested module.
 //
 // A package whose files are all excluded under this GOOS is not in the load
-// at all, so reading only IgnoredFiles would miss it. The walk skips what
-// ./... skips: testdata, directories starting with . or _, and the vendor
-// directory at the module root. A vendor directory anywhere else holds
-// ordinary packages of the module.
+// at all, so reading only IgnoredFiles would miss it. Files are read only
+// where ./... reads them: not under testdata, a directory starting with . or
+// _, the vendor directory at the module root, or a nested module.
 //
-// A go.mod is looked for before any of that. A nested module in _tools or
-// testdata is not part of this module's build, but it can import the
-// module's internal packages all the same.
+// The walk itself goes everywhere but .git, since it is also looking for
+// go.mod files. A nested module in testdata/tools or _tools/gen is no part of
+// this module's build, but it can import the module's internal packages all
+// the same, at any depth.
 func (m *loadedModule) loadExcluded() error {
 	compiled := map[string]bool{}
 	for _, p := range m.pkgs {
@@ -242,6 +242,13 @@ func (m *loadedModule) loadExcluded() error {
 		}
 	}
 	fset := token.NewFileSet()
+	// unread holds the directories whose Go files ./... does not read.
+	var unread []string
+	under := func(path string) bool {
+		return slices.ContainsFunc(unread, func(dir string) bool {
+			return strings.HasPrefix(path, dir+string(filepath.Separator))
+		})
+	}
 	return filepath.WalkDir(m.dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -250,22 +257,26 @@ func (m *loadedModule) loadExcluded() error {
 			if path == m.dir {
 				return nil
 			}
+			name := d.Name()
+			if name == ".git" {
+				return filepath.SkipDir
+			}
 			if data, err := os.ReadFile(filepath.Join(path, "go.mod")); err == nil {
 				modPath := modfile.ModulePath(data)
 				if modPath == "" {
 					return fmt.Errorf("reading %s: no module path", filepath.Join(path, "go.mod"))
 				}
 				m.nested = append(m.nested, modPath)
-				return filepath.SkipDir
+				unread = append(unread, path)
+				return nil
 			}
-			name := d.Name()
 			rootVendor := name == "vendor" && filepath.Dir(path) == m.dir
 			if name == "testdata" || rootVendor || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") {
-				return filepath.SkipDir
+				unread = append(unread, path)
 			}
 			return nil
 		}
-		if !strings.HasSuffix(path, ".go") || compiled[path] {
+		if !strings.HasSuffix(path, ".go") || compiled[path] || under(path) {
 			return nil
 		}
 		f, err := parser.ParseFile(fset, path, nil, parser.ParseComments|parser.SkipObjectResolution)

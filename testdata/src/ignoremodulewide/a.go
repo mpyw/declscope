@@ -18,3 +18,11 @@ func Mixed() int { return 2 }
 //
 //declscope:ignore // want `unused //declscope:ignore on Bare`
 func Bare() int { return 3 }
+
+// An ignore naming unused beside one naming overexported may be answering
+// the unused report declscope shrink makes, which this pass cannot see, so it
+// is not called unused here either.
+//
+//declscope:ignore overexported
+//declscope:ignore unused
+func Answering() int { return 4 }

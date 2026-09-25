@@ -42,13 +42,20 @@ func (r *run) renameEdits(c *candidate) ([]Edit, string) {
 	// A name another fix of this run claims reads the same as one already
 	// taken: after that fix it is, and a report the run keeps must read the
 	// same once the fixes are applied.
-	var reserve, taken string
+	//
+	// Members share one reservation per package, not one per type. A.ID and
+	// B.Id both lower to id, and a type embedding A and B would then hold an
+	// ambiguous selector. A type claims the member name as well as the
+	// package name, since an embedded field takes the type's name.
+	member := c.pkg.PkgPath + "#" + newName
+	var reserve []string
+	var taken string
 	if c.kind.member() {
 		taken = "the unexported name is taken on its type"
 		if !renameMemberFree(r.mod, facts, c, newName) {
 			return nil, taken
 		}
-		reserve = keyOf(r.mod.fset, c.owner) + "." + newName
+		reserve = []string{member}
 	} else {
 		taken = "the unexported name is taken or would be captured"
 		if !renamePackageFree(variants, r.ev.sites[c.key], newName) {
@@ -60,12 +67,19 @@ func (r *run) renameEdits(c *candidate) ([]Edit, string) {
 		if facts.linknamed[c.obj.Name()] {
 			return nil, "a //go:linkname or //export names it"
 		}
-		reserve = c.pkg.PkgPath + "." + newName
+		reserve = []string{c.pkg.PkgPath + "." + newName}
+		if c.kind == kindType {
+			reserve = append(reserve, member)
+		}
 	}
-	if r.reserved[reserve] {
-		return nil, taken
+	for _, key := range reserve {
+		if r.reserved[key] {
+			return nil, taken
+		}
 	}
-	r.reserved[reserve] = true
+	for _, key := range reserve {
+		r.reserved[key] = true
+	}
 
 	var edits []Edit
 	seen := map[token.Pos]bool{}
@@ -218,7 +232,8 @@ func renameMemberFree(m *loadedModule, facts *renameFacts, c *candidate, newName
 			return false
 		}
 	}
-	for _, t := range facts.named {
+	// An unnamed struct promotes members too: struct{ Named; size int }.
+	for _, t := range slices.Concat(facts.named, facts.structs) {
 		sel, _, _ := types.LookupFieldOrMethod(t.typ, true, t.pkg, c.obj.Name())
 		if sel == nil || keyOf(m.fset, origin(sel)) != c.key {
 			continue

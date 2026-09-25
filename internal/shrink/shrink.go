@@ -219,8 +219,10 @@ func (r *run) skip(pkgs []*packages.Package) string {
 	case p.Name == "main":
 		// -buildmode=plugin looks exported symbols of main up by name.
 		return "package main"
-	case len(p.OtherFiles) > 0:
+	case len(p.OtherFiles) > 0 || slices.ContainsFunc(p.IgnoredFiles, func(f string) bool { return !strings.HasSuffix(f, ".go") }):
 		// Assembly and cgo name Go symbols from files go/types never reads.
+		// Assembly for another GOARCH is in IgnoredFiles, and names them in
+		// the build this run does not see.
 		return "the package holds non-Go files"
 	case !slices.Equal(p.GoFiles, p.CompiledGoFiles):
 		return "the package uses cgo"
@@ -306,13 +308,16 @@ func (r *run) judgeOne(c *candidate) (Finding, bool) {
 }
 
 // escaped reports whether a value that reflection may inspect reaches the
-// candidate: the type itself for a type, the owner for a method or a field.
+// candidate: the type itself for a type, the owner for a method, and the
+// field itself for a field, which every type sharing the struct holds.
 func (r *run) escaped(c *candidate) bool {
 	switch c.kind {
 	case kindType:
 		return r.ev.escaped[c.key]
-	case kindMethod, kindField:
+	case kindMethod:
 		return r.ev.escaped[keyOf(r.mod.fset, c.owner)]
+	case kindField:
+		return r.ev.escaped[c.key]
 	}
 	return false
 }
@@ -335,6 +340,11 @@ func (r *run) silenced(c *candidate) bool {
 // files of a judged package, that silenced nothing. One naming another rule
 // as well is judged by neither side: the analyzer cannot see this rule, and
 // this run cannot see the analyzer's.
+//
+// The report is the unused rule's, answered as the analyzer answers its own:
+// by an ignore beside it naming unused, or by a file-level ignore covering
+// unused, bare or named. The analyzer in turn never calls such an answer
+// unused, since it cannot see the report it answers.
 func (r *run) unusedIgnores(pkgs []*packages.Package) []Finding {
 	var findings []Finding
 	seen := map[token.Pos]bool{}
@@ -345,28 +355,50 @@ func (r *run) unusedIgnores(pkgs []*packages.Package) []Finding {
 			if ast.IsGenerated(file) {
 				continue
 			}
-			var ignores []directive.Ignore
+			fileIgnores := directive.ParseFile(file).Ignores
 			for _, g := range file.Comments {
-				ignores = append(ignores, directive.ParseDecl(g).Ignores...)
-			}
-			for _, ig := range ignores {
-				if seen[ig.Pos] || r.usedIgnores[ig.Pos] || len(ig.Rules) == 0 {
-					continue
+				group := directive.ParseDecl(g).Ignores
+				for _, ig := range group {
+					if seen[ig.Pos] || r.usedIgnores[ig.Pos] || !unusedJudged(ig) {
+						continue
+					}
+					seen[ig.Pos] = true
+					if unusedAnswered(ig, group, fileIgnores) {
+						continue
+					}
+					findings = append(findings, Finding{
+						Pos:     r.mod.fset.PositionFor(ig.Pos, false),
+						Rule:    rule.Unused,
+						Package: p.PkgPath,
+					})
 				}
-				if !slices.ContainsFunc(ig.Rules, rule.IsModuleWide) ||
-					slices.ContainsFunc(ig.Rules, func(x rule.Rule) bool { return !rule.IsModuleWide(x) }) {
-					continue
-				}
-				seen[ig.Pos] = true
-				findings = append(findings, Finding{
-					Pos:     r.mod.fset.PositionFor(ig.Pos, false),
-					Rule:    rule.Unused,
-					Package: p.PkgPath,
-				})
 			}
 		}
 	}
 	return findings
+}
+
+// unusedJudged reports whether this run judges ig: it names module-wide
+// rules and nothing else.
+func unusedJudged(ig directive.Ignore) bool {
+	return len(ig.Rules) > 0 && !slices.ContainsFunc(ig.Rules, func(x rule.Rule) bool { return !rule.IsModuleWide(x) })
+}
+
+// unusedAnswered reports whether another ignore answers ig's unused report:
+// one in its comment group naming unused, or a file-level one covering it.
+// No ignore answers its own report.
+func unusedAnswered(ig directive.Ignore, group, fileIgnores []directive.Ignore) bool {
+	for _, other := range group {
+		if other.Pos != ig.Pos && slices.Contains(other.Rules, rule.Unused) {
+			return true
+		}
+	}
+	for _, other := range fileIgnores {
+		if other.Pos != ig.Pos && other.Covers(rule.Unused) {
+			return true
+		}
+	}
+	return false
 }
 
 // candidateName is the name the message uses. A method or field is named

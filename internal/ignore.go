@@ -177,11 +177,25 @@ func (c *collection) reportUnusedIgnores(pass *analysis.Pass, opts Options) {
 	if !opts.Unused.Reports() || c.unseen(pass).all {
 		return
 	}
+	// An ignore naming a module-wide rule may be doing its job in a run this
+	// pass is not, so it is left to declscope shrink to judge. So is one that
+	// may be answering such an ignore's unused report there: beside it and
+	// naming unused, or at the file level covering unused.
+	moduleWideFiles := map[*fileInfo]bool{}
+	for _, s := range c.ignores {
+		if s.ig.NamesModuleWide() {
+			moduleWideFiles[c.fileAt(pass, s.ig.Pos)] = true
+		}
+	}
+	answersModuleWide := func(s *ignoreSite) bool {
+		if slices.Contains(s.ig.Rules, rule.Unused) && slices.ContainsFunc(s.siblings, directive.Ignore.NamesModuleWide) {
+			return true
+		}
+		return s.fileLevel && s.ig.Covers(rule.Unused) && moduleWideFiles[c.fileAt(pass, s.ig.Pos)]
+	}
 	sites := make([]*ignoreSite, 0, len(c.ignores))
 	for _, s := range c.ignores {
-		// An ignore naming a module-wide rule may be doing its job in a run
-		// this pass is not, so it is left to declscope shrink to judge.
-		if !s.used && !s.ig.NamesModuleWide() {
+		if !s.used && !s.ig.NamesModuleWide() && !answersModuleWide(s) {
 			sites = append(sites, s)
 		}
 	}

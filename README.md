@@ -1183,7 +1183,7 @@ A fix is offered only where no use can exist outside the package. A doubt withho
 | --- | --- |
 | A package outside `internal/` | Another module may import it |
 | `package main` | `-buildmode=plugin` looks its exported symbols up by name |
-| A package with assembly or cgo | Those files name Go symbols where `go/types` does not look |
+| A package with assembly or cgo, for any architecture | Those files name Go symbols where `go/types` does not look |
 | An `internal/` whose parent path holds a nested module's path | That module may import the package, and this run never loads it. It counts wherever it sits, `_tools/` and `testdata/` included |
 | An interface's method names | Every implementation would have to rename too |
 | A test function of a `_test.go` file | `go test` finds it by name |
@@ -1195,7 +1195,7 @@ A fix is offered only where no use can exist outside the package. A doubt withho
 
 Write `//declscope:ignore overexported` on the declaration, on a field's type, or before the package clause. On a func, a trailing comment on its first or last line counts too, as it does for the analyzer. A bare `//declscope:ignore` does not reach this rule. The analyzer judges a bare ignore, and would report it unused when only `shrink` needed it.
 
-`shrink` reports an `//declscope:ignore overexported` that silenced nothing. The analyzer never judges an ignore naming this rule, since it cannot see whether `shrink` needed it.
+`shrink` reports an `//declscope:ignore overexported` that silenced nothing. An ignore beside it naming `unused`, or a file-level one covering `unused`, answers that report, as it does for the analyzer. The analyzer never judges an ignore naming this rule, or one that may be answering it, since it cannot see whether `shrink` needed it.
 
 ## Measuring what is there
 

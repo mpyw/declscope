@@ -30,6 +30,17 @@ This file provides guidance to Claude Code when working with code in this reposi
 - **The rename is asked only once a report stands.** It claims its new name for the rest of the run, so a silenced declaration asking first withheld another's fix for nothing.
 - **Positions ignore `//line` (`PositionFor(pos, false)`).** A `//line` directive would otherwise key a declaration by another file's name and send `Apply` to it.
 - **A linkname target spells a method as `T.M` or `(*T).M`, and both spell `T`.**
+
+A second review found seven more holes, pinned by `testdata/review2` and `testdata/deep`:
+
+- **The walk goes into every directory for go.mod files**, and only stops reading Go files where `./...` does. Skipping `testdata/` outright missed `testdata/tools/go.mod`.
+- **A package with assembly for any architecture is skipped.** Assembly for another `GOARCH` lands in `IgnoredFiles`, not `OtherFiles`, and names symbols in a build this run does not see.
+- **Escape is recorded per field, not only per type.** `type Wire Record` shares `Record`'s field objects, so `json.Marshal(Wire(r))` exposes them under either name, and keying by the owner silently dropped JSON fields.
+- **Members reserve their new name per package, not per owner, and a type reserves the member name too.** `A.ID` and `B.Id` both lower to `id`, and a type embedding both would hold an ambiguous selector. An embedded field takes its type's name, so types and members share that reservation.
+- **An unnamed struct promotes members too**, so the member guard walks `facts.structs` as well as `facts.named`.
+- **package main is always an exposure root**, inside `internal/` or not. A plugin host looks its exported variables up.
+- **The unused report on an ignore naming overexported is answered as the analyzer answers its own**: by a sibling naming `unused`, or by a file-level ignore covering `unused`. The analyzer in turn skips judging such an answer (`answersModuleWide` in ignore.go), because it cannot see the report it answers. Without both halves, one directive meant two different things to the two tools.
+- **Unnamed structs are collected from inside every expression's type**, and kept once per identity. One in a parameter of a dependency loaded from export data appears only inside the type of the expression naming the function. No fixture reproduces that case, since it needs a dependency outside the module.
 - **The one unchecked assumption is in the README.** Every module whose path extends an `internal/` parent is taken to live under that parent's directory. Go checks `internal/` by import path, so a `/v2` published from another branch could import the package unseen.
 
 **A receiver-ignoring method is a way to dodge the naming rule, and golangci-lint closes it.** Methods are exempt from `qualify` because a method is never read bare. Writing a free helper as a method whose body never names its receiver takes that exemption without earning it, and it happened here once already. `revive`'s `unused-receiver` is enabled for exactly this; declscope has no business knowing about the shape. Do not add a receiver to silence the rule.
