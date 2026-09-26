@@ -11,10 +11,8 @@
 //   - Over configurations, so that the report does not read the current one.
 //     A change of defaults.unexported then changes no report, and a directive
 //     recording a deliberate `private` that today's default also gives is
-//     kept. This was the reason for the former loose default: an upgrade or a
-//     config edit added no report to a tree nobody touched.
-//     rules.unused: strict is now the default and reads the current configuration
-//     instead, and accepts that trade: it also reports a directive naming the
+//     kept. rules.unused: strict is the default and reads the current
+//     configuration. It also reports a directive naming the
 //     scope the declaration would have without it today, and one line of YAML
 //     changes what it reports. unused_modes.fsl models strict and off beside
 //     loose, and its loose is this spec's.

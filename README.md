@@ -278,7 +278,7 @@ baseline: .declscope-baseline.yaml
 >     exported: true
 > ```
 >
-> `ondemand` checks names once a package has a second namespace; `exported: true` includes exported declarations. `surplus` and `unused` are already `strict` by default.
+> `ondemand` checks names once a package has a second namespace. `exported: true` includes exported declarations. `surplus` and `unused` default to `strict`.
 
 - The file is `.declscope.yaml` or `.declscope.yml`. An empty one changes nothing.
 - [`-config`](#flags) names one file, and reads no other.
@@ -814,8 +814,8 @@ A **rule** is one check. A rule's name is the diagnostic's category, its [baseli
 | --- | --- | --- | --- | --- |
 | [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:package` | `rules.boundary` | `on` |
 | [`qualify`](#the-naming-rule) | A name that does not carry its namespace | Rename to prefix it | `rules.naming.*` | Off |
-| [`surplus`](#surplus) | Package scope with no visible use from another namespace | Under `strict`, insert `//declscope:private` | `rules.surplus` | `loose` |
-| [`unused`](#unused-directives) | An ignore that silenced nothing, or a scope directive that changes no scope | Under `strict`, delete a redundant scope directive | `rules.unused` | `loose` |
+| [`surplus`](#surplus) | Package scope with no visible use from another namespace | Under `strict`, insert `//declscope:private` | `rules.surplus` | `strict` |
+| [`unused`](#unused-directives) | An ignore that silenced nothing, or a scope directive that changes no scope | Under `strict`, delete a redundant scope directive | `rules.unused` | `strict` |
 | [`directive`](#malformed-directives) | A directive that is malformed, unknown, conflicting or misplaced | None | No | On |
 | [`filter`](#the-filter-rule) | A `filter.only` that an `only` above it cancels | None | No | On |
 | [`overexported`](#unexporting-what-no-importer-uses) | An exported declaration of an `internal/` package that nothing outside its package uses | Unexport it | Running `declscope shrink` | Not run by the analyzer |
