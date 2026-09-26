@@ -1,5 +1,5 @@
 // helperShared is called from order.go, so the directive is in use, and under
-// loose, the default, that is all the rule asks. helperLocal is not reported;
+// loose, that is all the rule asks. helperLocal is not reported;
 // strict is what judges it on its own.
 //
 //declscope:package

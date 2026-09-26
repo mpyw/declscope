@@ -3,3 +3,4 @@ defaults:
   unexported: package
 rules:
   surplus: strict
+  unused: loose

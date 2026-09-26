@@ -244,8 +244,8 @@ rules:
     vocabulary:
       mouse: [wheel]
   boundary: on           # off | on
-  surplus: loose         # off | loose | strict
-  unused: loose          # off | loose | strict
+  surplus: strict        # off | loose | strict
+  unused: strict         # off | loose | strict
 
 filter:
   only: []              # nothing outside these, when set
@@ -262,11 +262,23 @@ baseline: .declscope-baseline.yaml
 | `rules.naming.exported` | `true`, `false` | `false` | Whether the naming rule also reaches exported declarations. The rename is never offered there |
 | `rules.naming.vocabulary` | Namespace to a list of words | None | Extra words that carry a namespace. See [what carries a namespace](#what-carries-a-namespace) |
 | `rules.boundary` | `off`, `on` | `on` | Whether the [`boundary`](#boundary) rule reports. See [reach without a boundary](#reach-without-a-boundary) |
-| `rules.surplus` | `off`, `loose`, `strict` | `loose` | How much the [`surplus`](#surplus) rule reports. See [strict](#strict) |
-| `rules.unused` | `off`, `loose`, `strict` | `loose` | How much the [`unused`](#unused-directives) rule reports. See [off, loose and strict](#off-loose-and-strict) |
+| `rules.surplus` | `off`, `loose`, `strict` | `strict` | How much the [`surplus`](#surplus) rule reports. See [strict](#strict) |
+| `rules.unused` | `off`, `loose`, `strict` | `strict` | How much the [`unused`](#unused-directives) rule reports. See [off, loose and strict](#off-loose-and-strict) |
 | `filter.only` | Path globs | None | When set, no file outside them is read. Empty places no restriction |
 | `filter.omit` | Path globs | None | Files taken back out, whether or not `only` let them through |
 | `baseline` | A path relative to the config file | The nearest `.declscope-baseline.yaml` | The [baseline](#adopting-on-an-existing-codebase) to consult |
+
+> [!TIP]
+> For the recommended checks, put this in `.declscope.yaml`:
+>
+> ```yaml
+> rules:
+>   naming:
+>     qualify: ondemand
+>     exported: true
+> ```
+>
+> `ondemand` checks names once a package has a second namespace; `exported: true` includes exported declarations. `surplus` and `unused` are already `strict` by default.
 
 - The file is `.declscope.yaml` or `.declscope.yml`. An empty one changes nothing.
 - [`-config`](#flags) names one file, and reads no other.
@@ -400,8 +412,8 @@ The `unused` rule reports a directive that changes nothing. A directive that dec
 | `rules.unused` | `//declscope:ignore` is reported when | `//declscope:package` or `//declscope:private` is reported when | `-fix` |
 | --- | --- | --- | --- |
 | `off` | Never | Never | None |
-| `loose` *(default)* | It silenced no report | Deleting it would change no declaration's scope under any config | None |
-| `strict` | It silenced no report | Deleting it would change no declaration's scope under the current config | Deletes a redundant scope directive, unless [withheld](#the-strict-fix) |
+| `loose` | It silenced no report | Deleting it would change no declaration's scope under any config | None |
+| `strict` *(default)* | It silenced no report | Deleting it would change no declaration's scope under the current config | Deletes a redundant scope directive, unless [withheld](#the-strict-fix) |
 
 - One comment gets one report, however many declarations it reaches. A block's directive is reported once.
 - Without the directive, a declaration falls to the next row of [scope resolution](#scope-resolution). Only `defaults.unexported` there depends on the config.
@@ -979,8 +991,8 @@ A rename is offered only when it provably changes nothing but the spelling. The 
 | `rules.surplus` | Reports | Fix |
 | --- | --- | --- |
 | `off` | Nothing | |
-| `loose` *(default)* | A `//declscope:package` that nothing it reaches needs | None |
-| `strict` | What `loose` reports, plus each declaration a directive in use widens for nothing | Insert `//declscope:private` |
+| `loose` | A `//declscope:package` that nothing it reaches needs | None |
+| `strict` *(default)* | What `loose` reports, plus each declaration a directive in use widens for nothing | Insert `//declscope:private` |
 
 ```go
 // email.go
@@ -1075,7 +1087,7 @@ Every enclosing directive is judged the same way.
 | A `var`, `const` or `type` block | Each spec |
 | The file | Each declaration in the file, and each member of a type that states no scope |
 
-`strict` is opt-in. A new release must not add reports to a repository whose config did not change.
+`strict` is the default. `loose` checks only directives as a whole; select it explicitly if that is the policy your repository wants.
 
 > [!TIP]
 > Convention puts private fields last, after the fields other namespaces read. The fix never reorders fields: order is observable through unkeyed composite literals, positional encodings, `unsafe` offsets and 64-bit atomic alignment. Move them yourself where none of those apply.

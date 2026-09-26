@@ -60,7 +60,7 @@ run_test "lint" \
 run_test "shrink" \
     go run ./cmd/declscope shrink
 
-# declscope is subject to its own rules, at the strictest setting. Silence is
+# declscope is subject to its own rules, with the naming rule enabled. Silence is
 # the assertion: every namespace crossing inside the tool is stated in the
 # source, so anything printed here is a boundary nobody wrote down.
 run_test "dogfood" \

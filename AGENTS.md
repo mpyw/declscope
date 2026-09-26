@@ -6,7 +6,7 @@ declscope is a Go linter that enforces a `private` scope within a flat package. 
 
 - Exportedness alone decides the analyzer's default scope: exported declarations are `package`, unexported declarations are `private`. A directive can override either. The analyzer sees one package, so it must not infer whether an exported declaration is used by importers.
 - `declscope shrink` is a separate, module-wide command. It judges exported declarations only where `internal/` limits possible importers. A report may survive uncertainty; an automatic fix must be withheld unless it is sound.
-- Keep the default naming mode at `never` and `surplus` and `unused` at `loose` unless a change to that policy is deliberate and measured. Their stricter modes add diagnostics to unchanged repositories. The repository checks itself with `.declscope-strict.yaml` through an explicit `-config`.
+- Keep the default naming mode at `never` and `surplus` and `unused` at `strict` unless a change to that policy is deliberate and measured. Changes to these modes can add diagnostics to unchanged repositories. The repository checks itself with `.declscope-strict.yaml` through an explicit `-config`.
 - A directive records the author's scope decision. A boundary fix must not overwrite a declaration's own scope directive. Suggested fixes must converge in one pass without creating new reports or breaking type checking.
 - Keep the rule name shared between diagnostics, config, ignores, and baseline keys in `internal/rule`. Preserve the distinction between malformed directives and unused ones.
 

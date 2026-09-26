@@ -5,3 +5,4 @@ rules:
   naming:
     qualify: never
   surplus: off
+  unused: loose

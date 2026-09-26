@@ -1,3 +1,4 @@
 # strict judges each declaration under a directive that is otherwise in use.
 rules:
   surplus: strict
+  unused: loose

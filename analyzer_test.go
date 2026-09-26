@@ -410,10 +410,10 @@ func TestSurplusConversion(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusconvert")
 }
 
-// TestSurplusDefaultOff pins the built-in default: with no config, the rule
-// asks nothing.
-func TestSurplusDefaultOff(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusdefault")
+// TestSurplusDefault pins the built-in default: with no config, the rule
+// reports a directive nothing needs.
+func TestSurplusDefault(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusdefault", "surplusdefaultstrict")
 }
 
 // TestSurplusBaseline checks that a recorded surplus finding is suppressed
@@ -451,7 +451,7 @@ func TestSurplusStrictDefaults(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusstrictdefaults")
 }
 
-// TestSurplusLoose checks the default: a directive in use says nothing about
+// TestSurplusLoose checks the loose mode: a directive in use says nothing about
 // the declarations under it that nothing outside reaches.
 func TestSurplusLoose(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusloose")
@@ -478,7 +478,7 @@ func TestSurplusStrictBaseline(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusstrictbaselined")
 }
 
-// TestUnusedLoose checks the default rules.unused: a scope directive
+// TestUnusedLoose checks rules.unused: loose: a scope directive
 // naming the scope defaults.unexported gives today is kept, since another
 // configuration could make it bind, and one restating an enclosing directive
 // is reported as before.
@@ -494,6 +494,11 @@ func TestUnusedLoose(t *testing.T) {
 // they agree with it.
 func TestUnusedStrict(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unusedstrict")
+}
+
+// TestUnusedDefault pins the built-in strict mode without a config file.
+func TestUnusedDefault(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unuseddefaultstrict")
 }
 
 // TestUnusedOff checks rules.unused: off. No directive is reported unused,

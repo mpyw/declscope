@@ -38,31 +38,26 @@ type Options struct {
 	// switch cannot do.
 	Boundary rule.BoundaryMode
 
-	// Surplus says how much the surplus rule reports. Loose, the default,
-	// reports a //declscope:package when declscope sees no use of anything
+	// Surplus says how much the surplus rule reports. Strict is the default.
+	// Loose reports a //declscope:package when declscope sees no use of anything
 	// that takes its scope from it. Strict also reports each declaration a
 	// directive in use widens for nothing, and offers to narrow it. Off
 	// reports nothing.
-	//
-	// The default is loose, not strict: an upgrade must not add reports to a
-	// repository whose config did not change. strict is opt-in.
 	//
 	// Neither shape has a way to break a build, but loose's advice is to
 	// delete a directive, so it never has a fix: every case it cannot see is
 	// one where the directive stays and the advice would be to delete it.
 	Surplus rule.SurplusMode
 
-	// Unused says how much the unused rule reports. Loose, the default,
-	// reports an ignore that silenced nothing, and a scope directive only
+	// Unused says how much the unused rule reports. Strict is the default.
+	// Loose reports an ignore that silenced nothing, and a scope directive only
 	// when the scope it names is one the declarations it reaches would have
 	// under every configuration. Strict also reports a scope directive that
 	// names the scope they would have without it under this configuration,
 	// and offers to delete it. Off reports nothing.
 	//
-	// The default is loose: an upgrade must not add reports to a repository
-	// whose config did not change, and under strict a change of
-	// defaults.unexported reports every directive that restates the new
-	// default.
+	// Under strict, changing defaults.unexported reports directives that
+	// restate the new default.
 	Unused rule.UnusedMode
 
 	// NameExported widens the naming rule to exported declarations. Inside
@@ -118,8 +113,8 @@ func DefaultOptions() Options {
 		Unexported: scope.Private,
 		Qualify:    rule.QualifyModeNever,
 		Boundary:   rule.BoundaryModeOn,
-		Surplus:    rule.SurplusModeLoose,
-		Unused:     rule.UnusedModeLoose,
+		Surplus:    rule.SurplusModeStrict,
+		Unused:     rule.UnusedModeStrict,
 	}
 }
 

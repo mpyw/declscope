@@ -32,11 +32,11 @@ type scopesiteBook struct {
 //
 // A directive binds a declaration when the scope it names is one that
 // declaration could not have had anyway — under ANY configuration. That
-// quantifier is what rules.unused: loose, the default, judges by. Comparing
+// quantifier is what rules.unused: loose judges by. Comparing
 // against defaults.unexported instead changes the judgment of every directive
 // in a tree when one line of YAML changes, or when a config file appears two
 // directories up, and reports a directive recording a deliberate private.
-// rules.unused: strict is the opt-in that makes that comparison
+// rules.unused: strict is the default that makes that comparison
 // (redundantAtScopeSite) and accepts the trade.
 //
 // Quantified, the answer cannot depend on configuration at all:
