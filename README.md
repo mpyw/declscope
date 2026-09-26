@@ -231,7 +231,7 @@ tar xzf "declscope_${VERSION}_darwin_arm64.tar.gz"
 
 ## Configuration
 
-Configuration is optional. This is all of it.
+Every setting is optional. The table below lists each setting and its default value. The YAML block shows all available keys; some values are examples.
 
 ```yaml
 defaults:
