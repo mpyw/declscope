@@ -14,8 +14,8 @@
 //	    vocabulary:          # per-namespace words that carry the namespace
 //	      mouse: [wheel]
 //	  boundary: on          # off | on (off stops checking reach, leaving only the naming rule)
-//	  surplus: loose        # off | loose | strict
-//	  unused: loose         # off | loose | strict
+//	  surplus: strict       # off | loose | strict
+//	  unused: strict        # off | loose | strict
 //
 // rules.naming.qualify reads an rule.QualifyMode; rules.boundary reads an
 // rule.BoundaryMode; rules.surplus reads an rule.SurplusMode;

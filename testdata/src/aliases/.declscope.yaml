@@ -1,3 +1,4 @@
 rules:
   naming:
     qualify: never
+  unused: loose

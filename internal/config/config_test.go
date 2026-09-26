@@ -316,10 +316,10 @@ func TestSurplusModes(t *testing.T) {
 }
 
 // TestUnusedModes checks every value of the rules.unused setting, that each
-// spells back the way the config does, and that the default is loose.
+// spells back the way the config does, and that the default is strict.
 func TestUnusedModes(t *testing.T) {
-	if got := internal.DefaultOptions().Unused; got != rule.UnusedModeLoose {
-		t.Errorf("default Unused = %v, want loose", got)
+	if got := internal.DefaultOptions().Unused; got != rule.UnusedModeStrict {
+		t.Errorf("default Unused = %v, want strict", got)
 	}
 	for _, tt := range []struct {
 		value string
@@ -339,7 +339,7 @@ func TestUnusedModes(t *testing.T) {
 		if got := opts.Unused.String(); got != tt.value {
 			t.Errorf("%q: String() = %q, want the config's own spelling", tt.value, got)
 		}
-		if opts.Surplus != rule.SurplusModeLoose || opts.Boundary != rule.BoundaryModeOn {
+		if opts.Surplus != rule.SurplusModeStrict || opts.Boundary != rule.BoundaryModeOn {
 			t.Errorf("%q: rules.unused must switch no other rule", tt.value)
 		}
 	}
@@ -407,10 +407,8 @@ func TestDefaultModes(t *testing.T) {
 	if opts.Boundary != rule.BoundaryModeOn {
 		t.Errorf("default Boundary = %v, want on: it is the rule this tool exists for", opts.Boundary)
 	}
-	// loose, not strict: an upgrade must not add reports to a repository
-	// whose config did not change.
-	if opts.Surplus != rule.SurplusModeLoose {
-		t.Errorf("default Surplus = %v, want loose", opts.Surplus)
+	if opts.Surplus != rule.SurplusModeStrict {
+		t.Errorf("default Surplus = %v, want strict", opts.Surplus)
 	}
 }
 

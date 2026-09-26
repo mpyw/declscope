@@ -1,8 +1,8 @@
 // The unused rule on a scope directive, under each of rules.unused's modes.
-// off reports nothing and offers no fix. loose, the default, is
+// off reports nothing and offers no fix. loose is
 // unused_bind.fsl: a scope directive is unused only when nothing it reaches
 // takes a scope it could not have had under ANY configuration. strict, the
-// opt-in, also reports a directive that names the scope the declaration
+// default, also reports a directive that names the scope the declaration
 // would have without it under THIS configuration: //declscope:private on an
 // unexported field of a type that states nothing, while defaults.unexported
 // is private.

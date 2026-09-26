@@ -317,8 +317,8 @@ func TestSurveyRendersTheChecksAsMarkdown(t *testing.T) {
 	if !strings.Contains(out, "surplus off") {
 		t.Errorf("a rule the config turned off should read as off:\n%s", out)
 	}
-	if !strings.Contains(out, "unused loose") {
-		t.Errorf("the unused rule's mode should be named, loose by default:\n%s", out)
+	if !strings.Contains(out, "unused strict") {
+		t.Errorf("the unused rule's mode should be named, strict by default:\n%s", out)
 	}
 	for _, rule := range []string{"qualify", "surplus"} {
 		if !strings.Contains(out, "`"+rule+"`") {
