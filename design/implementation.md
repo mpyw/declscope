@@ -1,6 +1,6 @@
-# CLAUDE.md
+# Implementation notes
 
-This file provides guidance to Claude Code when working with code in this repository.
+This file records the design decisions and implementation constraints for declscope. Read the relevant section before changing the corresponding behavior. The short, always-loaded instructions are in [`AGENTS.md`](../AGENTS.md).
 
 ## Project overview
 
