@@ -155,7 +155,7 @@ The three compose. `depguard` keeps the package graph honest, declscope keeps ea
 
 | Method | Command | Needs |
 | --- | --- | --- |
-| **[mise](https://mise.jdx.dev/)** *(recommended)* | `mise use "github:mpyw/declscope@0.13.4"` | Nothing. Installs the prebuilt binary |
+| **[mise](https://mise.jdx.dev/)** *(recommended)* | `mise use "github:mpyw/declscope@0.14.0"` | Nothing. Installs the prebuilt binary |
 | `go tool` | `go get -tool github.com/mpyw/declscope/cmd/declscope@latest` | Go 1.27+ |
 | `go install` | `go install github.com/mpyw/declscope/cmd/declscope@latest` | Go 1.27+ |
 | Release archive | See below | Nothing |
@@ -171,7 +171,7 @@ declscope ./...
 
 ```toml
 [tools]
-"github:mpyw/declscope" = "0.13.4"
+"github:mpyw/declscope" = "0.14.0"
 ```
 
 As a tool dependency in `go.mod`:
@@ -196,7 +196,7 @@ go run github.com/mpyw/declscope/cmd/declscope@latest ./...
 From a release archive, verified against the published checksums:
 
 ```bash
-VERSION=0.13.4
+VERSION=0.14.0
 curl -LO "https://github.com/mpyw/declscope/releases/download/v${VERSION}/declscope_${VERSION}_darwin_arm64.tar.gz"
 curl -LO "https://github.com/mpyw/declscope/releases/download/v${VERSION}/checksums.txt"
 shasum -a 256 -c checksums.txt --ignore-missing
