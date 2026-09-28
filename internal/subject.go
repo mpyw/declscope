@@ -243,8 +243,8 @@ type collection struct {
 	targets []*target
 	byObj   map[types.Object]*target
 	refs    map[types.Object][]ref
-	// idents holds every ident naming an object, definition included, so a
-	// rename can rewrite all of them.
+	// idents holds every ident naming a target, definition included, so a
+	// rename can rewrite all of them. Like refs, it has no other keys.
 	idents   map[types.Object][]*ast.Ident
 	problems []directive.Problem
 

@@ -37,6 +37,14 @@ func TestSuggestedFixEmbedded(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixembedded")
 }
 
+// TestSuggestedFixEmbeddedGeneric checks the same for an embedded generic type.
+// The selection through an instantiated field, the embedding and the
+// declaration are all rewritten. An imported embedded type and a local that
+// shares the name are left alone.
+func TestSuggestedFixEmbeddedGeneric(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixembeddedgeneric")
+}
+
 // The tests below pin the conditions under which a rename is withheld. A
 // rename is offered only when it provably changes nothing but the spelling;
 // in every other case the violation is still reported, without a fix. Each

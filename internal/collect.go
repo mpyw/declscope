@@ -426,14 +426,14 @@ func (c *collection) collectUnkeyedFields(pass *analysis.Pass, fi *fileInfo, lit
 	if !ok || st.NumFields() != len(lit.Elts) {
 		return
 	}
-	// A field that is not a target, such as an embedded one or one declared
-	// in another package, is recorded too. refs is only ever read for a
-	// target, so the entry is never asked for. The literal of an instantiated
-	// generic struct holds the instantiated fields, and refs is keyed by the
-	// declared ones, which origin maps them back to.
+	// refs is only ever read for a target, so a field that is not one, such
+	// as an embedded one or one declared in another package, is skipped. The
+	// literal of an instantiated generic struct holds the instantiated fields,
+	// and byObj is keyed by the declared ones, which origin maps them back to.
 	for i, elt := range lit.Elts {
-		f := origin(st.Field(i))
-		c.refs[f] = append(c.refs[f], ref{node: elt, file: fi})
+		if f := origin(st.Field(i)); c.byObj[f] != nil {
+			c.refs[f] = append(c.refs[f], ref{node: elt, file: fi})
+		}
 	}
 }
 
@@ -461,19 +461,22 @@ func (c *collection) collectRefs(pass *analysis.Pass) {
 				continue
 			}
 			ident := cur.Node().(*ast.Ident)
-			if obj := pass.TypesInfo.Defs[ident]; obj != nil {
+			// Only a target's idents and refs are ever read, and byObj is
+			// complete, so nothing else is recorded. Most idents in a package
+			// name locals, parameters and imported objects.
+			if obj := pass.TypesInfo.Defs[ident]; c.byObj[obj] != nil {
 				c.idents[obj] = append(c.idents[obj], ident)
 			}
 			obj := origin(pass.TypesInfo.Uses[ident])
 			if obj == nil {
 				continue
 			}
-			c.idents[obj] = append(c.idents[obj], ident)
-			if tn := embeddedTypeName(obj); tn != nil {
-				c.idents[tn] = append(c.idents[tn], ident)
-			}
-			if _, tracked := c.byObj[obj]; tracked {
+			if c.byObj[obj] != nil {
+				c.idents[obj] = append(c.idents[obj], ident)
 				c.refs[obj] = append(c.refs[obj], ref{node: ident, file: fi})
+			}
+			if tn := embeddedTypeName(obj); c.byObj[tn] != nil {
+				c.idents[tn] = append(c.idents[tn], ident)
 			}
 		}
 	}

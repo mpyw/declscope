@@ -1,0 +1,25 @@
+package fixembeddedgeneric
+
+import "strings"
+
+type userBox[T any] struct{ v T } // want `type box does not carry namespace "user" anywhere in its name; rename it to userBox, or to another name that carries "user"`
+
+// UserList embeds an instantiation that mentions its type parameter. Uses holds
+// the instantiated field for u.box, which origin maps back to the declared one.
+type UserList[T any] struct {
+	userBox[T]
+	*strings.Builder
+}
+
+func (u *UserList[T]) Get() T { return u.userBox.v }
+
+// UserInts embeds a plain instantiation. Its field is not a target, but the
+// selection through it is spelled with the type's name.
+type UserInts struct{ userBox[int] }
+
+func (u UserInts) Get() int {
+	box := u.userBox.v // a local that shares the name is not rewritten
+	return box
+}
+
+func UserLen(u *UserList[int]) int { return u.Builder.Len() }
