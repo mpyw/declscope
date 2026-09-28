@@ -544,3 +544,12 @@ func TestSymbolFileName(t *testing.T) {
 func TestMethodOnGeneratedType(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "generatedowner")
 }
+
+// TestLineDirective checks that a //line directive changes nothing about
+// which file a position belongs to. A file-level ignore still covers the
+// lines below one, a type below one is still apart from a method filed elsewhere, and
+// a file renamed from above its package clause is still the one the pass
+// holds.
+func TestLineDirective(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "lineignore", "lineforeign", "lineunseen")
+}

@@ -198,6 +198,8 @@ did.
 
 `testdata/src/generics`, `embedded` and `fixembedded` pin both, including the receiver resolution of a method on `List[T]`. `unkeyed`, `surplusconvert` and `surplusstrictreach` pin the literal and the conversion of an instantiation.
 
+**A file is named as it is on disk (`PositionFor(pos, false)`), in the analyzer as in `shrink`.** A `//line` directive renames every position below it, and drops the column when it states none. `collectFiles` keys a file by its name on disk. `fileAt` looked it up by the adjusted name and missed every position below a `//line`. A file-level ignore silenced nothing there, and was then reported unused. A receiver type below one lost its file, so a foreign method went unreported. `unseen` took the file itself for one the pass does not hold, and withheld everything. The `-fix` edit read the adjusted column of 0 as the start of a line, and wrote a directive on the line of a `{` where it binds nothing. `lineignore`, `lineforeign`, `lineunseen` and `linefix` pin each of these.
+
 ## Rules
 
 `internal/rule` holds the one vocabulary. The same name is the diagnostic's `Category`, the `Rule` field of a baseline key, and what an ignore directive targets. **Adding a rule means adding it there**, not inventing a string at the report site.
