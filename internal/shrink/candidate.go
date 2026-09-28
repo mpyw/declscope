@@ -159,10 +159,7 @@ func candidateTestEntry(name string) bool {
 	if name == "TestMain" {
 		return true
 	}
-	for _, prefix := range []string{"Test", "Benchmark", "Fuzz", "Example"} {
-		if strings.HasPrefix(name, prefix) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc([]string{"Test", "Benchmark", "Fuzz", "Example"}, func(prefix string) bool {
+		return strings.HasPrefix(name, prefix)
+	})
 }

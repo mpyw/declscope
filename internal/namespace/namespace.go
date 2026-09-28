@@ -26,6 +26,7 @@ import (
 	"go/ast"
 	"go/token"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -313,15 +314,8 @@ func Contains(name, ns string) bool {
 	if ns == "" {
 		return false
 	}
-	if containsForm(name, ns) {
-		return true
-	}
-	for _, form := range inflections(ns) {
-		if containsForm(name, form) {
-			return true
-		}
-	}
-	return false
+	carries := func(form string) bool { return containsForm(name, form) }
+	return carries(ns) || slices.ContainsFunc(inflections(ns), carries)
 }
 
 // containsForm is one spelling's share of Contains: the form must begin at a

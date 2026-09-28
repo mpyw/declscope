@@ -326,10 +326,7 @@ func embeddedTypeName(obj types.Object) types.Object {
 // comparePos orders positions by file name, then by offset within the file.
 func comparePos(fset *token.FileSet, a, b token.Pos) int {
 	pa, pb := fset.Position(a), fset.Position(b)
-	if c := strings.Compare(pa.Filename, pb.Filename); c != 0 {
-		return c
-	}
-	return cmp.Compare(pa.Offset, pb.Offset)
+	return cmp.Or(strings.Compare(pa.Filename, pb.Filename), cmp.Compare(pa.Offset, pb.Offset))
 }
 
 // isExported is Go's own rule, not an ASCII approximation of it. name[0] is the

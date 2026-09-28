@@ -516,12 +516,7 @@ func (r *scopesiteRemovals) crosses(t *target) bool {
 	if r.c.unseen(r.pass).names[t.obj.Name()] {
 		return true
 	}
-	for _, ref := range r.c.refs[t.obj] {
-		if ref.file.key() != t.file.key() {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(r.c.refs[t.obj], func(use ref) bool { return use.file.key() != t.file.key() })
 }
 
 // scopesiteRemoval deletes the directive comment at pos: its whole line when it

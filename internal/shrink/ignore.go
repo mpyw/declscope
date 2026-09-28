@@ -90,15 +90,9 @@ func ignoreJudged(ig directive.Ignore) bool {
 // one beside it naming unused, or a file-level one covering it. No ignore
 // answers its own report.
 func ignoreAnswered(ig directive.Ignore, beside, fileIgnores []directive.Ignore) bool {
-	for _, other := range beside {
-		if other.Pos != ig.Pos && slices.Contains(other.Rules, rule.Unused) {
-			return true
-		}
-	}
-	for _, other := range fileIgnores {
-		if other.Pos != ig.Pos && other.Covers(rule.Unused) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(beside, func(other directive.Ignore) bool {
+		return other.Pos != ig.Pos && slices.Contains(other.Rules, rule.Unused)
+	}) || slices.ContainsFunc(fileIgnores, func(other directive.Ignore) bool {
+		return other.Pos != ig.Pos && other.Covers(rule.Unused)
+	})
 }

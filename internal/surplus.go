@@ -168,17 +168,10 @@ func (c *collection) computeSurplus(pass *analysis.Pass) *surplusState {
 		}
 	}
 	for pos, group := range groups {
-		fired := true
-		for _, t := range group {
-			// An exported name is reached by every importer, which no
-			// single-package analysis can see, so it keeps its directive and
-			// everything sharing the comment.
-			if isExported(t.obj.Name()) || s.reachesOutside(c, t) {
-				fired = false
-				break
-			}
-		}
-		if !fired {
+		// An exported name is reached by every importer, which no
+		// single-package analysis can see, so it keeps its directive and
+		// everything sharing the comment.
+		if slices.ContainsFunc(group, func(t *target) bool { return isExported(t.obj.Name()) || s.reachesOutside(c, t) }) {
 			continue
 		}
 		s.fired[pos] = true
@@ -243,12 +236,7 @@ func (c *collection) surplusSeesEveryFile(pass *analysis.Pass) bool {
 // composite literal without keysForReport or a selection on a generic type counts for
 // there counts here.
 func (c *collection) surplusSeesUseOutside(t *target) bool {
-	for _, r := range c.refs[t.obj] {
-		if r.file.key() != t.file.key() {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(c.refs[t.obj], func(r ref) bool { return r.file.key() != t.file.key() })
 }
 
 // surplusReached collects every declaration reached by a path that spells no

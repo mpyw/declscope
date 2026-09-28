@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -389,12 +390,7 @@ func renamePackageFree(variants []*packages.Package, sites []evidenceSite, newNa
 // called that, or make a selector of it ambiguous.
 func renameEmbeddingFree(m *module.Module, facts *renameFacts, c *candidate, newName string) bool {
 	holds := renameReach(m, c)
-	for _, t := range facts.typed {
-		if holds(t) && renameNameIn(t, newName) {
-			return false
-		}
-	}
-	return true
+	return !slices.ContainsFunc(facts.typed, func(t renameTyped) bool { return holds(t) && renameNameIn(t, newName) })
 }
 
 // renameMemberFree reports whether newName can replace a method or field
@@ -415,10 +411,5 @@ func renameMemberFree(m *module.Module, facts *renameFacts, c *candidate, newNam
 	// the old name is hidden or ambiguous. An unnamed struct promotes members
 	// too: struct{ Named; size int }.
 	holds := renameReach(m, c)
-	for _, t := range facts.typed {
-		if holds(t) && renameNameIn(t, newName) {
-			return false
-		}
-	}
-	return true
+	return !slices.ContainsFunc(facts.typed, func(t renameTyped) bool { return holds(t) && renameNameIn(t, newName) })
 }
