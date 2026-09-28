@@ -6,6 +6,8 @@ import (
 	"go/types"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/analysis/passes/inspect"
+	"golang.org/x/tools/go/ast/inspector"
 
 	"github.com/mpyw/declscope/internal/directive"
 )
@@ -187,25 +189,21 @@ func (rs *renameState) usedOutside(pass *analysis.Pass, c *collection) map[types
 	}
 	rs.outsideDone = true
 	rs.outside = make(map[types.Object]bool)
-	for _, f := range pass.Files {
-		if _, collected := c.byFile[f]; collected {
+	in := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
+	for fc := range in.Root().Children() {
+		if _, collected := c.byFile[fc.Node().(*ast.File)]; collected {
 			continue
 		}
-		ast.Inspect(f, func(n ast.Node) bool {
-			ident, ok := n.(*ast.Ident)
-			if !ok {
-				return true
-			}
-			obj := origin(pass.TypesInfo.ObjectOf(ident))
+		for cur := range fc.Preorder((*ast.Ident)(nil)) {
+			obj := origin(pass.TypesInfo.ObjectOf(cur.Node().(*ast.Ident)))
 			if obj == nil {
-				return true
+				continue
 			}
 			rs.outside[obj] = true
 			if tn := embeddedTypeName(obj); tn != nil {
 				rs.outside[tn] = true
 			}
-			return true
-		})
+		}
 	}
 	return rs.outside
 }

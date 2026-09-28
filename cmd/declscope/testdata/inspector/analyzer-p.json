@@ -1,0 +1,121 @@
+{
+	"example.com/declscopetest/p": {
+		"declscope": [
+			{
+				"category": "boundary",
+				"posn": "$ROOT/p/user.go:3:6",
+				"end": "$ROOT/p/user.go:3:6",
+				"message": "func helper is private to namespace \"user\", but is used from namespace \"order\"",
+				"suggested_fixes": [
+					{
+						"message": "add //declscope:package to helper",
+						"edits": [
+							{
+								"filename": "$ROOT/p/user.go",
+								"start": 11,
+								"end": 11,
+								"new": "//declscope:package\n"
+							}
+						]
+					}
+				],
+				"related": [
+					{
+						"posn": "$ROOT/p/order.go:12:9",
+						"end": "$ROOT/p/order.go:12:15",
+						"message": "used here, in namespace \"order\""
+					}
+				]
+			},
+			{
+				"category": "qualify",
+				"posn": "$ROOT/p/user.go:3:6",
+				"end": "$ROOT/p/user.go:3:6",
+				"message": "func helper does not carry namespace \"user\" anywhere in its name; rename it to userHelper, or to another name that carries \"user\""
+			},
+			{
+				"category": "boundary",
+				"posn": "$ROOT/p/user.go:5:6",
+				"end": "$ROOT/p/user.go:5:6",
+				"message": "type userPoint is private to namespace \"user\", but is used from namespace \"order\"",
+				"suggested_fixes": [
+					{
+						"message": "add //declscope:package to userPoint",
+						"edits": [
+							{
+								"filename": "$ROOT/p/user.go",
+								"start": 43,
+								"end": 43,
+								"new": "//declscope:package\n"
+							}
+						]
+					}
+				],
+				"related": [
+					{
+						"posn": "$ROOT/p/order.go:11:7",
+						"end": "$ROOT/p/order.go:11:16",
+						"message": "used here, in namespace \"order\""
+					}
+				]
+			},
+			{
+				"category": "boundary",
+				"posn": "$ROOT/p/user.go:5:24",
+				"end": "$ROOT/p/user.go:5:24",
+				"message": "field userPoint.x is private to namespace \"user\", but is used from namespace \"order\"",
+				"related": [
+					{
+						"posn": "$ROOT/p/order.go:11:17",
+						"end": "$ROOT/p/order.go:11:18",
+						"message": "used here, in namespace \"order\""
+					},
+					{
+						"posn": "$ROOT/p/order.go:12:22",
+						"end": "$ROOT/p/order.go:12:23",
+						"message": "used here, in namespace \"order\""
+					}
+				]
+			},
+			{
+				"category": "boundary",
+				"posn": "$ROOT/p/user.go:5:27",
+				"end": "$ROOT/p/user.go:5:27",
+				"message": "field userPoint.y is private to namespace \"user\", but is used from namespace \"order\"",
+				"related": [
+					{
+						"posn": "$ROOT/p/order.go:11:20",
+						"end": "$ROOT/p/order.go:11:21",
+						"message": "used here, in namespace \"order\""
+					}
+				]
+			},
+			{
+				"category": "boundary",
+				"posn": "$ROOT/p/user.go:7:6",
+				"end": "$ROOT/p/user.go:7:6",
+				"message": "type userA is private to namespace \"user\", but is used from namespace \"order\"",
+				"suggested_fixes": [
+					{
+						"message": "add //declscope:package to userA",
+						"edits": [
+							{
+								"filename": "$ROOT/p/user.go",
+								"start": 78,
+								"end": 78,
+								"new": "//declscope:package\n"
+							}
+						]
+					}
+				],
+				"related": [
+					{
+						"posn": "$ROOT/p/order.go:8:18",
+						"end": "$ROOT/p/order.go:8:23",
+						"message": "used here, in namespace \"order\""
+					}
+				]
+			}
+		]
+	}
+}

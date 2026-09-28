@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/analysis/passes/inspect"
+	"golang.org/x/tools/go/ast/inspector"
 )
 
 // TestOptionsErrorCarriesNoAnalyzerPrefix checks that a config error is
@@ -24,7 +26,10 @@ func TestOptionsErrorCarriesNoAnalyzerPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := analyzerOptions(&analysis.Pass{Analyzer: a})
+	_, err := analyzerOptions(&analysis.Pass{
+		Analyzer: a,
+		ResultOf: map[*analysis.Analyzer]any{inspect.Analyzer: inspector.New(nil)},
+	})
 	if err == nil {
 		t.Fatal("want an error for a malformed config, got none")
 	}

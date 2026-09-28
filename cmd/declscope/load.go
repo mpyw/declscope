@@ -9,6 +9,8 @@ import (
 	"sync"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/analysis/passes/inspect"
+	"golang.org/x/tools/go/ast/inspector"
 	"golang.org/x/tools/go/packages"
 
 	"github.com/mpyw/declscope"
@@ -19,9 +21,9 @@ import (
 //
 // None of them goes through singlechecker: a baseline entry has to identify a
 // violation structurally and a survey has to count what was suppressed, while
-// a driver hands back rendered diagnostics. The analyzer declares no Requires
-// and exports no facts, so driving it over go/packages directly is a few lines
-// and avoids parsing the analyzer's own messages back out of strings.
+// a driver hands back rendered diagnostics. The analyzer requires only the
+// inspector and exports no facts, so driving it over go/packages directly is a
+// few lines and avoids parsing the analyzer's own messages back out of strings.
 //
 // Tests are loaded by default, matching the analyzer's own -test: a test
 // variant sees references the ordinary variant does not, and both the baseline
@@ -212,6 +214,9 @@ func loadInParallel(n int, f func(i int)) {
 // A pass built without them answers that question wrongly, and the command
 // reports a finding the analyzer itself refuses to print.
 //
+// ResultOf holds what a driver would have run first: the analyzer's one
+// requirement, the inspector over the same files.
+//
 //declscope:package // every subcommand analyzes through this one pass
 func loadedPass(pkg *packages.Package) *analysis.Pass {
 	return &analysis.Pass{
@@ -223,6 +228,9 @@ func loadedPass(pkg *packages.Package) *analysis.Pass {
 		Pkg:          pkg.Types,
 		TypesInfo:    pkg.TypesInfo,
 		Report:       func(analysis.Diagnostic) {},
+		ResultOf: map[*analysis.Analyzer]any{
+			inspect.Analyzer: inspector.New(pkg.Syntax),
+		},
 	}
 }
 

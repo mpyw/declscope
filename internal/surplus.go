@@ -46,6 +46,8 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/analysis/passes/inspect"
+	"golang.org/x/tools/go/ast/inspector"
 
 	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/rule"
@@ -394,24 +396,28 @@ func (c *collection) surplusConversions(pass *analysis.Pass, reached map[types.O
 			}
 		}
 	}
+	// Every collected file is one of pass.Files, so each has a cursor.
+	cursors := make(map[*ast.File]inspector.Cursor)
+	for fc := range pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Root().Children() {
+		cursors[fc.Node().(*ast.File)] = fc
+	}
 	for _, fi := range c.files {
-		ast.Inspect(fi.file, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok || len(call.Args) != 1 {
-				return true
+		for cur := range cursors[fi.file].Preorder((*ast.CallExpr)(nil)) {
+			call := cur.Node().(*ast.CallExpr)
+			if len(call.Args) != 1 {
+				continue
 			}
 			tv, ok := pass.TypesInfo.Types[call.Fun]
 			if !ok || !tv.IsType() {
-				return true
+				continue
 			}
 			src := pass.TypesInfo.Types[call.Args[0]]
 			if types.Identical(tv.Type, src.Type) {
-				return true
+				continue
 			}
 			mark(tv.Type, fi)
 			mark(src.Type, fi)
-			return true
-		})
+		}
 	}
 }
 

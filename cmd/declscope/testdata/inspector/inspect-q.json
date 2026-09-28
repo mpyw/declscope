@@ -1,0 +1,139 @@
+{
+  "package": "example.com/declscopetest/q",
+  "config": [
+    "$ROOT/.declscope.yaml"
+  ],
+  "allCore": false,
+  "findings": {
+    "boundary": {
+      "asked": true,
+      "keyable": true,
+      "found": 1,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 1
+    },
+    "directive": {
+      "asked": true,
+      "keyable": false,
+      "found": 0,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 0
+    },
+    "filter": {
+      "asked": true,
+      "keyable": false,
+      "found": 0,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 0
+    },
+    "qualify": {
+      "asked": true,
+      "keyable": true,
+      "found": 2,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 2
+    },
+    "surplus": {
+      "asked": true,
+      "keyable": true,
+      "found": 1,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 1
+    },
+    "unused": {
+      "asked": true,
+      "keyable": false,
+      "found": 0,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 0
+    }
+  },
+  "namespaces": [
+    {
+      "namespace": "model",
+      "files": [
+        "model.go"
+      ],
+      "core": false,
+      "declarations": 8,
+      "qualifyTargets": 4
+    },
+    {
+      "namespace": "snapshot",
+      "files": [
+        "snapshot.go"
+      ],
+      "core": false,
+      "declarations": 6,
+      "qualifyTargets": 3
+    }
+  ],
+  "crossings": [
+    {
+      "from": "snapshot",
+      "to": "model",
+      "mutual": false,
+      "declared": 2,
+      "baselined": 0,
+      "reported": 1,
+      "ignored": 0,
+      "unchecked": 0,
+      "reached": 3,
+      "declarations": 8,
+      "uses": 4,
+      "clears": 1
+    }
+  ],
+  "edges": [
+    {
+      "from": "snapshot",
+      "to": "model",
+      "declaration": "ledger",
+      "kind": "type",
+      "uses": 2,
+      "state": "reported"
+    },
+    {
+      "from": "snapshot",
+      "to": "model",
+      "declaration": "ledgerNew",
+      "kind": "func",
+      "uses": 1,
+      "state": "declared"
+    },
+    {
+      "from": "snapshot",
+      "to": "model",
+      "declaration": "modelNew",
+      "kind": "func",
+      "uses": 1,
+      "state": "declared"
+    }
+  ],
+  "names": [
+    {
+      "namespace": "model",
+      "file": "model.go",
+      "declaration": "ledger",
+      "kind": "type",
+      "exported": false,
+      "state": "reported",
+      "fixable": true
+    },
+    {
+      "namespace": "model",
+      "file": "model.go",
+      "declaration": "ledgerNew",
+      "kind": "func",
+      "exported": false,
+      "state": "reported",
+      "fixable": true
+    }
+  ]
+}

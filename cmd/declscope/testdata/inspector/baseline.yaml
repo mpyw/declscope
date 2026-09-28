@@ -1,0 +1,32 @@
+# declscope baseline
+#
+# Violations recorded here are suppressed; new ones are still reported.
+# Regenerate with:
+#
+#     declscope baseline ./...
+#
+# Do not edit by hand. An entry disappears when its violation is fixed, so the
+# diff of a regeneration is the record of what was cleaned up.
+packages:
+  example.com/declscopetest/p:
+    boundary:
+      user:
+        - helper
+        - userA
+        - userPoint
+        - userPoint.x
+        - userPoint.y
+    qualify:
+      user:
+        - helper
+  example.com/declscopetest/q:
+    boundary:
+      model:
+        - ledger
+    qualify:
+      model:
+        - ledger
+        - ledgerNew
+    surplus:
+      model:
+        - ledger.n

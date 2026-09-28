@@ -186,8 +186,9 @@ func TestSuggestedFixUnusedStrictUnseenTests(t *testing.T) {
 // offers no deletion, since it cannot see the lines it would delete.
 func TestSuggestedFixUnusedStrictUnreadable(t *testing.T) {
 	blind := &analysis.Analyzer{
-		Name: declscope.Analyzer.Name,
-		Doc:  declscope.Analyzer.Doc,
+		Name:     declscope.Analyzer.Name,
+		Doc:      declscope.Analyzer.Doc,
+		Requires: declscope.Analyzer.Requires,
 		Run: func(pass *analysis.Pass) (any, error) {
 			unreadable := *pass
 			unreadable.Analyzer, unreadable.ReadFile = declscope.Analyzer, nil

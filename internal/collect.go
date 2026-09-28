@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/analysis/passes/inspect"
+	"golang.org/x/tools/go/ast/inspector"
 
 	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/namespace"
@@ -445,22 +447,26 @@ func (c *collection) collectUnkeyedFields(pass *analysis.Pass, fi *fileInfo, lit
 //
 //declscope:package // the pipeline's third stage, driven from analyzer.go
 func (c *collection) collectRefs(pass *analysis.Pass) {
-	for _, fi := range c.files {
-		ast.Inspect(fi.file, func(n ast.Node) bool {
-			if lit, ok := n.(*ast.CompositeLit); ok {
+	in := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
+	// The inspector holds pass.Files in order, and c.files is a subsequence of
+	// them, so the files are visited in the order c.files lists them.
+	for fc := range in.Root().Children() {
+		fi := c.byFile[fc.Node().(*ast.File)]
+		if fi == nil {
+			continue
+		}
+		for cur := range fc.Preorder((*ast.CompositeLit)(nil), (*ast.Ident)(nil)) {
+			if lit, ok := cur.Node().(*ast.CompositeLit); ok {
 				c.collectUnkeyedFields(pass, fi, lit)
-				return true
+				continue
 			}
-			ident, ok := n.(*ast.Ident)
-			if !ok {
-				return true
-			}
+			ident := cur.Node().(*ast.Ident)
 			if obj := pass.TypesInfo.Defs[ident]; obj != nil {
 				c.idents[obj] = append(c.idents[obj], ident)
 			}
 			obj := origin(pass.TypesInfo.Uses[ident])
 			if obj == nil {
-				return true
+				continue
 			}
 			c.idents[obj] = append(c.idents[obj], ident)
 			if tn := embeddedTypeName(obj); tn != nil {
@@ -469,7 +475,6 @@ func (c *collection) collectRefs(pass *analysis.Pass) {
 			if _, tracked := c.byObj[obj]; tracked {
 				c.refs[obj] = append(c.refs[obj], ref{node: ident, file: fi})
 			}
-			return true
-		})
+		}
 	}
 }

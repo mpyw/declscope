@@ -39,8 +39,8 @@ const baselineDefaultName = ".declscope-baseline.yaml"
 //
 // It does not go through singlechecker, because a baseline entry has to
 // identify a violation structurally — package, rule, declaration — and a
-// driver only hands back rendered diagnostics. The analyzer declares no
-// Requires and exports no facts, so driving it over go/packages directly is a
+// driver only hands back rendered diagnostics. The analyzer requires only the
+// inspector and exports no facts, so driving it over go/packages directly is a
 // few lines and avoids parsing the analyzer's own messages back out of strings.
 //
 //declscope:package
