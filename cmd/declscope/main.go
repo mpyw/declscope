@@ -8,7 +8,7 @@
 //	declscope survey [flags] [packages]    report what was checked and found
 //	declscope inspect [flags] <package>    report the shape of one package
 //	declscope shrink [flags] [packages]    unexport what no importer uses
-//	declscope skill install                install the adoption skill
+//	declscope skill install                install the authoring and adoption skills
 package main
 
 import (
