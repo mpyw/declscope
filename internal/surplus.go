@@ -264,7 +264,7 @@ func (c *collection) surplusSeesUseOutside(t *target) bool {
 func (c *collection) surplusReached(pass *analysis.Pass) map[types.Object]bool {
 	reached := make(map[types.Object]bool)
 	interfaces, satisfiers := surplusTypes(pass)
-	surplusSatisfies(pass, reached, interfaces, satisfiers)
+	surplusSatisfies(pass, reached, c.surplusMethodNames(), interfaces, satisfiers)
 	surplusCarried(pass, reached)
 	c.surplusConversions(pass, reached)
 	return reached
@@ -311,6 +311,20 @@ func surplusTypes(pass *analysis.Pass) (interfaces []*types.Interface, satisfier
 	return interfaces, satisfiers
 }
 
+// surplusMethodNames returns the name of every tracked function and method.
+// Only these can be read back from what surplusSatisfies marks: it marks
+// methods alone, found by the name of a requirement, and reached is asked only
+// of tracked objects.
+func (c *collection) surplusMethodNames() map[string]bool {
+	names := make(map[string]bool)
+	for _, t := range c.targets {
+		if _, ok := t.obj.(*types.Func); ok {
+			names[t.obj.Name()] = true
+		}
+	}
+	return names
+}
+
 // surplusSatisfies marks every method that participates in an interface
 // contract of the package: an interface value built from the type reaches the
 // method with the interface's name, not the method's, so the reference index
@@ -323,17 +337,57 @@ func surplusTypes(pass *analysis.Pass) (interfaces []*types.Interface, satisfier
 // suppress the rule on every interface method — and it goes through Origin,
 // because on an instantiated generic type the found object is not the one the
 // source declares.
-func surplusSatisfies(pass *analysis.Pass, reached map[types.Object]bool, interfaces []*types.Interface, satisfiers []types.Type) {
+//
+// Each pair costs up to two satisfaction tests, so pairs that cannot mark a
+// tracked method are dropped first, by checks cheaper than the test itself:
+//
+//   - A pair marks only methods named like the interface's requirements, and
+//     reached is read only for tracked names. An interface asking for none of
+//     them is skipped, which skips the empty ones too. Methods lists the
+//     whole method set, embedded interfaces included.
+//   - An unnamed type that is not a struct, a pointer or an interface has no
+//     methods, and neither does its address, so it implements nothing that
+//     asks for one. Alias names are looked through first.
+//   - The address of a pointer or of an interface, type parameters included,
+//     has no methods, so only the type itself is tested.
+func surplusSatisfies(pass *analysis.Pass, reached map[types.Object]bool, tracked map[string]bool, interfaces []*types.Interface, satisfiers []types.Type) {
+	var asking []*types.Interface
 	for _, iface := range interfaces {
-		if iface.NumMethods() == 0 {
+		for want := range iface.Methods() {
+			if tracked[want.Name()] {
+				asking = append(asking, iface)
+				break
+			}
+		}
+	}
+	if len(asking) == 0 {
+		return
+	}
+	type candidate struct {
+		t types.Type
+		// viaAddress says whether *t may have methods t lacks.
+		viaAddress bool
+	}
+	var candidates []candidate
+	for _, t := range satisfiers {
+		switch types.Unalias(t).(type) {
+		case *types.Basic, *types.Tuple, *types.Signature, *types.Slice, *types.Array, *types.Map, *types.Chan:
 			continue
 		}
-		for _, t := range satisfiers {
-			if !types.Implements(t, iface) && !types.Implements(types.NewPointer(t), iface) {
+		viaAddress := true
+		switch t.Underlying().(type) {
+		case *types.Pointer, *types.Interface:
+			viaAddress = false
+		}
+		candidates = append(candidates, candidate{t: t, viaAddress: viaAddress})
+	}
+	for _, iface := range asking {
+		for _, c := range candidates {
+			if !types.Implements(c.t, iface) && (!c.viaAddress || !types.Implements(types.NewPointer(c.t), iface)) {
 				continue
 			}
 			for want := range iface.Methods() {
-				obj, _, _ := types.LookupFieldOrMethod(t, true, pass.Pkg, want.Name())
+				obj, _, _ := types.LookupFieldOrMethod(c.t, true, pass.Pkg, want.Name())
 				fn, ok := obj.(*types.Func)
 				if !ok || fn == want {
 					continue
