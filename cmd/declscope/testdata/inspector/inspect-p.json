@@ -1,0 +1,146 @@
+{
+  "package": "example.com/declscopetest/p",
+  "config": [
+    "$ROOT/.declscope.yaml"
+  ],
+  "allCore": false,
+  "findings": {
+    "boundary": {
+      "asked": true,
+      "keyable": true,
+      "found": 5,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 5
+    },
+    "directive": {
+      "asked": true,
+      "keyable": false,
+      "found": 0,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 0
+    },
+    "filter": {
+      "asked": true,
+      "keyable": false,
+      "found": 0,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 0
+    },
+    "qualify": {
+      "asked": true,
+      "keyable": true,
+      "found": 1,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 1
+    },
+    "surplus": {
+      "asked": false,
+      "keyable": true,
+      "found": 0,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 0
+    },
+    "unused": {
+      "asked": true,
+      "keyable": false,
+      "found": 0,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 0
+    }
+  },
+  "namespaces": [
+    {
+      "namespace": "order",
+      "files": [
+        "order.go"
+      ],
+      "core": false,
+      "declarations": 5,
+      "qualifyTargets": 3
+    },
+    {
+      "namespace": "user",
+      "files": [
+        "user.go"
+      ],
+      "core": false,
+      "declarations": 7,
+      "qualifyTargets": 3
+    }
+  ],
+  "crossings": [
+    {
+      "from": "order",
+      "to": "user",
+      "mutual": false,
+      "declared": 0,
+      "baselined": 0,
+      "reported": 5,
+      "ignored": 0,
+      "unchecked": 0,
+      "reached": 5,
+      "declarations": 7,
+      "uses": 6,
+      "clears": 5
+    }
+  ],
+  "edges": [
+    {
+      "from": "order",
+      "to": "user",
+      "declaration": "helper",
+      "kind": "func",
+      "uses": 1,
+      "state": "reported"
+    },
+    {
+      "from": "order",
+      "to": "user",
+      "declaration": "userA",
+      "kind": "type",
+      "uses": 1,
+      "state": "reported"
+    },
+    {
+      "from": "order",
+      "to": "user",
+      "declaration": "userPoint",
+      "kind": "type",
+      "uses": 1,
+      "state": "reported"
+    },
+    {
+      "from": "order",
+      "to": "user",
+      "declaration": "userPoint.x",
+      "kind": "field",
+      "uses": 2,
+      "state": "reported"
+    },
+    {
+      "from": "order",
+      "to": "user",
+      "declaration": "userPoint.y",
+      "kind": "field",
+      "uses": 1,
+      "state": "reported"
+    }
+  ],
+  "names": [
+    {
+      "namespace": "user",
+      "file": "user.go",
+      "declaration": "helper",
+      "kind": "func",
+      "exported": false,
+      "state": "reported",
+      "fixable": false
+    }
+  ]
+}

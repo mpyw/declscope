@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/analysis/passes/inspect"
 
 	"github.com/mpyw/declscope/internal"
 	"github.com/mpyw/declscope/internal/config"
@@ -27,6 +28,9 @@ func newAnalyzer() *analysis.Analyzer {
 		Doc:  "enforces private and package-internal pseudo scopes for package-level declarations, methods and struct fields",
 		URL:  "https://github.com/mpyw/declscope",
 		Run:  analyzerRun,
+		// The syntax is walked through the inspector, which a driver builds
+		// once for every analyzer that requires it.
+		Requires: []*analysis.Analyzer{inspect.Analyzer},
 	}
 	a.Flags.String("config", "", "path to a declscope YAML config file (default: nearest .declscope.yaml)")
 	return a

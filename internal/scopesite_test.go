@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/analysis/passes/inspect"
+	"golang.org/x/tools/go/ast/inspector"
 )
 
 // scopesiteRemovalPass is a pass over one file holding content, and the
@@ -24,6 +26,7 @@ func scopesiteRemovalPass(t *testing.T, content string) (*analysis.Pass, token.P
 	pass := &analysis.Pass{
 		Fset:     fset,
 		ReadFile: func(string) ([]byte, error) { return []byte(content), nil },
+		ResultOf: map[*analysis.Analyzer]any{inspect.Analyzer: inspector.New(nil)},
 	}
 	return pass, tf.Pos(off)
 }

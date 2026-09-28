@@ -1,0 +1,134 @@
+{
+  "checks": {
+    "typeCheck": {
+      "packages": 2,
+      "failed": []
+    },
+    "configs": [
+      {
+        "chain": [
+          "$ROOT/.declscope.yaml"
+        ],
+        "packages": 2,
+        "rules": {
+          "boundary": true,
+          "qualify": "ondemand",
+          "exported": false,
+          "surplus": "strict",
+          "unused": "strict"
+        }
+      }
+    ],
+    "baselines": []
+  },
+  "totals": {
+    "boundary": {
+      "asked": true,
+      "keyable": true,
+      "found": 6,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 6
+    },
+    "directive": {
+      "asked": true,
+      "keyable": false,
+      "found": 0,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 0
+    },
+    "filter": {
+      "asked": true,
+      "keyable": false,
+      "found": 0,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 0
+    },
+    "qualify": {
+      "asked": true,
+      "keyable": true,
+      "found": 3,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 3
+    },
+    "surplus": {
+      "asked": true,
+      "keyable": true,
+      "found": 1,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 1
+    },
+    "unused": {
+      "asked": true,
+      "keyable": false,
+      "found": 0,
+      "ignored": 0,
+      "baselined": 0,
+      "reported": 0
+    }
+  },
+  "packages": [
+    {
+      "package": "example.com/declscopetest/p",
+      "namespaces": 2,
+      "coreFiles": 0,
+      "allCore": false,
+      "boundary": {
+        "asked": true,
+        "reported": 5,
+        "baselined": 0,
+        "declared": 0
+      },
+      "qualify": {
+        "asked": true,
+        "reported": 1,
+        "baselined": 0,
+        "exempt": 0,
+        "worst": {
+          "namespace": "user",
+          "failing": 1,
+          "targets": 3
+        }
+      },
+      "largest": {
+        "from": "order",
+        "to": "user",
+        "reached": 5,
+        "uses": 6
+      }
+    },
+    {
+      "package": "example.com/declscopetest/q",
+      "namespaces": 2,
+      "coreFiles": 0,
+      "allCore": false,
+      "boundary": {
+        "asked": true,
+        "reported": 1,
+        "baselined": 0,
+        "declared": 2
+      },
+      "qualify": {
+        "asked": true,
+        "reported": 2,
+        "baselined": 0,
+        "exempt": 0,
+        "worst": {
+          "namespace": "model",
+          "failing": 2,
+          "targets": 4
+        }
+      },
+      "largest": {
+        "from": "snapshot",
+        "to": "model",
+        "reached": 3,
+        "uses": 4
+      }
+    }
+  ]
+}

@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/analysis/passes/inspect"
+	"golang.org/x/tools/go/ast/inspector"
 )
 
 // TestAtLineStartFailsSafe pins that a position the pass cannot read around
@@ -20,6 +22,7 @@ func TestAtLineStartFailsSafe(t *testing.T) {
 	pass := &analysis.Pass{
 		Fset:     fset,
 		ReadFile: func(string) ([]byte, error) { return []byte(content), nil },
+		ResultOf: map[*analysis.Analyzer]any{inspect.Analyzer: inspector.New(nil)},
 	}
 	if !atLineStartForReport(pass, tf.Pos(strings.Index(content, "type"))) {
 		t.Fatal("a declaration at the start of its line was not recognised")
