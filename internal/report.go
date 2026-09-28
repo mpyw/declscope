@@ -78,15 +78,6 @@ func subsumedByReport(t *target, f reportedFinding, widened map[types.Object]boo
 //
 //declscope:package // the analyzer's reporting entry, driven from analyzer.go
 func (c *collection) report(pass *analysis.Pass, opts Options) {
-	// The order decides which of two fixes claiming the same new name gets
-	// it, so it must be the same in every run. token.Pos alone is not:
-	// go/packages parses files concurrently, so the order in which they
-	// enter the FileSet, and with it the relative order of positions in
-	// different files, differs from one run to the next.
-	slices.SortStableFunc(c.targets, func(a, b *target) int {
-		return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos())
-	})
-
 	// Every surviving finding is collected before any of them is reported,
 	// because one fix can subsume another and no fix can see the edits of the
 	// others. widensReport marks what one is about to widen; subsumedByReport
