@@ -264,7 +264,7 @@ func (c *collection) surplusSeesUseOutside(t *target) bool {
 func (c *collection) surplusReached(pass *analysis.Pass) map[types.Object]bool {
 	reached := make(map[types.Object]bool)
 	interfaces, satisfiers := surplusTypes(pass)
-	surplusSatisfies(pass, reached, c.surplusMethodNames(), interfaces, satisfiers)
+	surplusSatisfies(pass, reached, c.surplusTrackedMethodNames(), interfaces, satisfiers)
 	surplusCarried(pass, reached)
 	c.surplusConversions(pass, reached)
 	return reached
@@ -311,14 +311,15 @@ func surplusTypes(pass *analysis.Pass) (interfaces []*types.Interface, satisfier
 	return interfaces, satisfiers
 }
 
-// surplusMethodNames returns the name of every tracked function and method.
-// Only these can be read back from what surplusSatisfies marks: it marks
-// methods alone, found by the name of a requirement, and reached is asked only
-// of tracked objects.
-func (c *collection) surplusMethodNames() map[string]bool {
+// surplusTrackedMethodNames returns the name of every tracked method,
+// interface methods included. Only these can be read back from what
+// surplusSatisfies marks: it marks methods alone, found by the name of a
+// requirement, and reached is asked only of tracked objects. A function of
+// the same name is never marked, so its name would only let more pairs by.
+func (c *collection) surplusTrackedMethodNames() map[string]bool {
 	names := make(map[string]bool)
 	for _, t := range c.targets {
-		if _, ok := t.obj.(*types.Func); ok {
+		if t.kind == kindMethod {
 			names[t.obj.Name()] = true
 		}
 	}

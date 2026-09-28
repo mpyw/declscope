@@ -54,3 +54,9 @@ var _ fetcherOf[int] = ticket{}
 type server interface{ serve() string }
 
 var _ server = handlerFunc(nil)
+
+// A requirement named like a function. Nothing satisfies it, and no method of
+// the package is called shut, so the pair it could form marks nothing.
+type shutter interface{ shut() }
+
+var _ shutter = nil
