@@ -307,6 +307,9 @@ func (ev *evidence) unnamedStructs(m *module.Module) {
 	var unnamed typeutil.Map
 	var named []*types.Struct
 	seenNamed := map[*types.Struct]bool{}
+	// One seen map for the run: a type already walked has already put every
+	// unnamed struct inside it into unnamed, so walking it again adds nothing.
+	seen := map[types.Type]bool{}
 	for _, p := range m.Widest() {
 		// The struct literal a defined type is declared with is recorded as a
 		// type expression too, but it is that type's own struct, not an
@@ -322,7 +325,7 @@ func (ev *evidence) unnamedStructs(m *module.Module) {
 		}
 		for expr, tv := range p.TypesInfo.Types {
 			if !defining[expr] {
-				evidenceCollectUnnamed(tv.Type, &unnamed, map[types.Type]bool{})
+				evidenceCollectUnnamed(tv.Type, &unnamed, seen)
 			}
 		}
 		for _, obj := range p.TypesInfo.Defs {
