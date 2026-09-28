@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -149,6 +150,14 @@ func (c *collection) collectTargets(pass *analysis.Pass, opts Options) {
 		}
 	}
 	c.collectStrayIgnores()
+	// Every stage reads the targets in source order, sorted once here. The
+	// order decides which of two fixes claiming one new name gets it, and a
+	// baseline must name the declaration the report names. token.Pos alone
+	// is not stable: go/packages parses files concurrently, so the order in
+	// which they enter the FileSet differs from one run to the next.
+	slices.SortStableFunc(c.targets, func(a, b *target) int {
+		return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos())
+	})
 }
 
 func (c *collection) addFuncToCollection(pass *analysis.Pass, opts Options, fi *fileInfo, d *ast.FuncDecl) {

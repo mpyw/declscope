@@ -182,13 +182,8 @@ func (c *collection) computeSurplus(pass *analysis.Pass) *surplusState {
 			continue
 		}
 		s.fired[pos] = true
-		// The finding is keyed to the first declaration in source order, not in
-		// c.targets order: the analysis sorts the targets before reporting,
-		// but the baseline regeneration does not, and the two must agree on
-		// the name that keysForReport the entry.
-		slices.SortFunc(group, func(a, b *target) int {
-			return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos())
-		})
+		// The finding is keyed to the first declaration in source order, which
+		// is c.targets order, so the report and the baseline name the same one.
 		rep := group[0]
 		s.findings[rep] = surplusMessage(rep, group)
 	}
@@ -634,7 +629,6 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 	}
 	reworded := make(map[token.Pos]bool)
 	for _, names := range groups {
-		slices.SortFunc(names, func(a, b *target) int { return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos()) })
 		pos := names[0].boundBy.ScopePos
 		if _, seen := reworded[pos]; !seen && !boundBefore[pos] {
 			reworded[pos] = c.rewordedAtScopeSite(opts, names[0].boundBy, narrowed)
@@ -714,10 +708,8 @@ func (c *collection) surplusNarrowedByTypeFix(pass *analysis.Pass, opts Options,
 	for _, a := range anchors {
 		names := entries[a]
 		if !slices.ContainsFunc(names, func(t *target) bool { return !wide(t) }) {
-			slices.SortFunc(names, func(a, b *target) int { return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos()) })
 			out = append(out, names[0])
 		}
 	}
-	slices.SortFunc(out, func(a, b *target) int { return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos()) })
 	return out
 }

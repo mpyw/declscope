@@ -3,7 +3,6 @@ package internal
 import (
 	"maps"
 	"path/filepath"
-	"slices"
 
 	"golang.org/x/tools/go/analysis"
 
@@ -25,15 +24,12 @@ import (
 //
 // The order matters beyond determinism. A rename fix reserves the name it
 // claims, so whether a later one is offered depends on which targets came
-// first; sorting exactly as report does is what makes Fixable the analyzer's
-// own answer rather than an optimistic one.
+// first; reading them in the order report does, which collectTargets fixes,
+// is what makes Fixable the analyzer's own answer rather than an optimistic
+// one.
 //
 //declscope:package // the survey entry, driven from analyzer.go
 func (c *collection) surveyed(pass *analysis.Pass, opts Options) measure.Package {
-	slices.SortStableFunc(c.targets, func(a, b *target) int {
-		return comparePos(pass.Fset, a.ident.Pos(), b.ident.Pos())
-	})
-
 	out := measure.Package{
 		Path:     pass.Pkg.Path(),
 		Findings: countsForSurvey(pass, c, opts),
