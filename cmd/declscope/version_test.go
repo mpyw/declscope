@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// -V=full is the check the README and the adoption skill tell a reader to run
+// -V=full is the check the README and the skills tell a reader to run
 // before trusting a config file to a version of these rules, and it is what
 // `go vet -vettool` reads to identify the tool it is about to run. Up to 0.6.0
 // it answered "devel" on every released binary, because the -V that x/tools

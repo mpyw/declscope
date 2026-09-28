@@ -14,7 +14,7 @@ This skill is for introducing declscope. Placing, scoping and naming individual 
 
 ## Check what is switched on
 
-A count of zero may mean nothing is checked, as [The model](../declscope-authoring/SKILL.md#the-model) explains. These are the defaults:
+A count of zero may mean nothing is checked. These are the defaults:
 
 | Setting | Default | |
 | --- | --- | --- |
@@ -55,7 +55,7 @@ Each file's patterns are read against **its own** directory, and anchor there wh
 **Size the default `surplus` findings before changing code.** `loose` judges a `//declscope:package` as a whole, so one reached declaration keeps the whole directive quiet. The default `strict` also reports each declaration the directive widens for nothing, and one `declscope -fix` run inserts every `//declscope:private` it asks for. If the owner wants the narrower check, set `surplus: loose` explicitly.
 
 ```bash
-declscope survey -format=json ./... | jq .totals.surplus
+declscope survey -format=json ./... | jq .totals.surplus.found
 ```
 
 An explicit `-config` replaces the repository's own config. Copy its keys in first when measuring a different mode.
@@ -66,7 +66,7 @@ An explicit `-config` replaces the repository's own config. Copy its keys in fir
 
 ```bash
 printf 'rules:\n  naming:\n    qualify: ondemand\n    exported: true\n' > /tmp/q.yaml
-declscope survey -config /tmp/q.yaml -format=json ./... | jq .totals.qualify
+declscope survey -config /tmp/q.yaml -format=json ./... | jq .totals.qualify.found
 ```
 
 ```yaml
@@ -88,7 +88,7 @@ Put the numbers in front of the person deciding, rather than describing the sett
 ```bash
 for q in never ondemand always; do
   printf 'rules:\n  naming:\n    qualify: %s\n    exported: true\n' "$q" > /tmp/q.yaml
-  printf '%-9s %s\n' "$q" "$(declscope survey -config /tmp/q.yaml -format=json ./... | jq .totals.qualify)"
+  printf '%-9s %s\n' "$q" "$(declscope survey -config /tmp/q.yaml -format=json ./... | jq .totals.qualify.found)"
 done
 ```
 
@@ -133,7 +133,7 @@ Run it before the analyzer there too, so that a failure reads in the order it is
 
 ## The two kinds of report
 
-declscope reports two things. **Read them separately.**
+The analyzer reports two things, and `shrink` a third. **Read them separately.**
 
 | Rule | What it means |
 | --- | --- |
@@ -183,7 +183,7 @@ Do **not** move the baseline aside to measure: `survey` reports `baselined` as i
 
 **`edges[]` does not count findings.** One declaration reached from three namespaces is three rows and one finding, so the rows always outnumber `findings.boundary.reported`. Count distinct `declaration` values, or read `crossings[]`, or read the tally.
 
-A crossing's `state` is one of six:
+An edge's `state` (`edges[].state`) is one of six:
 
 | State | Meaning |
 | --- | --- |

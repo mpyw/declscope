@@ -227,7 +227,7 @@ tar xzf "declscope_${VERSION}_darwin_arm64.tar.gz"
 | `declscope inspect <package>` | [Report the shape of one package](#measuring-what-is-there): its namespaces and the crossings between them | `-format`, `-test`, `-config` |
 | `declscope baseline [packages]` | [Record the violations a codebase already has](#adopting-on-an-existing-codebase) | `-config`, `-o` |
 | `declscope shrink [packages]` | [Unexport what no importer uses](#unexporting-what-no-importer-uses), inside `internal/` | `-fix` |
-| `declscope skill install` | Install the adoption skill for an AI agent | `--agent`, `--scope` |
+| `declscope skill install` | Install the authoring and adoption skills for an AI agent | `--agent`, `--scope` |
 
 `declscope <subcommand> -help` lists each one's flags.
 

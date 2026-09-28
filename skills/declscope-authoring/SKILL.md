@@ -44,7 +44,7 @@ Which rules are on, and which config governs a package, is in [Check what is swi
 
 **Before widening, ask whether the code is in the wrong file.** A boundary report on your new use says a file reached into another namespace. Often the function you are writing belongs beside what it uses. When the declaration is shared on purpose, check that it sits in a file named for its concept before you write the directive.
 
-**Do not create a file just to satisfy a name.** A new file of twenty lines, holding one constructor, is a warning sign. The declaration was usually fine where it was. Rename it there instead.
+**Do not create a file just to satisfy a name.** A new twenty-line file holding one declaration that only its old file uses is a warning sign. Rename the declaration where it was. A declaration that several parts share is different: move it, as the table above says.
 
 ## Common changes
 
@@ -193,7 +193,7 @@ Keep that type and its fields private. Expose small package-scoped functions tha
 
 | Report | First question | Usual answer |
 | --- | --- | --- |
-| `X is private to namespace "a"` (or `to the core namespace`), `but is used from namespace "b"` | Should your code live beside `X`? | Move your code beside `X`. If `X` is shared on purpose and sits in one caller's file, move it to a file named for its concept first. Then write `//declscope:package // why` on `X` |
+| `X is private to namespace "a"` (or `to the core namespace`), `but is used from namespace "b"`, or `X is declared private by ...` | Should your code live beside `X`? | Move your code beside `X`. If `X` is shared on purpose and sits in one caller's file, move it to a file named for its concept first. Then write `//declscope:package // why` on `X`. When `X` states its own `//declscope:private`, that was a decision: move your code, and do not flip the directive |
 | `//declscope:package on X: no use from another namespace is visible` | Did the use that justified it go away? | Delete the directive |
 | `X takes package scope from //declscope:package on Y, but no use ...` | Does any other file read `X`? | Accept `-fix`'s `//declscope:private` on `X`. For a field, move it to the end of the struct |
 | `unused //declscope:...` | Does the directive still change anything? | Delete it |
@@ -238,7 +238,7 @@ A bare `//declscope:ignore` does not reach `overexported`. Name the rule. Names 
 
 ## Traps
 
-**A package that does not compile is skipped, not checked.** It yields no declscope diagnostics, so a count reads as zero, and `-json` still exits 0. Run `go vet ./...` first, which also compiles the tests declscope reads.
+**A package that does not compile is skipped, not checked.** declscope prints `analysis skipped due to errors in package` and exits 1, not 3. That package adds no diagnostics, so its count reads as zero. Run `go vet ./...` first, which also compiles the tests declscope reads.
 
 **A bulk rename reaches further than intended.** A `\bname\b` substitution across every `.go` file will hit `keys`, `named` and `check` in testdata and unrelated packages. Limit the paths, then read `git status`.
 
