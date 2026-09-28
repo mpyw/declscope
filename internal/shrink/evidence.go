@@ -49,6 +49,17 @@ type evidence struct {
 	// sites is every identifier naming a declaration inside its own
 	// package, which is everything a rename rewrites.
 	sites map[string][]evidenceSite
+
+	// inModule is every import path the module loads, external test
+	// packages included. Only a declaration there can be judged.
+	//
+	//declscope:private // only the collection reads it
+	inModule map[string]bool
+	// keys caches keyOf per object, since record sees one object at every
+	// use of it.
+	//
+	//declscope:private // only record reads it
+	keys map[types.Object]string
 }
 
 // evidenceSite is one identifier naming a declaration, in the package
@@ -68,10 +79,10 @@ func evidenceCollect(m *module.Module) (ev *evidence, err error) {
 		outside: map[string]bool{}, extTest: map[string]bool{}, generated: map[string]bool{}, example: map[string]bool{},
 		satisfied: map[string]bool{}, paired: map[string]bool{}, escaped: map[string]bool{},
 		exposed: map[string]bool{}, sites: map[string][]evidenceSite{},
+		inModule: map[string]bool{}, keys: map[types.Object]string{},
 	}
-	inModule := map[string]bool{}
 	for _, p := range m.Pkgs {
-		inModule[p.Types.Path()] = true
+		ev.inModule[p.Types.Path()] = true
 	}
 	// One variant per import path: the widest holds every file the others
 	// do, parsed once and shared, so reading the others would find the same
@@ -80,7 +91,7 @@ func evidenceCollect(m *module.Module) (ev *evidence, err error) {
 	for _, p := range m.Widest() {
 		ev.references(m, p)
 		ev.examples(m, p)
-		roots = append(roots, ev.instances(m, p, inModule)...)
+		roots = append(roots, ev.instances(m, p)...)
 		if err := ev.satisfactions(m, p); err != nil {
 			return nil, err
 		}
@@ -117,13 +128,19 @@ func evidenceClassify(p *packages.Package, declPath string) evidenceClass {
 	return evidenceOutside
 }
 
+// record files one identifier naming obj under the reach path its place
+// gives it. Every reader looks up the key of a declaration in the module's
+// own syntax, so nothing is recorded for one outside the module: the
+// standard library and dependencies are most of what code names. Inside
+// the module every object has a position, so its key is never empty.
 func (ev *evidence) record(m *module.Module, p *packages.Package, obj types.Object, id *ast.Ident, gen bool) {
-	if obj == nil || obj.Pkg() == nil {
+	if obj == nil || obj.Pkg() == nil || !ev.inModule[obj.Pkg().Path()] {
 		return
 	}
-	key := keyOf(m.Fset, obj)
-	if key == "" {
-		return
+	key, ok := ev.keys[obj]
+	if !ok {
+		key = keyOf(m.Fset, obj)
+		ev.keys[obj] = key
 	}
 	switch evidenceClassify(p, obj.Pkg().Path()) {
 	case evidenceSame:
@@ -406,7 +423,7 @@ func evidenceCollectUnnamed(t types.Type, into *typeutil.Map, seen map[types.Typ
 // constraint, and returns the type arguments given to a generic declared
 // outside the module. Its body is not built here, so what it does with the
 // value is unknown, and the value is taken to escape.
-func (ev *evidence) instances(m *module.Module, p *packages.Package, inModule map[string]bool) []types.Type {
+func (ev *evidence) instances(m *module.Module, p *packages.Package) []types.Type {
 	var roots []types.Type
 	for id, inst := range p.TypesInfo.Instances {
 		obj := p.TypesInfo.Uses[id]
@@ -419,7 +436,7 @@ func (ev *evidence) instances(m *module.Module, p *packages.Package, inModule ma
 				tparams = named.Origin().TypeParams()
 			}
 		}
-		external := obj == nil || obj.Pkg() == nil || !inModule[obj.Pkg().Path()]
+		external := obj == nil || obj.Pkg() == nil || !ev.inModule[obj.Pkg().Path()]
 		for i := range inst.TypeArgs.Len() {
 			targ := inst.TypeArgs.At(i)
 			if external {
