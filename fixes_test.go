@@ -224,3 +224,10 @@ func TestSuggestedFixSurplusNarrowsWithTypeFix(t *testing.T) {
 func TestSuggestedFixSurplusStrictUnusedStrict(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixsurplusstrictunusedstrict")
 }
+
+// TestSuggestedFixLineDirective checks that the fix reads the file on disk
+// under a //line directive. The adjusted column is 0 there, which would make a
+// field in the middle of a line look like it starts one.
+func TestSuggestedFixLineDirective(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "linefix")
+}

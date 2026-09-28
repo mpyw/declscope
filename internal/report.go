@@ -554,7 +554,7 @@ func directiveFixInReport(pass *analysis.Pass, t *target, s scope.Scope) analysi
 func directiveEditInReport(pass *analysis.Pass, t *target, s scope.Scope, doc *ast.CommentGroup) analysis.TextEdit {
 	var text string
 	if atLineStartForReport(pass, t.anchor) {
-		indent := strings.Repeat("\t", max(pass.Fset.Position(t.anchor).Column-1, 0))
+		indent := strings.Repeat("\t", max(pass.Fset.PositionFor(t.anchor, false).Column-1, 0))
 		text = s.Directive() + "\n" + indent
 		if doc != nil && len(doc.List) > 0 && !endsInDirectiveForReport(doc) {
 			text = "//\n" + indent + text
@@ -579,7 +579,9 @@ func endsInDirectiveForReport(doc *ast.CommentGroup) bool {
 // whitespace. It fails safe: an unreadable file is treated as not starting a
 // line, which yields an extra line break rather than a misplaced directive.
 func atLineStartForReport(pass *analysis.Pass, pos token.Pos) bool {
-	position := pass.Fset.Position(pos)
+	// Unadjusted: the edit lands in the file on disk, and a //line directive
+	// without a column leaves the adjusted column at 0.
+	position := pass.Fset.PositionFor(pos, false)
 	if position.Column <= 1 {
 		return true
 	}

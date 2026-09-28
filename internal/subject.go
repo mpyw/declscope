@@ -167,7 +167,9 @@ func (c *collection) fileAt(pass *analysis.Pass, pos token.Pos) *fileInfo {
 	if !pos.IsValid() {
 		return nil
 	}
-	path := pass.Fset.Position(pos).Filename
+	// Unadjusted, as fileInfo.path is. A //line directive would otherwise
+	// name the file a generator read for every position below it.
+	path := pass.Fset.PositionFor(pos, false).Filename
 	for _, fi := range c.files {
 		if fi.path == path {
 			return fi
@@ -381,7 +383,9 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 
 	dir, inPass := "", make(map[string]bool)
 	for _, f := range pass.Files {
-		name := pass.Fset.Position(f.Pos()).Filename
+		// The file on disk, even under a //line directive above the package
+		// clause. The adjusted name would leave the file out of inPass.
+		name := pass.Fset.PositionFor(f.Pos(), false).Filename
 		if name == "" {
 			continue
 		}
