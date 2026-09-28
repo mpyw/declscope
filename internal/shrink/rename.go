@@ -4,7 +4,6 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
-	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -155,8 +154,7 @@ func (r *run) renameClaimFree(claims *renameClaims, c *candidate, plan *renamePl
 		return false
 	}
 	if plan.member != nil {
-		facts := r.renameFactsOf(c.pkg.PkgPath)
-		for _, t := range slices.Concat(facts.named, facts.structs) {
+		for _, t := range r.renameFactsOf(c.pkg.PkgPath).typed {
 			if !plan.member.reach(t) {
 				continue
 			}
@@ -295,15 +293,13 @@ type renameFacts struct {
 	//
 	//declscope:private // the core holds the cache, not what is in it
 	asked map[string]bool
-	// named is every non-interface type name the package defines, with the
-	// variant that resolves it.
+	// typed is every non-interface type name the package defines, and every
+	// struct type it writes, named or not, each with the variant that
+	// resolves it. A guard only asks whether any of them holds a name, so
+	// each (variant, type) is kept once, in no order that matters.
 	//
 	//declscope:private // the core holds the cache, not what is in it
-	named []renameTyped
-	// structs is every struct type the package writes, named or not.
-	//
-	//declscope:private // the core holds the cache, not what is in it
-	structs []renameTyped
+	typed []renameTyped
 }
 
 // renameTyped is a type in the variant whose scopes resolve it.
@@ -317,6 +313,15 @@ func (r *run) renameFactsOf(path string) *renameFacts {
 		return f
 	}
 	f := &renameFacts{linknamed: map[string]bool{}, asked: map[string]bool{}}
+	// A struct type is recorded once per expression of it, and a table of
+	// test cases holds hundreds of one.
+	seen := map[renameTyped]bool{}
+	add := func(t renameTyped) {
+		if !seen[t] {
+			seen[t] = true
+			f.typed = append(f.typed, t)
+		}
+	}
 	for _, p := range r.mod.Variants(path) {
 		for name := range directive.Linknamed(p.Syntax) {
 			f.linknamed[name] = true
@@ -330,14 +335,14 @@ func (r *run) renameFactsOf(path string) *renameFacts {
 				renameAsk(f.asked, iface)
 				continue
 			}
-			f.named = append(f.named, renameTyped{p.Types, tn.Type()})
+			add(renameTyped{p.Types, tn.Type()})
 		}
 		for _, tv := range p.TypesInfo.Types {
 			switch t := types.Unalias(tv.Type).(type) {
 			case *types.Interface:
 				renameAsk(f.asked, t)
 			case *types.Struct:
-				f.structs = append(f.structs, renameTyped{p.Types, t})
+				add(renameTyped{p.Types, t})
 			}
 		}
 	}
@@ -384,7 +389,7 @@ func renamePackageFree(variants []*packages.Package, sites []evidenceSite, newNa
 // called that, or make a selector of it ambiguous.
 func renameEmbeddingFree(m *module.Module, facts *renameFacts, c *candidate, newName string) bool {
 	holds := renameReach(m, c)
-	for _, t := range slices.Concat(facts.structs, facts.named) {
+	for _, t := range facts.typed {
 		if holds(t) && renameNameIn(t, newName) {
 			return false
 		}
@@ -410,7 +415,7 @@ func renameMemberFree(m *module.Module, facts *renameFacts, c *candidate, newNam
 	// the old name is hidden or ambiguous. An unnamed struct promotes members
 	// too: struct{ Named; size int }.
 	holds := renameReach(m, c)
-	for _, t := range slices.Concat(facts.named, facts.structs) {
+	for _, t := range facts.typed {
 		if holds(t) && renameNameIn(t, newName) {
 			return false
 		}
