@@ -68,6 +68,9 @@ func TestParseDeclProblems(t *testing.T) {
 		{"unknown keyword", "//declscope:bogus"},
 		{"argument where none is taken", "//declscope:package user"},
 		{"ignore of an unknown rule", "//declscope:ignore why"},
+		{"ignore of an empty rule list", "//declscope:ignore ,"},
+		{"ignore with a trailing comma", "//declscope:ignore boundary,"},
+		{"ignore with a reason after a dash", "//declscope:ignore - why"},
 		{"namespace on a declaration", "//declscope:namespace user"},
 		{"core on a declaration", "//declscope:core"},
 		{"conflicting scopes", "//declscope:package\n//declscope:private"},
@@ -361,6 +364,11 @@ func TestParseFileProblems(t *testing.T) {
 			name: "ignore of an unknown rule",
 			src:  "//declscope:ignore nosuchrule\n\npackage repo\n",
 			want: "nosuchrule",
+		},
+		{
+			name: "ignore of an empty rule list",
+			src:  "//declscope:ignore ,\n\npackage repo\n",
+			want: "empty rule name in declscope:ignore",
 		},
 	}
 	for _, tt := range tests {

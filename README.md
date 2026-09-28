@@ -648,7 +648,8 @@ The rule is always on, and has no configuration key. `//declscope:ignore directi
 | `//declscope:package x` | `//declscope:package takes no argument` |
 | `//declscope:private` and `//declscope:package` together | `conflicting scope directives: ...` |
 | `//declscope:core` and `//declscope:namespace` together | `conflicting namespace directives: a core file's namespace is the core` |
-| `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, surplus, unused, directive, filter)` |
+| `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, surplus, unused, directive, filter, overexported)` |
+| `//declscope:ignore ,` or `//declscope:ignore boundary,` | `empty rule name in declscope:ignore` |
 | `//declscope:namespace` after the package clause | `declscope:namespace must appear before the package clause` |
 | A directive attached to no declaration, such as one inside a function body | `misplaced declscope:package: no declaration here for it to bind to; ...` |
 
