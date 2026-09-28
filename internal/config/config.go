@@ -32,6 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"maps"
 	"os"
 	"path/filepath"
@@ -223,21 +224,10 @@ func resolve(dir, explicit string) (internal.Options, string, error) {
 // thing the module boundary is there to prevent.
 func FindChain(dir string) []string {
 	var found []string
-	for dir != "" {
-		for _, name := range names {
-			if path := filepath.Join(dir, name); isFile(path) {
-				found = append(found, path)
-				break
-			}
+	for d := range dirsUp(dir) {
+		if path := firstFile(d, names); path != "" {
+			found = append(found, path)
 		}
-		if isFile(filepath.Join(dir, "go.mod")) {
-			break
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
 	}
 	slices.Reverse(found)
 	return found
@@ -276,49 +266,54 @@ func FindBaseline(dir string) string { return findUp(dir, baselineNames) }
 // rewriting one above root for a package inside.
 func DefaultBaseline(dir, root string) (string, bool) {
 	found := ""
-	for dir != "" {
+	for d := range dirsUp(dir) {
 		if found == "" {
-			for _, name := range baselineNames {
-				if path := filepath.Join(dir, name); isFile(path) {
-					found = path
-					break
-				}
-			}
+			found = firstFile(d, baselineNames)
 		}
-		if sameDir(dir, root) {
+		if sameDir(d, root) {
 			if found != "" {
 				return found, true
 			}
 			return filepath.Join(root, baselineNames[0]), true
 		}
-		if isFile(filepath.Join(dir, "go.mod")) {
-			return "", false
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", false
-		}
-		dir = parent
 	}
 	return "", false
 }
 
 func findUp(dir string, names []string) string {
-	for dir != "" {
-		for _, name := range names {
-			path := filepath.Join(dir, name)
-			if isFile(path) {
-				return path
+	for d := range dirsUp(dir) {
+		if path := firstFile(d, names); path != "" {
+			return path
+		}
+	}
+	return ""
+}
+
+// dirsUp yields dir and then each parent in turn, the path every lookup here
+// walks. It stops after a directory that holds a go.mod, since a module root
+// is where every lookup stops, and at the filesystem root.
+func dirsUp(dir string) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for d := dir; d != ""; {
+			if !yield(d) || isFile(filepath.Join(d, "go.mod")) {
+				return
 			}
+			parent := filepath.Dir(d)
+			if parent == d {
+				return
+			}
+			d = parent
 		}
-		if isFile(filepath.Join(dir, "go.mod")) {
-			return ""
+	}
+}
+
+// firstFile returns the first of names that is a file in dir, or "" when none
+// is.
+func firstFile(dir string, names []string) string {
+	for _, name := range names {
+		if path := filepath.Join(dir, name); isFile(path) {
+			return path
 		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return ""
-		}
-		dir = parent
 	}
 	return ""
 }
