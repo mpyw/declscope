@@ -12,6 +12,8 @@
   <!-- site:skip -->
   <p><a href="https://mpyw.me/declscope/"><img src="https://github.com/user-attachments/assets/69d90557-eacd-4480-8834-cf7f5f28d341" alt="Documentation on GitHub Pages" width="480"></a></p>
   <!-- /site:skip -->
+
+  <p>Write-ups: 🇯🇵 <a href="https://zenn.dev/yumemi_inc/articles/go-declscope-file-scoped-private">JP</a> · 🇺🇸 <a href="https://dev.to/mpyw/declscope-a-linter-that-brings-file-scoped-private-to-gos-flat-packages-2en9">EN</a></p>
 </div>
 
 Keep your Go packages **flat** without letting them turn into a free-for-all.
