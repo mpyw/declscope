@@ -373,6 +373,16 @@ func TestSurplusSatisfies(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplussatisfies")
 }
 
+// TestSurplusSatisfiesPairs checks the shapes that decide which pairs of an
+// interface and a type are tested for satisfaction: a method promoted through
+// an embedded pointer, a method of an instantiated generic type with a
+// pointer receiver, an interface embedding another, a requirement asked for
+// only through an embedded instantiation, and a named function type. Each
+// method stays quiet, and one in no contract is still reported.
+func TestSurplusSatisfiesPairs(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplussatisfiespairs")
+}
+
 // TestSurplusCarrier checks the carrier suppressor: an exported type — or an
 // exported alias, or an exported interface — carries an unexported method out
 // of the package, where an importer can complete a satisfaction the analysis
