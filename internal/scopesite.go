@@ -173,10 +173,8 @@ func (c *collection) bindAtScopeSite(opts Options, name string, dir, container, 
 // it could also check; an author who states one is stating it, not guessing, and
 // the directive binds.
 func outerScopeOfScopeSite(opts Options, name string, rest []directive.Decl) (scope.Scope, bool) {
-	for _, d := range rest {
-		if d.HasScope {
-			return d.Scope, true
-		}
+	if d, ok := nextScopeSite(rest); ok {
+		return d.Scope, true
 	}
 	if isExported(name) {
 		return scope.PackageInternal, true
