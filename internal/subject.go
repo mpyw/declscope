@@ -238,8 +238,12 @@ type ref struct {
 // and is private to it. Reaching one from the wrong stage is a boundary
 // crossing, which is the thing this package was split up to be able to say.
 type collection struct {
-	files   []*fileInfo
-	byFile  map[*ast.File]*fileInfo
+	files  []*fileInfo
+	byFile map[*ast.File]*fileInfo
+	// targets is every checked declaration, in source order. collectTargets
+	// sorts it once, and every stage reads it in that order, the baseline
+	// regeneration included. After collectTargets it is read-only: a stage
+	// that needs another order, or fewer targets, works on a copy.
 	targets []*target
 	byObj   map[types.Object]*target
 	refs    map[types.Object][]ref
