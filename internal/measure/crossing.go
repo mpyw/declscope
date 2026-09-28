@@ -123,7 +123,7 @@ func (p Package) crossings() []Crossing {
 // rule tallies a finding per declaration, and the crossing table's own columns
 // are per declaration within a pair.
 //
-//declscope:package // markdown.go reports each state's count
+//declscope:package // markdown.go reports each state's count, and summary.go the declared one
 func (p Package) declarationsCrossing(state EdgeState) int {
 	seen := map[[2]string]bool{}
 	for _, e := range p.Edges {

@@ -135,13 +135,7 @@ func summaryRowOf(p Package) SummaryRow {
 	}
 	// Per declaration, not per edge: one helper shared with three namespaces
 	// is one decision somebody took, not three.
-	declared := map[[2]string]bool{}
-	for _, e := range p.Edges {
-		if e.State == EdgeDeclared {
-			declared[[2]string{e.To, e.Declaration}] = true
-		}
-	}
-	row.BoundaryDeclared = len(declared)
+	row.BoundaryDeclared = p.declarationsCrossing(EdgeDeclared)
 	for _, n := range p.Names {
 		if n.State == NameExempt {
 			row.QualifyExempt++
