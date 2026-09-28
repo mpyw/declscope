@@ -2,7 +2,6 @@ package shrink
 
 import (
 	"go/ast"
-	"go/token"
 	"slices"
 
 	"golang.org/x/tools/go/packages"
@@ -42,11 +41,12 @@ func (r *run) ignoreSilenced(c *candidate) {
 // The report is the unused rule's, answered as the analyzer answers its own:
 // by an ignore beside it naming unused, or by a file-level ignore covering
 // unused, bare or named. The analyzer in turn never calls such an answer
-// unused, since it cannot see the report it answers. siblings maps each
-// ignore bound to a declaration to the ignores bound beside it.
+// unused, since it cannot see the report it answers. read is what
+// candidatesOf parsed of the same package, so only a group bound to no
+// declaration is parsed here.
 //
 //declscope:package // the core drains it after judging the package
-func (r *run) unusedIgnores(p *packages.Package, siblings map[token.Pos][]directive.Ignore) []Finding {
+func (r *run) unusedIgnores(p *packages.Package, read *candidateDirectives) []Finding {
 	var findings []Finding
 	for _, file := range p.Syntax {
 		// A generated file declares no candidate, so an ignore there could
@@ -54,15 +54,18 @@ func (r *run) unusedIgnores(p *packages.Package, siblings map[token.Pos][]direct
 		if ast.IsGenerated(file) {
 			continue
 		}
-		fileIgnores := directive.ParseFile(file).Ignores
+		fileIgnores := read.files[file]
 		for _, g := range file.Comments {
-			group := directive.ParseDecl(g).Ignores
+			group, ok := read.groups[g]
+			if !ok {
+				group = directive.ParseDecl(g).Ignores
+			}
 			for _, ig := range group {
 				if r.usedIgnores[ig.Pos] || !ignoreJudged(ig) {
 					continue
 				}
 				// An ignore bound to no declaration has only its own group.
-				beside, ok := siblings[ig.Pos]
+				beside, ok := read.siblings[ig.Pos]
 				if !ok {
 					beside = group
 				}

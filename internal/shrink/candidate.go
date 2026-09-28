@@ -28,12 +28,29 @@ import (
 // the same reports in both tools.
 //
 //declscope:package // the core judges each of them
-func candidatesOf(p *packages.Package) ([]*candidate, map[token.Pos][]directive.Ignore) {
-	siblings := map[token.Pos][]directive.Ignore{}
+func candidatesOf(p *packages.Package) ([]*candidate, *candidateDirectives) {
+	read := &candidateDirectives{
+		siblings: map[token.Pos][]directive.Ignore{},
+		files:    map[*ast.File][]directive.Ignore{},
+		groups:   map[*ast.CommentGroup][]directive.Ignore{},
+	}
+	// Each group is parsed on its own, and a binding's ignores are those of
+	// its groups in order: an ignore depends on its own comment alone.
 	parse := func(groups ...*ast.CommentGroup) []directive.Ignore {
-		ignores := directive.ParseDecl(groups...).Ignores
+		var ignores []directive.Ignore
+		for _, g := range groups {
+			if g == nil {
+				continue
+			}
+			own, ok := read.groups[g]
+			if !ok {
+				own = directive.ParseDecl(g).Ignores
+				read.groups[g] = own
+			}
+			ignores = append(ignores, own...)
+		}
 		for _, ig := range ignores {
-			siblings[ig.Pos] = ignores
+			read.siblings[ig.Pos] = ignores
 		}
 		return ignores
 	}
@@ -51,6 +68,7 @@ func candidatesOf(p *packages.Package) ([]*candidate, map[token.Pos][]directive.
 		b := directive.NewBinder(p.Fset, file)
 		testFile := strings.HasSuffix(p.Fset.File(file.Pos()).Name(), "_test.go")
 		fileIgnores := directive.ParseFile(file).Ignores
+		read.files[file] = fileIgnores
 		for _, decl := range file.Decls {
 			switch d := decl.(type) {
 			case *ast.FuncDecl:
@@ -66,7 +84,23 @@ func candidatesOf(p *packages.Package) ([]*candidate, map[token.Pos][]directive.
 			}
 		}
 	}
-	return out, siblings
+	return out, read
+}
+
+// candidateDirectives is what candidatesOf read of a package's directives,
+// kept so that unusedIgnores reads each comment once.
+//
+//declscope:package // ignore.go reads it back
+type candidateDirectives struct {
+	// siblings maps each ignore bound to a declaration to the ignores bound
+	// beside it.
+	siblings map[token.Pos][]directive.Ignore
+	// files holds the file-level ignores of every file read, which is every
+	// file that is not generated.
+	files map[*ast.File][]directive.Ignore
+	// groups holds the ignores of every comment group bound to a
+	// declaration, each parsed on its own.
+	groups map[*ast.CommentGroup][]directive.Ignore
 }
 
 // candidateAdd records one candidate with the ignores covering it and its

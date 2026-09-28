@@ -138,9 +138,9 @@ func Run(dir string, patterns []string) (Result, error) {
 			}
 			continue
 		}
-		candidates, siblings := candidatesOf(pkgs[0])
+		candidates, read := candidatesOf(pkgs[0])
 		res.Findings = append(res.Findings, r.judge(pkgs[0], candidates)...)
-		res.Findings = append(res.Findings, r.unusedIgnores(pkgs[0], siblings)...)
+		res.Findings = append(res.Findings, r.unusedIgnores(pkgs[0], read)...)
 	}
 	slices.SortFunc(res.Findings, func(a, b Finding) int {
 		return cmp.Or(strings.Compare(a.Pos.Filename, b.Pos.Filename), cmp.Compare(a.Pos.Offset, b.Pos.Offset))
