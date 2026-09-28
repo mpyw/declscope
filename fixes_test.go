@@ -86,6 +86,14 @@ func TestSuggestedFixExcluded(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixexcluded")
 }
 
+// TestSuggestedFixTestExcluded checks the two together, with the test file
+// first in the directory. The non-test variant stops at it and offers no
+// rename. The test variant still reads the excluded file, and withholds only
+// the rename that file would notice.
+func TestSuggestedFixTestExcluded(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixtestexcluded")
+}
+
 // TestSuggestedFixMembers checks that two directive insertions in one pass
 // cannot converge. A directive inserted on a type reaches the type's members,
 // so a member whose type is widened in the same run is reported without a fix

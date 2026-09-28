@@ -354,7 +354,8 @@ type unseenFiles struct {
 	// names is every identifier written in an unseen file that was read. A
 	// rename is withheld when it takes one of these names away or claims one:
 	// the excluded file would otherwise still spell the old name, or would
-	// find the new one declared twice.
+	// find the new one declared twice. It is complete only while all is
+	// false, since the scan stops once all is set, so read it after all.
 	//
 	//declscope:package // rename.go and scopesite.go check names against it; surplus.go defers on any
 	names map[string]bool
@@ -416,21 +417,25 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 		// main is the common one — writes nothing this package can name. In
 		// the external test variant that clause check skips every file of the
 		// package under test, which is the whole directory.
+		//
+		// Once all is set, nothing later in the directory can change the
+		// answer: every reader checks all before names. So the scan stops.
 		f, err := parser.ParseFile(fset, p, nil, parser.PackageClauseOnly)
 		if err != nil {
 			u.all = true
-			continue
+			return u
 		}
 		if f.Name.Name != pass.Pkg.Name() {
 			continue
 		}
 		if strings.HasSuffix(e.Name(), "_test.go") {
 			u.all = true
-			continue
+			return u
 		}
-		if f, err = parser.ParseFile(fset, p, nil, 0); err != nil {
+		// Only the names are read, so the parser need not resolve them.
+		if f, err = parser.ParseFile(fset, p, nil, parser.SkipObjectResolution); err != nil {
 			u.all = true
-			continue
+			return u
 		}
 		ast.Inspect(f, func(n ast.Node) bool {
 			if id, ok := n.(*ast.Ident); ok {
