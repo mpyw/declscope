@@ -396,13 +396,13 @@ func (c *collection) surplusConversions(pass *analysis.Pass, reached map[types.O
 			}
 		}
 	}
-	in := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
-	for fc := range in.Root().Children() {
-		fi := c.byFile[fc.Node().(*ast.File)]
-		if fi == nil {
-			continue
-		}
-		for cur := range fc.Preorder((*ast.CallExpr)(nil)) {
+	// Every collected file is one of pass.Files, so each has a cursor.
+	cursors := make(map[*ast.File]inspector.Cursor)
+	for fc := range pass.ResultOf[inspect.Analyzer].(*inspector.Inspector).Root().Children() {
+		cursors[fc.Node().(*ast.File)] = fc
+	}
+	for _, fi := range c.files {
+		for cur := range cursors[fi.file].Preorder((*ast.CallExpr)(nil)) {
 			call := cur.Node().(*ast.CallExpr)
 			if len(call.Args) != 1 {
 				continue
