@@ -127,7 +127,7 @@ var _ = func() { fmt.Println(Dead{}) }
 var _, _, _, _, _, _, _ = printed, encode, useShown, bag, carry, Gen[int]{}.v, failed
 
 // Failed escapes holding an error. The predeclared error has no position,
-// so it has no key, and nothing is recorded for it.
+// so its key is "", which no reader looks up.
 type Failed struct{ Err error }
 
 func failed() { fmt.Println(Failed{}) }
