@@ -45,7 +45,7 @@ A second review found seven more holes:
 - **An unnamed struct promotes members too**, so the member guard walks `facts.structs` as well as `facts.named`.
 - **package main is always an exposure root**, inside `internal/` or not. A plugin host looks its exported variables up.
 - **The unused report on an ignore naming overexported is answered as the analyzer answers its own**: by a sibling naming `unused`, or by a file-level ignore covering `unused`. The analyzer in turn skips judging such an answer (`answersModuleWide` in ignore.go), because it cannot see the report it answers. Without both halves, one directive meant two different things to the two tools.
-- **Unnamed structs are collected from inside every expression's type**, and kept once per identity. One in a parameter of a dependency loaded from export data appears only inside the type of the expression naming the function. No fixture reproduces that case, since it needs a dependency outside the module.
+- **Unnamed structs are collected from inside every expression's type**, and kept once per identity. One in a parameter of a dependency loaded from export data appears only inside the type of the expression naming the function. No fixture reproduces that case, since it needs a dependency outside the module. One seen map serves the whole run. A type walked once has already added every unnamed struct inside it, so walking it again adds nothing.
 
 A third review found more:
 
