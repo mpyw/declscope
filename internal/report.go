@@ -334,14 +334,9 @@ func (c *collection) surveyedProblemsForReport(pass *analysis.Pass, opts Options
 // silencedProblemsForReport drops the problems a file-level ignore stands
 // down, marking the directive that did it used.
 func (c *collection) silencedProblemsForReport(pass *analysis.Pass) []directive.Problem {
-	kept := c.problems[:0]
-	for _, p := range c.problems {
-		if c.ignoreSilencesFile(c.fileAt(pass, p.Pos), p) {
-			continue
-		}
-		kept = append(kept, p)
-	}
-	return kept
+	return slices.DeleteFunc(c.problems, func(p directive.Problem) bool {
+		return c.ignoreSilencesFile(c.fileAt(pass, p.Pos), p)
+	})
 }
 
 func (c *collection) findingsForReport(pass *analysis.Pass, opts Options, t *target) []reportedFinding {
@@ -472,10 +467,8 @@ func (c *collection) qualifyFindingForReport(pass *analysis.Pass, opts Options, 
 	// A configured vocabulary word carries the namespace the way its own
 	// spelling would, under the same test: word boundary on the left, free
 	// right edge. It widens what counts as carrying, never what is asked.
-	for _, word := range opts.Vocabulary[t.file.ns] {
-		if namespace.Contains(name, word) {
-			return reportedFinding{}, false
-		}
+	if slices.ContainsFunc(opts.Vocabulary[t.file.ns], func(word string) bool { return namespace.Contains(name, word) }) {
+		return reportedFinding{}, false
 	}
 	f := reportedFinding{
 		rule: rule.Qualify,
@@ -653,10 +646,7 @@ func (t *target) reportsToolchainName() bool {
 		return false
 	}
 	name := t.obj.Name()
-	for _, prefix := range [...]string{"Test", "Benchmark", "Fuzz", "Example"} {
-		if strings.HasPrefix(name, prefix) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc([]string{"Test", "Benchmark", "Fuzz", "Example"}, func(prefix string) bool {
+		return strings.HasPrefix(name, prefix)
+	})
 }

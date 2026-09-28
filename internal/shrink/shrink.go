@@ -33,10 +33,10 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
@@ -156,12 +156,7 @@ func Apply(findings []Finding) error {
 			byFile[e.Filename] = append(byFile[e.Filename], e)
 		}
 	}
-	names := make([]string, 0, len(byFile))
-	for name := range byFile {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
+	for _, name := range slices.Sorted(maps.Keys(byFile)) {
 		edits := byFile[name]
 		// Later edits first, so earlier offsets stay valid. Two findings never
 		// edit one identifier, since each renames its own declaration.

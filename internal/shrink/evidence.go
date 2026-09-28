@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/types"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
@@ -364,13 +365,12 @@ func (ev *evidence) unnamedStructs(m *module.Module) {
 		buckets[evidenceFieldNames(u)] = append(buckets[evidenceFieldNames(u)], u)
 	})
 	for _, st := range named {
-		for _, u := range buckets[evidenceFieldNames(st)] {
-			if u != st && types.IdenticalIgnoreTags(st, u) {
-				for i := range st.NumFields() {
-					ev.paired[keyOf(m.Fset, st.Field(i))] = true
-				}
-				break
-			}
+		identical := func(u *types.Struct) bool { return u != st && types.IdenticalIgnoreTags(st, u) }
+		if !slices.ContainsFunc(buckets[evidenceFieldNames(st)], identical) {
+			continue
+		}
+		for i := range st.NumFields() {
+			ev.paired[keyOf(m.Fset, st.Field(i))] = true
 		}
 	}
 }
@@ -507,11 +507,11 @@ func (ev *evidence) linknames(m *module.Module) {
 				}
 				target := fields[1]
 				slash := strings.LastIndex(target, "/")
-				dot := strings.Index(target[slash+1:], ".")
-				if dot < 0 {
+				last, name, ok := strings.Cut(target[slash+1:], ".")
+				if !ok {
 					continue
 				}
-				path, name := target[:slash+1+dot], target[slash+2+dot:]
+				path := target[:slash+1] + last
 				if byPath[path] == nil {
 					byPath[path] = map[string]string{}
 				}

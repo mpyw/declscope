@@ -172,8 +172,8 @@ func (d Decl) Merge(inner Decl) Decl {
 		}
 		out.Scope, out.HasScope, out.ScopePos = inner.Scope, true, inner.ScopePos
 	}
-	out.Ignores = append(append([]Ignore(nil), d.Ignores...), inner.Ignores...)
-	out.Problems = append(append([]Problem(nil), d.Problems...), inner.Problems...)
+	out.Ignores = slices.Concat(d.Ignores, inner.Ignores)
+	out.Problems = slices.Concat(d.Problems, inner.Problems)
 	return out
 }
 
@@ -423,9 +423,7 @@ func split(text string) (keyword, arg string, malformed, ok bool) {
 	if !line {
 		body = strings.TrimSuffix(strings.TrimPrefix(text, "/*"), "*/")
 	}
-	if i := strings.Index(body, "//"); i >= 0 {
-		body = body[:i]
-	}
+	body, _, _ = strings.Cut(body, "//")
 	if !strings.HasPrefix(strings.TrimSpace(body), tool+":") {
 		return "", "", false, false
 	}

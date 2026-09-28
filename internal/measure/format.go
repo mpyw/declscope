@@ -3,6 +3,7 @@ package measure
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 )
 
@@ -40,10 +41,8 @@ var formatSet = []Format{FormatMarkdown, formatJSON}
 
 // ParseFormat resolves the flag value, and names what it takes when it cannot.
 func ParseFormat(s string) (Format, error) {
-	for _, f := range formatSet {
-		if Format(s) == f {
-			return f, nil
-		}
+	if slices.Contains(formatSet, Format(s)) {
+		return Format(s), nil
 	}
 	names := make([]string, 0, len(formatSet))
 	for _, f := range formatSet {

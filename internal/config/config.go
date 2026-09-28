@@ -416,7 +416,8 @@ func keysOf(section any) []string {
 	names := make([]string, 0, t.NumField())
 	for field := range t.Fields() {
 		if tag, ok := field.Tag.Lookup("yaml"); ok {
-			names = append(names, strings.Split(tag, ",")[0])
+			name, _, _ := strings.Cut(tag, ",")
+			names = append(names, name)
 		}
 	}
 	return names
