@@ -386,10 +386,15 @@ func (f *File) ignore(pos token.Pos, arg string) {
 // only, or everything when it names none.
 func parseIgnore(pos token.Pos, arg string) (Ignore, *Problem) {
 	ignore := Ignore{Pos: pos}
+	if arg == "" {
+		return ignore, nil
+	}
 	for name := range strings.SplitSeq(arg, ",") {
 		name = strings.TrimSpace(name)
+		// An empty name is reported rather than skipped: skipping it read
+		// //declscope:ignore , as a bare ignore, silencing every rule.
 		if name == "" {
-			continue
+			return Ignore{}, &Problem{Pos: pos, Rule: rule.Directive, Msg: "empty rule name in declscope:ignore"}
 		}
 		r, ok := rule.Parse(name)
 		if !ok {
