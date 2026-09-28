@@ -8,8 +8,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
-
-	"github.com/mpyw/declscope/internal/directive"
 )
 
 // renameBook is rename.go's half of the collection, embedded there.
@@ -42,11 +40,6 @@ type renameState struct {
 	// there cannot be rewritten, so a rename would leave it dangling.
 	outside     map[types.Object]bool
 	outsideDone bool
-
-	// directives holds every local name a //go:linkname or //export
-	// directive in the package binds. The directive names the object as
-	// text, which a rename cannot follow.
-	directives map[string]bool
 }
 
 func (c *collection) renames() *renameState {
@@ -144,7 +137,7 @@ func (c *collection) safeToRename(pass *analysis.Pass, t *target, newName string
 		return false
 	}
 	// A directive names the object as text.
-	if rs.namedByDirective(pass)[t.obj.Name()] {
+	if c.linknamed(pass)[t.obj.Name()] {
 		return false
 	}
 	// Another fix in this pass has already taken the name.
@@ -206,13 +199,4 @@ func (rs *renameState) usedOutside(pass *analysis.Pass, c *collection) map[types
 		}
 	}
 	return rs.outside
-}
-
-// namedByDirective returns every local name bound by a //go:linkname or
-// //export directive in any file of the pass, collected or not.
-func (rs *renameState) namedByDirective(pass *analysis.Pass) map[string]bool {
-	if rs.directives == nil {
-		rs.directives = directive.Linknamed(pass.Files)
-	}
-	return rs.directives
 }

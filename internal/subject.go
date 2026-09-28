@@ -271,6 +271,14 @@ type collection struct {
 	//
 	//declscope:private
 	unseenScan *unseenFiles
+
+	// linknamedScan is every local name a //go:linkname or //export directive
+	// in the package binds. The surplus evidence and the rename guard both
+	// ask it, so the comments are scanned once per pass. It is filled on
+	// first use.
+	//
+	//declscope:private
+	linknamedScan map[string]bool
 }
 
 // origin maps an instantiated field or method back to the object declared in
@@ -445,4 +453,15 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 		})
 	}
 	return u
+}
+
+// linknamed returns every local name bound by a //go:linkname or //export
+// directive in any file of the pass, collected or not. The directive names
+// the object as text, from code the analysis does not read, so the surplus
+// rule cannot call it unused and a rename cannot follow it.
+func (c *collection) linknamed(pass *analysis.Pass) map[string]bool {
+	if c.linknamedScan == nil {
+		c.linknamedScan = directive.Linknamed(pass.Files)
+	}
+	return c.linknamedScan
 }

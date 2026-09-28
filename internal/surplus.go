@@ -49,7 +49,6 @@ import (
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
 
-	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
@@ -92,17 +91,16 @@ type surplusDeclaration struct {
 //
 // The rest is kept because strict asks the same questions of one
 // declaration: fired says which directives the judgment condemned, and
-// reached and linknamed are the evidence that no name index holds. The
-// evidence is gathered on the first question, never before: a package with
-// no //declscope:package asks none under loose, and interface satisfaction
-// is the costly part of it.
+// reached is the evidence that no name index holds, beside the linknames
+// the collection reads. The evidence is gathered on the first question,
+// never before: a package with no //declscope:package asks none under loose,
+// and interface satisfaction is the costly part of it.
 type surplusState struct {
-	pass      *analysis.Pass
-	findings  map[*target]string
-	fired     map[token.Pos]bool
-	gathered  bool
-	reached   map[types.Object]bool
-	linknamed map[string]bool
+	pass     *analysis.Pass
+	findings map[*target]string
+	fired    map[token.Pos]bool
+	gathered bool
+	reached  map[types.Object]bool
 	// blind records that this pass does not read every file, so that nothing
 	// above was computed and nothing may be concluded from it.
 	blind bool
@@ -144,9 +142,8 @@ func (s *surplusState) reachesOutside(c *collection, t *target) bool {
 	if !s.gathered {
 		s.gathered = true
 		s.reached = c.surplusReached(s.pass)
-		s.linknamed = directive.Linknamed(s.pass.Files)
 	}
-	return s.reached[t.obj] || s.linknamed[t.obj.Name()] || c.surplusSeesUseOutside(t)
+	return s.reached[t.obj] || c.linknamed(s.pass)[t.obj.Name()] || c.surplusSeesUseOutside(t)
 }
 
 // computeSurplus judges every //declscope:package directive in the package.
