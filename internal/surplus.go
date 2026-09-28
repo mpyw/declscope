@@ -49,7 +49,6 @@ import (
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
 
-	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
@@ -71,13 +70,6 @@ type surplusBook struct {
 	//
 	//declscope:private // the type is widened only so the core can embed it
 	surplusDeclarations map[*target]surplusDeclaration
-
-	// linknamed holds every local name a //go:linkname or //export directive
-	// in the package binds. The surplus evidence and the rename guard both
-	// ask it, so the comments are scanned once per pass. Nil until first use.
-	//
-	//declscope:private // the type is widened only so the core can embed it
-	linknamed map[string]bool
 }
 
 // surplusDeclaration is one strict finding.
@@ -100,7 +92,7 @@ type surplusDeclaration struct {
 // The rest is kept because strict asks the same questions of one
 // declaration: fired says which directives the judgment condemned, and
 // reached is the evidence that no name index holds, beside the linknames
-// surplusLinknamed reads. The evidence is gathered on the first question,
+// the collection reads. The evidence is gathered on the first question,
 // never before: a package with no //declscope:package asks none under loose,
 // and interface satisfaction is the costly part of it.
 type surplusState struct {
@@ -151,20 +143,7 @@ func (s *surplusState) reachesOutside(c *collection, t *target) bool {
 		s.gathered = true
 		s.reached = c.surplusReached(s.pass)
 	}
-	return s.reached[t.obj] || c.surplusLinknamed(s.pass)[t.obj.Name()] || c.surplusSeesUseOutside(t)
-}
-
-// surplusLinknamed returns every local name bound by a //go:linkname or
-// //export directive in any file of the pass, collected or not. The directive
-// names the object as text, from code the analysis does not read. It scans
-// the comments on the first call and returns the same map after that.
-//
-//declscope:package // rename.go's guard asks the same question of the same files
-func (c *collection) surplusLinknamed(pass *analysis.Pass) map[string]bool {
-	if c.linknamed == nil {
-		c.linknamed = directive.Linknamed(pass.Files)
-	}
-	return c.linknamed
+	return s.reached[t.obj] || c.linknamed(s.pass)[t.obj.Name()] || c.surplusSeesUseOutside(t)
 }
 
 // computeSurplus judges every //declscope:package directive in the package.

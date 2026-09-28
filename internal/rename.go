@@ -137,7 +137,7 @@ func (c *collection) safeToRename(pass *analysis.Pass, t *target, newName string
 		return false
 	}
 	// A directive names the object as text.
-	if c.surplusLinknamed(pass)[t.obj.Name()] {
+	if c.linknamed(pass)[t.obj.Name()] {
 		return false
 	}
 	// Another fix in this pass has already taken the name.
