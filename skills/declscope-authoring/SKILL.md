@@ -67,7 +67,7 @@ Fields, interface methods, and methods written in their type's file are exempt. 
 
 ### Fitting the namespace in
 
-Do not reach for a prefix first. Choose the place where the namespace reads as part of the phrase:
+A prefix is one fit, and often the right one: `userProfile` is a prefix. Do not use it by reflex, though. Choose the place where the namespace reads as part of the phrase:
 
 | Fit it in as | Namespace | Examples |
 | --- | --- | --- |
