@@ -157,7 +157,7 @@ The three compose. `depguard` keeps the package graph honest, declscope keeps ea
 
 | Method | Command | Needs |
 | --- | --- | --- |
-| **[mise](https://mise.jdx.dev/)** *(recommended)* | `mise use "github:mpyw/declscope@0.14.0"` | Nothing. Installs the prebuilt binary |
+| **[mise](https://mise.jdx.dev/)** *(recommended)* | `mise use "github:mpyw/declscope@0.15.0"` | Nothing. Installs the prebuilt binary |
 | `go tool` | `go get -tool github.com/mpyw/declscope/cmd/declscope@latest` | Go 1.27+ |
 | `go install` | `go install github.com/mpyw/declscope/cmd/declscope@latest` | Go 1.27+ |
 | Release archive | See below | Nothing |
@@ -173,7 +173,7 @@ declscope ./...
 
 ```toml
 [tools]
-"github:mpyw/declscope" = "0.14.0"
+"github:mpyw/declscope" = "0.15.0"
 ```
 
 As a tool dependency in `go.mod`:
@@ -198,7 +198,7 @@ go run github.com/mpyw/declscope/cmd/declscope@latest ./...
 From a release archive, verified against the published checksums:
 
 ```bash
-VERSION=0.14.0
+VERSION=0.15.0
 curl -LO "https://github.com/mpyw/declscope/releases/download/v${VERSION}/declscope_${VERSION}_darwin_arm64.tar.gz"
 curl -LO "https://github.com/mpyw/declscope/releases/download/v${VERSION}/checksums.txt"
 shasum -a 256 -c checksums.txt --ignore-missing
@@ -227,7 +227,7 @@ tar xzf "declscope_${VERSION}_darwin_arm64.tar.gz"
 | `declscope inspect <package>` | [Report the shape of one package](#measuring-what-is-there): its namespaces and the crossings between them | `-format`, `-test`, `-config` |
 | `declscope baseline [packages]` | [Record the violations a codebase already has](#adopting-on-an-existing-codebase) | `-config`, `-o` |
 | `declscope shrink [packages]` | [Unexport what no importer uses](#unexporting-what-no-importer-uses), inside `internal/` | `-fix` |
-| `declscope skill install` | Install the adoption skill for an AI agent | `--agent`, `--scope` |
+| `declscope skill install` | Install the authoring and adoption skills for an AI agent | `--agent`, `--scope` |
 
 `declscope <subcommand> -help` lists each one's flags.
 
@@ -1389,15 +1389,15 @@ Every file written is regenerated **wholesale**. The existing one is never read,
 </details>
 
 > [!TIP]
-> [`skills/declscope-adoption`](skills/declscope-adoption/SKILL.md) is a skill for an AI agent doing this work. It covers what each diagnostic shape means, and the measurement traps that produce false confidence. The binary carries it:
+> [`skills/declscope-adoption`](skills/declscope-adoption/SKILL.md) is a skill for an AI agent doing this work. It covers what each diagnostic shape means, and the measurement traps that produce false confidence. Its companion, [`skills/declscope-authoring`](skills/declscope-authoring/SKILL.md), is for everyday code: where a declaration goes, and how to name it accurately. The binary carries both:
 >
 > ```console
 > declscope skill install            # the agents already set up in this project
 > declscope skill install --agent claude-code --scope user
-> declscope skill list               # where it is, and whether it is current
+> declscope skill list               # where they are, and whether they are current
 > ```
 >
-> Without the binary, `gh skill install mpyw/declscope declscope-adoption --agent claude-code` writes to the same directories. The binary's installer is [`go-skill-embed`](https://github.com/mpyw/go-skill-embed), which takes them from `gh skill install`.
+> Without the binary, `gh skill install mpyw/declscope declscope-authoring --agent claude-code` writes to the same directories, and the same with `declscope-adoption`. The binary's installer is [`go-skill-embed`](https://github.com/mpyw/go-skill-embed), which takes them from `gh skill install`.
 
 ## Using it with an AI agent
 
@@ -1409,6 +1409,8 @@ declscope -fix ./...   # deterministic: at most one fix per diagnostic
 ```
 
 On an existing codebase, run `declscope baseline ./...` once first. The agent is then shown only the boundaries its own edits cross.
+
+`declscope skill install` installs both skills. `declscope-authoring` says where a new declaration belongs, and how to name one without bending the name to pass the naming rule.
 
 | Property | Effect on the agent |
 | --- | --- |

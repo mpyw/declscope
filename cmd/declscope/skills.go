@@ -6,7 +6,8 @@ import (
 	"github.com/mpyw/declscope"
 )
 
-// skills is the command that puts the adoption skill where an agent reads it.
+// skills is the command that puts the skills where an agent reads them: one
+// for writing code under declscope, and one for adopting it.
 //
 // It carries the release the binary reports, so an installed copy names the
 // version of the rules it describes.

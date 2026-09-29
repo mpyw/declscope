@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// The adoption skill used to be installed with `gh skill install`, which
+// The skills used to be installed with `gh skill install`, which
 // needed the skill to sit at the repository root and needed gh. The binary
 // carries it now, so the tool that the skill is about installs it.
 //
@@ -26,16 +26,21 @@ func TestSkillInstallPutsTheSkillWhereItWasAsked(t *testing.T) {
 		t.Errorf("install said:\n%s", out)
 	}
 
-	body, err := os.ReadFile(filepath.Join(dest, "declscope-adoption", "SKILL.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(body), "Adopting declscope") {
-		t.Errorf("the installed manifest is not the skill:\n%.200s", body)
-	}
-	// The stamp names this binary and the release it reports.
-	if !strings.Contains(string(body), "x-embedded-by: declscope") {
-		t.Errorf("the installed manifest carries no stamp:\n%.400s", body)
+	for name, title := range map[string]string{
+		"declscope-authoring": "Writing code under declscope",
+		"declscope-adoption":  "Adopting declscope",
+	} {
+		body, err := os.ReadFile(filepath.Join(dest, name, "SKILL.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(body), title) {
+			t.Errorf("%s: the installed manifest is not the skill:\n%.200s", name, body)
+		}
+		// The stamp names this binary and the release it reports.
+		if !strings.Contains(string(body), "x-embedded-by: declscope") {
+			t.Errorf("%s: the installed manifest carries no stamp:\n%.400s", name, body)
+		}
 	}
 
 	out, code = runSkill(t, "skill", "list", "--dir", dest)
@@ -47,8 +52,10 @@ func TestSkillInstallPutsTheSkillWhereItWasAsked(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "removed") {
 		t.Errorf("uninstall exited %d:\n%s", code, out)
 	}
-	if _, err := os.Stat(filepath.Join(dest, "declscope-adoption")); err == nil {
-		t.Error("the skill survived uninstall")
+	for _, name := range []string{"declscope-authoring", "declscope-adoption"} {
+		if _, err := os.Stat(filepath.Join(dest, name)); err == nil {
+			t.Errorf("%s survived uninstall", name)
+		}
 	}
 }
 

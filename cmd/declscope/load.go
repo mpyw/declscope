@@ -50,8 +50,8 @@ func loadPackages(patterns []string, tests bool) ([]*packages.Package, error) {
 // loadErrors names every package that did not type-check.
 //
 // A failed build reports no diagnostics, and that is indistinguishable from a
-// clean run: the adoption skill spends a section warning an agent to run
-// go build first. A command that reads counts has to say so itself rather than
+// clean run: the authoring skill warns an agent to run
+// go vet first. A command that reads counts has to say so itself rather than
 // leave the reader to notice, and it has to name the packages, which
 // packages.PrintErrors only prints and counts.
 //
