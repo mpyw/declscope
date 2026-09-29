@@ -61,15 +61,23 @@ Which rules are on, and which config governs a package, is in [Check what is swi
 
 This applies when the naming rule is on. The namespace may sit anywhere in the name, but it must start a word. Its right edge may fall inside a word: `loadUserID` carries `user`, and `poweruserID` does not.
 
-| Namespace | Carried by |
-| --- | --- |
-| `collect` | `collectFiles`, `addFuncToCollection`, `parseCollectedDecl` |
-| `parse` | `SpecifierParser` |
-| `store` | `storing`, `stored` |
-
 Fields, interface methods, and methods written in their type's file are exempt. A method in another file must carry that file's namespace. So do helpers in a test file. `TestXxx`, `BenchmarkXxx`, `FuzzXxx` and `ExampleXxx` in a `_test.go` file are exempt, since `go test` finds them by name.
 
 **Prefer natural word order.** With a verb namespace, a prefix reads as a command: `collectAddFunc` is an instruction, and `addFuncToCollection` is a name. An entry point is the exception, since `collectFiles` already says what it does.
+
+### Fitting the namespace in
+
+Do not reach for a prefix first. Choose the place where the namespace reads as part of the phrase:
+
+| Fit it in as | Namespace | Examples |
+| --- | --- | --- |
+| A modifier before a noun | `user` | `userProfile`, `userRow` |
+| The object after a verb | `user` | `loadUser`, `deleteUserByID` |
+| A phrase after the main word | `collect` | `addFuncToCollection` |
+| An inflected form | `collect`, `store` | `collectedFiles`, `storingKeys`, `storedKeys` |
+| A word it begins, ending inside it | `parse` | `SpecifierParser` |
+
+**Then read the name aloud.** A command (`collectAddFunc`), a stack of nouns with no grammar, or a word used against its meaning means another fit is needed. When no fit reads naturally, the name is not the problem. Suspect the file instead: see [An ill-fitting prefix means the declaration is in the wrong file](#an-ill-fitting-prefix-means-the-declaration-is-in-the-wrong-file).
 
 ### Carrying the namespace does not make a name accurate
 
