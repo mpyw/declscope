@@ -1287,6 +1287,7 @@ That is one package of this repository. A codebase adopting declscope has number
 - **The state of the checks comes first**, because a count means nothing without it. A zero from a rule that was off, a package that did not compile, or a baseline that absorbed everything looks like a zero from clean code.
 - A rule prints `-` rather than `0` where it was not asked. It may be switched off, or it may stand itself down, as `surplus` does for a package with a file it cannot read.
 - A package that does not type-check stops the run. `-allow-errors` continues and names it under `type check`.
+- So does a run whose patterns match no package. A pattern that matches nothing beside others that do gets a warning. `inspect` does the same.
 - Rows are ordered by how much is outstanding: undecided, reported and baselined together. `largest crossing` names where it is concentrated.
 
 > [!TIP]
@@ -1403,6 +1404,8 @@ Each package's entries go to the file the analyzer will consult for that package
 | A new `.declscope-baseline.yaml` in the working directory | Neither of the above exists |
 
 `-o` bypasses that lookup and gathers every entry into one file.
+
+If no pattern matches a package, the run stops and writes nothing, `-o` included. A pattern that matches nothing beside others that do gets a warning, as it does from `go vet`.
 
 Every file written is regenerated **wholesale**. The existing one is never read, so a baseline that fails to parse is replaced like any other.
 

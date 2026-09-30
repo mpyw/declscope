@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -14,6 +15,7 @@ import (
 	"golang.org/x/tools/go/packages"
 
 	"github.com/mpyw/declscope"
+	"github.com/mpyw/declscope/internal/pattern"
 )
 
 // loadPackages type-checks the patterns and hands back what the subcommands
@@ -32,8 +34,13 @@ import (
 // without its scaffolding, which in a large package is most of what the
 // crossings are.
 //
+// Patterns that name no package are handled as go vet handles them: a
+// warning for each, and an error when none names any. A baseline written from
+// a typo would otherwise replace the real one with an empty file. command
+// names the subcommand in the warning.
+//
 //declscope:package // every subcommand that reads packages starts here
-func loadPackages(patterns []string, tests bool) ([]*packages.Package, error) {
+func loadPackages(command string, patterns []string, tests bool) ([]*packages.Package, error) {
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles |
 			packages.NeedImports | packages.NeedDeps | packages.NeedTypes |
@@ -43,6 +50,13 @@ func loadPackages(patterns []string, tests bool) ([]*packages.Package, error) {
 	pkgs, err := packages.Load(cfg, patterns...)
 	if err != nil {
 		return nil, err
+	}
+	unmatched, err := pattern.Unmatched(cfg, patterns, pkgs)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range unmatched {
+		fmt.Fprintf(os.Stderr, "declscope %s: warning: %q matched no packages\n", command, p)
 	}
 	return pkgs, nil
 }
