@@ -32,7 +32,7 @@ import (
 	"unicode/utf8"
 )
 
-// Of returns the default namespace for a file path.
+// of returns the default namespace for a file path.
 //
 // The path is reduced to its base name and then normalized:
 //
@@ -46,14 +46,12 @@ import (
 //	v2_client.go            -> v2Client
 //	2fa_auth.go             -> 2faAuth
 //
-// Of always returns the normalized stem when there is one, so that a file's
+// of always returns the normalized stem when there is one, so that a file's
 // identity never depends on whether the stem also makes a usable prefix:
 // 2fa_test.go must share the namespace of 2fa.go even though no identifier can
 // start with a digit. Whether the result can serve as a prefix is a separate
 // question, answered by CanPrefix. Only a file with no stem at all yields "".
-//
-//declscope:ignore overexported // namespace_test pins its table through it; Resolve is what the tools call
-func Of(path string) string {
+func of(path string) string {
 	base := strings.TrimSuffix(filepath.Base(path), ".go")
 
 	// _test must be stripped before the build suffixes: the canonical shape is
@@ -419,7 +417,7 @@ type Resolved struct {
 // baseline key names the same namespace from either.
 //
 // A file takes //declscope:core, else its //declscope:namespace, else the one
-// Of derives from its path. A test file joins its subject's namespace, which
+// of derives from its path. A test file joins its subject's namespace, which
 // is why a namespace is derived from the stem rather than being the file
 // name. //declscope:core comes from a directive rather than from the stem, so
 // the joining has to be done here: without it client_test.go could not reach
@@ -434,15 +432,15 @@ func Resolve(files []Declared) []Resolved {
 			// The core namespace has no name. Every core file shares it, which
 			// is what makes having no prefix name exactly one unit.
 			out[i].Core = true
-			cores[Of(f.Path)] = true
+			cores[of(f.Path)] = true
 		case f.Named:
 			out[i].Name = f.Name
 		default:
-			out[i].Name = Of(f.Path)
+			out[i].Name = of(f.Path)
 		}
 	}
 	for i, f := range files {
-		if !out[i].Core && cores[Of(f.Path)] {
+		if !out[i].Core && cores[of(f.Path)] {
 			out[i] = Resolved{Core: true}
 		}
 	}
