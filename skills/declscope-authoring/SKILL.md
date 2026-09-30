@@ -219,6 +219,7 @@ Keep that type and its fields private. Expose small package-scoped functions tha
 | `... uses it` and nothing more | The fix is offered. Apply it with `declscope shrink -fix <that package>` |
 | `... (no fix: <reason>)` | A use may exist that `shrink` cannot prove, or the rename is unsafe. **Do not unexport it by hand.** Read the reason first |
 | `... only the external tests of <pkg> use it` | Keep it exported. Add `//declscope:ignore overexported // <why>` when the tests use it on purpose |
+| `... (no fix: a build-excluded file of another package may use it)`, where that file uses it under another build tag | Keep it exported. Add `//declscope:ignore overexported // <file, behind which tag>`. One ignore passes every configuration |
 | `declscope shrink: not judged: <pkg>: <reason>` on stderr | That package was not checked. It is not clean |
 | `declscope shrink: warning: "<pattern>" matched no packages` on stderr | The pattern checked nothing. Fix the pattern, as you would for `go vet` |
 | `declscope shrink: not judged: <n> package(s) outside the main module` on stderr | The patterns named packages `shrink` never judges, such as `std`. Nothing to do |

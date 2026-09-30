@@ -11,6 +11,7 @@ import (
 	"golang.org/x/tools/go/types/typeutil"
 	"golang.org/x/tools/refactor/satisfy"
 
+	"github.com/mpyw/declscope/internal/buildtag"
 	"github.com/mpyw/declscope/internal/shrink/module"
 	"github.com/mpyw/declscope/internal/shrink/reach"
 )
@@ -28,6 +29,10 @@ type evidence struct {
 	// external tests aside: spelled, written in an unkeyed literal, or
 	// linked by name.
 	outside map[string]bool
+	// everywhere is every declaration in outside that one of those uses
+	// names in every build configuration: from a file under no build
+	// constraint. A linkname counts too, since its file is not kept.
+	everywhere map[string]bool
 	// extTest is every declaration an external test package names.
 	extTest map[string]bool
 	// generated is every declaration a generated file of its own package
@@ -77,7 +82,7 @@ type evidenceSite struct {
 //declscope:package // the core collects it once per run
 func evidenceCollect(m *module.Module) (ev *evidence, err error) {
 	ev = &evidence{
-		outside: map[string]bool{}, extTest: map[string]bool{}, generated: map[string]bool{}, example: map[string]bool{},
+		outside: map[string]bool{}, everywhere: map[string]bool{}, extTest: map[string]bool{}, generated: map[string]bool{}, example: map[string]bool{},
 		satisfied: map[string]bool{}, paired: map[string]bool{}, escaped: map[string]bool{},
 		exposed: map[string]bool{}, sites: map[string][]evidenceSite{},
 		inModule: map[string]bool{}, keys: map[types.Object]string{},
@@ -149,7 +154,7 @@ func evidenceClassify(p *packages.Package, declPath string) evidenceClass {
 // own syntax, so nothing is recorded for one outside the module: the
 // standard library and dependencies are most of what code names. Inside
 // the module every object has a position, so its key is never empty.
-func (ev *evidence) record(m *module.Module, p *packages.Package, obj types.Object, id *ast.Ident, gen bool) {
+func (ev *evidence) record(m *module.Module, p *packages.Package, obj types.Object, id *ast.Ident, gen, free bool) {
 	if obj == nil || obj.Pkg() == nil || !ev.inModule[obj.Pkg().Path()] {
 		return
 	}
@@ -168,6 +173,9 @@ func (ev *evidence) record(m *module.Module, p *packages.Package, obj types.Obje
 		ev.extTest[key] = true
 	case evidenceOutside:
 		ev.outside[key] = true
+		if free {
+			ev.everywhere[key] = true
+		}
 	}
 }
 
@@ -177,26 +185,28 @@ func (ev *evidence) references(m *module.Module, p *packages.Package) {
 	info := p.TypesInfo
 	for _, file := range p.Syntax {
 		gen := ast.IsGenerated(file)
+		// A file no configuration leaves out holds its uses in every one.
+		free := !buildtag.Constrained(m.Fset.File(file.Pos()).Name(), file)
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch n := n.(type) {
 			case *ast.Ident:
 				// An embedded field's identifier is a definition of the field
 				// and a use of the type at once, so both maps are read.
 				if obj := info.Defs[n]; obj != nil {
-					ev.record(m, p, origin(obj), n, gen)
+					ev.record(m, p, origin(obj), n, gen, free)
 				}
 				if obj := info.Uses[n]; obj != nil {
 					obj = origin(obj)
-					ev.record(m, p, obj, n, gen)
+					ev.record(m, p, obj, n, gen, free)
 					// s.T selects an embedded field by the type's name.
 					if _, isDef := info.Defs[n]; !isDef {
 						if tn := embeddedTypeName(obj); tn != nil {
-							ev.record(m, p, tn, n, gen)
+							ev.record(m, p, tn, n, gen, free)
 						}
 					}
 				}
 			case *ast.CompositeLit:
-				ev.unkeyed(m, p, n)
+				ev.unkeyed(m, p, n, free)
 			case *ast.CallExpr:
 				ev.conversion(m, p, n)
 			}
@@ -260,7 +270,7 @@ func (ev *evidence) examples(m *module.Module, p *packages.Package) {
 // unkeyed records the fields an unkeyed composite literal writes by
 // position. Another package can write one only while every field is
 // exported, so the literal is a use of each.
-func (ev *evidence) unkeyed(m *module.Module, p *packages.Package, lit *ast.CompositeLit) {
+func (ev *evidence) unkeyed(m *module.Module, p *packages.Package, lit *ast.CompositeLit, free bool) {
 	if len(lit.Elts) == 0 {
 		return
 	}
@@ -274,16 +284,21 @@ func (ev *evidence) unkeyed(m *module.Module, p *packages.Package, lit *ast.Comp
 	if evidenceClassify(p, owner.Pkg().Path()) == evidenceSame {
 		return
 	}
-	uses := ev.outside
+	uses := []map[string]bool{ev.outside}
 	if evidenceClassify(p, owner.Pkg().Path()) == evidenceExtTest {
-		uses = ev.extTest
+		uses = []map[string]bool{ev.extTest}
+	} else if free {
+		uses = append(uses, ev.everywhere)
 	}
 	for i := range min(len(lit.Elts), st.NumFields()) {
-		uses[keyOf(m.Fset, st.Field(i))] = true
-		// An embedded field is named by its type, and a literal writing it
-		// by position would write an unexported field once the type is fixed.
-		if tn := embeddedTypeName(st.Field(i)); tn != nil {
-			uses[keyOf(m.Fset, tn)] = true
+		for _, u := range uses {
+			u[keyOf(m.Fset, st.Field(i))] = true
+			// An embedded field is named by its type, and a literal writing
+			// it by position would write an unexported field once the type is
+			// fixed.
+			if tn := embeddedTypeName(st.Field(i)); tn != nil {
+				u[keyOf(m.Fset, tn)] = true
+			}
 		}
 	}
 }
@@ -558,14 +573,17 @@ func (ev *evidence) linknames(m *module.Module) {
 				if obj == nil {
 					continue
 				}
+				// Which file writes a linkname is not kept, so it counts as
+				// a use in every configuration.
+				key := keyOf(m.Fset, obj)
+				ev.outside[key], ev.everywhere[key] = true, true
 				if !isMember {
-					ev.outside[keyOf(m.Fset, obj)] = true
 					continue
 				}
 				// path.T.M spells T as well, so the type keeps its name too.
-				ev.outside[keyOf(m.Fset, obj)] = true
 				if found, _, _ := types.LookupFieldOrMethod(obj.Type(), true, p.Types, member); found != nil {
-					ev.outside[keyOf(m.Fset, origin(found))] = true
+					key := keyOf(m.Fset, origin(found))
+					ev.outside[key], ev.everywhere[key] = true, true
 				}
 			}
 		}
