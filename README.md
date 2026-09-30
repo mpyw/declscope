@@ -325,16 +325,6 @@ A pattern is read against the directory of **the config file that states it**. A
 | `**/gen/**` | That directory at any depth |
 | `*`, `?` | Within one path segment |
 
-<details>
-<summary>Why patterns are anchored where they are</summary>
-
-- A pattern holding a separator is anchored whether or not it starts with one, so `/gen/**` and `gen/**` are the same rule. The leading `/` matters only on a bare name, which would otherwise match at any depth.
-- The same line means different things in different files. `internal/tui/**` in the root config reaches `internal/tui`. In `internal/.declscope.yaml` it reaches `internal/internal/tui`.
-- A `..` in a pattern is an error. A pattern cannot leave its own directory.
-- The origin is the config file's directory, not the module root. A config governs only the packages below it. A pattern anchored higher than that could only name files that never read this config.
-
-</details>
-
 One report comes from the configuration rather than from the code. It fires when a file's `only` matches files, but an `only` above it removes them all, so the package is read as empty.
 
 ```console
@@ -390,11 +380,49 @@ A directive on a type reaches its fields and its interface method names. It does
 
 `//declscope:namespace` must come before the package clause. Three placements are accepted there.
 
-| Placement | |
-| --- | --- |
-| A blank line between the directive and `package` | What this README writes |
-| The directive directly above `package` | Accepted |
-| At the bottom of the package doc comment, after a blank `//` line | Go's own convention for a directive in a doc comment |
+<table>
+<thead>
+<tr><th>Placement</th><th>Example</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>A blank line before <code>package</code>, as this README writes</td>
+<td>
+
+```go
+//declscope:namespace billing
+
+package app
+```
+
+</td>
+</tr>
+<tr>
+<td>Directly above <code>package</code></td>
+<td>
+
+```go
+//declscope:namespace billing
+package app
+```
+
+</td>
+</tr>
+<tr>
+<td>At the bottom of the package doc comment, after a blank <code>//</code> line: Go's own convention for a directive in a doc comment</td>
+<td>
+
+```go
+// Package app bills users.
+//
+//declscope:namespace billing
+package app
+```
+
+</td>
+</tr>
+</tbody>
+</table>
 
 Go excludes a `//tool:name` comment from a doc comment, so none of them reaches the rendered documentation.
 
@@ -453,85 +481,13 @@ Line 4 is where the modes differ. Deleting line 4 leaves `user.name` private onl
 
 </details>
 
-<details>
-<summary>A directive that <code>strict</code> keeps because of a nearer one</summary>
-
-```go
-package app
-
-//declscope:private
-var (
-	//declscope:package
-	Limit = 2
-	seed  = 3
-)
-```
-
-declscope reports nothing here, although deleting the block would change no scope. `seed` would stay private from `defaults.unexported`, and `Limit` states its own. But without the block, `Limit` would be package from exportedness alone. Its `//declscope:package` would then be redundant.
-
-</details>
-
-<details>
-<summary>Which variant reports an unused directive</summary>
-
-An unused **ignore** is reported only by a pass that sees every reference in the package. A **scope** directive reads no references, so every variant judges it.
-
-| Variant | Unused-**ignore** reports | Unused-**scope** reports |
-| --- | --- | --- |
-| Package with no in-package tests | Yes | Yes |
-| Ordinary variant, package with in-package tests | Deferred to the test variant | Yes |
-| Test variant | Yes | Yes |
-| `-test=false`, package with in-package tests | **None** | Yes |
-
-</details>
-
 #### Report messages
 
 Every unused report names the directive and says why it is unused. `loose` and `strict` word the reason differently.
 
-<details>
-<summary>Every unused report message</summary>
-
-Deleting the directive of a `loose` row changes no scope under any config. For a `strict` row, it changes none under the current config. A report names only the declarations whose scope comes from the directive.
-
-| Report | Mode | Made when |
-| --- | --- | --- |
-| `unused //declscope:ignore boundary on greet` | Both | The ignore silenced nothing on the named declarations |
-| `unused file-level //declscope:ignore qualify` | Both | The file-level ignore silenced nothing |
-| `unused //declscope:ignore: no checked declaration carries it` | Both | The directive is on something declscope does not check, such as `init` or `_`. A scope directive there reads the same |
-| `unused //declscope:package: every declaration it reaches states its own scope` | Both | Every spec of the block, or field of a `type _`, states its own scope |
-| `unused file-level //declscope:package` | Both | `loose` reports a file-level directive |
-| `unused //declscope:package on Helper: nothing it reaches takes a scope`<br>`unused //declscope:package: nothing it reaches takes a scope` | `loose` | The named declarations, or the fields of a `type _`, take it |
-| `unused //declscope:private on user.name: it already has private scope`<br>`unused //declscope:private on seed, limit: each already has private scope` | `strict` | The named declarations take it |
-| `unused //declscope:private: every declaration it reaches already has private scope` | `strict` | Every spec of the block repeats it |
-| `unused file-level //declscope:private: every declaration it reaches already has private scope` | `strict` | No declaration in the file has the other scope |
-| `unused file-level //declscope:package: every declaration it reaches takes a nearer directive's scope` | `strict` | Every declaration's scope comes from a nearer directive, and some have the other scope |
-| `unused file-level //declscope:package: every declaration it reaches takes a nearer directive's scope or already has package scope` | `strict` | Some declarations take it, and some have the other scope from a nearer directive |
-| `unused //declscope:private: every declaration it reaches states its own scope or already has private scope` | `strict` | Some fields of a `type _` take it, and some state the other scope |
-
-</details>
-
 #### The strict fix
 
 `-fix` deletes a directive that `strict` reports, unless deleting it would change another report. Then the report stays, with no fix.
-
-<details>
-<summary>What the fix deletes, and when it is withheld</summary>
-
-The fix deletes the directive's line, and a bare `//` line above it that only separated it from a doc comment. An unused ignore gets no fix.
-
-| Withheld when | What would change |
-| --- | --- |
-| Another namespace uses a declaration whose scope comes from the directive | The [`boundary`](#boundary) report names the directive |
-| A field whose type the `boundary` fix widens in the same run | The field would take the type's new `//declscope:package` |
-| A `//declscope:package` that repeats an enclosing one, while [`surplus`](#surplus) is on | `surplus` would judge the declaration under the enclosing directive |
-| A `//declscope:package` under `//declscope:ignore surplus` | The ignore would silence nothing |
-| The enclosing directive has its own report | The declaration would move under that report |
-| The pass does not read every file | A use in the unread file may be one a `boundary` report names |
-
-The last row covers the ordinary variant of a package with in-package tests, and any pass where a file the build excludes names the declaration. The test variant decides for its package, so `-test=false` deletes nothing there.
-
-</details>
 
 <details>
 <summary>Example: one directive deleted, one withheld</summary>
@@ -893,14 +849,96 @@ The mark grants nothing. Reach is stated by [scope](#scope-resolution) alone.
 <details>
 <summary>Declarations the rule never reaches</summary>
 
-| Declaration | Reason |
-| --- | --- |
-| A [member](#members), or a method written beside its type | Already qualified by that type at every use |
-| `func main` in package `main` | A name the toolchain requires |
-| `TestXxx`, `BenchmarkXxx`, `FuzzXxx`, `ExampleXxx` in a `_test.go` file | The same. `go test` finds them by name |
-| A declaration in a namespace that cannot start an identifier, as in `2fa.go` | The fix prefixes, and no identifier begins with a digit |
-| An exported identifier, unless `rules.naming.exported` is on | How the API is spelled is the author's decision |
-| A declaration in the [core namespace](#the-core-namespace) | The core has no prefix |
+[Members](#members) and [the core namespace](#the-core-namespace) are explained in their own sections.
+
+<table>
+<thead>
+<tr><th>Declaration</th><th>Example</th><th>Reason</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>A member, or a method written beside its type</td>
+<td>
+
+```go
+// user.go
+type user struct{ name string }
+
+func (u user) greet() string { return u.name }
+```
+
+</td>
+<td>Already qualified by that type at every use</td>
+</tr>
+<tr>
+<td><code>func main</code> in package <code>main</code></td>
+<td>
+
+```go
+// cmd/app/run.go
+package main
+
+func main() {}
+```
+
+</td>
+<td>A name the toolchain requires</td>
+</tr>
+<tr>
+<td>A test function in a <code>_test.go</code> file</td>
+<td>
+
+```go
+// user_test.go
+func TestGreet(t *testing.T) {}
+func BenchmarkGreet(b *testing.B) {}
+func ExampleGreet() {}
+```
+
+</td>
+<td>The same. <code>go test</code> finds <code>TestXxx</code>, <code>BenchmarkXxx</code>, <code>FuzzXxx</code> and <code>ExampleXxx</code> by name</td>
+</tr>
+<tr>
+<td>A declaration in a namespace that cannot start an identifier</td>
+<td>
+
+```go
+// 2fa.go
+func verify() bool { return true }
+```
+
+</td>
+<td>The fix prefixes, and no identifier begins with a digit</td>
+</tr>
+<tr>
+<td>An exported identifier, unless <code>rules.naming.exported</code> is on</td>
+<td>
+
+```go
+// user.go
+func Greet() {}
+```
+
+</td>
+<td>How the API is spelled is the author's decision</td>
+</tr>
+<tr>
+<td>A declaration in the core namespace</td>
+<td>
+
+```go
+//declscope:core
+
+package app
+
+func open() {}
+```
+
+</td>
+<td>The core has no prefix</td>
+</tr>
+</tbody>
+</table>
 
 </details>
 
@@ -975,18 +1013,6 @@ A rename is offered only when it provably changes nothing but the spelling. The 
 > func Add(fooCount int) int { return fooCount + fooCount } // Add(1) == 2
 > ```
 
-<details>
-<summary>The four reasons a fix is withheld</summary>
-
-| Reason | When |
-| --- | --- |
-| The rename could not be completed | The declaration is exported, a use sits in a generated, filtered-out or build-excluded file, or a `//go:linkname` or `//export` names it as text |
-| The new name is taken | It is already declared in the package, predeclared like `len`, imported by some file, or claimed by another fix in the same run |
-| The new name would resolve elsewhere | At some use it is bound by a local, parameter, result or type parameter |
-| This pass does not read every file | The package has `_test.go` files this variant cannot see. The test variant sees them all and decides for both |
-
-</details>
-
 ### `surplus`
 
 `surplus` is the converse of `boundary`. It reports package scope that no visible use from another namespace needs.
@@ -1014,32 +1040,6 @@ One comment gets one report, however many declarations take their scope from it.
 
 > [!IMPORTANT]
 > The rule concludes from an **absence**. A directive can hold up something declscope cannot see, so the rule stays quiet on any doubt. For the same reason `loose` offers no fix: its advice is to delete a directive.
-
-<details>
-<summary>What keeps a directive alive, and when the rule stands down</summary>
-
-The whole comment stays quiet when any declaration it reaches may be needed.
-
-| Kept alive by | Why the rule cannot rule it out |
-| --- | --- |
-| A use from another namespace | The directive is doing its job |
-| An exported name in the comment's reach | Importers reach it, which one package never sees |
-| A method in an interface contract of the package | An interface value reaches the method without spelling it |
-| An unexported method carried by an exported type | An importer can embed the type and complete a satisfaction |
-| A struct conversion involving the field's type | The conversion pairs every field by name and spells none |
-| `//go:linkname` or `//export` naming the declaration | The directive names it as text |
-
-The rule switches off for a whole package when some reference site was never read.
-
-| Switched off by | What was not read |
-| --- | --- |
-| A generated, filtered-out, cgo or assembly source | Those files are never read as reference sites |
-| A build-excluded file of the package | It may hold the one use |
-| In-package `_test.go` files this variant does not see | The test variant sees every file and decides |
-
-Reach that spells no name, such as reflection, is invisible here as everywhere.
-
-</details>
 
 #### `strict`
 
@@ -1095,34 +1095,6 @@ Every enclosing directive is judged the same way.
 > [!TIP]
 > Convention puts private fields last, after the fields other namespaces read. The fix never reorders fields: order is observable through unkeyed composite literals, positional encodings, `unsafe` offsets and 64-bit atomic alignment. Move them yourself where none of those apply.
 
-<details>
-<summary>What <code>strict</code> leaves alone, and how its fix is placed</summary>
-
-A declaration is reported only when the enclosing directive is what widened it. `strict` reads the same evidence as `loose`, and stays quiet wherever `loose` would.
-
-| Stays quiet on | Why |
-| --- | --- |
-| An exported declaration | It is package-scoped by exportedness alone |
-| A declaration that states its own scope | It answers for itself. A redundant `//declscope:package` there is an [`unused`](#unused-directives) report |
-| An embedded field | It has no name of its own |
-| Anything under `defaults.unexported: package` | It would be package-scoped with no directive at all |
-| Anything under a directive `loose` reports | Deleting that directive is the advice already |
-| One name of `a, b int` or `var x, y` when the other is used outside | One directive would narrow both. Splitting the line is your call |
-| A type with a member that is exported or used outside | Narrowing the type would narrow that member too |
-| A member of a type `strict` already reports | The type's fix narrows it |
-
-| Shape | Fix |
-| --- | --- |
-| A declaration with a doc comment | The directive goes under it, after a bare `//` line |
-| `a, b int` or `var x, y` | One directive, on the first name's diagnostic |
-| A field that shares its line with another, as in a single-line struct | The field is broken onto its own line first |
-| Everything the directive reaches would be narrowed | Withheld. The directive would bind nothing, and deleting it is the edit to make |
-| The directive already changes no scope, and narrowing would reword its `unused` report | Withheld. A block's report names each spec that takes its scope. A type's names the type, so a field is still fixed |
-
-A [`boundary`](#boundary) fix on a type widens its members too. Under `strict`, the same fix narrows each member no other namespace uses, so one `-fix` run leaves nothing for `strict` to report.
-
-</details>
-
 ## Unexporting what no importer uses
 
 `declscope shrink` finds the exported declarations of `internal/` packages that nothing outside their package uses. With `-fix` it unexports them.
@@ -1170,8 +1142,6 @@ $ declscope ./...
 
 Run them in the same order in CI. `shrink` exits 3 when it reports anything, as the analyzer does. With `-fix`, only the reports left without a fix count.
 
-`shrink` consults the [baseline](#adopting-on-an-existing-codebase) the analyzer consults for each package, and `-config` names the config that names it. A report the baseline records is not printed, and `-fix` leaves its declaration alone. The declaration keeps its name while the rest are judged, so a type it returns is not unexported under it. An ignore is consulted first, as for the analyzer.
-
 ### Patterns
 
 The patterns only choose which packages are reported. To find uses, `shrink` always reads every package of the module, whatever the patterns name.
@@ -1185,34 +1155,126 @@ internal/user/user.go:8:6: func Format is exported, but nothing outside example.
 
 `Load` is not reported, although `api/` is outside the pattern. `api/api.go` calls `user.Load`, and that call is a use.
 
-Otherwise, a pattern behaves as it does for `go vet`:
-
-| You pass | `declscope shrink` |
-| --- | --- |
-| Nothing | Reports on `./...` |
-| A directory that does not exist, such as `./nope/...` | Prints the go command's error and exits 1: `pattern ./nope/...: lstat ./nope/: no such file or directory` |
-| A pattern that matches no package, such as `./docs/...` | Warns `"./docs/..." matched no packages`, and goes on with the other patterns. If no pattern matches anything, it exits 1 |
-| Packages outside your module, such as `fmt` or `std` | Does not judge them, and prints one line: `not judged: 1 package(s) outside the main module` |
+Otherwise, a pattern behaves as it does for `go vet`.
 
 <details>
 <summary>What counts as a use, and when the fix is withheld</summary>
 
 A fix is offered only where no use can exist outside the package. Where a use may exist but cannot be proved, the report stays and says why no fix is offered.
 
-| Case | Result |
-| --- | --- |
-| Another package names it, writes it in an unkeyed literal, pairs its field in a struct conversion, or links it with `//go:linkname` | Not reported |
-| The compiler needs it to satisfy an interface | Not reported |
-| Another module can reach it through a value an importable package hands out, such as `pub.Get().Method()` | Not reported |
-| An API another package uses returns it, takes it, or holds it | Not reported. The other package must still be able to name the type |
-| Another exported declaration that keeps its name returns it, takes it, or holds it | Reported, with no fix. A declaration unexported in the same run keeps nothing, so both go at once |
-| A value of it escapes into an interface, where `fmt`, `encoding/json` or `reflect` can find it | Not reported |
-| A struct has a field tag in the `key:"value"` form | Not reported, nor any of its fields. A marshaller reads the struct through reflection, and `go vet` rejects a `json` tag on an unexported field |
-| Only an external test package (`package foo_test`) uses it | Reported, with no fix. One declared in an in-package `_test.go` file is the `export_test.go` idiom, and is not reported |
-| A build-excluded file or `-ldflags -X` may use it | Reported, with no fix |
-| A build-excluded file of its package, or one importing a package that reaches it, may hold a value of the type | Reported, with no fix, for every field and method, and for a type a struct embeds. Go uses those without spelling them, as when a method satisfies an interface |
-| A generated file or an example function (`ExampleF`) names it, which the rename cannot rewrite | Reported, with no fix |
-| The new name would collide, be captured, or have no Go spelling (`MAX_RETRIES`) | Reported, with no fix |
+<table>
+<thead>
+<tr><th>Code</th><th>Result</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>
+
+```go
+// internal/user/user.go
+type ID int
+
+func (ID) String() string { return "" }
+
+func New() ID { return 0 }
+
+// api/api.go
+var _ fmt.Stringer = user.New()
+```
+
+</td>
+<td>Not reported. <code>String</code> satisfies <code>fmt.Stringer</code></td>
+</tr>
+<tr>
+<td>
+
+```go
+// internal/user/user.go
+type Record struct {
+	ID   int
+	Name string
+}
+
+func Dump(r Record) { fmt.Println(r) }
+```
+
+</td>
+<td>Not reported. <code>fmt</code> reads the fields through reflection</td>
+</tr>
+<tr>
+<td>
+
+```go
+// internal/user/user.go
+type Record struct {
+	Name string `json:"name"`
+}
+```
+
+</td>
+<td>Not reported. A tag says a marshaller reads the struct</td>
+</tr>
+<tr>
+<td>
+
+```go
+// api/api_windows.go, excluded from this build
+var _ = user.Format
+```
+
+</td>
+<td>Not reported. A build-excluded file that writes <code>user.Format</code> uses it</td>
+</tr>
+<tr>
+<td>
+
+```go
+// internal/user/user_test.go
+package user_test
+
+func TestFormat(t *testing.T) { _ = user.Format(1) }
+```
+
+</td>
+<td>Reported: <code>(no fix: external tests use it)</code></td>
+</tr>
+<tr>
+<td>
+
+```go
+// api/api_windows.go, excluded from this build
+var _ io.Closer = user.Open()
+```
+
+</td>
+<td>Reported for <code>Conn.Close</code>: <code>(no fix: a build-excluded file of another package may use it)</code>. The file is not type-checked, and a method satisfies an interface without its name</td>
+</tr>
+<tr>
+<td>
+
+```go
+// internal/user/user.go
+func Format(id int) string { return format(id) }
+
+func format(id int) string { return "" }
+```
+
+</td>
+<td>Reported: <code>(no fix: the unexported name is taken or would be captured)</code></td>
+</tr>
+<tr>
+<td>
+
+```go
+// internal/user/user.go
+var Version = "dev"
+```
+
+</td>
+<td>Reported: <code>(no fix: a string variable may be set by -ldflags -X, which names it)</code></td>
+</tr>
+</tbody>
+</table>
 
 Deleting unused code is out of scope. Once a declaration is unexported, staticcheck's `unused` and gopls' `unusedfunc` report it if nothing uses it.
 
@@ -1223,14 +1285,91 @@ Deleting unused code is out of scope. Once a declaration is unexported, staticch
 
 `shrink` stands down wherever an importer could be unseen. Each `internal/` package it skips is named on stderr with the reason, and the exit status ignores it.
 
-| Not judged | Why |
-| --- | --- |
-| A package outside `internal/` | Another module may import it |
-| `package main` | `-buildmode=plugin` looks its exported symbols up by name |
-| A package with assembly or cgo, for any architecture | Those files name Go symbols where `go/types` does not look |
-| An `internal/` whose parent path a nested module's path extends, when that module cannot be read | The module may import the package, and its uses are unknown. That happens when it fails to load, or reads this module from anywhere but this directory, such as a published version |
-| A package `./...` leaves out, named on its own, such as one under `testdata` | This run does not load it, so it has read none of its uses |
-| An interface's method names, and the test functions of a `_test.go` file | Every implementation would rename too, and `go test` finds a test by name |
+<table>
+<thead>
+<tr><th>Code</th><th>Why</th><th><code>shrink</code> prints on stderr</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>
+
+```go
+// api/api.go
+package api
+```
+
+</td>
+<td>Another module may import it</td>
+<td>Nothing. Only <code>internal/</code> packages are listed</td>
+</tr>
+<tr>
+<td>
+
+```go
+// internal/tool/main.go
+package main
+```
+
+</td>
+<td><code>-buildmode=plugin</code> looks its exported symbols up by name</td>
+<td><code>not judged: example.com/app/internal/tool: package main</code></td>
+</tr>
+<tr>
+<td>
+
+```go
+// internal/c/c.go
+// int one() { return 1; }
+import "C"
+```
+
+</td>
+<td>cgo names Go symbols where <code>go/types</code> does not look</td>
+<td><code>not judged: example.com/app/internal/c: the package uses cgo</code></td>
+</tr>
+<tr>
+<td>
+
+```text
+internal/fast/fast.go
+internal/fast/fast_arm64.s
+```
+
+</td>
+<td>So does assembly, for any architecture</td>
+<td><code>not judged: example.com/app/internal/fast: the package holds non-Go files</code></td>
+</tr>
+<tr>
+<td>
+
+```text
+// tools/go.mod
+module example.com/app/tools
+
+require example.com/app v0.0.0
+
+replace example.com/app => ../../elsewhere
+```
+
+</td>
+<td>A nested module may import the package, and this one reads it from another directory, so its uses are of other source. A published version, or a module that fails to load, is the same</td>
+<td><code>not judged: example.com/app/internal/user: the nested module example.com/app/tools may import it, and it reads example.com/app/internal/user from /path/to/elsewhere</code></td>
+</tr>
+<tr>
+<td>
+
+```console
+$ declscope shrink ./internal/user/testdata/fixture
+```
+
+</td>
+<td><code>./...</code> leaves it out, so this run has read none of its uses</td>
+<td><code>not judged: example.com/app/internal/user/testdata/fixture: ./... leaves it out, so this run does not load it</code></td>
+</tr>
+</tbody>
+</table>
+
+An interface's method names, and the test functions of a `_test.go` file, are never reported either. Every implementation would rename too, and `go test` finds a test by name.
 
 A package that does not type-check refuses the whole run, since it would show no uses at all.
 
@@ -1331,8 +1470,6 @@ Both commands take `-test=false`. On a large package it changes the picture. In 
 | `markdown` *(default)* | A terminal **and** an issue or pull request. Cells are padded, so the output aligns in both. `inspect` adds a Mermaid diagram |
 | `json` | An agent, and anything scripted |
 
-There is no third format. A plain-text renderer beside this one caused most of the defects found in review, and one renderer cannot disagree with itself.
-
 The JSON carries four arrays.
 
 | Array | Holds |
@@ -1343,13 +1480,11 @@ The JSON carries four arrays.
 
 `findings` carries the same `asked` flag the tables print a dash for. Markdown is a rendering of the same data.
 
-Neither command asks the analyzer's questions a second way. Both walk the same findings through the same entry point, and add only the outcome: reported, baselined, silenced by a directive, or never asked.
-
 </details>
 
 ## Adopting on an existing codebase
 
-A **baseline** records the violations a codebase already has. Turning declscope on then reports only what is new.
+A **baseline** records the violations a codebase already has: the analyzer's, and what [`declscope shrink`](#unexporting-what-no-importer-uses) reports. Both then report only what is new.
 
 ```console
 declscope baseline ./...       # writes .declscope-baseline.yaml
@@ -1367,6 +1502,9 @@ packages:
         - Statement.wheres
       (core):
         - open
+    overexported:
+      userRepository:
+        - FindUser
 ```
 
 | | Spelling |
@@ -1384,13 +1522,8 @@ declscope baseline ./...
 git diff .declscope-baseline.yaml   # the record of what was cleaned up
 ```
 
-A baseline **suppresses and does not endorse**.
-
-- Nothing is written into the source, so the rules apply to every new declaration.
-- An entry is removed only by fixing the violation.
-- A configured baseline that does not exist yet behaves as an empty one.
-- The analyzer never reports an entry as stale. A test variant sees references the ordinary variant does not, so only regeneration, which analyzes both, can tell.
-- A regeneration records what one build configuration sees. A module that runs declscope under several, with other `GOFLAGS=-tags=...` or `GOOS`, gets the entries of the last run only.
+> [!TIP]
+> A regeneration records what one build configuration sees. A module that runs declscope under several `GOFLAGS=-tags=...` or `GOOS` settings keeps only the last run's entries.
 
 <details>
 <summary>Where the baseline is written</summary>
@@ -1407,9 +1540,31 @@ Each package's entries go to the file the analyzer will consult for that package
 | The nearest existing `.declscope-baseline.yaml` above the package | No config names one |
 | A new `.declscope-baseline.yaml` in the working directory | Neither of the above exists |
 
+For example, with a config in `internal/billing/` naming its own baseline, and a baseline already in `internal/legacy/`:
+
+```text
+.declscope-baseline.yaml               internal/user's entries
+internal/
+├── user/user.go
+├── billing/
+│   ├── .declscope.yaml                baseline: billing-baseline.yaml
+│   ├── billing-baseline.yaml          internal/billing's entries
+│   └── billing.go
+└── legacy/
+    ├── .declscope-baseline.yaml       internal/legacy's entries
+    └── legacy.go
+```
+
+```console
+$ declscope baseline ./...
+declscope: recorded 1 violation(s) in .declscope-baseline.yaml
+declscope: recorded 1 violation(s) in internal/billing/billing-baseline.yaml
+declscope: recorded 1 violation(s) in internal/legacy/.declscope-baseline.yaml
+```
+
 `-o` bypasses that lookup and gathers every entry into one file.
 
-What `declscope shrink` reports over the same patterns is recorded too, by the package that declares each, as `overexported` entries. That loads the whole module once more. `-shrink=false` skips it, for a module that does not run `shrink`.
+Recording `shrink`'s reports loads the whole module once more. `-shrink=false` skips it, for a module that does not run `shrink`.
 
 If no pattern matches a package, the run stops and writes nothing, `-o` included. A pattern that matches nothing beside others that do gets a warning, as it does from `go vet`.
 
