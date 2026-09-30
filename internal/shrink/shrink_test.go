@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -281,15 +282,20 @@ func TestShrinkConverges(t *testing.T) {
 			// composites is off: uses writes an unkeyed literal of another
 			// package's struct on purpose, since that is a use to count.
 			// Every module of the copy, nested ones included: a fix must not
-			// break a nested module that imports the one fixed.
+			// break a nested module that imports the one fixed. And under the
+			// never tag too, which the fixtures' build-excluded files are
+			// behind: this run read them for names only, and they must still
+			// compile.
 			err = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 				if err != nil || d.IsDir() || d.Name() != "go.mod" {
 					return err
 				}
-				vet := exec.Command("go", "vet", "-composites=false", "./...")
-				vet.Dir = filepath.Dir(path)
-				if out, err := vet.CombinedOutput(); err != nil {
-					t.Fatalf("go vet in %s after the fix: %v\n%s", vet.Dir, err, out)
+				for _, tags := range [][]string{nil, {"-tags=never"}} {
+					vet := exec.Command("go", slices.Concat([]string{"vet", "-composites=false"}, tags, []string{"./..."})...)
+					vet.Dir = filepath.Dir(path)
+					if out, err := vet.CombinedOutput(); err != nil {
+						t.Fatalf("go vet %v in %s after the fix: %v\n%s", tags, vet.Dir, err, out)
+					}
 				}
 				return nil
 			})

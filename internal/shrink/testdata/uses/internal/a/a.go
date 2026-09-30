@@ -136,9 +136,6 @@ type Product struct{} // want: type Product is exported, but nothing.*uses it$
 
 var _ = Spelled2{}.Build
 
-// ExclQual is named only by a build-excluded file of package b.
-var ExclQual = 1
-
 // OnlyExtTest, Ext and Shown are used by the external tests alone.
 var OnlyExtTest = 1 // want: var OnlyExtTest is exported, but only the external tests.*no fix: external tests use it
 

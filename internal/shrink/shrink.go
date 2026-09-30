@@ -261,16 +261,49 @@ func (c *candidate) qualifiedIn(xs []*excluded.File) bool {
 }
 
 // maybeUsedIn reports whether a build-excluded file of another package may
-// use the candidate without pinning it to its package: a method or field
-// selected by name on some value, or a name under a dot import.
-func (c *candidate) maybeUsedIn(xs []*excluded.File) bool {
-	name := c.obj.Name()
-	return slices.ContainsFunc(xs, func(x *excluded.File) bool {
+// use the candidate, and maybeUsedInOwn whether one of its own package may,
+// in ways the file's names do not show.
+//
+// The file is not type-checked, so for a field or a method, and for a type
+// some struct embeds, what it spells is not enough. Go uses those without
+// writing their names: a method satisfies an interface, a field is matched
+// by name in a conversion or an assignment between identical struct types,
+// a literal fills fields by position through an alias, and a selector names
+// an embedded type as a field. So any file that may hold a value of a type
+// of the candidate's package counts: its own package's, and one importing a
+// package that reaches it (module.Reaches). A package-level name has no such
+// use, and counts only where it is written: under a dot import, or pkg.Name,
+// which usedOutside reads.
+func (r *run) maybeUsedIn(c *candidate) bool {
+	implicit := r.usedImplicitly(c)
+	return slices.ContainsFunc(r.mod.Excluded, func(x *excluded.File) bool {
 		if c.inOwnPackage(x) {
 			return false
 		}
-		return c.kind.member() && x.Selects(name) || x.DotImports(c.pkg.PkgPath) && x.Writes(name)
+		reaches := slices.ContainsFunc(x.ImportPaths(), func(path string) bool { return r.mod.Reaches(path, c.pkg.PkgPath) })
+		return implicit && reaches || x.DotImports(c.pkg.PkgPath) && x.Writes(c.obj.Name())
 	})
+}
+
+func (r *run) maybeUsedInOwn(c *candidate) bool {
+	return r.usedImplicitly(c) && slices.ContainsFunc(r.mod.Excluded, c.inOwnPackage)
+}
+
+// usedImplicitly reports whether Go can use the candidate without spelling
+// its name: a field or a method, or a type some struct of the module embeds,
+// whose name a selector reads as a field's.
+func (r *run) usedImplicitly(c *candidate) bool {
+	if r.embedded == nil {
+		r.embedded = map[string]bool{}
+		for _, p := range r.mod.Widest() {
+			for _, obj := range p.TypesInfo.Defs {
+				if tn := embeddedTypeName(obj); tn != nil {
+					r.embedded[keyOf(r.mod.Fset, tn)] = true
+				}
+			}
+		}
+	}
+	return c.kind.member() || c.kind == kindType && r.embedded[c.key]
 }
 
 // writtenInOwn reports whether a build-excluded file of the candidate's own
@@ -306,6 +339,11 @@ type run struct {
 	facts map[string]*renameFacts
 	// usedIgnores is every ignore naming overexported that silenced a report.
 	usedIgnores map[token.Pos]bool
+	// embedded is every type some struct of the module embeds, keyed by
+	// keyOf. It is built on first use.
+	//
+	//declscope:private
+	embedded map[string]bool
 }
 
 // skip says why a package is not judged at all, or returns "".
@@ -592,8 +630,9 @@ func (r *run) withheld(c *candidate) string {
 		why     string
 		applies func() bool
 	}{
-		{"a build-excluded file of another package may use it", func() bool { return c.maybeUsedIn(xs) }},
+		{"a build-excluded file of another package may use it", func() bool { return r.maybeUsedIn(c) }},
 		{"a build-excluded file of its package names it", func() bool { return c.writtenInOwn(xs, c.obj.Name()) }},
+		{"a build-excluded file of its package may use it", func() bool { return r.maybeUsedInOwn(c) }},
 		{"a generated file names it", func() bool { return r.ev.generated[c.key] }},
 		{"an example function names it", func() bool { return r.ev.example[c.key] }},
 		{"a string variable may be set by -ldflags -X, which names it", c.linkerSet},

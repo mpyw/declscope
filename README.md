@@ -1208,6 +1208,7 @@ A fix is offered only where no use can exist outside the package. Where a use ma
 | A struct has a field tag in the `key:"value"` form | Not reported, nor any of its fields. A marshaller reads the struct through reflection, and `go vet` rejects a `json` tag on an unexported field |
 | Only an external test package (`package foo_test`) uses it | Reported, with no fix. One declared in an in-package `_test.go` file is the `export_test.go` idiom, and is not reported |
 | A build-excluded file or `-ldflags -X` may use it | Reported, with no fix |
+| A build-excluded file of its package, or one importing a package that reaches it, may hold a value of the type | Reported, with no fix, for every field and method, and for a type a struct embeds. Go uses those without spelling them, as when a method satisfies an interface |
 | A generated file or an example function (`ExampleF`) names it, which the rename cannot rewrite | Reported, with no fix |
 | The new name would collide, be captured, or have no Go spelling (`MAX_RETRIES`) | Reported, with no fix |
 

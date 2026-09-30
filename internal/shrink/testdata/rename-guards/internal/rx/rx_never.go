@@ -1,5 +1,5 @@
 //go:build never
 
-package r
+package rx
 
 var clash = 1
