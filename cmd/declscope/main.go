@@ -43,5 +43,6 @@ func main() {
 	// has, and the one it registers answers every binary with "devel".
 	registerVersionFlag()
 	usageInstall()
+	os.Args = tagsFromArgs(os.Args)
 	singlechecker.Main(declscope.Analyzer)
 }

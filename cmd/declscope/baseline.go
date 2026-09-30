@@ -52,6 +52,7 @@ func baselineRun(args []string) {
 		_, _ = io.WriteString(fs.Output(), baselineUsage)
 		fs.PrintDefaults()
 	}
+	tagsRegister(fs)
 	// ExitOnError: Parse reports a bad flag and exits with status 2 itself.
 	_ = fs.Parse(args)
 

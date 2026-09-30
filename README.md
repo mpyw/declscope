@@ -215,6 +215,7 @@ tar xzf "declscope_${VERSION}_darwin_arm64.tar.gz"
 | `-test` | `true` | Analyze `*_test.go` files as well |
 | `-fix` | `false` | Apply suggested fixes |
 | `-diff` | `false` | With `-fix`, print a diff instead of writing files |
+| `-tags` | *(none)* | Comma-separated build tags, as for `go build`. The last `-tags` wins, and it replaces tags `GOFLAGS` holds |
 | `-V=full` | | Print the version and exit. A build from a checkout answers `devel` |
 
 `-test`, `-fix` and `-diff` come from `go/analysis`. `declscope -help` lists the rest.
@@ -223,10 +224,10 @@ tar xzf "declscope_${VERSION}_darwin_arm64.tar.gz"
 
 | Command | What it does | Flags of its own |
 | --- | --- | --- |
-| `declscope survey [packages]` | [Report what was checked and what it found](#measuring-what-is-there), one row per package | `-format`, `-test`, `-config`, `-allow-errors` |
-| `declscope inspect <package>` | [Report the shape of one package](#measuring-what-is-there): its namespaces and the crossings between them | `-format`, `-test`, `-config` |
-| `declscope baseline [packages]` | [Record the violations a codebase already has](#adopting-on-an-existing-codebase) | `-config`, `-o` |
-| `declscope shrink [packages]` | [Unexport what no importer uses](#unexporting-what-no-importer-uses), inside `internal/` | `-fix` |
+| `declscope survey [packages]` | [Report what was checked and what it found](#measuring-what-is-there), one row per package | `-format`, `-test`, `-tags`, `-config`, `-allow-errors` |
+| `declscope inspect <package>` | [Report the shape of one package](#measuring-what-is-there): its namespaces and the crossings between them | `-format`, `-test`, `-tags`, `-config` |
+| `declscope baseline [packages]` | [Record the violations a codebase already has](#adopting-on-an-existing-codebase) | `-config`, `-tags`, `-o` |
+| `declscope shrink [packages]` | [Unexport what no importer uses](#unexporting-what-no-importer-uses), inside `internal/` | `-fix`, `-tags` |
 | `declscope skill install` | Install the authoring and adoption skills for an AI agent | `--agent`, `--scope` |
 
 `declscope <subcommand> -help` lists each one's flags.
@@ -1180,12 +1181,6 @@ The patterns choose which packages are reported. They do not choose what is load
 | One the go command rejects, such as a directory that does not exist | The run stops with the go command's message, and exits 1 |
 | One that matches no package | A warning on stderr. If no pattern matches a package, the run stops and exits 1 |
 | One naming packages outside the main module, such as `std` or `fmt` | They are not judged. One line on stderr counts them |
-
-Build tags come from `GOFLAGS`, as for the analyzer:
-
-```console
-$ GOFLAGS=-tags=integration declscope shrink ./...
-```
 
 <details>
 <summary>What counts as a use, and when the fix is withheld</summary>

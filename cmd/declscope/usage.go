@@ -51,6 +51,10 @@ func usageInstall() {
 		a := declscope.Analyzer
 		head := fmt.Sprintf("%s: %s\n\nUsage: %s [-flag] [package]\n\n", a.Name, a.Doc, a.Name)
 		_, _ = io.WriteString(flag.CommandLine.Output(), head+usageSubcommands+"\nFlags:\n")
+		// The driver's -tags says it has no effect, which tags.go makes untrue.
+		if f := flag.Lookup("tags"); f != nil {
+			f.Usage = tagsUsage
+		}
 		flag.PrintDefaults()
 		if bare {
 			os.Exit(1)

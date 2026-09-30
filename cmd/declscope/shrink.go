@@ -18,8 +18,7 @@ Every package of the module is loaded, whatever the patterns name: an importer
 outside them still counts. In a workspace, every module of it is loaded. The
 patterns only choose which packages to report on, and default to ./... They
 mean what they mean to the go command: a pattern it rejects stops the run, and
-one that matches no package is warned about. Build tags come from GOFLAGS, as
-for the analyzer.
+one that matches no package is warned about.
 
 A fix is offered only where no use can exist outside the package. Where a use
 is possible but cannot be proved, such as a type that escapes into an
@@ -37,6 +36,7 @@ func shrinkRun(args []string) {
 		_, _ = io.WriteString(fs.Output(), shrinkUsage)
 		fs.PrintDefaults()
 	}
+	tagsRegister(fs)
 	// ExitOnError: Parse reports a bad flag and exits with status 2 itself.
 	_ = fs.Parse(args)
 

@@ -83,6 +83,22 @@ func TestShrinkFixFailure(t *testing.T) {
 	}
 }
 
+// TestShrinkTags pins that shrink compiles what -tags selects. A file only
+// that tag builds names Lonely from its own package: excluded, it withholds
+// the fix; compiled, it is an ordinary use inside the package.
+func TestShrinkTags(t *testing.T) {
+	root := shrinkModule(t)
+	writeTree(t, root, "internal/a/extra.go", "//go:build special\n\npackage a\n\nvar _ = Lonely()\n")
+	out, code := runIn(t, bin, root, "shrink")
+	if code != 3 || !strings.Contains(out, "func Lonely is exported, but nothing outside example.com/declscopetest/internal/a uses it (no fix: a build-excluded file of its package names it)") {
+		t.Fatalf("exit %d, want the fix withheld without -tags:\n%s", code, out)
+	}
+	out, code = runIn(t, bin, root, "shrink", "-tags=special")
+	if code != 3 || !strings.Contains(out, "func Lonely is exported, but nothing outside example.com/declscopetest/internal/a uses it\n") {
+		t.Fatalf("exit %d, want the fix offered with -tags:\n%s", code, out)
+	}
+}
+
 // TestShrinkPatterns pins that the patterns choose what is reported, not
 // what is loaded: package b still counts as a user of a.Used.
 func TestShrinkPatterns(t *testing.T) {

@@ -39,6 +39,7 @@ func surveyRun(args []string) {
 		_, _ = io.WriteString(fs.Output(), surveyUsage)
 		fs.PrintDefaults()
 	}
+	tagsRegister(fs)
 	// ExitOnError: Parse reports a bad flag and exits with status 2 itself.
 	_ = fs.Parse(args)
 	patterns := fs.Args()
