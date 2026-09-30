@@ -116,6 +116,8 @@ This happened when declscope held itself to `shrink`. The fix unexported twelve 
 
 Ask before step 2, the same as any other change. The fix renames every identifier naming the declaration, all inside its own package, and the doc comment that opens with the name.
 
+**When the owner cannot settle `shrink` yet, baseline it.** `declscope baseline ./...` records `shrink`'s reports with the analyzer's, and `shrink` then passes on them in CI. It is the same deferral as any baseline, and [the same rules](#a-baseline-is-for-arriving-not-for-staying) apply. A repository that does not run `shrink` passes `-shrink=false`, which skips the extra load.
+
 ### Reading what it reports
 
 What each report asks of you, and where `shrink` stands down, is in [Reading what shrink reports](../declscope-authoring/SKILL.md#reading-what-shrink-reports). It is not a rule the analyzer runs, so `go vet` and golangci-lint never report it.

@@ -355,3 +355,131 @@ func TestShrinkSkipsCgo(t *testing.T) {
 		t.Fatalf("exit %d, want internal/c named as not judged for cgo:\n%s", code, out)
 	}
 }
+
+// TestShrinkBaseline pins the handshake between declscope baseline and
+// shrink: baseline records what shrink reports, into the same file as the
+// analyzer's entries, and shrink then reports only what is new. -fix leaves
+// the baselined declarations alone. -shrink=false records nothing of shrink.
+func TestShrinkBaseline(t *testing.T) {
+	root := shrinkModule(t)
+	// A member is recorded under its owner, in its file's namespace, as the
+	// analyzer records one.
+	writeTree(t, root, "internal/a/box.go", "package a\n\ntype Box struct{ Field int }\n\nfunc NewBox() Box { return Box{} }\n")
+	writeTree(t, root, "b/box.go", "package b\n\nimport \"example.com/declscopetest/internal/a\"\n\nvar _ = a.NewBox()\n")
+	// An ignore that silences nothing is reported, and never recorded.
+	writeTree(t, root, "internal/a/idle.go", "package a\n\n//declscope:ignore overexported // nothing to silence\nfunc idle() {}\n")
+	if out, code := runIn(t, bin, root, "baseline", "./..."); code != 0 {
+		t.Fatalf("baseline: exit %d:\n%s", code, out)
+	}
+	recorded, err := os.ReadFile(filepath.Join(root, ".declscope-baseline.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"    overexported:\n", "        - Lonely\n", "        - Taken\n", "      box:\n        - Box.Field\n"} {
+		if !strings.Contains(string(recorded), want) {
+			t.Errorf("the baseline lacks %q:\n%s", want, recorded)
+		}
+	}
+	if strings.Contains(string(recorded), "idle") {
+		t.Errorf("an unused ignore was recorded:\n%s", recorded)
+	}
+	out, code := runIn(t, bin, root, "shrink")
+	if code != 3 || strings.Contains(out, "is exported") || !strings.Contains(out, "unused //declscope:ignore overexported") {
+		t.Fatalf("shrink after baseline: exit %d, want only the unused ignore reported:\n%s", code, out)
+	}
+	if err := os.Remove(filepath.Join(root, "internal/a/idle.go")); err != nil {
+		t.Fatal(err)
+	}
+	if out, code := runIn(t, bin, root, "shrink", "-fix"); code != 0 {
+		t.Fatalf("shrink -fix after baseline: exit %d:\n%s", code, out)
+	}
+	src, err := os.ReadFile(filepath.Join(root, "internal/a/a.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(src), "func Lonely() int") {
+		t.Errorf("-fix renamed a baselined declaration:\n%s", src)
+	}
+	writeTree(t, root, "internal/a/fresh.go", "package a\n\nfunc Fresh() {}\n")
+	out, code = runIn(t, bin, root, "shrink")
+	if code != 3 || !strings.Contains(out, "func Fresh is exported") || strings.Contains(out, "Lonely") {
+		t.Fatalf("exit %d, want only the new Fresh reported:\n%s", code, out)
+	}
+	if out, code := runIn(t, bin, root, "baseline", "-shrink=false", "./..."); code != 0 {
+		t.Fatalf("baseline -shrink=false: exit %d:\n%s", code, out)
+	}
+	recorded, err = os.ReadFile(filepath.Join(root, ".declscope-baseline.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(recorded), "overexported") {
+		t.Errorf("-shrink=false recorded shrink's reports:\n%s", recorded)
+	}
+}
+
+// TestShrinkBaselineKeepsWhatABaselinedDeclarationCarries pins that a
+// baselined declaration keeps its name while the rest are judged, as one an
+// ignore silences does: the type it returns cannot be unexported under it.
+func TestShrinkBaselineKeepsWhatABaselinedDeclarationCarries(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", testModule)
+	writeTree(t, root, "internal/a/a.go", "package a\n\nfunc Make() Box { return Box{} }\n\ntype Box struct{}\n")
+	writeTree(t, root, ".declscope-baseline.yaml", "packages:\n  example.com/declscopetest/internal/a:\n    overexported:\n      a:\n        - Make\n")
+	out, code := runIn(t, bin, root, "shrink")
+	want := "type Box is exported, but nothing outside example.com/declscopetest/internal/a uses it (no fix: an exported declaration that keeps its name hands it out)"
+	if code != 3 || !strings.Contains(out, want) || strings.Contains(out, "Make") {
+		t.Fatalf("exit %d, want Box kept for the baselined Make:\n%s", code, out)
+	}
+}
+
+// TestShrinkBaselineAfterIgnore pins that an ignore is consulted before the
+// baseline, as for the analyzer: over a baselined declaration it still
+// silences something, so it is not reported unused.
+func TestShrinkBaselineAfterIgnore(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", testModule)
+	writeTree(t, root, "internal/a/a.go", "package a\n\n//declscope:ignore overexported // kept for a plugin\nfunc Kept() {}\n")
+	writeTree(t, root, ".declscope-baseline.yaml", "packages:\n  example.com/declscopetest/internal/a:\n    overexported:\n      a:\n        - Kept\n")
+	if out, code := runIn(t, bin, root, "shrink"); code != 0 || out != "" {
+		t.Fatalf("exit %d, want nothing reported, the ignore included:\n%s", code, out)
+	}
+}
+
+// TestShrinkBaselineConfig pins that shrink consults the baseline a config
+// names, found through -config as the analyzer finds it.
+func TestShrinkBaselineConfig(t *testing.T) {
+	root := shrinkModule(t)
+	writeTree(t, root, "ci.yaml", "baseline: recorded.yaml\n")
+	if out, code := runIn(t, bin, root, "baseline", "-config", "ci.yaml", "./..."); code != 0 || !strings.Contains(out, "recorded.yaml") {
+		t.Fatalf("baseline -config: exit %d:\n%s", code, out)
+	}
+	if out, code := runIn(t, bin, root, "shrink", "-config", "ci.yaml"); code != 0 {
+		t.Fatalf("shrink -config: exit %d, want the named baseline consulted:\n%s", code, out)
+	}
+	if out, code := runIn(t, bin, root, "shrink"); code != 3 {
+		t.Fatalf("shrink without -config: exit %d, want the reports, since no default baseline exists:\n%s", code, out)
+	}
+	writeTree(t, root, "bad.yaml", "rules: [\n")
+	if out, code := runIn(t, bin, root, "shrink", "-config", "bad.yaml"); code != 1 || !strings.Contains(out, "declscope shrink:") {
+		t.Fatalf("shrink -config bad.yaml: exit %d, want a refusal:\n%s", code, out)
+	}
+}
+
+// TestShrinkBaselineRefusesWhatShrinkRefuses pins that a baseline whose
+// shrink half fails is not written at all, and says how to write the rest: a
+// build-excluded file that does not parse passes the analyzer, and stops
+// shrink.
+func TestShrinkBaselineRefusesWhatShrinkRefuses(t *testing.T) {
+	root := shrinkModule(t)
+	writeTree(t, root, "b/broken.go", "//go:build never\n\npackage b\n\nthis is not Go\n")
+	out, code := runIn(t, bin, root, "baseline", "./...")
+	if code != 1 || !strings.Contains(out, "pass -shrink=false to record the analyzer's findings alone") {
+		t.Fatalf("exit %d, want a refusal naming -shrink=false:\n%s", code, out)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".declscope-baseline.yaml")); err == nil {
+		t.Error("a baseline was written though shrink failed")
+	}
+	if out, code := runIn(t, bin, root, "baseline", "-shrink=false", "./..."); code != 0 {
+		t.Fatalf("baseline -shrink=false: exit %d:\n%s", code, out)
+	}
+}

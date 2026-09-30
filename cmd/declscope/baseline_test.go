@@ -562,3 +562,114 @@ func TestBaselineLeavesOutWhatAnIgnoreAnswers(t *testing.T) {
 		t.Errorf("exited %d, want 0 with nothing recorded:\n%s", code, out)
 	}
 }
+
+// shrinkPackage is an internal package with a boundary and a qualify violation
+// on helper, and three declarations nothing outside it uses: one in a core
+// file, one in a file named with //declscope:namespace, and a field. cmd/use
+// uses NewBox, which keeps Box exported, and leaves Field unused.
+var shrinkPackage = map[string]string{
+	"user.go":   "package x\n\nfunc helper() int { return 1 }\n",
+	"order.go":  "package x\n\nfunc orderRun() int { return helper() }\n\nvar _ = orderRun\n",
+	"core.go":   "//declscope:core\n\npackage x\n\nfunc CoreThing() {}\n",
+	"charge.go": "//declscope:namespace billing\n\npackage x\n\nfunc ChargeBilling() {}\n",
+	"box.go":    "package x\n\ntype Box struct{ Field int }\n\nfunc NewBox() Box { return Box{} }\n",
+}
+
+// TestBaselineRecordsShrinkWithTheAnalyzer pins the whole file a baseline
+// writes when the analyzer and shrink both report in one package: the
+// analyzer's rules and overexported side by side under the package, each
+// namespace spelled as the analyzer spells it, (core) for a core file and a
+// declared name for //declscope:namespace, and a member under its owner. The
+// count includes shrink's entries. Both tools are then silent.
+func TestBaselineRecordsShrinkWithTheAnalyzer(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
+	writeTree(t, root, ".declscope.yaml", qualifyOn)
+	for name, body := range shrinkPackage {
+		writeTree(t, root, filepath.Join("internal/app", name), body)
+	}
+	writeTree(t, root, "cmd/use/main.go", "package main\n\nimport x \"example.com/m/internal/app\"\n\nfunc main() { _ = x.NewBox() }\n")
+
+	out, code := runIn(t, bin, root, "baseline", "./...")
+	if code != 0 || !strings.Contains(out, "recorded 5 violation(s)") {
+		t.Fatalf("exit %d, want 5 recorded, 2 from the analyzer and 3 from shrink:\n%s", code, out)
+	}
+	data, err := os.ReadFile(filepath.Join(root, ".declscope-baseline.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `packages:
+  example.com/m/internal/app:
+    boundary:
+      user:
+        - helper
+    overexported:
+      (core):
+        - CoreThing
+      billing:
+        - ChargeBilling
+      box:
+        - Box.Field
+    qualify:
+      user:
+        - helper
+`
+	got := string(data)
+	if !strings.HasPrefix(got, "# declscope baseline\n") || !strings.HasSuffix(got, "\n"+want) {
+		t.Errorf("the baseline is not the expected file, want its entries to read:\n%s\ngot:\n%s", want, got)
+	}
+
+	assertSuppressed(t, bin, root)
+	if out, code := runIn(t, bin, root, "shrink"); code != 0 || out != "" {
+		t.Errorf("shrink with the baseline: exit %d, want silence:\n%s", code, out)
+	}
+}
+
+// TestBaselinePlacesShrinkPerPackage pins that shrink's entries go where the
+// analyzer's go, package by package: a config in sub/ names its own baseline,
+// and deep/ carries its own default-named one. Each file holds its own
+// packages' entries only, and both tools are then silent. -o gathers every
+// entry into one file instead.
+func TestBaselinePlacesShrinkPerPackage(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
+	writeTree(t, root, "sub/.declscope.yaml", "baseline: sub-baseline.yaml\n")
+	writeTree(t, root, "deep/.declscope-baseline.yaml", "")
+	pkgs := map[string]string{
+		".declscope-baseline.yaml":      "internal/top",
+		"sub/sub-baseline.yaml":         "sub/internal/inner",
+		"deep/.declscope-baseline.yaml": "deep/internal/inner",
+	}
+	for _, dir := range pkgs {
+		writeTree(t, root, filepath.Join(dir, "lonely.go"), "package inner\n\nfunc Lonely() {}\n")
+	}
+
+	if out, code := runIn(t, bin, root, "baseline", "./..."); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	for file, dir := range pkgs {
+		set := load(t, filepath.Join(root, file))
+		key := baseline.Key{Package: "example.com/m/" + dir, Rule: "overexported", Namespace: "lonely", Decl: "Lonely"}
+		if !set.Has(key) || set.Len() != 1 {
+			t.Errorf("%s holds %d entries, want exactly %+v", file, set.Len(), key)
+		}
+	}
+	assertSuppressed(t, bin, root)
+	if out, code := runIn(t, bin, root, "shrink"); code != 0 || out != "" {
+		t.Errorf("shrink with the baselines: exit %d, want silence:\n%s", code, out)
+	}
+
+	one := filepath.Join(t.TempDir(), "one.yaml")
+	if out, code := runIn(t, bin, root, "baseline", "-o", one, "./..."); code != 0 {
+		t.Fatalf("baseline -o: exit %d:\n%s", code, out)
+	}
+	set := load(t, one)
+	for _, dir := range pkgs {
+		if !set.Has(baseline.Key{Package: "example.com/m/" + dir, Rule: "overexported", Namespace: "lonely", Decl: "Lonely"}) {
+			t.Errorf("-o lacks the entry of %s", dir)
+		}
+	}
+	if set.Len() != len(pkgs) {
+		t.Errorf("-o holds %d entries, want %d", set.Len(), len(pkgs))
+	}
+}

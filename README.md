@@ -225,8 +225,8 @@ tar xzf "declscope_${VERSION}_darwin_arm64.tar.gz"
 | --- | --- | --- |
 | `declscope survey [packages]` | [Report what was checked and what it found](#measuring-what-is-there), one row per package | `-format`, `-test`, `-config`, `-allow-errors` |
 | `declscope inspect <package>` | [Report the shape of one package](#measuring-what-is-there): its namespaces and the crossings between them | `-format`, `-test`, `-config` |
-| `declscope baseline [packages]` | [Record the violations a codebase already has](#adopting-on-an-existing-codebase) | `-config`, `-o` |
-| `declscope shrink [packages]` | [Unexport what no importer uses](#unexporting-what-no-importer-uses), inside `internal/` | `-fix` |
+| `declscope baseline [packages]` | [Record the violations a codebase already has](#adopting-on-an-existing-codebase), `shrink`'s included | `-config`, `-o`, `-shrink` |
+| `declscope shrink [packages]` | [Unexport what no importer uses](#unexporting-what-no-importer-uses), inside `internal/` | `-fix`, `-config` |
 | `declscope skill install` | Install the authoring and adoption skills for an AI agent | `--agent`, `--scope` |
 
 `declscope <subcommand> -help` lists each one's flags.
@@ -1170,6 +1170,8 @@ $ declscope ./...
 
 Run them in the same order in CI. `shrink` exits 3 when it reports anything, as the analyzer does. With `-fix`, only the reports left without a fix count.
 
+`shrink` consults the [baseline](#adopting-on-an-existing-codebase) the analyzer consults for each package, and `-config` names the config that names it. A report the baseline records is not printed, and `-fix` leaves its declaration alone. The declaration keeps its name while the rest are judged, so a type it returns is not unexported under it. An ignore is consulted first, as for the analyzer.
+
 ### Patterns
 
 The patterns only choose which packages are reported. To find uses, `shrink` always reads every package of the module, whatever the patterns name.
@@ -1388,6 +1390,7 @@ A baseline **suppresses and does not endorse**.
 - An entry is removed only by fixing the violation.
 - A configured baseline that does not exist yet behaves as an empty one.
 - The analyzer never reports an entry as stale. A test variant sees references the ordinary variant does not, so only regeneration, which analyzes both, can tell.
+- A regeneration records what one build configuration sees. A module that runs declscope under several, with other `GOFLAGS=-tags=...` or `GOOS`, gets the entries of the last run only.
 
 <details>
 <summary>Where the baseline is written</summary>
@@ -1405,6 +1408,8 @@ Each package's entries go to the file the analyzer will consult for that package
 | A new `.declscope-baseline.yaml` in the working directory | Neither of the above exists |
 
 `-o` bypasses that lookup and gathers every entry into one file.
+
+What `declscope shrink` reports over the same patterns is recorded too, by the package that declares each, as `overexported` entries. That loads the whole module once more. `-shrink=false` skips it, for a module that does not run `shrink`.
 
 If no pattern matches a package, the run stops and writes nothing, `-o` included. A pattern that matches nothing beside others that do gets a warning, as it does from `go vet`.
 

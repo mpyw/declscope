@@ -45,7 +45,7 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		// constructor never reaches into another stage's state.
 		consumed: make(map[*ast.CommentGroup]bool),
 	}
-	cores := make(map[string]bool)
+	var declared []namespace.Declared
 	// A filter that leaves a package with nothing to read is usually the
 	// point: a root only naming one subtree excludes every package outside
 	// it, and an omit naming a directory empties it. Neither is worth saying.
@@ -84,32 +84,14 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		if fileDir.Scope.HasScope {
 			c.scopeSite(fileDir.Scope).fileLevel = true
 		}
-		fi.core = fileDir.Core
-		switch {
-		case fileDir.Core:
-			// The core namespace has no name. Every core file shares it, which
-			// is what makes having no prefix name exactly one unit.
-			fi.ns = ""
-		case fileDir.HasNamespace:
-			fi.ns = fileDir.Namespace
-		default:
-			fi.ns = namespace.Of(path)
-		}
+		declared = append(declared, namespace.Declared{
+			Path: path, Core: fileDir.Core, Named: fileDir.HasNamespace, Name: fileDir.Namespace,
+		})
 		c.files = append(c.files, fi)
 		c.byFile[f] = fi
-		if fileDir.Core {
-			cores[namespace.Of(path)] = true
-		}
 	}
-	// A test file joins its subject's namespace, which is why a namespace is
-	// derived from the stem rather than being the file name. //declscope:core
-	// comes from a directive rather than from the stem, so the joining has to be
-	// done here: without it client_test.go could not reach what client.go
-	// declares, and the mechanical repair would be to widen the whole core.
-	for _, fi := range c.files {
-		if !fi.core && cores[namespace.Of(fi.path)] {
-			fi.core, fi.ns = true, ""
-		}
+	for i, r := range namespace.Resolve(declared) {
+		c.files[i].core, c.files[i].ns = r.Core, r.Name
 	}
 	seen := make(map[string]bool)
 	for _, fi := range c.files {

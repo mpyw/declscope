@@ -32,7 +32,7 @@ import (
 	"unicode/utf8"
 )
 
-// Of returns the default namespace for a file path.
+// of returns the default namespace for a file path.
 //
 // The path is reduced to its base name and then normalized:
 //
@@ -46,12 +46,12 @@ import (
 //	v2_client.go            -> v2Client
 //	2fa_auth.go             -> 2faAuth
 //
-// Of always returns the normalized stem when there is one, so that a file's
+// of always returns the normalized stem when there is one, so that a file's
 // identity never depends on whether the stem also makes a usable prefix:
 // 2fa_test.go must share the namespace of 2fa.go even though no identifier can
 // start with a digit. Whether the result can serve as a prefix is a separate
 // question, answered by CanPrefix. Only a file with no stem at all yields "".
-func Of(path string) string {
+func of(path string) string {
 	base := strings.TrimSuffix(filepath.Base(path), ".go")
 
 	// _test must be stripped before the build suffixes: the canonical shape is
@@ -392,4 +392,76 @@ func wordStart(name string, i int) bool {
 	}
 	next, _ := utf8.DecodeRuneInString(name[i+size:])
 	return unicode.IsLower(next)
+}
+
+// Declared is what one file of a package states about its namespace: its
+// path on disk, and its file-level directives.
+type Declared struct {
+	Path string
+	// Core is //declscope:core, and Name a //declscope:namespace, with Named
+	// saying whether there is one.
+	Core  bool
+	Named bool
+	Name  string
+}
+
+// Resolved is a file's namespace: the core, which has no name, or the one
+// Name holds. Name is empty for a file whose stem yields none.
+type Resolved struct {
+	Core bool
+	Name string
+}
+
+// Resolve returns the namespace of each file of one package, in order. The
+// analyzer and declscope shrink both read namespaces through it, so that a
+// baseline key names the same namespace from either.
+//
+// A file takes //declscope:core, else its //declscope:namespace, else the one
+// of derives from its path. A test file joins its subject's namespace, which
+// is why a namespace is derived from the stem rather than being the file
+// name. //declscope:core comes from a directive rather than from the stem, so
+// the joining has to be done here: without it client_test.go could not reach
+// what client.go declares, and the mechanical repair would be to widen the
+// whole core.
+func Resolve(files []Declared) []Resolved {
+	out := make([]Resolved, len(files))
+	cores := map[string]bool{}
+	for i, f := range files {
+		switch {
+		case f.Core:
+			// The core namespace has no name. Every core file shares it, which
+			// is what makes having no prefix name exactly one unit.
+			out[i].Core = true
+			cores[of(f.Path)] = true
+		case f.Named:
+			out[i].Name = f.Name
+		default:
+			out[i].Name = of(f.Path)
+		}
+	}
+	for i, f := range files {
+		if !out[i].Core && cores[of(f.Path)] {
+			out[i] = Resolved{Core: true}
+		}
+	}
+	return out
+}
+
+// Spell spells a file's namespace for a baseline, which is the one place it
+// has to be written down rather than compared.
+//
+// A namespace derived from a file name is normalized to alphanumerics, and
+// one written with //declscope:namespace must be an unexported identifier,
+// so a parenthesis can appear in neither. That leaves "(core)" free for the
+// core, whose prefix is empty and whose files all share it, and free for the
+// file with no stem at all, which has no namespace either, and must not share
+// a key with every other such file.
+func Spell(r Resolved, path string) string {
+	if r.Core {
+		return "(core)"
+	}
+	if r.Name != "" {
+		return r.Name
+	}
+	return "(file " + filepath.Base(path) + ")"
 }

@@ -1,10 +1,6 @@
-package namespace_test
+package namespace
 
-import (
-	"testing"
-
-	"github.com/mpyw/declscope/internal/namespace"
-)
+import "testing"
 
 func TestOf(t *testing.T) {
 	tests := []struct {
@@ -40,7 +36,7 @@ func TestOf(t *testing.T) {
 
 		// A digit-leading stem is still an identity, so 2fa_test.go shares
 		// the namespace of 2fa.go. Whether it can also be a prefix is
-		// CanPrefix's question, not Of's.
+		// CanPrefix's question, not of's.
 		{"2fa_auth.go", "2faAuth"},
 		{"2fa.go", "2fa"},
 		{"2fa_test.go", "2fa"},
@@ -74,8 +70,8 @@ func TestOf(t *testing.T) {
 		{"_.go", ""},
 	}
 	for _, tt := range tests {
-		if got := namespace.Of(tt.path); got != tt.want {
-			t.Errorf("Of(%q) = %q, want %q", tt.path, got, tt.want)
+		if got := of(tt.path); got != tt.want {
+			t.Errorf("of(%q) = %q, want %q", tt.path, got, tt.want)
 		}
 	}
 }
@@ -103,7 +99,7 @@ func TestCanPrefix(t *testing.T) {
 		{"foo.bar", false},
 	}
 	for _, tt := range tests {
-		if got := namespace.CanPrefix(tt.ns); got != tt.want {
+		if got := CanPrefix(tt.ns); got != tt.want {
 			t.Errorf("CanPrefix(%q) = %v, want %v", tt.ns, got, tt.want)
 		}
 	}
@@ -148,7 +144,7 @@ func TestQualify(t *testing.T) {
 		{"", "user", "user"},
 	}
 	for _, tt := range tests {
-		if got := namespace.Qualify(tt.name, tt.ns); got != tt.qualified {
+		if got := Qualify(tt.name, tt.ns); got != tt.qualified {
 			t.Errorf("Qualify(%q, %q) = %q, want %q", tt.name, tt.ns, got, tt.qualified)
 		}
 	}
@@ -220,7 +216,7 @@ func TestContainsCases(t *testing.T) {
 		{"user", "user\uFFFD", false},
 	}
 	for _, tt := range tests {
-		if got := namespace.Contains(tt.name, tt.ns); got != tt.want {
+		if got := Contains(tt.name, tt.ns); got != tt.want {
 			t.Errorf("Contains(%q, %q) = %v, want %v", tt.name, tt.ns, got, tt.want)
 		}
 	}
@@ -248,12 +244,12 @@ func TestUnexported(t *testing.T) {
 		"Äpfel":       "äpfel",
 	}
 	for in, want := range tests {
-		if got, ok := namespace.Unexported(in); !ok || got != want {
+		if got, ok := Unexported(in); !ok || got != want {
 			t.Errorf("Unexported(%q) = %q, %v, want %q", in, got, ok, want)
 		}
 	}
 	for _, in := range []string{"MAX_RETRIES", "Foo_bar"} {
-		if got, ok := namespace.Unexported(in); ok {
+		if got, ok := Unexported(in); ok {
 			t.Errorf("Unexported(%q) = %q, want no spelling", in, got)
 		}
 	}
