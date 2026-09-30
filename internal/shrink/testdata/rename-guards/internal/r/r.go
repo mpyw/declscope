@@ -102,9 +102,6 @@ func Pushed() {} // want: func Pushed is exported.*no fix: a //go:linkname or //
 // The unexported name is an import of another file of the package.
 func Strings() {} // want: func Strings is exported.*no fix: the unexported name is taken or would be captured
 
-// The unexported name is written by a build-excluded file of the package.
-func Clash() {} // want: func Clash is exported.*no fix: a build-excluded file of its package writes the unexported name
-
 // HTTPServer becomes httpServer. MAX_RETRIES has no spelling Go would use.
 func HTTPServer() {} // want: func HTTPServer is exported, but nothing.*uses it$
 

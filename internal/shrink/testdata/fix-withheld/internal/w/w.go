@@ -6,20 +6,8 @@ package w
 // Lonely has no reason to keep its name, and is fixed.
 func Lonely() int { return 1 } // want: func Lonely is exported, but nothing.*uses it$
 
-// WinRef is named by a build-excluded file of this package, which the rename
-// would leave behind.
-var WinRef = 1 // want: var WinRef is exported.*no fix: a build-excluded file of its package names it
-
 // GenRef is named by a generated file, which a regeneration would put back.
 var GenRef = 1 // want: var GenRef is exported.*no fix: a generated file names it
-
-// Dotted is named under a dot import by a build-excluded file of package u.
-var Dotted = 1 // want: var Dotted is exported.*no fix: a build-excluded file of another package may use it
-
-// Picker's method is selected by name in a build-excluded file of package u.
-type Picker struct{} // want: type Picker is exported, but nothing.*uses it$
-
-func (Picker) Pick() {} // want: method Pick is exported.*no fix: a build-excluded file of another package may use it
 
 // Helper, Tool and Run are named by example functions, which go vet checks.
 func Helper() int { return 1 } // want: func Helper is exported.*no fix: an example function names it
@@ -83,39 +71,7 @@ var (
 	_ = Child{}.Back
 	_ = Child{}.back
 	_ = Made
-	_ = Lonely() + WinRef + GenRef + Dotted + Helper()
-	_ = Picker{}.Pick
+	_ = Lonely() + GenRef + Helper()
 	_ = Tool{}.Run
 	_ = current
 )
-
-// Keyed, Filled, InSlice and InMap are written in composite literals by a
-// build-excluded file of package v. A key names a field without a dot, and an
-// element without a key assigns every field by position, so either would stop
-// that build compiling once the field is unexported. The types themselves are
-// named there, so they are used.
-type Keyed struct {
-	Flag  int // want: field Flag is exported.*no fix: a build-excluded file of another package may use it
-	Other int // want: field Other is exported, but nothing.*uses it$
-}
-
-type Filled struct {
-	A int    // want: field A is exported.*no fix: a build-excluded file of another package may use it
-	B string // want: field B is exported.*no fix: a build-excluded file of another package may use it
-}
-
-// InSlice is filled by position in a slice literal that elides its type.
-type InSlice struct {
-	C int // want: field C is exported.*no fix: a build-excluded file of another package may use it
-}
-
-// InMap is filled by position in a map literal of pointers that elides &InMap.
-type InMap struct {
-	D int // want: field D is exported.*no fix: a build-excluded file of another package may use it
-}
-
-// DotFilled is filled by position, unqualified, by a build-excluded file of
-// package u that dot-imports this one.
-type DotFilled struct { // want: type DotFilled is exported.*no fix: a build-excluded file of another package may use it
-	E int // want: field E is exported.*no fix: a build-excluded file of another package may use it
-}

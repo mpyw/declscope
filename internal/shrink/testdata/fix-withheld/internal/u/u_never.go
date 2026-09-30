@@ -2,7 +2,7 @@
 
 package u
 
-import . "example.com/withheld/internal/w"
+import . "example.com/withheld/internal/y"
 
 var _ = Dotted
 

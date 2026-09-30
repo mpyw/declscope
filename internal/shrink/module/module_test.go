@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"golang.org/x/tools/go/packages"
 )
 
 // moduleTree writes a module with one package and returns its root.
@@ -219,5 +221,34 @@ func TestLoadLeavesUnreadableNestedModulesUnjudged(t *testing.T) {
 				t.Errorf("why = %q, want the nested module named and %q", why, tc.want)
 			}
 		})
+	}
+}
+
+// TestReaches pins which import of a build-excluded file may bring a value of
+// a package's types into it. A package outside the modules this run reads
+// cannot import an internal package of theirs. A package of those modules
+// that the run did not load, a nested module's included, may: it can import
+// one that hands the value out.
+func TestReaches(t *testing.T) {
+	a := &packages.Package{PkgPath: "example.com/m/internal/a"}
+	api := &packages.Package{PkgPath: "example.com/m/api", Imports: map[string]*packages.Package{a.PkgPath: a}}
+	other := &packages.Package{PkgPath: "example.com/m/other"}
+	m := &Module{
+		mains:  []mainModule{{path: "example.com/m"}},
+		nested: []nestedModule{{path: "example.com/m/tools"}},
+		Pkgs:   []*packages.Package{a, api, other},
+	}
+	for from, want := range map[string]bool{
+		"example.com/m/internal/a": true,  // the package itself
+		"example.com/m/api":        true,  // loaded, and imports it
+		"example.com/m/other":      false, // loaded, and does not
+		"example.com/m/gone":       true,  // a main module's, not loaded
+		"example.com/m/tools/x":    true,  // a nested module's, not loaded
+		"fmt":                      false,
+		"example.com/elsewhere":    false,
+	} {
+		if got := m.Reaches(from, a.PkgPath); got != want {
+			t.Errorf("Reaches(%q) = %v, want %v", from, got, want)
+		}
 	}
 }

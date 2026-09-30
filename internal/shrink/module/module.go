@@ -48,6 +48,11 @@ type Module struct {
 	Importers []Importer
 
 	byPath map[string][]*packages.Package
+	// importedBy maps each loaded package's import path to the paths of the
+	// loaded packages importing it, and reaching caches, per package, every
+	// path that depends on it. Both are built on first use.
+	importedBy map[string][]string
+	reaching   map[string]map[string]bool
 	// nested is every go.mod below a main module's root that is not a main
 	// module itself. Go checks internal/ by import path, so a nested module
 	// whose path extends an internal parent may import the package. One with
@@ -261,6 +266,63 @@ func loadFailure(err error) string {
 		return ""
 	}
 	return fmt.Sprintf("loading it failed: %v", err)
+}
+
+// Reaches reports whether code importing the package at from may hold a
+// value of a type the package at to declares: from is to, or depends on it
+// among the packages this run loaded, nested modules' included. A package of
+// a module this run reads that it did not load, such as one whose every file
+// the build excludes, may depend on anything, so it reaches every package.
+// A package outside those modules cannot import an internal package of
+// theirs, so it reaches none.
+func (m *Module) Reaches(from, to string) bool {
+	if m.importedBy == nil {
+		m.importedBy = map[string][]string{}
+		m.reaching = map[string]map[string]bool{}
+		add := func(p *packages.Package) {
+			// Every loaded path has an entry, imported or not.
+			if _, ok := m.importedBy[p.PkgPath]; !ok {
+				m.importedBy[p.PkgPath] = nil
+			}
+			for _, dep := range p.Imports {
+				m.importedBy[dep.PkgPath] = append(m.importedBy[dep.PkgPath], p.PkgPath)
+			}
+		}
+		for _, p := range m.Pkgs {
+			add(p)
+		}
+		for _, imp := range m.Importers {
+			for _, p := range slices.Concat(imp.Pkgs, imp.Imported) {
+				add(p)
+			}
+		}
+	}
+	if from == to {
+		return true
+	}
+	if _, loaded := m.importedBy[from]; !loaded {
+		return m.inModules(from)
+	}
+	if m.reaching[to] == nil {
+		seen := map[string]bool{to: true}
+		for queue := []string{to}; len(queue) > 0; queue = queue[1:] {
+			for _, dependent := range m.importedBy[queue[0]] {
+				if !seen[dependent] {
+					seen[dependent] = true
+					queue = append(queue, dependent)
+				}
+			}
+		}
+		m.reaching[to] = seen
+	}
+	return m.reaching[to][from]
+}
+
+// inModules reports whether path lies in a main module or a nested one.
+func (m *Module) inModules(path string) bool {
+	under := func(mod string) bool { return path == mod || strings.HasPrefix(path, mod+"/") }
+	return slices.ContainsFunc(m.mains, func(mm mainModule) bool { return under(mm.path) }) ||
+		slices.ContainsFunc(m.nested, func(n nestedModule) bool { return under(n.path) })
 }
 
 // covers reports whether a nested module's path lies inside the tree an
