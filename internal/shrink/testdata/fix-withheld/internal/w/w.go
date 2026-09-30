@@ -88,3 +88,34 @@ var (
 	_ = Tool{}.Run
 	_ = current
 )
+
+// Keyed, Filled, InSlice and InMap are written in composite literals by a
+// build-excluded file of package v. A key names a field without a dot, and an
+// element without a key assigns every field by position, so either would stop
+// that build compiling once the field is unexported. The types themselves are
+// named there, so they are used.
+type Keyed struct {
+	Flag  int // want: field Flag is exported.*no fix: a build-excluded file of another package may use it
+	Other int // want: field Other is exported, but nothing.*uses it$
+}
+
+type Filled struct {
+	A int    // want: field A is exported.*no fix: a build-excluded file of another package may use it
+	B string // want: field B is exported.*no fix: a build-excluded file of another package may use it
+}
+
+// InSlice is filled by position in a slice literal that elides its type.
+type InSlice struct {
+	C int // want: field C is exported.*no fix: a build-excluded file of another package may use it
+}
+
+// InMap is filled by position in a map literal of pointers that elides &InMap.
+type InMap struct {
+	D int // want: field D is exported.*no fix: a build-excluded file of another package may use it
+}
+
+// DotFilled is filled by position, unqualified, by a build-excluded file of
+// package u that dot-imports this one.
+type DotFilled struct { // want: type DotFilled is exported.*no fix: a build-excluded file of another package may use it
+	E int // want: field E is exported.*no fix: a build-excluded file of another package may use it
+}

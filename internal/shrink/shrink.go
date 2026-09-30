@@ -262,14 +262,17 @@ func (c *candidate) qualifiedIn(xs []*excluded.File) bool {
 
 // maybeUsedIn reports whether a build-excluded file of another package may
 // use the candidate without pinning it to its package: a method or field
-// selected by name on some value, or a name under a dot import.
+// selected by name on some value or named as a key of a literal, a field of
+// a type a literal fills by position, or a name under a dot import.
 func (c *candidate) maybeUsedIn(xs []*excluded.File) bool {
 	name := c.obj.Name()
 	return slices.ContainsFunc(xs, func(x *excluded.File) bool {
 		if c.inOwnPackage(x) {
 			return false
 		}
-		return c.kind.member() && x.Selects(name) || x.DotImports(c.pkg.PkgPath) && x.Writes(name)
+		return c.kind.member() && x.Selects(name) ||
+			c.kind == kindField && x.FillsByPosition(c.pkg.PkgPath, c.pkg.Types.Name(), c.owner.Name()) ||
+			x.DotImports(c.pkg.PkgPath) && x.Writes(name)
 	})
 }
 
