@@ -1162,20 +1162,119 @@ Otherwise, a pattern behaves as it does for `go vet`.
 
 A fix is offered only where no use can exist outside the package. Where a use may exist but cannot be proved, the report stays and says why no fix is offered.
 
-| Case | Result |
-| --- | --- |
-| Another package names it, writes it in an unkeyed literal, pairs its field in a struct conversion, or links it with `//go:linkname` | Not reported |
-| The compiler needs it to satisfy an interface | Not reported |
-| Another module can reach it through a value an importable package hands out, such as `pub.Get().Method()` | Not reported |
-| An API another package uses returns it, takes it, or holds it | Not reported. The other package must still be able to name the type |
-| Another exported declaration that keeps its name returns it, takes it, or holds it | Reported, with no fix. A declaration unexported in the same run keeps nothing, so both go at once |
-| A value of it escapes into an interface, where `fmt`, `encoding/json` or `reflect` can find it | Not reported |
-| A struct has a field tag in the `key:"value"` form | Not reported, nor any of its fields. A marshaller reads the struct through reflection, and `go vet` rejects a `json` tag on an unexported field |
-| Only an external test package (`package foo_test`) uses it | Reported, with no fix. One declared in an in-package `_test.go` file is the `export_test.go` idiom, and is not reported |
-| A build-excluded file or `-ldflags -X` may use it | Reported, with no fix |
-| A build-excluded file of its package, or one importing a package that reaches it, may hold a value of the type | Reported, with no fix, for every field and method, and for a type a struct embeds. Go uses those without spelling them, as when a method satisfies an interface |
-| A generated file or an example function (`ExampleF`) names it, which the rename cannot rewrite | Reported, with no fix |
-| The new name would collide, be captured, or have no Go spelling (`MAX_RETRIES`) | Reported, with no fix |
+<table>
+<thead>
+<tr><th>Code</th><th>Result</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>
+
+```go
+// internal/user/user.go
+type ID int
+
+func (ID) String() string { return "" }
+
+func New() ID { return 0 }
+
+// api/api.go
+var _ fmt.Stringer = user.New()
+```
+
+</td>
+<td>Not reported. <code>String</code> satisfies <code>fmt.Stringer</code></td>
+</tr>
+<tr>
+<td>
+
+```go
+// internal/user/user.go
+type Record struct {
+	ID   int
+	Name string
+}
+
+func Dump(r Record) { fmt.Println(r) }
+```
+
+</td>
+<td>Not reported. <code>fmt</code> reads the fields through reflection</td>
+</tr>
+<tr>
+<td>
+
+```go
+// internal/user/user.go
+type Record struct {
+	Name string `json:"name"`
+}
+```
+
+</td>
+<td>Not reported. A tag says a marshaller reads the struct</td>
+</tr>
+<tr>
+<td>
+
+```go
+// api/api_windows.go, excluded from this build
+var _ = user.Format
+```
+
+</td>
+<td>Not reported. A build-excluded file that writes <code>user.Format</code> uses it</td>
+</tr>
+<tr>
+<td>
+
+```go
+// internal/user/user_test.go
+package user_test
+
+func TestFormat(t *testing.T) { _ = user.Format(1) }
+```
+
+</td>
+<td>Reported: <code>(no fix: external tests use it)</code></td>
+</tr>
+<tr>
+<td>
+
+```go
+// api/api_windows.go, excluded from this build
+var _ io.Closer = user.Open()
+```
+
+</td>
+<td>Reported for <code>Conn.Close</code>: <code>(no fix: a build-excluded file of another package may use it)</code>. The file is not type-checked, and a method satisfies an interface without its name</td>
+</tr>
+<tr>
+<td>
+
+```go
+// internal/user/user.go
+func Format(id int) string { return format(id) }
+
+func format(id int) string { return "" }
+```
+
+</td>
+<td>Reported: <code>(no fix: the unexported name is taken or would be captured)</code></td>
+</tr>
+<tr>
+<td>
+
+```go
+// internal/user/user.go
+var Version = "dev"
+```
+
+</td>
+<td>Reported: <code>(no fix: a string variable may be set by -ldflags -X, which names it)</code></td>
+</tr>
+</tbody>
+</table>
 
 Deleting unused code is out of scope. Once a declaration is unexported, staticcheck's `unused` and gopls' `unusedfunc` report it if nothing uses it.
 
@@ -1186,14 +1285,91 @@ Deleting unused code is out of scope. Once a declaration is unexported, staticch
 
 `shrink` stands down wherever an importer could be unseen. Each `internal/` package it skips is named on stderr with the reason, and the exit status ignores it.
 
-| Not judged | Why |
-| --- | --- |
-| A package outside `internal/` | Another module may import it |
-| `package main` | `-buildmode=plugin` looks its exported symbols up by name |
-| A package with assembly or cgo, for any architecture | Those files name Go symbols where `go/types` does not look |
-| An `internal/` whose parent path a nested module's path extends, when that module cannot be read | The module may import the package, and its uses are unknown. That happens when it fails to load, or reads this module from anywhere but this directory, such as a published version |
-| A package `./...` leaves out, named on its own, such as one under `testdata` | This run does not load it, so it has read none of its uses |
-| An interface's method names, and the test functions of a `_test.go` file | Every implementation would rename too, and `go test` finds a test by name |
+<table>
+<thead>
+<tr><th>Code</th><th>Why</th><th><code>shrink</code> prints on stderr</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>
+
+```go
+// api/api.go
+package api
+```
+
+</td>
+<td>Another module may import it</td>
+<td>Nothing. Only <code>internal/</code> packages are listed</td>
+</tr>
+<tr>
+<td>
+
+```go
+// internal/tool/main.go
+package main
+```
+
+</td>
+<td><code>-buildmode=plugin</code> looks its exported symbols up by name</td>
+<td><code>not judged: example.com/app/internal/tool: package main</code></td>
+</tr>
+<tr>
+<td>
+
+```go
+// internal/c/c.go
+// int one() { return 1; }
+import "C"
+```
+
+</td>
+<td>cgo names Go symbols where <code>go/types</code> does not look</td>
+<td><code>not judged: example.com/app/internal/c: the package uses cgo</code></td>
+</tr>
+<tr>
+<td>
+
+```text
+internal/fast/fast.go
+internal/fast/fast_arm64.s
+```
+
+</td>
+<td>So does assembly, for any architecture</td>
+<td><code>not judged: example.com/app/internal/fast: the package holds non-Go files</code></td>
+</tr>
+<tr>
+<td>
+
+```text
+// tools/go.mod
+module example.com/app/tools
+
+require example.com/app v0.0.0
+
+replace example.com/app => ../../elsewhere
+```
+
+</td>
+<td>A nested module may import the package, and this one reads it from another directory, so its uses are of other source. A published version, or a module that fails to load, is the same</td>
+<td><code>not judged: example.com/app/internal/user: the nested module example.com/app/tools may import it, and it reads example.com/app/internal/user from /path/to/elsewhere</code></td>
+</tr>
+<tr>
+<td>
+
+```console
+$ declscope shrink ./internal/user/testdata/fixture
+```
+
+</td>
+<td><code>./...</code> leaves it out, so this run has read none of its uses</td>
+<td><code>not judged: example.com/app/internal/user/testdata/fixture: ./... leaves it out, so this run does not load it</code></td>
+</tr>
+</tbody>
+</table>
+
+An interface's method names, and the test functions of a `_test.go` file, are never reported either. Every implementation would rename too, and `go test` finds a test by name.
 
 A package that does not type-check refuses the whole run, since it would show no uses at all.
 
@@ -1294,8 +1470,6 @@ Both commands take `-test=false`. On a large package it changes the picture. In 
 | `markdown` *(default)* | A terminal **and** an issue or pull request. Cells are padded, so the output aligns in both. `inspect` adds a Mermaid diagram |
 | `json` | An agent, and anything scripted |
 
-There is no third format. A plain-text renderer beside this one caused most of the defects found in review, and one renderer cannot disagree with itself.
-
 The JSON carries four arrays.
 
 | Array | Holds |
@@ -1305,8 +1479,6 @@ The JSON carries four arrays.
 | `namespaces` | The denominators every ratio divides by |
 
 `findings` carries the same `asked` flag the tables print a dash for. Markdown is a rendering of the same data.
-
-Neither command asks the analyzer's questions a second way. Both walk the same findings through the same entry point, and add only the outcome: reported, baselined, silenced by a directive, or never asked.
 
 </details>
 
@@ -1367,6 +1539,28 @@ Each package's entries go to the file the analyzer will consult for that package
 | The baseline named by the package's nearest config file | That config has a `baseline` key |
 | The nearest existing `.declscope-baseline.yaml` above the package | No config names one |
 | A new `.declscope-baseline.yaml` in the working directory | Neither of the above exists |
+
+For example, with a config in `internal/billing/` naming its own baseline, and a baseline already in `internal/legacy/`:
+
+```text
+.declscope-baseline.yaml               internal/user's entries
+internal/
+├── user/user.go
+├── billing/
+│   ├── .declscope.yaml                baseline: billing-baseline.yaml
+│   ├── billing-baseline.yaml          internal/billing's entries
+│   └── billing.go
+└── legacy/
+    ├── .declscope-baseline.yaml       internal/legacy's entries
+    └── legacy.go
+```
+
+```console
+$ declscope baseline ./...
+declscope: recorded 1 violation(s) in .declscope-baseline.yaml
+declscope: recorded 1 violation(s) in internal/billing/billing-baseline.yaml
+declscope: recorded 1 violation(s) in internal/legacy/.declscope-baseline.yaml
+```
 
 `-o` bypasses that lookup and gathers every entry into one file.
 
