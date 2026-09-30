@@ -227,15 +227,16 @@ func TestLoadLeavesUnreadableNestedModulesUnjudged(t *testing.T) {
 // TestReaches pins which import of a build-excluded file may bring a value of
 // a package's types into it. A package outside the modules this run reads
 // cannot import an internal package of theirs. A package of those modules
-// that the run did not load, a nested module's included, may: it can import
-// one that hands the value out.
+// that the run did not load may: it can import one that hands the value out.
+// That holds for a nested module whose path is unrelated too, since it may
+// import the main module's own API.
 func TestReaches(t *testing.T) {
 	a := &packages.Package{PkgPath: "example.com/m/internal/a"}
 	api := &packages.Package{PkgPath: "example.com/m/api", Imports: map[string]*packages.Package{a.PkgPath: a}}
 	other := &packages.Package{PkgPath: "example.com/m/other"}
 	m := &Module{
 		mains:  []mainModule{{path: "example.com/m"}},
-		nested: []nestedModule{{path: "example.com/m/tools"}},
+		nested: []nestedModule{{path: "example.com/m/tools"}, {path: "example.com/other"}},
 		Pkgs:   []*packages.Package{a, api, other},
 	}
 	for from, want := range map[string]bool{
@@ -244,6 +245,7 @@ func TestReaches(t *testing.T) {
 		"example.com/m/other":      false, // loaded, and does not
 		"example.com/m/gone":       true,  // a main module's, not loaded
 		"example.com/m/tools/x":    true,  // a nested module's, not loaded
+		"example.com/other/x":      true,  // a nested module's with an unrelated path
 		"fmt":                      false,
 		"example.com/elsewhere":    false,
 	} {
