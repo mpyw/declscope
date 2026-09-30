@@ -345,14 +345,15 @@ func (c *candidate) writtenInOwn(xs []*excluded.File, name string) bool {
 // variable, which `go build -ldflags "-X path.Name=value"` sets by name. A
 // build file passes the flag, where go/types never looks, and the linker
 // ignores a -X whose name no longer exists, so the rename would break the
-// release silently.
+// release silently. The linker sets only a variable of type string itself,
+// which an alias of string is too: one of a named string type fails the build
+// with "not a var of type string", so no -X can name it.
 func (c *candidate) linkerSet() bool {
 	v, ok := c.obj.(*types.Var)
 	if !ok || c.kind != kindVar {
 		return false
 	}
-	b, ok := v.Type().Underlying().(*types.Basic)
-	return ok && b.Kind() == types.String
+	return types.Identical(v.Type(), types.Typ[types.String])
 }
 
 // run is the state one invocation shares across the packages it judges.
