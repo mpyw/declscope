@@ -15,8 +15,11 @@ Reports the exported declarations of internal packages that nothing outside
 their package uses, and with -fix unexports them.
 
 Every package of the module is loaded, whatever the patterns name: an importer
-outside them still counts. The patterns only choose which packages to report
-on, and default to ./...
+outside them still counts. In a workspace, every module of it is loaded. The
+patterns only choose which packages to report on, and default to ./... They
+mean what they mean to the go command: a pattern it rejects stops the run, and
+one that matches no package is warned about. Build tags come from GOFLAGS, as
+for the analyzer.
 
 A fix is offered only where no use can exist outside the package. Where a use
 is possible but cannot be proved, such as a type that escapes into an
@@ -47,8 +50,14 @@ func shrinkRun(args []string) {
 	}
 	// On stderr: a package not judged is no finding, but saying nothing
 	// would read as nothing overexported there.
+	for _, p := range res.Unmatched {
+		fmt.Fprintf(os.Stderr, "declscope shrink: warning: %q matched no packages\n", p)
+	}
 	for _, s := range res.Skipped {
 		fmt.Fprintf(os.Stderr, "declscope shrink: not judged: %s: %s\n", s.Package, s.Reason)
+	}
+	if res.Outside > 0 {
+		fmt.Fprintf(os.Stderr, "declscope shrink: not judged: %d package(s) outside the main module\n", res.Outside)
 	}
 	if *fix {
 		if err := shrink.Apply(res.Findings); err != nil {

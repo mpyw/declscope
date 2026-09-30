@@ -99,6 +99,12 @@ func TestShrinkRefusesOutsideAModule(t *testing.T) {
 	if code != 1 || !strings.Contains(out, "declscope shrink:") {
 		t.Fatalf("exit %d, want a refusal:\n%s", code, out)
 	}
+	// fmt resolves without a module, so the refusal comes from looking for
+	// one. go list -m answers command-line-arguments there, with no directory.
+	out, code = runIn(t, bin, dir, "shrink", "fmt")
+	if code != 1 || !strings.Contains(out, "declscope shrink: not inside a module") {
+		t.Fatalf("exit %d, want a refusal naming the missing module:\n%s", code, out)
+	}
 }
 
 func TestShrinkUsage(t *testing.T) {
@@ -108,19 +114,97 @@ func TestShrinkUsage(t *testing.T) {
 	}
 }
 
-// TestShrinkRefusesWorkspace pins that a workspace is refused: another of
-// its modules may import this one's internal packages, and which one to
-// shrink would be a guess.
-func TestShrinkRefusesWorkspace(t *testing.T) {
+// TestShrinkWorkspace pins that a workspace is shrunk as one: every module
+// of it is loaded, so a nested module the workspace uses is an importer this
+// run sees, not one it must stand down for.
+func TestShrinkWorkspace(t *testing.T) {
 	root := t.TempDir()
-	writeTree(t, root, "a/go.mod", "module example.com/a\n\ngo 1.25\n")
-	writeTree(t, root, "a/a.go", "package a\n")
-	writeTree(t, root, "b/go.mod", "module example.com/b\n\ngo 1.25\n")
-	writeTree(t, root, "b/b.go", "package b\n")
-	writeTree(t, root, "go.work", "go 1.25\n\nuse (\n\t./a\n\t./b\n)\n")
+	writeTree(t, root, "go.mod", "module example.com/root\n\ngo 1.25\n")
+	writeTree(t, root, "internal/a/a.go", "package a\n\nfunc Used() {}\n\nfunc Unused() {}\n")
+	writeTree(t, root, "tool/go.mod", "module example.com/root/tool\n\ngo 1.25\n\nrequire example.com/root v0.0.0\n")
+	writeTree(t, root, "tool/main.go", "package main\n\nimport \"example.com/root/internal/a\"\n\nfunc main() { a.Used() }\n")
+	writeTree(t, root, "other/go.mod", "module example.com/other\n\ngo 1.25\n")
+	writeTree(t, root, "other/internal/o/o.go", "package o\n\nfunc Lone() {}\n")
+
+	// Without the workspace, tool is a nested module this run does not load.
 	out, code := runIn(t, bin, root, "shrink")
-	if code != 1 || !strings.Contains(out, "GOWORK=off") {
-		t.Fatalf("exit %d, want a refusal pointing at GOWORK=off:\n%s", code, out)
+	if code != 0 || !strings.Contains(out, "the nested module example.com/root/tool may import it") {
+		t.Fatalf("exit %d, want internal/a unjudged over the nested module:\n%s", code, out)
+	}
+
+	writeTree(t, root, "go.work", "go 1.25\n\nuse (\n\t.\n\t./tool\n\t./other\n)\n")
+	out, code = runIn(t, bin, root, "shrink", "./...", "./other/...")
+	if code != 3 {
+		t.Fatalf("exit %d, want 3 for a report:\n%s", code, out)
+	}
+	for _, want := range []string{
+		"func Unused is exported, but nothing outside example.com/root/internal/a uses it\n",
+		"func Lone is exported, but nothing outside example.com/other/internal/o uses it\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Used is exported") || strings.Contains(out, "not judged") {
+		t.Errorf("tool uses a.Used and is loaded with the workspace:\n%s", out)
+	}
+}
+
+// TestShrinkPatternErrors pins that a pattern the go command rejects stops
+// the run with the go command's message, as go vet does. Passing it silently
+// would let a typo in CI check nothing.
+func TestShrinkPatternErrors(t *testing.T) {
+	root := shrinkModule(t)
+	writeTree(t, root, "sub/go.mod", "module example.com/sub\n\ngo 1.25\n")
+	writeTree(t, root, "sub/s.go", "package s\n")
+	for pattern, want := range map[string]string{
+		"./nope/...": "pattern ./nope/...: lstat ./nope/: no such file or directory",
+		"./sub/...":  "pattern ./sub/...: directory prefix sub does not contain main module",
+	} {
+		out, code := runIn(t, bin, root, "shrink", pattern)
+		if code != 1 || !strings.Contains(out, "declscope shrink: "+want) {
+			t.Errorf("%s: exit %d, want 1 with %q:\n%s", pattern, code, want, out)
+		}
+	}
+}
+
+// TestShrinkUnmatchedPatterns pins go vet's handling of a pattern that
+// matches no package: a warning while another pattern matches, and a refusal
+// once none does.
+func TestShrinkUnmatchedPatterns(t *testing.T) {
+	root := shrinkModule(t)
+	writeTree(t, root, "empty/README", "no Go here\n")
+	out, code := runIn(t, bin, root, "shrink", "./empty/...", "./internal/...")
+	if code != 3 || !strings.Contains(out, `declscope shrink: warning: "./empty/..." matched no packages`) || !strings.Contains(out, "func Lonely is exported") {
+		t.Fatalf("exit %d, want a warning and the report:\n%s", code, out)
+	}
+	out, code = runIn(t, bin, root, "shrink", "./empty/...")
+	if code != 1 || !strings.Contains(out, "declscope shrink: ./empty/... matched no packages") {
+		t.Fatalf("exit %d, want a refusal:\n%s", code, out)
+	}
+}
+
+// TestShrinkNamesWhatItDoesNotLoad pins that an internal package ./...
+// leaves out, named on its own, is reported as not judged: the go command
+// resolves it, but the load never read it or its uses.
+func TestShrinkNamesWhatItDoesNotLoad(t *testing.T) {
+	root := shrinkModule(t)
+	writeTree(t, root, "internal/a/testdata/fixture/f.go", "package fixture\n\nfunc Lone() {}\n")
+	out, code := runIn(t, bin, root, "shrink", "./internal/a/testdata/fixture")
+	want := "declscope shrink: not judged: example.com/declscopetest/internal/a/testdata/fixture: ./... leaves it out, so this run does not load it\n"
+	if code != 0 || !strings.Contains(out, want) {
+		t.Fatalf("exit %d, want %q:\n%s", code, want, out)
+	}
+}
+
+// TestShrinkCountsPackagesOutside pins that a pattern naming packages outside
+// the main module is followed, and that they are counted as not judged in one
+// line rather than listed or dropped.
+func TestShrinkCountsPackagesOutside(t *testing.T) {
+	root := shrinkModule(t)
+	out, code := runIn(t, bin, root, "shrink", "fmt", "errors", "./...")
+	if code != 3 || !strings.Contains(out, "declscope shrink: not judged: 2 package(s) outside the main module\n") || !strings.Contains(out, "func Lonely is exported") {
+		t.Fatalf("exit %d, want the report and one line counting fmt and errors:\n%s", code, out)
 	}
 }
 
@@ -141,19 +225,29 @@ func TestShrinkModuleUnderInternal(t *testing.T) {
 // skips what ./... skips. A testdata file naming a declaration is no use.
 func TestShrinkSkipsWhatGoSkips(t *testing.T) {
 	root := shrinkModule(t)
-	for _, dir := range []string{"internal/a/testdata", "internal/a/.hidden", "internal/a/_skipped", "vendor/example.com/v"} {
+	// ignore directives, one for a directory at the root only and one for a
+	// directory of that name anywhere, as go help go.mod describes them.
+	writeTree(t, root, "go.mod", testModule+"\nignore (\n\t./gen\n\tstatic\n)\n")
+	for _, dir := range []string{
+		"internal/a/testdata", "internal/a/.hidden", "internal/a/_skipped", "vendor/example.com/v",
+		// ./... skips a vendor directory at any depth, and nothing may import
+		// a path through one.
+		"internal/a/vendor/w",
+		"gen", "web/static",
+	} {
 		writeTree(t, root, dir+"/x.go", "//go:build never\n\npackage x\n\nimport \"example.com/declscopetest/internal/a\"\n\nvar _ = a.Lonely\n")
 	}
-	// A vendor directory below the root holds an ordinary package, and its
-	// build-excluded file is read like any other.
-	writeTree(t, root, "internal/a/vendor/w/w.go", "package w\n")
-	writeTree(t, root, "internal/a/vendor/w/w_never.go", "//go:build never\n\npackage w\n\nimport \"example.com/declscopetest/internal/a\"\n\nvar _ = a.Taken\n")
+	// An ignored directory is not read at all, so a file there that does not
+	// parse refuses nothing, as it does not for go vet.
+	writeTree(t, root, "gen/broken.go", "package gen\n\nthis is not Go\n")
+	// ./gen names the root's gen only, so this one is read.
+	writeTree(t, root, "internal/gen/x.go", "//go:build never\n\npackage gen\n\nimport \"example.com/declscopetest/internal/a\"\n\nvar _ = a.Taken\n")
 	out, code := runIn(t, bin, root, "shrink")
 	if code != 3 || !strings.Contains(out, "func Lonely is exported, but nothing outside") {
 		t.Fatalf("exit %d, want Lonely still reported:\n%s", code, out)
 	}
 	if strings.Contains(out, "Taken") {
-		t.Fatalf("a.Taken is named by a build-excluded file under a nested vendor directory, but was reported:\n%s", out)
+		t.Fatalf("a.Taken is named by a build-excluded file outside every ignored directory, but was reported:\n%s", out)
 	}
 }
 
@@ -218,7 +312,13 @@ func TestShrinkRefusesEmptyModule(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, "go.mod", testModule)
 	out, code := runIn(t, bin, root, "shrink")
-	if code != 1 || !strings.Contains(out, "no package found") {
+	// ./... names nothing there, so the run stops where go vet does.
+	if code != 1 || !strings.Contains(out, "matched no packages") {
+		t.Fatalf("exit %d, want a refusal for a module with no package:\n%s", code, out)
+	}
+	// fmt names a package, just none of the module's.
+	out, code = runIn(t, bin, root, "shrink", "fmt")
+	if code != 1 || !strings.Contains(out, "no package found in the module") {
 		t.Fatalf("exit %d, want a refusal for a module with no package:\n%s", code, out)
 	}
 }

@@ -100,6 +100,13 @@ type Result struct {
 	// judged, and why. Saying nothing about them would read as nothing
 	// overexported.
 	Skipped []Skipped
+	// Outside counts the packages the patterns named outside every main
+	// module, which are never judged. They are counted rather than listed:
+	// std or all would name hundreds.
+	Outside int
+	// Unmatched lists the patterns that named no package. The go command
+	// warns about each, and so does declscope shrink.
+	Unmatched []string
 }
 
 // Skipped is an internal package that was not judged.
@@ -107,15 +114,19 @@ type Skipped struct {
 	Package, Reason string
 }
 
-// Run loads the module containing dir and reports on the packages the
-// patterns name, resolved from dir. Every package of the module is loaded
-// whatever the patterns say, since an importer outside them still counts.
+// Run loads the main modules seen from dir, the one holding it or every one
+// of its workspace, and reports on the packages the patterns name, resolved
+// from dir as the go command resolves them. Every package of the main
+// modules is loaded whatever the patterns say, since an importer outside
+// them still counts.
 func Run(dir string, patterns []string) (Result, error) {
-	mod, err := module.Load(dir)
+	// The patterns first: a pattern the go command rejects is the cheaper
+	// thing to find, and the one a reader should see.
+	named, err := module.Resolve(dir, patterns)
 	if err != nil {
 		return Result{}, err
 	}
-	wanted, err := module.Wanted(dir, patterns)
+	mod, err := module.Load(dir)
 	if err != nil {
 		return Result{}, err
 	}
@@ -124,9 +135,17 @@ func Run(dir string, patterns []string) (Result, error) {
 		return Result{}, err
 	}
 	r := &run{mod: mod, ev: ev, facts: map[string]*renameFacts{}, usedIgnores: map[token.Pos]bool{}}
-	var res Result
+	res := Result{Outside: named.Outside, Unmatched: named.Unmatched}
+	// A package of a main module that ./... leaves out, such as one under
+	// testdata named on its own, is not loaded, so none of its uses were
+	// read either.
+	for _, path := range slices.Sorted(maps.Keys(named.Paths)) {
+		if _, internal := module.InternalParent(path); internal && mod.Variants(path) == nil {
+			res.Skipped = append(res.Skipped, Skipped{Package: path, Reason: "./... leaves it out, so this run does not load it"})
+		}
+	}
 	for _, path := range mod.Paths {
-		if !wanted[path] {
+		if !named.Paths[path] {
 			continue
 		}
 		pkgs := mod.Variants(path)

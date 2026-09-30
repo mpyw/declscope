@@ -1129,7 +1129,7 @@ A [`boundary`](#boundary) fix on a type widens its members too. Under `strict`, 
 
 **Why it matters.** An exported declaration takes package scope by default, so the analyzer never reports a boundary on it. An exported name that nothing outside needs hides a declaration from every check here. Unexported, it takes `private`, and the analyzer checks who reaches it.
 
-**Why a subcommand.** The analyzer reads one package, and any importer might use an exported name. Inside `internal/`, Go limits the importers to one directory tree. `shrink` loads the whole module, so it sees every one of them. `go vet` and golangci-lint never run it.
+**Why a subcommand.** The analyzer reads one package, and any importer might use an exported name. Inside `internal/`, Go limits the importers to one directory tree. `shrink` loads the whole module, so it sees every one of them. In a workspace, it loads every module of the workspace. `go vet` and golangci-lint never run it.
 
 ```go
 // internal/user/user.go
@@ -1170,6 +1170,23 @@ $ declscope ./...
 
 Run them in the same order in CI. `shrink` exits 3 when it reports anything, as the analyzer does. With `-fix`, only the reports left without a fix count.
 
+### Patterns
+
+The patterns choose which packages are reported. They do not choose what is loaded: an importer outside them still counts. They mean what they mean to `go vet`:
+
+| Pattern | Result |
+| --- | --- |
+| None | `./...` |
+| One the go command rejects, such as a directory that does not exist | The run stops with the go command's message, and exits 1 |
+| One that matches no package | A warning on stderr. If no pattern matches a package, the run stops and exits 1 |
+| One naming packages outside the main module, such as `std` or `fmt` | They are not judged. One line on stderr counts them |
+
+Build tags come from `GOFLAGS`, as for the analyzer:
+
+```console
+$ GOFLAGS=-tags=integration declscope shrink ./...
+```
+
 <details>
 <summary>What counts as a use, and when the fix is withheld</summary>
 
@@ -1203,7 +1220,8 @@ Deleting unused code is out of scope. Once a declaration is unexported, staticch
 | A package outside `internal/` | Another module may import it |
 | `package main` | `-buildmode=plugin` looks its exported symbols up by name |
 | A package with assembly or cgo, for any architecture | Those files name Go symbols where `go/types` does not look |
-| An `internal/` whose parent path a nested module's path extends | That module may import the package, and this run never loads it |
+| An `internal/` whose parent path a nested module's path extends | That module may import the package, and this run never loads it. A nested module the workspace uses is loaded, so it does not count |
+| A package `./...` leaves out, named on its own, such as one under `testdata` | This run does not load it, so it has read none of its uses |
 | An interface's method names, and the test functions of a `_test.go` file | Every implementation would rename too, and `go test` finds a test by name |
 
 A package that does not type-check refuses the whole run, since it would show no uses at all.
