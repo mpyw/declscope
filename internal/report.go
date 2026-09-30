@@ -20,6 +20,18 @@ import (
 	"github.com/mpyw/declscope/internal/scope"
 )
 
+// reportBook is report.go's half of the collection, embedded there.
+//
+//declscope:package // collection embeds it, and collection lives in the core
+type reportBook struct {
+	// sources holds each file a directive fix has read, by name. Every fix on
+	// an indented declaration reads the file around it, and one file can hold
+	// hundreds of them. A file that could not be read is held as nil.
+	//
+	//declscope:private // the type is widened only so the core can embed it
+	sources map[string][]byte
+}
+
 // reportedFinding is a diagnostic that a target would produce, held back until
 // its ignore directives and the baseline have been consulted.
 type reportedFinding struct {
@@ -424,7 +436,7 @@ func (c *collection) boundaryFindingForReport(pass *analysis.Pass, opts Options,
 	if t.boundAt != scopesiteLevelDefault {
 		return f, true
 	}
-	fix := directiveFixInReport(pass, t, scope.PackageInternal)
+	fix := c.directiveFixInReport(pass, t, scope.PackageInternal)
 	// The directive reaches the type's members too, so under strict a member
 	// no other namespace reads would come out of this fix package-scoped, and
 	// surplus would report what -fix had just written. The fix narrows those
@@ -433,7 +445,7 @@ func (c *collection) boundaryFindingForReport(pass *analysis.Pass, opts Options,
 	if t.kind == kindType {
 		var names []string
 		for _, m := range c.surplusNarrowedByTypeFix(pass, opts, t) {
-			fix.TextEdits = append(fix.TextEdits, directiveEditInReport(pass, m, scope.Private, m.doc))
+			fix.TextEdits = append(fix.TextEdits, c.directiveEditInReport(pass, m, scope.Private, m.doc))
 			names = append(names, m.name())
 		}
 		if len(names) > 0 {
@@ -514,10 +526,10 @@ func (c *collection) qualifyExaminesForReport(pass *analysis.Pass, opts Options,
 }
 
 // directiveFixInReport inserts an explicit scope directive above the declaration.
-func directiveFixInReport(pass *analysis.Pass, t *target, s scope.Scope) analysis.SuggestedFix {
+func (c *collection) directiveFixInReport(pass *analysis.Pass, t *target, s scope.Scope) analysis.SuggestedFix {
 	return analysis.SuggestedFix{
 		Message:   fmt.Sprintf("add %s to %s", s.Directive(), t.name()),
-		TextEdits: []analysis.TextEdit{directiveEditInReport(pass, t, s, nil)},
+		TextEdits: []analysis.TextEdit{c.directiveEditInReport(pass, t, s, nil)},
 	}
 }
 
@@ -535,9 +547,9 @@ func directiveFixInReport(pass *analysis.Pass, t *target, s scope.Scope) analysi
 // comment that already ends in a directive or in a bare // needs no separator.
 //
 //declscope:package // surplus.go narrows a declaration with the same insertion
-func directiveEditInReport(pass *analysis.Pass, t *target, s scope.Scope, doc *ast.CommentGroup) analysis.TextEdit {
+func (c *collection) directiveEditInReport(pass *analysis.Pass, t *target, s scope.Scope, doc *ast.CommentGroup) analysis.TextEdit {
 	var text string
-	if atLineStartForReport(pass, t.anchor) {
+	if c.atLineStartForReport(pass, t.anchor) {
 		indent := strings.Repeat("\t", max(pass.Fset.PositionFor(t.anchor, false).Column-1, 0))
 		text = s.Directive() + "\n" + indent
 		if doc != nil && len(doc.List) > 0 && !endsInDirectiveForReport(doc) {
@@ -562,7 +574,7 @@ func endsInDirectiveForReport(doc *ast.CommentGroup) bool {
 // atLineStartForReport reports whether pos is preceded on its line by nothing but
 // whitespace. It fails safe: an unreadable file is treated as not starting a
 // line, which yields an extra line break rather than a misplaced directive.
-func atLineStartForReport(pass *analysis.Pass, pos token.Pos) bool {
+func (c *collection) atLineStartForReport(pass *analysis.Pass, pos token.Pos) bool {
 	// Unadjusted: the edit lands in the file on disk, and a //line directive
 	// without a column leaves the adjusted column at 0.
 	position := pass.Fset.PositionFor(pos, false)
@@ -572,12 +584,30 @@ func atLineStartForReport(pass *analysis.Pass, pos token.Pos) bool {
 	if pass.ReadFile == nil {
 		return false
 	}
-	content, err := pass.ReadFile(position.Filename)
-	if err != nil || position.Offset > len(content) {
+	content := c.sourceForReport(pass, position.Filename)
+	if position.Offset > len(content) {
 		return false
 	}
 	prefix := content[position.Offset-position.Column+1 : position.Offset]
 	return strings.TrimLeft(string(prefix), " \t") == ""
+}
+
+// sourceForReport reads a file once per pass. A read error is held as nil. Only
+// a position past the start of its line reads the content, and every such
+// position overruns nil, so the error still fails safe.
+func (c *collection) sourceForReport(pass *analysis.Pass, name string) []byte {
+	if content, ok := c.sources[name]; ok {
+		return content
+	}
+	if c.sources == nil {
+		c.sources = make(map[string][]byte)
+	}
+	content, err := pass.ReadFile(name)
+	if err != nil {
+		content = nil
+	}
+	c.sources[name] = content
+	return content
 }
 
 // namespaceInReport names a file's namespace, or the file itself when its stem

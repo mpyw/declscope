@@ -262,6 +262,7 @@ type collection struct {
 	scopesiteBook
 	collectingBook
 	renameBook
+	reportBook
 	surplusBook
 
 	// namespaces is how many distinct namespaces the package's non-test files
