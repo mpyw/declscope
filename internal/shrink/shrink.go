@@ -180,16 +180,16 @@ func Apply(findings []Finding) error {
 		// Later edits first, so earlier offsets stay valid. Two findings never
 		// edit one identifier, since each renames its own declaration.
 		slices.SortFunc(edits, func(a, b Edit) int { return cmp.Compare(b.Start, a.Start) })
+		info, err := os.Stat(name)
+		if err != nil {
+			return err
+		}
 		src, err := os.ReadFile(name)
 		if err != nil {
 			return err
 		}
 		for _, e := range slices.Compact(edits) {
 			src = slices.Concat(src[:e.Start], []byte(e.NewText), src[e.End:])
-		}
-		info, err := os.Stat(name)
-		if err != nil {
-			return err
 		}
 		if err := os.WriteFile(name, src, info.Mode()); err != nil {
 			return err

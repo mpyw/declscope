@@ -67,6 +67,22 @@ func TestShrinkFix(t *testing.T) {
 	}
 }
 
+// TestShrinkFixFailure pins that -fix stops with the error when it cannot
+// write a file, rather than exiting as though the fix were applied.
+func TestShrinkFixFailure(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root writes every file")
+	}
+	root := shrinkModule(t)
+	if err := os.Chmod(filepath.Join(root, "internal/a/a.go"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	out, code := runIn(t, bin, root, "shrink", "-fix")
+	if code != 1 || !strings.Contains(out, "declscope shrink:") || !strings.Contains(out, "permission denied") {
+		t.Fatalf("exit %d, want a refusal naming the write error:\n%s", code, out)
+	}
+}
+
 // TestShrinkPatterns pins that the patterns choose what is reported, not
 // what is loaded: package b still counts as a user of a.Used.
 func TestShrinkPatterns(t *testing.T) {
