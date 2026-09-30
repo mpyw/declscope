@@ -132,10 +132,15 @@ func TestTagsSubcommands(t *testing.T) {
 }
 
 // TestTagsHelp pins that every command documents -tags, the analyzer's
-// included: the driver's own help says it has no effect.
+// included: the driver's own help says it has no effect. The help printed
+// for a bare run and for a flag error is the same help, and says the same.
 func TestTagsHelp(t *testing.T) {
 	const want = "  -tags list\n    \tcomma-separated list of build tags to consider satisfied, as for go build\n"
-	for _, args := range [][]string{{"-help"}, {"baseline", "-h"}, {"survey", "-h"}, {"inspect", "-h"}, {"shrink", "-h"}} {
+	for _, args := range [][]string{
+		{"-help"}, {}, {"-bogus"}, {"-tags"},
+		{"baseline", "-h"}, {"survey", "-h"}, {"inspect", "-h"}, {"shrink", "-h"},
+		{"shrink", "-bogus"}, {"baseline", "-tags"},
+	} {
 		out, _ := runIn(t, bin, t.TempDir(), args...)
 		if !strings.Contains(out, want) {
 			t.Errorf("%v: missing %q in:\n%s", args, want, out)
