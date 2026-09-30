@@ -295,7 +295,10 @@ func TestShrinkRefusesNestedModuleWithoutPath(t *testing.T) {
 // says nothing was reported.
 func TestShrinkNamesSkippedPackages(t *testing.T) {
 	root := shrinkModule(t)
-	writeTree(t, root, "tools/go.mod", "module example.com/declscopetest/tools\n\ngo 1.25\n")
+	// A nested module that imports internal/a but does not type-check, so
+	// whether it uses anything there is unknown.
+	writeTree(t, root, "tools/go.mod", "module example.com/declscopetest/tools\n\ngo 1.25\n\nrequire example.com/declscopetest v0.0.0\n\nreplace example.com/declscopetest => ../\n")
+	writeTree(t, root, "tools/t.go", "package tools\n\nimport \"example.com/declscopetest/internal/a\"\n\nvar _ string = a.Used()\n")
 	cmd := exec.Command(bin, "shrink")
 	cmd.Dir = root
 	coverEnv(cmd)
@@ -305,7 +308,7 @@ func TestShrinkNamesSkippedPackages(t *testing.T) {
 	if err != nil || len(out) != 0 {
 		t.Fatalf("err %v, want a silent success on stdout:\n%s", err, out)
 	}
-	if !strings.Contains(stderr.String(), "not judged: example.com/declscopetest/internal/a:") {
+	if !strings.Contains(stderr.String(), "not judged: example.com/declscopetest/internal/a: the nested module example.com/declscopetest/tools may import it, and its package example.com/declscopetest/tools does not type-check") {
 		t.Errorf("stderr does not name the skipped package:\n%s", stderr.String())
 	}
 }

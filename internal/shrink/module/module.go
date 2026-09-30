@@ -3,15 +3,18 @@
 // and says which internal packages have importers this run can all see.
 //
 // There is one main module, or several in a workspace. Every one is loaded,
-// since each may import another's internal packages.
+// since each may import another's internal packages. A nested module that may
+// import them is loaded too, on its own, only to read what it uses.
 package module
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"go/token"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,13 +43,40 @@ type Module struct {
 	// compile.
 	Excluded []*excluded.File
 
+	// Importers are the nested modules this run loaded to read what they use.
+	// Their packages are never judged.
+	Importers []Importer
+
 	byPath map[string][]*packages.Package
-	// nested is the module path of every go.mod below a main module's root
-	// that is not a main module itself. Go checks internal/ by import path,
-	// so a nested module whose path extends an internal parent may import
-	// the package, and this run never loads it. One with an unrelated path
-	// cannot, wherever it sits.
-	nested []string
+	// nested is every go.mod below a main module's root that is not a main
+	// module itself. Go checks internal/ by import path, so a nested module
+	// whose path extends an internal parent may import the package. One with
+	// an unrelated path cannot, wherever it sits.
+	nested []nestedModule
+}
+
+// nestedModule is one module below a main module's root.
+type nestedModule struct {
+	path, dir string
+	// why says what keeps this run from reading every use the module makes,
+	// or is empty once it has read them.
+	why string
+}
+
+// Importer is one nested module this run loaded to read what it uses.
+//
+// It is loaded on its own, from its own directory, since its go.mod decides
+// what it builds with. So its types are its own: a type of the main modules
+// it names is another object than the main load's. Declarations still match
+// by keyOf, since the load shares the main load's file set and reads the
+// main modules' packages it imports from their source. A check that compares
+// types, such as interface satisfaction, runs within one Importer.
+type Importer struct {
+	// Pkgs are its own packages, the widest variant of each import path.
+	Pkgs []*packages.Package
+	// Imported are the main modules' packages it imports, as its own load
+	// type-checked them from their source.
+	Imported []*packages.Package
 }
 
 // mainModule is one main module: its import path and root directory.
@@ -121,7 +151,161 @@ func Load(dir string) (*Module, error) {
 	if err := m.walk(); err != nil {
 		return nil, err
 	}
+	for i := range m.nested {
+		m.loadImporter(&m.nested[i], cfg.Mode)
+	}
 	return m, nil
+}
+
+// loadImporter loads a nested module that may import a main module's
+// internal packages, so that its uses count as any other importer's. A
+// nested module that no internal parent covers imports nothing that matters,
+// and is left alone.
+//
+// It takes two loads. The first asks what the module imports, the way go
+// list -deps does. The second type-checks its packages together with the
+// main modules' packages it imports, as roots: a dependency comes from
+// export data, which keeps a declaration's file and line but not its offset,
+// so only a root's declarations match the main load's by keyOf. Every
+// internal package cannot be a root instead. The module's go.mod need not
+// require what those import, and loading them fails.
+//
+// Whatever it cannot read leaves why set, and the ranges it may import stay
+// unjudged: a load that fails, and a main module's package read from
+// anywhere but that module's directory, such as a published version. Uses of
+// other source say nothing about this one.
+func (m *Module) loadImporter(n *nestedModule, mode packages.LoadMode) {
+	if !m.covers(n.path) {
+		return
+	}
+	n.why = "this run does not load it"
+	deps, err := packages.Load(&packages.Config{
+		Dir:   n.dir,
+		Mode:  packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles | packages.NeedImports | packages.NeedDeps | packages.NeedModule,
+		Tests: true,
+	}, "./...")
+	problem := loadFailure(err)
+	imported := map[string]bool{}
+	packages.Visit(deps, nil, func(p *packages.Package) {
+		if len(p.Errors) > 0 && problem == "" {
+			problem = fmt.Sprintf("loading it failed: %s: %s", p.PkgPath, p.Errors[0])
+		}
+		if m.byPath[p.PkgPath] != nil && p.PkgPath != n.path {
+			if where := m.elsewhere(p); where != "" && problem == "" {
+				problem = fmt.Sprintf("it reads %s from %s", p.PkgPath, where)
+			}
+			imported[p.PkgPath] = true
+		}
+	})
+	if problem != "" {
+		n.why = problem
+		return
+	}
+	var imp Importer
+	own := deps
+	if len(imported) > 0 {
+		// The first load has already checked where each of these is read
+		// from, and this one reads the same go.mod.
+		pkgs, err := packages.Load(&packages.Config{Dir: n.dir, Fset: m.Fset, Mode: mode, Tests: true},
+			append([]string{"./..."}, slices.Sorted(maps.Keys(imported))...)...)
+		problem = loadFailure(err)
+		own = nil
+		widest := map[string]*packages.Package{}
+		for _, p := range pkgs {
+			switch {
+			case isTestMain(p):
+				continue
+			case m.byPath[p.PkgPath] != nil || m.byPath[p.ForTest] != nil:
+				// The main modules' test variants are not what the module
+				// imports, and their tests may need what its go.mod lacks.
+				if p.ForTest != "" {
+					continue
+				}
+				imp.Imported = append(imp.Imported, p)
+			default:
+				own = append(own, p)
+				if w, ok := widest[p.PkgPath]; !ok || len(p.Syntax) > len(w.Syntax) {
+					widest[p.PkgPath] = p
+				}
+			}
+			if len(p.Errors) > 0 && problem == "" {
+				problem = fmt.Sprintf("its package %s does not type-check: %s", p.PkgPath, p.Errors[0])
+			}
+		}
+		if problem != "" {
+			n.why = problem
+			return
+		}
+		for _, path := range slices.Sorted(maps.Keys(widest)) {
+			imp.Pkgs = append(imp.Pkgs, widest[path])
+		}
+	}
+	// Its build-excluded files are read as the main modules' are, so a name
+	// written under a tag this run does not set still counts.
+	var xs []*excluded.File
+	if err := m.walkTree(n.dir, compiledFiles(own), token.NewFileSet(), false, &xs); err != nil {
+		n.why = err.Error()
+		return
+	}
+	m.Excluded = append(m.Excluded, xs...)
+	if len(imp.Pkgs) > 0 {
+		m.Importers = append(m.Importers, imp)
+	}
+	n.why = ""
+}
+
+// loadFailure words a failed load, or is empty when the load did not fail.
+// Its packages' own errors are read separately.
+func loadFailure(err error) string {
+	if err == nil {
+		return ""
+	}
+	return fmt.Sprintf("loading it failed: %v", err)
+}
+
+// covers reports whether a nested module's path lies inside the tree an
+// internal package of a main module may be imported from.
+func (m *Module) covers(path string) bool {
+	return slices.ContainsFunc(m.Paths, func(p string) bool {
+		parent, ok := InternalParent(p)
+		return ok && (path == parent || strings.HasPrefix(path, parent+"/"))
+	})
+}
+
+// elsewhere returns where a nested module's load read p, a main module's
+// package, when that is not the main module's own directory, or "".
+func (m *Module) elsewhere(p *packages.Package) string {
+	if p.Module != nil && p.Module.Dir != "" && sameDir(p.Module.Dir, m.owner(p.PkgPath).dir) {
+		return ""
+	}
+	// A published version has no directory of its own to name.
+	where := "outside any module"
+	if p.Module != nil {
+		where = cmp.Or(p.Module.Dir, p.Module.Path+"@"+p.Module.Version)
+	}
+	return where
+}
+
+// sameDir reports whether two directories are one, through symbolic links.
+func sameDir(a, b string) bool {
+	if ra, err := filepath.EvalSymlinks(a); err == nil {
+		a = ra
+	}
+	if rb, err := filepath.EvalSymlinks(b); err == nil {
+		b = rb
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
+}
+
+// compiledFiles is every file the packages compile.
+func compiledFiles(pkgs []*packages.Package) map[string]bool {
+	compiled := map[string]bool{}
+	for _, p := range pkgs {
+		for _, f := range slices.Concat(p.GoFiles, p.CompiledGoFiles) {
+			compiled[f] = true
+		}
+	}
+	return compiled
 }
 
 // Variants returns the loaded variants of the package at path, the widest
@@ -157,8 +341,8 @@ func (m *Module) Range(path string) (parent, why string) {
 		return "", fmt.Sprintf("its internal/ parent %s lies above the module %s", parent, owner.path)
 	}
 	for _, n := range m.nested {
-		if n == parent || strings.HasPrefix(n, parent+"/") {
-			return "", fmt.Sprintf("the nested module %s may import it, and this run does not load it", n)
+		if n.why != "" && (n.path == parent || strings.HasPrefix(n.path, parent+"/")) {
+			return "", fmt.Sprintf("the nested module %s may import it, and %s", n.path, n.why)
 		}
 	}
 	return parent, ""
@@ -293,29 +477,27 @@ func isTestMain(p *packages.Package) bool {
 // all the same, at any depth. A nested module that is itself a main module
 // is walked on its own, and loaded, so it is not recorded.
 func (m *Module) walk() error {
-	compiled := map[string]bool{}
-	for _, p := range m.Pkgs {
-		for _, f := range slices.Concat(p.GoFiles, p.CompiledGoFiles) {
-			compiled[f] = true
-		}
-	}
-	mainDirs := map[string]bool{}
-	for _, mm := range m.mains {
-		mainDirs[mm.dir] = true
-	}
+	compiled := compiledFiles(m.Pkgs)
 	fset := token.NewFileSet()
 	for _, mm := range m.mains {
-		if err := m.walkModule(mm, mainDirs, compiled, fset); err != nil {
+		if err := m.walkTree(mm.dir, compiled, fset, true, &m.Excluded); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (m *Module) walkModule(mm mainModule, mainDirs, compiled map[string]bool, fset *token.FileSet) error {
-	ignored, err := ignoreDirectives(mm.dir)
+// walkTree walks the tree of one module, rooted at root, adding the files its
+// build excludes to into. record says whether the go.mod files below root are
+// recorded as nested modules: a main module's walk records them, at any
+// depth, so a nested module's own walk has nothing left to record.
+func (m *Module) walkTree(root string, compiled map[string]bool, fset *token.FileSet, record bool, into *[]*excluded.File) error {
+	ignored, err := ignoreDirectives(root)
 	if err != nil {
 		return err
+	}
+	isMain := func(dir string) bool {
+		return slices.ContainsFunc(m.mains, func(mm mainModule) bool { return mm.dir == dir })
 	}
 	// unread holds the directories whose Go files ./... does not read.
 	var unread []string
@@ -324,16 +506,16 @@ func (m *Module) walkModule(mm mainModule, mainDirs, compiled map[string]bool, f
 			return strings.HasPrefix(path, dir+string(filepath.Separator))
 		})
 	}
-	return filepath.WalkDir(mm.dir, func(path string, d fs.DirEntry, err error) error {
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
-			if path == mm.dir {
+			if path == root {
 				return nil
 			}
 			name := d.Name()
-			if name == ".git" || mainDirs[path] {
+			if name == ".git" || isMain(path) {
 				return filepath.SkipDir
 			}
 			if data, err := os.ReadFile(filepath.Join(path, "go.mod")); err == nil {
@@ -341,11 +523,13 @@ func (m *Module) walkModule(mm mainModule, mainDirs, compiled map[string]bool, f
 				if modPath == "" {
 					return fmt.Errorf("reading %s: no module path", filepath.Join(path, "go.mod"))
 				}
-				m.nested = append(m.nested, modPath)
+				if record {
+					m.nested = append(m.nested, nestedModule{path: modPath, dir: path, why: "this run does not load it"})
+				}
 				unread = append(unread, path)
 				return nil
 			}
-			rel, _ := filepath.Rel(mm.dir, path)
+			rel, _ := filepath.Rel(root, path)
 			if name == "testdata" || name == "vendor" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") || ignored.matches(rel) {
 				unread = append(unread, path)
 			}
@@ -358,7 +542,7 @@ func (m *Module) walkModule(mm mainModule, mainDirs, compiled map[string]bool, f
 		if err != nil {
 			return fmt.Errorf("reading %s, which the build excludes: %w", path, err)
 		}
-		m.Excluded = append(m.Excluded, f)
+		*into = append(*into, f)
 		return nil
 	})
 }

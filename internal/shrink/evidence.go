@@ -90,20 +90,35 @@ func evidenceCollect(m *module.Module) (ev *evidence, err error) {
 	// references, satisfactions and conversions again.
 	var roots []types.Type
 	for _, p := range m.Widest() {
-		ev.references(m, p)
 		ev.examples(m, p)
+	}
+	// A nested module's packages are read the same way. Examples aside: they
+	// name its own declarations, not these.
+	read := m.Widest()
+	for _, imp := range m.Importers {
+		read = append(read, imp.Pkgs...)
+	}
+	for _, p := range read {
+		ev.references(m, p)
 		roots = append(roots, ev.instances(m, p)...)
 		if err := ev.satisfactions(m, p); err != nil {
 			return nil, err
 		}
 	}
+	// What compares types runs within one nested module's load, since that
+	// is where its types and the ones it imports are the same objects.
+	for _, imp := range m.Importers {
+		roots = append(roots, reach.Conversions(imp.Pkgs)...)
+		roots = append(roots, evidenceTagged(imp.Pkgs)...)
+		ev.unnamedStructs(m, slices.Concat(imp.Pkgs, imp.Imported))
+	}
 	ev.linknames(m)
-	ev.unnamedStructs(m)
+	ev.unnamedStructs(m, m.Widest())
 	// What escapes into an interface: every conversion SSA sees, every type
 	// argument of a generic whose body it cannot see, and every struct type a
 	// tag declares reflection reads.
 	roots = append(roots, reach.Conversions(m.Widest())...)
-	roots = append(roots, evidenceTagged(m)...)
+	roots = append(roots, evidenceTagged(m.Widest())...)
 	reach.Reflect(roots, func(obj types.Object) { ev.escaped[keyOf(m.Fset, obj)] = true })
 	ev.exposure(m)
 	return ev, nil
@@ -321,14 +336,14 @@ func evidenceStructOf(t types.Type) (*types.Struct, *types.TypeName) {
 // from export data, appears only inside the type of the expression naming
 // that function. Identical ones are kept once, so a table-driven test
 // writing the same struct in every row costs one comparison.
-func (ev *evidence) unnamedStructs(m *module.Module) {
+func (ev *evidence) unnamedStructs(m *module.Module, pkgs []*packages.Package) {
 	var unnamed typeutil.Map
 	var named []*types.Struct
 	seenNamed := map[*types.Struct]bool{}
 	// One seen map for the run: a type already walked has already put every
 	// unnamed struct inside it into unnamed, so walking it again adds nothing.
 	seen := map[types.Type]bool{}
-	for _, p := range m.Widest() {
+	for _, p := range pkgs {
 		// The struct literal a defined type is declared with is recorded as a
 		// type expression too, but it is that type's own struct, not an
 		// unnamed one it could be assigned to.
@@ -524,6 +539,13 @@ func (ev *evidence) linknames(m *module.Module) {
 			add(f)
 		}
 	}
+	for _, imp := range m.Importers {
+		for _, p := range imp.Pkgs {
+			for _, f := range p.Syntax {
+				add(f)
+			}
+		}
+	}
 	for _, x := range m.Excluded {
 		add(x.Syntax)
 	}
@@ -573,19 +595,30 @@ func evidenceLinknameMember(name string) (typ, member string, isMember bool) {
 // exported symbols up.
 func (ev *evidence) exposure(m *module.Module) {
 	var roots []types.Type
-	for _, p := range m.Widest() {
-		if _, why := m.Range(p.PkgPath); why == "" && p.Name != "main" {
-			continue
-		}
+	exported := func(p *packages.Package) {
 		// An external test package is imported by nothing.
 		if p.ForTest != "" && p.PkgPath != p.ForTest {
-			continue
+			return
 		}
 		scope := p.Types.Scope()
 		for _, name := range scope.Names() {
 			if obj := scope.Lookup(name); obj.Exported() {
 				roots = append(roots, obj.Type())
 			}
+		}
+	}
+	for _, p := range m.Widest() {
+		if _, why := m.Range(p.PkgPath); why != "" || p.Name == "main" {
+			exported(p)
+		}
+	}
+	// A nested module is a module of its own, and others may import it: its
+	// API may hand out a value of a type of this one. Its internal packages
+	// are roots too. Only it could import them, but vouching for that would
+	// take judging it, which this run does not.
+	for _, imp := range m.Importers {
+		for _, p := range imp.Pkgs {
+			exported(p)
 		}
 	}
 	reach.ByName(roots, nil, func(obj types.Object) bool {
@@ -605,9 +638,9 @@ func (ev *evidence) exposure(m *module.Module) {
 // not a value of it reaches one in this module yet, so the struct escapes:
 // all of its fields, tagged or not, and what they hold. go vet also rejects a
 // json or xml tag on an unexported field, so the rename would not pass vet.
-func evidenceTagged(m *module.Module) []types.Type {
+func evidenceTagged(pkgs []*packages.Package) []types.Type {
 	var out []types.Type
-	for _, p := range m.Widest() {
+	for _, p := range pkgs {
 		for _, obj := range p.TypesInfo.Defs {
 			if tn, ok := obj.(*types.TypeName); ok && !tn.IsAlias() && evidenceTagIn(tn.Type().Underlying()) {
 				out = append(out, tn.Type())

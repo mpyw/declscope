@@ -227,7 +227,7 @@ Keep that type and its fields private. Expose small package-scoped functions tha
 
 - outside `internal/`, and in `package main`;
 - beside assembly or cgo;
-- under an `internal/` that a nested module's path extends, unless the workspace uses that module.
+- under an `internal/` that a nested module's path extends, when that module fails to load or reads this one from elsewhere, such as a published version.
 
 The exit status ignores those packages.
 
