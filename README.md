@@ -1170,8 +1170,6 @@ $ declscope ./...
 
 Run them in the same order in CI. `shrink` exits 3 when it reports anything, as the analyzer does. With `-fix`, only the reports left without a fix count.
 
-`shrink` consults the [baseline](#adopting-on-an-existing-codebase) the analyzer consults for each package, and `-config` names the config that names it. A report the baseline records is not printed, and `-fix` leaves its declaration alone. The declaration keeps its name while the rest are judged, so a type it returns is not unexported under it. An ignore is consulted first, as for the analyzer.
-
 ### Patterns
 
 The patterns only choose which packages are reported. To find uses, `shrink` always reads every package of the module, whatever the patterns name.
@@ -1349,7 +1347,7 @@ Neither command asks the analyzer's questions a second way. Both walk the same f
 
 ## Adopting on an existing codebase
 
-A **baseline** records the violations a codebase already has. Turning declscope on then reports only what is new.
+A **baseline** records the violations a codebase already has: the analyzer's, and what [`declscope shrink`](#unexporting-what-no-importer-uses) reports. Both then report only what is new.
 
 ```console
 declscope baseline ./...       # writes .declscope-baseline.yaml
@@ -1367,6 +1365,9 @@ packages:
         - Statement.wheres
       (core):
         - open
+    overexported:
+      userRepository:
+        - FindUser
 ```
 
 | | Spelling |
@@ -1390,6 +1391,7 @@ A baseline **suppresses and does not endorse**.
 - An entry is removed only by fixing the violation.
 - A configured baseline that does not exist yet behaves as an empty one.
 - The analyzer never reports an entry as stale. A test variant sees references the ordinary variant does not, so only regeneration, which analyzes both, can tell.
+- `shrink -fix` leaves a recorded declaration alone. A type it returns stays exported too, reported with no fix.
 - A regeneration records what one build configuration sees. A module that runs declscope under several, with other `GOFLAGS=-tags=...` or `GOOS`, gets the entries of the last run only.
 
 <details>
@@ -1409,7 +1411,7 @@ Each package's entries go to the file the analyzer will consult for that package
 
 `-o` bypasses that lookup and gathers every entry into one file.
 
-What `declscope shrink` reports over the same patterns is recorded too, by the package that declares each, as `overexported` entries. That loads the whole module once more. `-shrink=false` skips it, for a module that does not run `shrink`.
+Recording `shrink`'s reports loads the whole module once more. `-shrink=false` skips it, for a module that does not run `shrink`.
 
 If no pattern matches a package, the run stops and writes nothing, `-o` included. A pattern that matches nothing beside others that do gets a warning, as it does from `go vet`.
 
