@@ -1,10 +1,14 @@
-// Package module loads the main module for declscope shrink: every package
+// Package module loads the main modules for declscope shrink: every package
 // with its tests, every file the build left out, and every nested module,
 // and says which internal packages have importers this run can all see.
+//
+// There is one main module, or several in a workspace. Every one is loaded,
+// since each may import another's internal packages.
 package module
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"go/token"
 	"io/fs"
@@ -20,39 +24,47 @@ import (
 	"github.com/mpyw/declscope/internal/shrink/excluded"
 )
 
-// Module is every package of the main module, loaded with its tests, and
-// what the build left out of it.
+// Module is every package of the main modules, loaded with its tests, and
+// what the build left out of them.
 type Module struct {
-	// path and dir are the module's import path and root directory.
-	path, dir string
-	Fset      *token.FileSet
+	// mains are the main modules, in the order the go command lists them.
+	mains []mainModule
+	Fset  *token.FileSet
 	// Pkgs is every variant go/packages returned: a package, the package
 	// with its in-package tests, and its external test package, each
 	// separately. Paths lists their import paths in order.
 	Pkgs  []*packages.Package
 	Paths []string
-	// Excluded is every Go file of the module the build did not compile.
+	// Excluded is every Go file of the main modules the build did not
+	// compile.
 	Excluded []*excluded.File
 
 	byPath map[string][]*packages.Package
-	// nested is the module path of every go.mod below the root. Go checks
-	// internal/ by import path, so a nested module whose path extends an
-	// internal parent may import the package, and this run never loads it.
-	// One with an unrelated path cannot, wherever it sits.
+	// nested is the module path of every go.mod below a main module's root
+	// that is not a main module itself. Go checks internal/ by import path,
+	// so a nested module whose path extends an internal parent may import
+	// the package, and this run never loads it. One with an unrelated path
+	// cannot, wherever it sits.
 	nested []string
 }
 
-// Load loads every package of the main module holding dir.
+// mainModule is one main module: its import path and root directory.
+type mainModule struct {
+	path, dir string
+}
+
+// Load loads every package of the main modules the go command reports from
+// dir: the module holding it, or every module of its workspace.
 //
 // A load error refuses the whole run. A package that does not type-check
 // yields no references, which reads exactly like nothing using a declaration.
 func Load(dir string) (*Module, error) {
-	root, modPath, err := mainModule(dir)
+	mains, err := mainModules(dir)
 	if err != nil {
 		return nil, err
 	}
 	cfg := &packages.Config{
-		Dir: root,
+		Dir: dir,
 		// No NeedDeps: dependencies come from export data. Only the module's
 		// own packages are judged, and a generic declared outside the module
 		// has no body to read either way.
@@ -61,11 +73,18 @@ func Load(dir string) (*Module, error) {
 			packages.NeedTypesInfo | packages.NeedForTest | packages.NeedModule,
 		Tests: true,
 	}
-	pkgs, err := packages.Load(cfg, "./...")
+	// One load for every main module, so that they share one file set and
+	// one universe of objects. A directory pattern per module reads what
+	// ./... reads from its root, and needs no go command that knows "work".
+	patterns := make([]string, 0, len(mains))
+	for _, mm := range mains {
+		patterns = append(patterns, filepath.Join(mm.dir, "..."))
+	}
+	pkgs, err := packages.Load(cfg, patterns...)
 	if err != nil {
 		return nil, err
 	}
-	m := &Module{path: modPath, dir: root, byPath: map[string][]*packages.Package{}}
+	m := &Module{mains: mains, byPath: map[string][]*packages.Package{}}
 	var failed []string
 	for _, p := range pkgs {
 		if isTestMain(p) {
@@ -90,7 +109,7 @@ func Load(dir string) (*Module, error) {
 			strings.Join(slices.Compact(failed), "\n  "))
 	}
 	if m.Fset == nil {
-		return nil, fmt.Errorf("no package found in the module at %s", root)
+		return nil, fmt.Errorf("no package found in the module at %s", mains[0].dir)
 	}
 	slices.Sort(m.Paths)
 	for _, path := range m.Paths {
@@ -123,16 +142,18 @@ func (m *Module) Widest() []*packages.Package {
 //
 // The deepest internal element is the one that restricts: a/internal/b/
 // internal/c is importable only from a/internal/b. The tree must lie inside
-// the module, and no nested module may have a path inside it: that module
-// could import the package, and this run never loads it. The reason names
-// that module, since nothing else would lead a reader to it.
+// the main module declaring the package, and no nested module may have a
+// path inside it: that module could import the package, and this run never
+// loads it. The reason names that module, since nothing else would lead a
+// reader to it. Another main module's path may lie inside the tree, since
+// every main module is loaded.
 func (m *Module) Range(path string) (parent, why string) {
 	parent, ok := InternalParent(path)
 	if !ok {
 		return "", "not inside internal/, so another module may import it"
 	}
-	if parent != m.path && !strings.HasPrefix(parent, m.path+"/") {
-		return "", fmt.Sprintf("its internal/ parent %s lies above the module %s", parent, m.path)
+	if owner := m.owner(path); parent != owner.path && !strings.HasPrefix(parent, owner.path+"/") {
+		return "", fmt.Sprintf("its internal/ parent %s lies above the module %s", parent, owner.path)
 	}
 	for _, n := range m.nested {
 		if n == parent || strings.HasPrefix(n, parent+"/") {
@@ -140,6 +161,19 @@ func (m *Module) Range(path string) (parent, why string) {
 		}
 	}
 	return parent, ""
+}
+
+// owner returns the main module declaring the package at path: the one with
+// the longest module path that the import path lies in. A package this run
+// loaded always has one.
+func (m *Module) owner(path string) mainModule {
+	var best mainModule
+	for _, mm := range m.mains {
+		if (path == mm.path || strings.HasPrefix(path, mm.path+"/")) && len(mm.path) > len(best.path) {
+			best = mm
+		}
+	}
+	return best
 }
 
 // InternalParent returns the import path above the deepest internal element
@@ -154,43 +188,91 @@ func InternalParent(path string) (string, bool) {
 	return "", false
 }
 
-// Wanted resolves the patterns, from dir, to the import paths they name.
-func Wanted(dir string, patterns []string) (map[string]bool, error) {
+// Named is what the patterns name.
+type Named struct {
+	// Paths is every package they name in a main module.
+	Paths map[string]bool
+	// Outside counts the packages they name outside every main module: the
+	// standard library, a dependency, anything all names.
+	Outside int
+	// Unmatched lists the patterns that named no package, in order.
+	Unmatched []string
+}
+
+// Resolve resolves the patterns, from dir, to the packages they name, the way
+// the go command does.
+//
+// A pattern the go command rejects is an error with the go command's own
+// message, since go vet stops there too: a typo in CI must not pass as a run
+// that found nothing. A pattern that names nothing is a warning, and an error
+// when every pattern names nothing, which is what go vet does.
+//
+// Each pattern is resolved on its own. go/packages drops the go command's
+// "matched no packages" warning, and a load of the patterns together cannot
+// say which one it was about.
+func Resolve(dir string, patterns []string) (Named, error) {
 	if len(patterns) == 0 {
 		patterns = []string{"./..."}
 	}
-	pkgs, err := packages.Load(&packages.Config{Dir: dir, Mode: packages.NeedName}, patterns...)
-	if err != nil {
-		return nil, err
+	cfg := &packages.Config{Dir: dir, Mode: packages.NeedName | packages.NeedModule}
+	named := Named{Paths: map[string]bool{}}
+	outside := map[string]bool{}
+	var problems []string
+	for _, pattern := range patterns {
+		pkgs, err := packages.Load(cfg, pattern)
+		if err != nil {
+			return Named{}, err
+		}
+		if len(pkgs) == 0 {
+			named.Unmatched = append(named.Unmatched, pattern)
+			continue
+		}
+		for _, p := range pkgs {
+			if len(p.Errors) > 0 {
+				problems = append(problems, p.Errors[0].Msg)
+				continue
+			}
+			if p.Module != nil && p.Module.Main {
+				named.Paths[p.PkgPath] = true
+			} else {
+				outside[p.PkgPath] = true
+			}
+		}
 	}
-	wanted := map[string]bool{}
-	for _, p := range pkgs {
-		wanted[p.PkgPath] = true
+	if len(problems) > 0 {
+		return Named{}, fmt.Errorf("%s", strings.Join(slices.Compact(problems), "\n"))
 	}
-	return wanted, nil
+	if len(named.Unmatched) == len(patterns) {
+		return Named{}, fmt.Errorf("%s matched no packages", strings.Join(patterns, " "))
+	}
+	named.Outside = len(outside)
+	return named, nil
 }
 
-// mainModule asks the go command for the module holding dir.
-func mainModule(dir string) (root, path string, err error) {
+// mainModules asks the go command for the main modules seen from dir: the
+// module holding it, or every module a workspace uses.
+func mainModules(dir string) ([]mainModule, error) {
 	cmd := exec.Command("go", "list", "-m", "-f", "{{.Dir}}\t{{.Path}}")
 	cmd.Dir = dir
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return "", "", fmt.Errorf("finding the module: %v: %s", err, strings.TrimSpace(stderr.String()))
+		return nil, fmt.Errorf("finding the module: %v: %s", err, strings.TrimSpace(stderr.String()))
 	}
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if len(lines) != 1 {
-		// A workspace lists every module it uses. Which one to shrink would be
-		// a guess, and the others may import this one's internal packages.
-		return "", "", fmt.Errorf("the go command reports %d main modules; run declscope shrink with GOWORK=off", len(lines))
+	// Split rather than Lines: an empty answer is one empty line, which the
+	// check below refuses like any line with no directory.
+	var mains []mainModule
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		root, path, ok := strings.Cut(line, "\t")
+		if !ok || root == "" {
+			// Outside a module, go list -m answers command-line-arguments,
+			// with no directory.
+			return nil, fmt.Errorf("not inside a module")
+		}
+		mains = append(mains, mainModule{path: path, dir: root})
 	}
-	root, path, ok := strings.Cut(lines[0], "\t")
-	if !ok || root == "" {
-		return "", "", fmt.Errorf("not inside a module")
-	}
-	return root, path, nil
+	return mains, nil
 }
 
 // isTestMain identifies the synthesized main package of a test binary, which
@@ -200,17 +282,23 @@ func isTestMain(p *packages.Package) bool {
 		!slices.ContainsFunc(p.GoFiles, func(f string) bool { return strings.HasSuffix(f, ".go") && filepath.Base(f) != "_testmain.go" })
 }
 
-// walk reads every Go file no loaded package holds, and every nested module.
+// walk reads every Go file no loaded package holds, and every nested module,
+// in each main module's tree.
 //
 // A package whose files are all excluded under this GOOS is not in the load
 // at all, so reading only IgnoredFiles would miss it. Files are read only
-// where ./... reads them: not under testdata, a directory starting with . or
-// _, the vendor directory at the root, or a nested module.
+// where ./... reads them, which go help packages lists: not under a directory
+// named vendor or testdata, one starting with . or _, a nested module, or a
+// directory an ignore directive in the module's go.mod names. A file outside
+// those is code another build configuration compiles. A file inside them is
+// not part of the module's build at all: nothing may import a vendored path,
+// and nothing under testdata or an ignored directory is a package of it.
 //
 // The walk itself goes everywhere but .git, since it is also looking for
 // go.mod files. A nested module in testdata/tools or _tools/gen is no part
 // of this module's build, but it can import the module's internal packages
-// all the same, at any depth.
+// all the same, at any depth. A nested module that is itself a main module
+// is walked on its own, and loaded, so it is not recorded.
 func (m *Module) walk() error {
 	compiled := map[string]bool{}
 	for _, p := range m.Pkgs {
@@ -218,7 +306,24 @@ func (m *Module) walk() error {
 			compiled[f] = true
 		}
 	}
+	mainDirs := map[string]bool{}
+	for _, mm := range m.mains {
+		mainDirs[mm.dir] = true
+	}
 	fset := token.NewFileSet()
+	for _, mm := range m.mains {
+		if err := m.walkModule(mm, mainDirs, compiled, fset); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Module) walkModule(mm mainModule, mainDirs, compiled map[string]bool, fset *token.FileSet) error {
+	ignored, err := ignoreDirectives(mm.dir)
+	if err != nil {
+		return err
+	}
 	// unread holds the directories whose Go files ./... does not read.
 	var unread []string
 	under := func(path string) bool {
@@ -226,16 +331,16 @@ func (m *Module) walk() error {
 			return strings.HasPrefix(path, dir+string(filepath.Separator))
 		})
 	}
-	return filepath.WalkDir(m.dir, func(path string, d fs.DirEntry, err error) error {
+	return filepath.WalkDir(mm.dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
-			if path == m.dir {
+			if path == mm.dir {
 				return nil
 			}
 			name := d.Name()
-			if name == ".git" {
+			if name == ".git" || mainDirs[path] {
 				return filepath.SkipDir
 			}
 			if data, err := os.ReadFile(filepath.Join(path, "go.mod")); err == nil {
@@ -247,8 +352,8 @@ func (m *Module) walk() error {
 				unread = append(unread, path)
 				return nil
 			}
-			rootVendor := name == "vendor" && filepath.Dir(path) == m.dir
-			if name == "testdata" || rootVendor || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") {
+			rel, _ := filepath.Rel(mm.dir, path)
+			if name == "testdata" || name == "vendor" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") || ignored.matches(rel) {
 				unread = append(unread, path)
 			}
 			return nil
@@ -263,4 +368,54 @@ func (m *Module) walk() error {
 		m.Excluded = append(m.Excluded, f)
 		return nil
 	})
+}
+
+// ignorePatterns are the ignore directives of one go.mod, spelled the way
+// the go command's search.IgnorePatterns compares them: with a slash at each
+// end, so that a directory matches only whole elements.
+type ignorePatterns struct {
+	// fromRoot are the ./x directives, which name x at the module root only.
+	// anywhere are the x directives, which name any directory x.
+	fromRoot, anywhere []string
+}
+
+// ignoreDirectives reads the ignore directives of the go.mod in dir.
+func ignoreDirectives(dir string) (ignorePatterns, error) {
+	name := filepath.Join(dir, "go.mod")
+	// A file that cannot be read parses as empty, so only the read error is
+	// reported for it.
+	data, readErr := os.ReadFile(name)
+	f, parseErr := modfile.ParseLax(name, data, nil)
+	if err := errors.Join(readErr, parseErr); err != nil {
+		return ignorePatterns{}, err
+	}
+	var ps ignorePatterns
+	for _, ig := range f.Ignore {
+		if rest, ok := strings.CutPrefix(ig.Path, "./"); ok {
+			ps.fromRoot = append(ps.fromRoot, slashed(rest))
+		} else {
+			ps.anywhere = append(ps.anywhere, slashed(ig.Path))
+		}
+	}
+	return ps, nil
+}
+
+// matches reports whether an ignore directive names rel, a directory
+// relative to the module root.
+func (ps ignorePatterns) matches(rel string) bool {
+	dir := slashed(rel)
+	return slices.ContainsFunc(ps.fromRoot, func(p string) bool { return strings.HasPrefix(dir, p) }) ||
+		slices.ContainsFunc(ps.anywhere, func(p string) bool { return strings.Contains(dir, p) })
+}
+
+// slashed spells a path with forward slashes and a slash at each end.
+func slashed(path string) string {
+	path = filepath.ToSlash(path)
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	if !strings.HasSuffix(path, "/") {
+		path += "/"
+	}
+	return path
 }

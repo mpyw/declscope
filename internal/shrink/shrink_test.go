@@ -259,3 +259,26 @@ func TestShrinkConverges(t *testing.T) {
 		})
 	}
 }
+
+// TestApplyFailures pins that a fix that cannot be written stops with the
+// error, file by file, rather than leaving the reader to think it was
+// applied.
+func TestApplyFailures(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root reads and writes every file")
+	}
+	dir := t.TempDir()
+	edit := func(name string) []shrink.Finding {
+		return []shrink.Finding{{Fix: []shrink.Edit{{Filename: filepath.Join(dir, name), Start: 0, End: 1, NewText: "x"}}}}
+	}
+	for name, mode := range map[string]os.FileMode{"unreadable.go": 0o200, "readonly.go": 0o444} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("package p\n"), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"missing.go", "unreadable.go", "readonly.go"} {
+		if err := shrink.Apply(edit(name)); err == nil {
+			t.Errorf("%s: the fix was reported applied", name)
+		}
+	}
+}

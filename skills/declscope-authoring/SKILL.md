@@ -220,12 +220,14 @@ Keep that type and its fields private. Expose small package-scoped functions tha
 | `... (no fix: <reason>)` | A use may exist that `shrink` cannot prove, or the rename is unsafe. **Do not unexport it by hand.** Read the reason first |
 | `... only the external tests of <pkg> use it` | Keep it exported. Add `//declscope:ignore overexported // <why>` when the tests use it on purpose |
 | `declscope shrink: not judged: <pkg>: <reason>` on stderr | That package was not checked. It is not clean |
+| `declscope shrink: warning: "<pattern>" matched no packages` on stderr | The pattern checked nothing. Fix the pattern, as you would for `go vet` |
+| `declscope shrink: not judged: <n> package(s) outside the main module` on stderr | The patterns named packages `shrink` never judges, such as `std`. Nothing to do |
 
 **A package not judged is not a package with nothing to report.** `shrink` stands down wherever an importer could be unseen:
 
 - outside `internal/`, and in `package main`;
 - beside assembly or cgo;
-- under an `internal/` that a nested module's path extends.
+- under an `internal/` that a nested module's path extends, unless the workspace uses that module.
 
 The exit status ignores those packages.
 
