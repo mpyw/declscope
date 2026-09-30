@@ -464,17 +464,61 @@ func TestSubcommandsReportALoadFailure(t *testing.T) {
 }
 
 // TestBaselineWithNothingToRecord checks a module with no package: the run
-// says so and writes no file, since an empty baseline would read as a clean
-// codebase.
+// stops as go vet does, and writes no file, since an empty baseline would
+// read as a clean codebase.
 func TestBaselineWithNothingToRecord(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, "go.mod", testModule)
 	out, code := runIn(t, bin, root, "baseline", "./...")
-	if code != 0 || !strings.Contains(out, "no packages matched, nothing recorded") {
-		t.Errorf("exited %d, want 0 and the notice:\n%s", code, out)
+	if code != 1 || !strings.Contains(out, "declscope baseline: ./... matched no packages") {
+		t.Errorf("exited %d, want 1 and the refusal:\n%s", code, out)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".declscope-baseline.yaml")); err == nil {
 		t.Error("a run with nothing to record wrote a baseline")
+	}
+}
+
+// TestBaselineKeepsTheFileOnAPatternMatchingNothing checks that -o with
+// patterns naming no package leaves the file alone. Writing it would replace
+// every recorded violation with none, and the next analyzer run would report
+// them all as new.
+func TestBaselineKeepsTheFileOnAPatternMatchingNothing(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", testModule)
+	writeTree(t, root, "empty/README", "no Go here\n")
+	const recorded = "packages:\n  example.com/declscopetest/p:\n    boundary:\n      p:\n        - helper\n"
+	writeTree(t, root, "keep.yaml", recorded)
+	out, code := runIn(t, bin, root, "baseline", "-o", "keep.yaml", "./empty/...")
+	if code != 1 || !strings.Contains(out, "declscope baseline: ./empty/... matched no packages") {
+		t.Errorf("exited %d, want 1 and the refusal:\n%s", code, out)
+	}
+	if got, err := os.ReadFile(filepath.Join(root, "keep.yaml")); err != nil || string(got) != recorded {
+		t.Errorf("the baseline was rewritten (err %v):\n%s", err, got)
+	}
+}
+
+// TestUnmatchedPatternWarns checks that every subcommand warns about a
+// pattern that names no package while another does, as the go command does.
+func TestUnmatchedPatternWarns(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", testModule)
+	writeTree(t, root, "p/p.go", "package p\n")
+	writeTree(t, root, "empty/README", "no Go here\n")
+	for _, args := range [][]string{
+		{"baseline", "-o", filepath.Join(t.TempDir(), "b.yaml")},
+		{"survey"},
+		{"inspect"},
+	} {
+		out, code := runIn(t, bin, root, append(args, "./empty/...", "./p")...)
+		want := `declscope ` + args[0] + `: warning: "./empty/..." matched no packages`
+		if code != 0 || !strings.Contains(out, want) {
+			t.Errorf("%v: exited %d, want 0 and %q:\n%s", args, code, out, want)
+		}
+		out, code = runIn(t, bin, root, append(args, "./empty/...")...)
+		want = "declscope " + args[0] + ": ./empty/... matched no packages"
+		if code != 1 || !strings.Contains(out, want) {
+			t.Errorf("%v: exited %d, want 1 and %q:\n%s", args, code, out, want)
+		}
 	}
 }
 

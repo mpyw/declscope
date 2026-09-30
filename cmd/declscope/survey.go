@@ -50,7 +50,7 @@ func surveyRun(args []string) {
 		surveyFail(err)
 	}
 
-	pkgs, err := loadPackages(patterns, *tests)
+	pkgs, err := loadPackages("survey", patterns, *tests)
 	if err != nil {
 		surveyFail(err)
 	}

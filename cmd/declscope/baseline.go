@@ -68,10 +68,6 @@ func baselineRun(args []string) {
 	if err != nil {
 		baselineFail(err)
 	}
-	if len(targets) == 0 {
-		fmt.Fprintln(os.Stderr, "declscope: no packages matched, nothing recorded")
-		return
-	}
 	for _, path := range slices.Sorted(maps.Keys(targets)) {
 		n, err := baseline.Save(path, targets[path])
 		if err != nil {
@@ -92,7 +88,7 @@ func baselineRun(args []string) {
 // that lookup ends. An explicit -o overrides this and gathers everything into
 // one file, which is then the caller's job to place.
 func baselineCollect(patterns []string, configPath, out, cwd string) (map[string][]baseline.Key, error) {
-	pkgs, err := loadPackages(patterns, true)
+	pkgs, err := loadPackages("baseline", patterns, true)
 	if err != nil {
 		return nil, err
 	}

@@ -21,6 +21,7 @@ import (
 	"golang.org/x/mod/modfile"
 	"golang.org/x/tools/go/packages"
 
+	"github.com/mpyw/declscope/internal/pattern"
 	"github.com/mpyw/declscope/internal/shrink/excluded"
 )
 
@@ -205,45 +206,37 @@ type Named struct {
 // A pattern the go command rejects is an error with the go command's own
 // message, since go vet stops there too: a typo in CI must not pass as a run
 // that found nothing. A pattern that names nothing is a warning, and an error
-// when every pattern names nothing, which is what go vet does.
-//
-// Each pattern is resolved on its own. go/packages drops the go command's
-// "matched no packages" warning, and a load of the patterns together cannot
-// say which one it was about.
+// when every pattern names nothing, which is what go vet does. Package
+// pattern answers which ones those are, for every command alike.
 func Resolve(dir string, patterns []string) (Named, error) {
 	if len(patterns) == 0 {
 		patterns = []string{"./..."}
 	}
 	cfg := &packages.Config{Dir: dir, Mode: packages.NeedName | packages.NeedModule}
+	pkgs, err := packages.Load(cfg, patterns...)
+	if err != nil {
+		return Named{}, err
+	}
 	named := Named{Paths: map[string]bool{}}
 	outside := map[string]bool{}
 	var problems []string
-	for _, pattern := range patterns {
-		pkgs, err := packages.Load(cfg, pattern)
-		if err != nil {
-			return Named{}, err
-		}
-		if len(pkgs) == 0 {
-			named.Unmatched = append(named.Unmatched, pattern)
+	for _, p := range pkgs {
+		if len(p.Errors) > 0 {
+			problems = append(problems, p.Errors[0].Msg)
 			continue
 		}
-		for _, p := range pkgs {
-			if len(p.Errors) > 0 {
-				problems = append(problems, p.Errors[0].Msg)
-				continue
-			}
-			if p.Module != nil && p.Module.Main {
-				named.Paths[p.PkgPath] = true
-			} else {
-				outside[p.PkgPath] = true
-			}
+		if p.Module != nil && p.Module.Main {
+			named.Paths[p.PkgPath] = true
+		} else {
+			outside[p.PkgPath] = true
 		}
 	}
 	if len(problems) > 0 {
+		slices.Sort(problems)
 		return Named{}, fmt.Errorf("%s", strings.Join(slices.Compact(problems), "\n"))
 	}
-	if len(named.Unmatched) == len(patterns) {
-		return Named{}, fmt.Errorf("%s matched no packages", strings.Join(patterns, " "))
+	if named.Unmatched, err = pattern.Unmatched(cfg, patterns, pkgs); err != nil {
+		return Named{}, err
 	}
 	named.Outside = len(outside)
 	return named, nil

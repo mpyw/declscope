@@ -180,7 +180,7 @@ func TestInspectRefusesAPatternMatchingNothing(t *testing.T) {
 	dir := t.TempDir()
 	writeTree(t, dir, "go.mod", testModule)
 	out, code := runIn(t, bin, dir, "inspect", "./...")
-	if code != 1 || !strings.Contains(out, "no package matched") {
+	if code != 1 || !strings.Contains(out, "declscope inspect: ./... matched no packages") {
 		t.Errorf("exited %d, want 1 with the refusal:\n%s", code, out)
 	}
 }

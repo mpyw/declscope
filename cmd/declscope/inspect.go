@@ -50,7 +50,7 @@ func inspectRun(args []string) {
 		inspectFail(err)
 	}
 
-	pkgs, err := loadPackages(patterns, *tests)
+	pkgs, err := loadPackages("inspect", patterns, *tests)
 	if err != nil {
 		inspectFail(err)
 	}
@@ -113,9 +113,10 @@ func inspectOnePackage(pkgs []*packages.Package) (*packages.Package, error) {
 	}
 	slices.Sort(paths)
 
+	// No pattern can leave paths empty: loadPackages refuses one that names
+	// no package, and a package that does not type-check is refused before
+	// this.
 	switch len(paths) {
-	case 0:
-		return nil, fmt.Errorf("no package matched")
 	case 1:
 		return byPath[paths[0]], nil
 	default:
