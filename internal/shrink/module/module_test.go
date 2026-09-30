@@ -3,6 +3,7 @@ package module
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -126,5 +127,97 @@ func TestIgnoreDirectivesRefuses(t *testing.T) {
 	}
 	if _, err := ignoreDirectives(broken); err == nil {
 		t.Error("a go.mod that does not parse gave no error")
+	}
+}
+
+// TestLoadReadsNestedModuleAgainstTheMainFileSet pins what makes a nested
+// module's uses match the main load's declarations. Its load shares the main
+// file set, so keyOf reads its positions where they were written, and the
+// main module's packages it imports are roots, read from source. Checking
+// the reports alone cannot pin the file set: two loads of a small module
+// may happen to add its files in the same order.
+func TestLoadReadsNestedModuleAgainstTheMainFileSet(t *testing.T) {
+	root, err := filepath.Abs("../testdata/nested-module-uses")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Importers) != 1 {
+		t.Fatalf("importers = %d, want the one nested module", len(m.Importers))
+	}
+	imp := m.Importers[0]
+	if len(imp.Pkgs) == 0 {
+		t.Fatal("the nested module's own packages were not loaded")
+	}
+	for _, p := range slices.Concat(imp.Pkgs, imp.Imported) {
+		if p.Fset != m.Fset {
+			t.Errorf("%s was loaded into a file set of its own", p.ID)
+		}
+	}
+	if len(imp.Imported) != 1 || imp.Imported[0].PkgPath != "example.com/nu/internal/a" || len(imp.Imported[0].Syntax) == 0 {
+		t.Errorf("imported = %v, want example.com/nu/internal/a, read from source", imp.Imported)
+	}
+	if _, why := m.Range("example.com/nu/internal/a"); why != "" {
+		t.Errorf("the range is still unjudged: %s", why)
+	}
+}
+
+// nestedTree writes a module example.com/m with one internal package, and a
+// nested module example.com/m/tools holding files, and returns the root.
+func nestedTree(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	all := map[string]string{
+		"go.mod":          "module example.com/m\n\ngo 1.25\n",
+		"internal/a/a.go": "package a\n\nfunc F() {}\n",
+	}
+	for name, body := range files {
+		all[name] = body
+	}
+	for name, body := range all {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+// TestLoadLeavesUnreadableNestedModulesUnjudged pins that a nested module
+// this run cannot read keeps the range unjudged, and says why, rather than
+// reading as a module that uses nothing.
+func TestLoadLeavesUnreadableNestedModulesUnjudged(t *testing.T) {
+	for name, tc := range map[string]struct {
+		files map[string]string
+		want  string
+	}{
+		"a go.mod the go command rejects": {
+			files: map[string]string{"tools/go.mod": "module example.com/m/tools\n\ngo 1.25\n\nrequire (\n"},
+			want:  "loading it failed",
+		},
+		"a build-excluded file that does not parse": {
+			files: map[string]string{
+				"tools/go.mod": "module example.com/m/tools\n\ngo 1.25\n",
+				"tools/x.go":   "//go:build never\n\npackage tools\n\nthis is not Go\n",
+			},
+			want: "which the build excludes",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m, err := Load(nestedTree(t, tc.files))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, why := m.Range("example.com/m/internal/a")
+			if !strings.Contains(why, "the nested module example.com/m/tools may import it, and ") || !strings.Contains(why, tc.want) {
+				t.Errorf("why = %q, want the nested module named and %q", why, tc.want)
+			}
+		})
 	}
 }

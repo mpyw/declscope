@@ -1129,7 +1129,7 @@ A [`boundary`](#boundary) fix on a type widens its members too. Under `strict`, 
 
 **Why it matters.** An exported declaration takes package scope by default, so the analyzer never reports a boundary on it. An exported name that nothing outside needs hides a declaration from every check here. Unexported, it takes `private`, and the analyzer checks who reaches it.
 
-**Why a subcommand.** The analyzer reads one package, and any importer might use an exported name. Inside `internal/`, Go limits the importers to one directory tree. `shrink` loads the whole module, so it sees every one of them. In a workspace, it loads every module of the workspace. `go vet` and golangci-lint never run it.
+**Why a subcommand.** The analyzer reads one package, and any importer might use an exported name. Inside `internal/`, Go limits the importers to one directory tree. `shrink` loads the whole module, so it sees every one of them. In a workspace, it loads every module of the workspace. A nested module whose path lies under an `internal/` parent can import the package too, so `shrink` loads it as well, and counts its uses. `go vet` and golangci-lint never run it.
 
 ```go
 // internal/user/user.go
@@ -1225,7 +1225,7 @@ Deleting unused code is out of scope. Once a declaration is unexported, staticch
 | A package outside `internal/` | Another module may import it |
 | `package main` | `-buildmode=plugin` looks its exported symbols up by name |
 | A package with assembly or cgo, for any architecture | Those files name Go symbols where `go/types` does not look |
-| An `internal/` whose parent path a nested module's path extends | That module may import the package, and this run never loads it. A nested module the workspace uses is loaded, so it does not count |
+| An `internal/` whose parent path a nested module's path extends, when that module cannot be read | The module may import the package, and its uses are unknown. That happens when it fails to load, or reads this module from anywhere but this directory, such as a published version |
 | A package `./...` leaves out, named on its own, such as one under `testdata` | This run does not load it, so it has read none of its uses |
 | An interface's method names, and the test functions of a `_test.go` file | Every implementation would rename too, and `go test` finds a test by name |
 

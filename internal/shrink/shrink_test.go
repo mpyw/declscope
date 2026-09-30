@@ -139,24 +139,68 @@ func TestShrinkNotJudged(t *testing.T) {
 // internal/ parent keeps every package under it unjudged.
 func TestShrinkNestedModule(t *testing.T) { shrinkCheck(t, "testdata/nested-module") }
 
-// TestShrinkNestedModuleInUnderscoreDir pins the same for a nested module in
-// a directory ./... skips, and that the skipped package is named.
+// TestShrinkNestedModuleInUnderscoreDir pins that a nested module in a
+// directory ./... skips is still found and loaded, so the use it makes of
+// a.F counts and nothing is left unjudged.
 func TestShrinkNestedModuleInUnderscoreDir(t *testing.T) {
-	shrinkCheck(t, "testdata/nested-module-in-underscore-dir")
-	dir, err := filepath.Abs("testdata/nested-module-in-underscore-dir")
+	res := shrinkRun(t, "testdata/nested-module-in-underscore-dir")
+	if len(res.Skipped) != 0 {
+		t.Errorf("skipped = %+v, want none: the nested module is loaded", res.Skipped)
+	}
+}
+
+// TestShrinkNestedModuleUses pins that a loaded nested module counts as an
+// importer in every way the evidence reads: a call, a static interface
+// satisfaction, a value that escapes into fmt, and a name written in a file
+// its build excludes.
+func TestShrinkNestedModuleUses(t *testing.T) {
+	res := shrinkRun(t, "testdata/nested-module-uses")
+	if len(res.Skipped) != 0 {
+		t.Errorf("skipped = %+v, want none", res.Skipped)
+	}
+}
+
+// TestShrinkNestedModuleElsewhere pins that a nested module reading the
+// module from another directory leaves the range unjudged, and says where
+// it reads it from.
+func TestShrinkNestedModuleElsewhere(t *testing.T) {
+	res := shrinkRun(t, "testdata/nested-module-elsewhere")
+	if len(res.Skipped) != 1 || res.Skipped[0].Package != "example.com/ne/internal/a" ||
+		!strings.Contains(res.Skipped[0].Reason, "the nested module example.com/ne/tools may import it, and it reads example.com/ne/internal/a from") ||
+		!strings.Contains(res.Skipped[0].Reason, "nested-module-elsewhere-copy") {
+		t.Errorf("skipped = %+v, want internal/a, naming the copy it is read from", res.Skipped)
+	}
+}
+
+// TestShrinkNestedModuleBroken pins that a nested module that does not
+// type-check leaves the range unjudged, rather than reading as a module that
+// uses nothing.
+func TestShrinkNestedModuleBroken(t *testing.T) {
+	res := shrinkRun(t, "testdata/nested-module-broken")
+	if len(res.Skipped) != 1 || res.Skipped[0].Package != "example.com/nb/internal/a" ||
+		!strings.Contains(res.Skipped[0].Reason, "does not type-check") {
+		t.Errorf("skipped = %+v, want internal/a, naming the type error", res.Skipped)
+	}
+}
+
+// shrinkRun checks a module's wants, as shrinkCheck does, and returns the
+// whole result.
+func shrinkRun(t *testing.T, dir string) shrink.Result {
+	t.Helper()
+	shrinkCheck(t, dir)
+	abs, err := filepath.Abs(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := shrink.Run(dir, nil)
+	abs, err = filepath.EvalSymlinks(abs)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The reason names the module, since nothing else would lead a reader to
-	// a go.mod in a directory ./... skips.
-	if len(res.Skipped) != 1 || res.Skipped[0].Package != "example.com/tl/internal/a" ||
-		!strings.Contains(res.Skipped[0].Reason, "nested module example.com/tl/_tools") {
-		t.Errorf("skipped = %+v, want internal/a, naming the nested module", res.Skipped)
+	res, err := shrink.Run(abs, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return res
 }
 
 // TestShrinkNestedModuleInTestdata pins the same for a nested module one
@@ -207,7 +251,7 @@ func TestShrinkRenamesDoc(t *testing.T) {
 // which also compiles the tests; every report that offered a fix is gone; and
 // no report appears that was not there before.
 func TestShrinkConverges(t *testing.T) {
-	for _, name := range []string{"uses", "escapes", "fix-withheld", "rename-guards", "ignores", "module-under-internal"} {
+	for _, name := range []string{"uses", "escapes", "fix-withheld", "rename-guards", "ignores", "module-under-internal", "nested-module-uses"} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			if err := os.CopyFS(dir, os.DirFS(filepath.Join("testdata", name))); err != nil {
@@ -236,10 +280,21 @@ func TestShrinkConverges(t *testing.T) {
 			}
 			// composites is off: uses writes an unkeyed literal of another
 			// package's struct on purpose, since that is a use to count.
-			vet := exec.Command("go", "vet", "-composites=false", "./...")
-			vet.Dir = dir
-			if out, err := vet.CombinedOutput(); err != nil {
-				t.Fatalf("go vet after the fix: %v\n%s", err, out)
+			// Every module of the copy, nested ones included: a fix must not
+			// break a nested module that imports the one fixed.
+			err = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+				if err != nil || d.IsDir() || d.Name() != "go.mod" {
+					return err
+				}
+				vet := exec.Command("go", "vet", "-composites=false", "./...")
+				vet.Dir = filepath.Dir(path)
+				if out, err := vet.CombinedOutput(); err != nil {
+					t.Fatalf("go vet in %s after the fix: %v\n%s", vet.Dir, err, out)
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
 			}
 			res, err = shrink.Run(dir, nil)
 			if err != nil {

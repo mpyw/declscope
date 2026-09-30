@@ -1,5 +1,5 @@
 // Package a is imported by the nested module in _tools, whose path lies under
-// this module's, so nothing is said about it.
+// this module's. That module is loaded, so its use of F counts.
 package a
 
 func F() {}
