@@ -41,7 +41,9 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
+	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/directive"
+	"github.com/mpyw/declscope/internal/namespace"
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/shrink/excluded"
 	"github.com/mpyw/declscope/internal/shrink/module"
@@ -59,6 +61,10 @@ type Finding struct {
 	Name, Kind string
 	// Package is the import path of the package that declares it.
 	Package string
+	// Owner is the type a method or field belongs to, and Namespace the one
+	// of the file declaring it, spelled as a baseline spells it. Both go into
+	// Key.
+	Owner, Namespace string
 	// TestOnly marks a declaration only external tests use. It keeps its
 	// name, since the external test package would stop compiling.
 	TestOnly bool
@@ -68,6 +74,21 @@ type Finding struct {
 	// own package. It is nil when the fix is withheld.
 	Fix []Edit
 }
+
+// Key identifies the finding in a baseline the way the analyzer's keys do: a
+// member by its owner's name and its own, under the namespace of the file
+// that declares it.
+func (f Finding) Key() baseline.Key {
+	decl := f.Name
+	if f.Owner != "" {
+		decl = f.Owner + "." + f.Name
+	}
+	return baseline.Key{Package: f.Package, Rule: f.Rule, Namespace: f.Namespace, Decl: decl}
+}
+
+// Baselined reports whether the baseline that applies to the package in dir
+// records k.
+type Baselined func(dir string, k baseline.Key) bool
 
 // Edit replaces the bytes [Start, End) of a file.
 type Edit struct {
@@ -119,7 +140,12 @@ type Skipped struct {
 // from dir as the go command resolves them. Every package of the main
 // modules is loaded whatever the patterns say, since an importer outside
 // them still counts.
-func Run(dir string, patterns []string) (Result, error) {
+//
+// A report baselined records is left out, and so is its fix, as a report an
+// ignore silences is. Both keep their names while the rest are judged. An
+// ignore is consulted first, as the analyzer does, so an ignore over a
+// baselined declaration still silences it. baselined may be nil.
+func Run(dir string, patterns []string, baselined Baselined) (Result, error) {
 	// The patterns first: a pattern the go command rejects is the cheaper
 	// thing to find, and the one a reader should see.
 	named, err := module.Resolve(dir, patterns)
@@ -134,7 +160,7 @@ func Run(dir string, patterns []string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	r := &run{mod: mod, ev: ev, facts: map[string]*renameFacts{}, usedIgnores: map[token.Pos]bool{}}
+	r := &run{mod: mod, ev: ev, facts: map[string]*renameFacts{}, usedIgnores: map[token.Pos]bool{}, baselined: baselined}
 	res := Result{Outside: named.Outside, Unmatched: named.Unmatched}
 	// A package of a main module that ./... leaves out, such as one under
 	// testdata named on its own, is not loaded, so none of its uses were
@@ -344,6 +370,44 @@ type run struct {
 	//
 	//declscope:private
 	embedded map[string]bool
+	// baselined is how Run was asked what the baseline records, and
+	// namespaces caches each package's spelled namespace per file.
+	//
+	//declscope:private
+	baselined Baselined
+	//declscope:private
+	namespaces map[string]map[string]string
+}
+
+// namespaceOf spells the namespace of the file declaring the candidate, as
+// the analyzer spells it in a baseline key: namespace.Resolve reads every file
+// of the package that the analyzer reads, which leaves generated ones out.
+func (r *run) namespaceOf(c *candidate) string {
+	byFile, ok := r.namespaces[c.pkg.PkgPath]
+	if !ok {
+		var files []string
+		var declared []namespace.Declared
+		for _, f := range c.pkg.Syntax {
+			if ast.IsGenerated(f) {
+				continue
+			}
+			path := r.mod.Fset.PositionFor(f.Pos(), false).Filename
+			d := directive.ParseFile(f)
+			files = append(files, path)
+			declared = append(declared, namespace.Declared{Path: path, Core: d.Core, Named: d.HasNamespace, Name: d.Namespace})
+		}
+		byFile = map[string]string{}
+		for i, res := range namespace.Resolve(declared) {
+			byFile[files[i]] = namespace.Spell(res, files[i])
+		}
+		if r.namespaces == nil {
+			r.namespaces = map[string]map[string]string{}
+		}
+		r.namespaces[c.pkg.PkgPath] = byFile
+	}
+	// No candidate is declared in a generated file (candidatesOf), so every
+	// one is in the map.
+	return byFile[r.mod.Fset.PositionFor(c.obj.Pos(), false).Filename]
 }
 
 // skip says why a package is not judged at all, or returns "".
@@ -409,10 +473,14 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 			// A method or field is named alone, never with its type: the type
 			// may be fixed in the same run, and a report the run keeps must
 			// read the same afterwards.
-			Name:    c.obj.Name(),
-			Kind:    string(c.kind),
-			Package: c.pkg.PkgPath,
+			Name:      c.obj.Name(),
+			Kind:      string(c.kind),
+			Package:   c.pkg.PkgPath,
+			Namespace: r.namespaceOf(c),
 		}}
+		if c.kind.member() && c.owner != nil {
+			v.f.Owner = c.owner.Name()
+		}
 		if r.ev.extTest[c.key] {
 			// Exporting from an in-package _test.go file for the external
 			// tests is the export_test.go idiom, doing its job.
@@ -424,7 +492,8 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 			v.base = r.withheld(c)
 		}
 		v.silenced = ignoreCovers(c)
-		if v.base == "" && !v.silenced {
+		v.baselined = !v.silenced && r.baselined != nil && r.baselined(filepath.Dir(v.f.Pos.Filename), v.f.Key())
+		if v.base == "" && !v.silenced && !v.baselined {
 			v.plan, v.base = r.renamePlan(c)
 		}
 		vs = append(vs, v)
@@ -473,6 +542,7 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 		case v.used:
 		case v.silenced:
 			r.ignoreSilenced(v.c)
+		case v.baselined:
 		default:
 			if v.fixable() {
 				v.f.Fix = v.plan.edits
@@ -494,6 +564,9 @@ type verdict struct {
 	// its report is dropped. The ignore counts as used unless the candidate
 	// turns out used, when it silenced nothing.
 	silenced bool
+	// baselined marks a candidate the baseline records, and no ignore covers.
+	// It keeps its name, and its report is dropped.
+	baselined bool
 	// used marks a type an API used from another package carries, and kept
 	// one another exported declaration that keeps its name carries.
 	used, kept bool
@@ -501,7 +574,7 @@ type verdict struct {
 	lost bool
 }
 
-func (v *verdict) fixable() bool { return !v.used && !v.silenced && v.f.Withheld == "" }
+func (v *verdict) fixable() bool { return !v.used && !v.silenced && !v.baselined && v.f.Withheld == "" }
 
 // verdictsFirst returns the verdicts that are, or are not, in first, in
 // order.

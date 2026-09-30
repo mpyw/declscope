@@ -55,7 +55,7 @@ func shrinkCheck(t *testing.T, dir string) []shrink.Finding {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := shrink.Run(abs, nil)
+	res, err := shrink.Run(abs, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestShrinkNotJudged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := shrink.Run(dir, nil)
+	res, err := shrink.Run(dir, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func shrinkRun(t *testing.T, dir string) shrink.Result {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := shrink.Run(abs, nil)
+	res, err := shrink.Run(abs, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +223,7 @@ func TestShrinkRenamesDoc(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir, _ = filepath.EvalSymlinks(dir)
-	res, err := shrink.Run(dir, nil)
+	res, err := shrink.Run(dir, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func TestShrinkConverges(t *testing.T) {
 				t.Fatal(err)
 			}
 			dir, _ = filepath.EvalSymlinks(dir)
-			res, err := shrink.Run(dir, nil)
+			res, err := shrink.Run(dir, nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -302,7 +302,7 @@ func TestShrinkConverges(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			res, err = shrink.Run(dir, nil)
+			res, err = shrink.Run(dir, nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

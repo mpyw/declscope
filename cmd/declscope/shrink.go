@@ -1,11 +1,14 @@
 package main
 
 import (
+	"cmp"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 
+	"github.com/mpyw/declscope/internal/baseline"
+	"github.com/mpyw/declscope/internal/config"
 	"github.com/mpyw/declscope/internal/shrink"
 )
 
@@ -33,6 +36,7 @@ interface, the report stays and says why no fix is offered.
 func shrinkRun(args []string) {
 	fs := flag.NewFlagSet("declscope shrink", flag.ExitOnError)
 	fix := fs.Bool("fix", false, "unexport every declaration a fix is offered for")
+	configPath := fs.String("config", "", "path to a declscope YAML config file, for the baseline it names")
 	fs.Usage = func() {
 		_, _ = io.WriteString(fs.Output(), shrinkUsage)
 		fs.PrintDefaults()
@@ -44,7 +48,11 @@ func shrinkRun(args []string) {
 	if err != nil {
 		shrinkFail(err)
 	}
-	res, err := shrink.Run(dir, fs.Args())
+	baselines := &shrinkBaselines{explicit: *configPath, sets: map[string]*baseline.Set{}}
+	res, err := shrink.Run(dir, fs.Args(), baselines.has)
+	if err == nil {
+		err = baselines.err
+	}
 	if err != nil {
 		shrinkFail(err)
 	}
@@ -77,6 +85,29 @@ func shrinkRun(args []string) {
 	if printed > 0 {
 		os.Exit(3)
 	}
+}
+
+// shrinkBaselines answers shrink.Baselined from the baseline that applies to
+// each package, found as the analyzer finds it: named by the nearest config
+// file, or the nearest default-named file. The first error resolving one
+// fails the run, as it fails the analyzer.
+type shrinkBaselines struct {
+	explicit string
+	sets     map[string]*baseline.Set
+	err      error
+}
+
+func (b *shrinkBaselines) has(dir string, k baseline.Key) bool {
+	set, ok := b.sets[dir]
+	if !ok {
+		opts, _, err := config.Resolve(dir, b.explicit)
+		if err != nil {
+			b.err = cmp.Or(b.err, err)
+		}
+		set = opts.Baseline
+		b.sets[dir] = set
+	}
+	return set.Has(k)
 }
 
 func shrinkFail(err error) {

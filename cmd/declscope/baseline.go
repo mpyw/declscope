@@ -1,11 +1,13 @@
 package main
 
 import (
+	"cmp"
 	"flag"
 	"fmt"
 	"io"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -14,6 +16,8 @@ import (
 	"github.com/mpyw/declscope/internal"
 	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/config"
+	"github.com/mpyw/declscope/internal/rule"
+	"github.com/mpyw/declscope/internal/shrink"
 )
 
 const baselineUsage = `Usage: declscope baseline [flags] [packages]
@@ -26,6 +30,10 @@ package: the one named by its nearest config file, else the nearest existing
 default-named baseline at or below the working directory, else
 ` + baselineDefaultName + ` in the working directory. Every file written is
 regenerated wholesale; baselines above the working directory are left alone.
+
+What declscope shrink reports is recorded too, into the same files, so that
+shrink passes on what the baseline already holds. That loads the whole module
+once more. -shrink=false skips it, for a module that does not run shrink.
 
 `
 
@@ -48,6 +56,7 @@ func baselineRun(args []string) {
 	fs := flag.NewFlagSet("declscope baseline", flag.ExitOnError)
 	out := fs.String("o", "", "write every entry to this one file instead")
 	configPath := fs.String("config", "", "path to a declscope YAML config file")
+	withShrink := fs.Bool("shrink", true, "also record what declscope shrink reports (-shrink=false skips it)")
 	fs.Usage = func() {
 		_, _ = io.WriteString(fs.Output(), baselineUsage)
 		fs.PrintDefaults()
@@ -64,7 +73,7 @@ func baselineRun(args []string) {
 	if err != nil {
 		baselineFail(err)
 	}
-	targets, err := baselineCollect(patterns, *configPath, *out, cwd)
+	targets, err := baselineCollect(patterns, *configPath, *out, cwd, *withShrink)
 	if err != nil {
 		baselineFail(err)
 	}
@@ -87,7 +96,10 @@ func baselineRun(args []string) {
 // with its own default-named file, is suppressed only by entries written where
 // that lookup ends. An explicit -o overrides this and gathers everything into
 // one file, which is then the caller's job to place.
-func baselineCollect(patterns []string, configPath, out, cwd string) (map[string][]baseline.Key, error) {
+//
+// With shrink, the reports of declscope shrink over the same patterns are
+// placed the same way, by the package that declares each.
+func baselineCollect(patterns []string, configPath, out, cwd string, shrinkToo bool) (map[string][]baseline.Key, error) {
 	pkgs, err := loadPackages("baseline", patterns, true)
 	if err != nil {
 		return nil, err
@@ -122,16 +134,9 @@ func baselineCollect(patterns []string, configPath, out, cwd string) (map[string
 			results[i].err = err
 			return
 		}
-		path := out
+		path := baselineTarget(named, dir, out, cwd)
 		if path == "" {
-			path = named
-		}
-		if path == "" {
-			p, ok := config.DefaultBaseline(dir, cwd)
-			if !ok {
-				return
-			}
-			path = p
+			return
 		}
 		results[i] = collectedPackage{path: path, keys: internal.Collect(loadedPass(pkgs[i]), opts)}
 	})
@@ -148,6 +153,27 @@ func baselineCollect(patterns []string, configPath, out, cwd string) (map[string
 		}
 		targets[r.path] = append(targets[r.path], r.keys...)
 	}
+	if shrinkToo {
+		res, err := shrink.Run(cwd, patterns, nil)
+		if err != nil {
+			return nil, fmt.Errorf("declscope shrink: %w (pass -shrink=false to record the analyzer's findings alone)", err)
+		}
+		for _, f := range res.Findings {
+			// An unused ignore is a mistake in new code, not a finding the
+			// codebase already has.
+			if f.Rule != rule.Overexported {
+				continue
+			}
+			// The analyzer's pass above resolved this directory already: a
+			// config error there has returned, and a package no lookup would
+			// find is among the unplaceable ones.
+			dir := filepath.Dir(f.Pos.Filename)
+			_, _, named, _ := config.ResolveForBaseline(dir, configPath)
+			if path := baselineTarget(named, dir, out, cwd); path != "" {
+				targets[path] = append(targets[path], f.Key())
+			}
+		}
+	}
 	if len(unplaceable) > 0 {
 		slices.Sort(unplaceable)
 		unplaceable = slices.Compact(unplaceable)
@@ -155,6 +181,17 @@ func baselineCollect(patterns []string, configPath, out, cwd string) (map[string
 			baselineDefaultName, cwd, strings.Join(unplaceable, "\n"))
 	}
 	return targets, nil
+}
+
+// baselineTarget is the file a package in dir records its entries in: out
+// when given, else the baseline its nearest config names, else the file
+// config.DefaultBaseline finds. It is empty when none would be found from dir.
+func baselineTarget(named, dir, out, cwd string) string {
+	if path := cmp.Or(out, named); path != "" {
+		return path
+	}
+	path, _ := config.DefaultBaseline(dir, cwd)
+	return path
 }
 
 func baselineFail(err error) {

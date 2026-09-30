@@ -185,25 +185,12 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 	}
 }
 
-// namespaceForReport spells the namespace for the baseline, which is the one place it has
-// to be written down rather than compared.
-//
-// A namespace derived from a file name is normalized to alphanumerics, and one
-// written with //declscope:namespace must be an unexported identifier, so a
-// parenthesis can appear in neither. That leaves "(core)" free for the core,
-// whose prefix is empty and whose files all share it, and free for the file
-// with no stem at all — which has no namespace either, and must not share a
-// key with every other such file.
+// namespaceForReport spells the namespace for the baseline, the way
+// namespace.Spell spells it for declscope shrink too.
 //
 //declscope:package // the survey spells every namespace with it too
 func (f *fileInfo) namespaceForReport() string {
-	if f.core {
-		return "(core)"
-	}
-	if f.ns != "" {
-		return f.ns
-	}
-	return "(file " + filepath.Base(f.path) + ")"
+	return namespace.Spell(namespace.Resolved{Core: f.core, Name: f.ns}, f.path)
 }
 
 // settledInReport reports whether f is strict's finding on a member whose
