@@ -1172,14 +1172,16 @@ Run them in the same order in CI. `shrink` exits 3 when it reports anything, as 
 
 ### Patterns
 
-The patterns choose which packages are reported. Uses are still looked for in the whole module:
+The patterns only choose which packages are reported. To find uses, `shrink` always reads every package of the module, whatever the patterns name.
+
+For example, this reports only on `internal/user`:
 
 ```console
 $ declscope shrink ./internal/user/...
 internal/user/user.go:8:6: func Format is exported, but nothing outside example.com/app/internal/user uses it
 ```
 
-`api/` is not in the pattern, but its call to `user.Load` still counts. So `Load` is not reported.
+`Load` is not reported, although `api/` is outside the pattern. `api/api.go` calls `user.Load`, and that call is a use.
 
 Otherwise, a pattern behaves as it does for `go vet`:
 
