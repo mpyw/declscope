@@ -331,6 +331,16 @@ func (c *collection) surplusTrackedMethodNames() map[string]bool {
 //     asks for one. Alias names are looked through first.
 //   - The address of a pointer or of an interface, type parameters included,
 //     has no methods, so only the type itself is tested.
+//   - Every &x yields a pointer type of its own, so one type T arrives as
+//     many pointers, each with the same method set. Only the first pointer
+//     to each T is kept. Most of a large package's candidates are these
+//     copies, since the types seen are compared as pointers.
+//   - A type implements an interface only if its method set, or its
+//     address's, has a method of every name the interface requires. So each
+//     candidate is indexed by the names in that method set, and an interface
+//     is tested only against the candidates holding its rarest name. Without
+//     the index every interface meets every type the package spells, which
+//     is most of the time a large package spends in this rule.
 func surplusSatisfies(pass *analysis.Pass, reached map[types.Object]bool, tracked map[string]bool, interfaces []*types.Interface, satisfiers []types.Type) {
 	var asking []*types.Interface
 	for _, iface := range interfaces {
@@ -350,10 +360,16 @@ func surplusSatisfies(pass *analysis.Pass, reached map[types.Object]bool, tracke
 		viaAddress bool
 	}
 	var candidates []candidate
+	pointed := make(map[types.Type]bool)
 	for _, t := range satisfiers {
-		switch types.Unalias(t).(type) {
+		switch u := types.Unalias(t).(type) {
 		case *types.Basic, *types.Tuple, *types.Signature, *types.Slice, *types.Array, *types.Map, *types.Chan:
 			continue
+		case *types.Pointer:
+			if pointed[u.Elem()] {
+				continue
+			}
+			pointed[u.Elem()] = true
 		}
 		viaAddress := true
 		switch t.Underlying().(type) {
@@ -362,8 +378,26 @@ func surplusSatisfies(pass *analysis.Pass, reached map[types.Object]bool, tracke
 		}
 		candidates = append(candidates, candidate{t: t, viaAddress: viaAddress})
 	}
+	holding := make(map[string][]int)
+	for i, c := range candidates {
+		t := c.t
+		if c.viaAddress {
+			t = types.NewPointer(t)
+		}
+		for sel := range types.NewMethodSet(t).Methods() {
+			holding[sel.Obj().Name()] = append(holding[sel.Obj().Name()], i)
+		}
+	}
 	for _, iface := range asking {
-		for _, c := range candidates {
+		// asking holds only interfaces with a method, so Method(0) exists.
+		rarest := holding[iface.Method(0).Name()]
+		for want := range iface.Methods() {
+			if held := holding[want.Name()]; len(held) < len(rarest) {
+				rarest = held
+			}
+		}
+		for _, i := range rarest {
+			c := candidates[i]
 			if !types.Implements(c.t, iface) && (!c.viaAddress || !types.Implements(types.NewPointer(c.t), iface)) {
 				continue
 			}
@@ -477,7 +511,7 @@ func (c *collection) checkSurplusDeclaration(pass *analysis.Pass, opts Options, 
 	}
 	fix := analysis.SuggestedFix{
 		Message:   fmt.Sprintf("add %s to %s", scope.Private.Directive(), t.name()),
-		TextEdits: []analysis.TextEdit{directiveEditInReport(pass, t, scope.Private, t.doc)},
+		TextEdits: []analysis.TextEdit{c.directiveEditInReport(pass, t, scope.Private, t.doc)},
 	}
 	return f.msg, &fix, f.settledBy, true
 }

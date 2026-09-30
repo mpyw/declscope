@@ -24,19 +24,21 @@ func TestAtLineStartFailsSafe(t *testing.T) {
 		ReadFile: func(string) ([]byte, error) { return []byte(content), nil },
 		ResultOf: map[*analysis.Analyzer]any{inspect.Analyzer: inspector.New(nil)},
 	}
-	if !atLineStartForReport(pass, tf.Pos(strings.Index(content, "type"))) {
+	c := &collection{}
+	if !c.atLineStartForReport(pass, tf.Pos(strings.Index(content, "type"))) {
 		t.Fatal("a declaration at the start of its line was not recognised")
 	}
 	field := tf.Pos(strings.Index(content, "n int"))
-	if atLineStartForReport(pass, field) {
+	if c.atLineStartForReport(pass, field) {
 		t.Fatal("a field after code was called the start of its line")
 	}
 	for name, read := range map[string]func(string) ([]byte, error){
 		"a read error":                      func(string) ([]byte, error) { return nil, errors.New("gone") },
 		"a file shorter than it was parsed": func(string) ([]byte, error) { return []byte("package x\n"), nil },
 	} {
+		// A fresh collection for each, since a pass reads a file only once.
 		pass.ReadFile = read
-		if atLineStartForReport(pass, field) {
+		if (&collection{}).atLineStartForReport(pass, field) {
 			t.Errorf("%s: the position was called the start of its line", name)
 		}
 	}
