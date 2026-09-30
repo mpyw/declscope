@@ -1172,20 +1172,23 @@ Run them in the same order in CI. `shrink` exits 3 when it reports anything, as 
 
 ### Patterns
 
-The patterns choose which packages are reported. They do not choose what is loaded: an importer outside them still counts. They mean what they mean to `go vet`:
-
-| Pattern | Result |
-| --- | --- |
-| None | `./...` |
-| One the go command rejects, such as a directory that does not exist | The run stops with the go command's message, and exits 1 |
-| One that matches no package | A warning on stderr. If no pattern matches a package, the run stops and exits 1 |
-| One naming packages outside the main module, such as `std` or `fmt` | They are not judged. One line on stderr counts them |
-
-Build tags come from `GOFLAGS`, as for the analyzer:
+The patterns choose which packages are reported. Uses are still looked for in the whole module:
 
 ```console
-$ GOFLAGS=-tags=integration declscope shrink ./...
+$ declscope shrink ./internal/user/...
+internal/user/user.go:8:6: func Format is exported, but nothing outside example.com/app/internal/user uses it
 ```
+
+`api/` is not in the pattern, but its call to `user.Load` still counts. So `Load` is not reported.
+
+Otherwise, a pattern behaves as it does for `go vet`:
+
+| You pass | `declscope shrink` |
+| --- | --- |
+| Nothing | Reports on `./...` |
+| A directory that does not exist, such as `./nope/...` | Prints the go command's error and exits 1: `pattern ./nope/...: lstat ./nope/: no such file or directory` |
+| A pattern that matches no package, such as `./docs/...` | Warns `"./docs/..." matched no packages`, and goes on with the other patterns. If no pattern matches anything, it exits 1 |
+| Packages outside your module, such as `fmt` or `std` | Does not judge them, and prints one line: `not judged: 1 package(s) outside the main module` |
 
 <details>
 <summary>What counts as a use, and when the fix is withheld</summary>
