@@ -281,25 +281,32 @@ func (c *collection) ignoreMayCrossUnseen(pass *analysis.Pass, s *ignoreSite) bo
 		}
 	}
 	return slices.ContainsFunc(targets, func(t *target) bool {
-		return slices.ContainsFunc(ignoreCrossingNames(pass, t), func(n string) bool { return names[n] })
+		return slices.ContainsFunc(c.ignoreCrossingNames(pass, t), func(n string) bool { return names[n] })
 	})
 }
 
 // ignoreCrossingNames returns the names a file writes when it crosses into
 // t: its own, and for a field the name of its type or of an alias of it. An
-// unkeyed literal fills the fields by position and names only the type.
-func ignoreCrossingNames(pass *analysis.Pass, t *target) []string {
+// unkeyed literal fills the fields by position and names only the type. The
+// aliases are found once per pass.
+func (c *collection) ignoreCrossingNames(pass *analysis.Pass, t *target) []string {
 	out := []string{t.obj.Name()}
 	v, ok := t.obj.(*types.Var)
 	if !ok || !v.IsField() || t.ownerObj == nil {
 		return out
 	}
-	out = append(out, t.ownerObj.Name())
-	scope := pass.Pkg.Scope()
-	for _, name := range scope.Names() {
-		if tn, ok := scope.Lookup(name).(*types.TypeName); ok && tn.IsAlias() && tn != t.ownerObj && types.Identical(tn.Type(), t.ownerObj.Type()) {
-			out = append(out, name)
+	if c.aliasNames == nil {
+		c.aliasNames = map[types.Object][]string{}
+		scope := pass.Pkg.Scope()
+		for _, name := range scope.Names() {
+			tn, ok := scope.Lookup(name).(*types.TypeName)
+			if !ok || !tn.IsAlias() {
+				continue
+			}
+			if named, ok := types.Unalias(tn.Type()).(*types.Named); ok {
+				c.aliasNames[named.Obj()] = append(c.aliasNames[named.Obj()], name)
+			}
 		}
 	}
-	return out
+	return append(append(out, t.ownerObj.Name()), c.aliasNames[t.ownerObj]...)
 }

@@ -276,6 +276,9 @@ type collection struct {
 	//
 	//declscope:private
 	unseenScan *unseenFiles
+	// aliasNames maps a type of the package to the names of its aliases in
+	// the package scope. It is filled on first use.
+	aliasNames map[types.Object][]string
 
 	// linknamedScan is every local name a //go:linkname or //export directive
 	// in the package binds. The surplus evidence and the rename guard both
