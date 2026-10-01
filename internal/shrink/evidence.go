@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/types"
 	"slices"
+	"strconv"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
@@ -33,6 +34,10 @@ type evidence struct {
 	// names in every build configuration: from a file under no build
 	// constraint. A linkname counts too, since its file is not kept.
 	everywhere map[string]bool
+	// constrained is every file read that is behind a build constraint, by
+	// its package and the paths it imports. A configuration that leaves one
+	// out reads it for names only.
+	constrained []evidenceConstrained
 	// extTest is every declaration an external test package names.
 	extTest map[string]bool
 	// generated is every declaration a generated file of its own package
@@ -129,6 +134,14 @@ func evidenceCollect(m *module.Module) (ev *evidence, err error) {
 	return ev, nil
 }
 
+// evidenceConstrained is one file behind a build constraint.
+//
+//declscope:package // shrink.go asks it whether a file reaches a candidate
+type evidenceConstrained struct {
+	pkg     string
+	imports []string
+}
+
 // evidenceClass says where a reference stands relative to the package that
 // declares what it names.
 type evidenceClass int
@@ -187,6 +200,15 @@ func (ev *evidence) references(m *module.Module, p *packages.Package) {
 		gen := ast.IsGenerated(file)
 		// A file no configuration leaves out holds its uses in every one.
 		free := !buildtag.Constrained(m.Fset.File(file.Pos()).Name(), file)
+		if !free {
+			f := evidenceConstrained{pkg: p.PkgPath}
+			for _, imp := range file.Imports {
+				if path, err := strconv.Unquote(imp.Path.Value); err == nil {
+					f.imports = append(f.imports, path)
+				}
+			}
+			ev.constrained = append(ev.constrained, f)
+		}
 		ast.Inspect(file, func(n ast.Node) bool {
 			switch n := n.(type) {
 			case *ast.Ident:

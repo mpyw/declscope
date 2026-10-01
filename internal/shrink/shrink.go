@@ -366,6 +366,11 @@ type run struct {
 	facts map[string]*renameFacts
 	// usedIgnores is every ignore naming overexported that silenced a report.
 	usedIgnores map[token.Pos]bool
+	// constrainedNear caches, per package path, whether a file behind a
+	// build constraint is in the package or reaches it.
+	//
+	//declscope:private
+	constrainedNear map[string]bool
 	// embedded is every type some struct of the module embeds, keyed by
 	// keyOf. It is built on first use.
 	//
@@ -468,7 +473,7 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 		if r.usedOutside(c) {
 			// A configuration that leaves out the files using it reports it,
 			// and the ignore answers the report there.
-			if r.usedOnlyConstrained(c) {
+			if r.neededWithoutConstrained(c) {
 				r.ignoreSilenced(c)
 			}
 			continue
@@ -700,31 +705,37 @@ func (r *run) usedOutside(c *candidate) bool {
 	return slices.ContainsFunc(uses, func(used func() bool) bool { return used() })
 }
 
-// usedOnlyConstrained reports whether every use outside the package that
-// usedOutside found is in a file behind a build constraint, and a
-// configuration that leaves those files out would report the candidate
-// anyway. Such a configuration reads them for names only, and for a field, a
-// method, or a type some struct embeds, a name is not enough, so the report
-// stands there with its fix withheld (maybeUsedIn). An ignore that answers it
-// is needed in that configuration, and is not unused in this one.
+// neededWithoutConstrained reports whether a configuration that leaves the
+// files behind a build constraint out would report the candidate, so that
+// an ignore answering the report is needed there. Such a configuration
+// reads them for names only, and for a field, a method, or a type some
+// struct embeds, a name is not enough: it reports the candidate with its fix
+// withheld wherever one of those files is in its package or imports a path
+// that reaches it (maybeUsedIn, maybeUsedInOwn). Here, that is asked of the
+// files this run reads.
 //
-// Any other kind of use is seen in every configuration, and so is the
-// qualified name a build-excluded file writes for any other declaration, so
-// its ignore is needed in none of them.
-func (r *run) usedOnlyConstrained(c *candidate) bool {
-	ev, key := r.ev, c.key
-	if !r.usedImplicitly(c) || !ev.outside[key] || ev.everywhere[key] {
+// How this run uses the candidate does not enter. A use behind the same
+// constraint, a spelled one or an escape alike, is gone in that
+// configuration. A use seen in every one keeps it from reporting, and its
+// unused report on the ignore catches a stale one there. Only a name spelled
+// from a file under no constraint is known to be seen in every one, and it
+// settles the matter here.
+func (r *run) neededWithoutConstrained(c *candidate) bool {
+	if !r.usedImplicitly(c) || r.ev.everywhere[c.key] {
 		return false
 	}
-	// The kinds of use usedOutside reads besides a spelled name.
-	others := []bool{
-		ev.satisfied[key],
-		ev.exposed[key],
-		c.kind == kindField && ev.paired[key],
-		ev.escaped[key],
-		c.kind == kindMethod && ev.escaped[keyOf(r.mod.Fset, c.owner)],
+	path := c.pkg.PkgPath
+	near, ok := r.constrainedNear[path]
+	if !ok {
+		near = slices.ContainsFunc(r.ev.constrained, func(f evidenceConstrained) bool {
+			return f.pkg == path || slices.ContainsFunc(f.imports, func(imp string) bool { return r.mod.Reaches(imp, path) })
+		})
+		if r.constrainedNear == nil {
+			r.constrainedNear = map[string]bool{}
+		}
+		r.constrainedNear[path] = near
 	}
-	return !slices.Contains(others, true)
+	return near
 }
 
 // withheld returns why the fix is withheld for a reason other than the

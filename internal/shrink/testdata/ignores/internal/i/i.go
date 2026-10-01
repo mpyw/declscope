@@ -104,3 +104,19 @@ type Mode struct {
 //
 //declscope:ignore overexported // want: unused //declscope:ignore overexported
 func TaggedFunc() {}
+
+// Shown's field is used outside only by b/tagged.go, which also passes a
+// Shown to fmt.Println. The escape is behind the constraint too, so the run
+// without tagged.go reports Field and needs the ignore.
+type Shown struct {
+	//declscope:ignore overexported
+	Field int
+}
+
+// Printed's field is never named outside, but b/tagged.go passes a Printed to
+// fmt.Println, which reads its fields. Without tagged.go, the field is
+// reported with its fix withheld, so the ignore is needed there.
+type Printed struct {
+	//declscope:ignore overexported
+	Hidden int
+}
