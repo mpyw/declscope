@@ -47,6 +47,7 @@ the binary.
 | `unused_modes.fsl` | Under `rules.unused: strict` a scope directive is also reported when everything it reaches, shadowed or not, would have the scope it names without it under the configuration in force. `loose` reports exactly what `unused_bind.fsl` does, `strict` keeps every `loose` report, and `off` reports nothing | Every combination of `rules.unused`, stated scope, `defaults.unexported`, a declaration taking the directive's scope and one a nearer directive shadows, each by exportedness and next level out, and the five reasons the fix is withheld, one of them a pass that cannot see every crossing |
 | `unused_modes.fsl` | The fix that deletes the directive leaves the declaration's scope where it was, and leaves the nearer directive judged against the scope it was judged against. It is offered only under `strict`, and never where it would change another report | As above |
 | `unused_ignore.fsl` | No ignore answers the report that it is itself unused, whatever it names, `unused` and bare included. An ignore answers another's report and is then used: on a declaration only when it names `unused`, at the file level also when bare. `off` reports nothing | Every combination of `rules.unused`, the level, and what two ignores at that level name and silence |
+| `unused_ignore_unseen.fsl` | Over a run that reads a constrained file and one that leaves it out (#168), one ignore on a declaration passes both wherever either needs it, and an ignore neither needs is reported by one of them. The run that leaves the file out keeps only a `boundary` ignore whose declaration that file names; the run that reads it keeps nothing it does not silence, and an ignore of a rule judged on the declaration is judged alike in both | Every combination of the rule the ignore names, a crossing every run sees, a crossing only the constrained file makes, whether that file names the declaration, and whether the finding judged on the declaration fires |
 | `knobs.fsl` | A boundary is reported only for a private scope and only across a namespace, and on an exported declaration only where a directive narrowed it — each guard witnessed by an invariant its removal breaks | As above |
 | `naming_rules.fsl` | A fix is eventually applied wherever one is offered, which is what the `fair` on the fix actions claims | As above, plus whether a rename is offered at all |
 | `rename_guarded.fsl` | The guard `renameSafe` applies — every scope Go resolves through — makes the rename sound, and dropping any one of the four checks breaks it | Every binding environment at the reference site |
@@ -60,6 +61,7 @@ the binary.
 | `shrink.fsl` | `declscope shrink` (#112) never unexports a declaration that anything outside its package uses, by any path: a spelled use, an external test, a static interface satisfaction, an importer no loaded package shows, a value of its type that the exported API of an importable package hands out, or a use through reflection. Nor does it unexport one whose rename something inside the package would break | Every combination of the kind of declaration, where it sits, what the loaded code shows about a use from another package, the doubts the tool can raise but not settle, and the three reasons a rename is unsafe inside the package |
 | `shrink.fsl` | The report and the fix are held to different standards. The report may be wrong where a use is possible but not provable, and each such doubt withholds the fix and leaves the report. An escape into an interface is a use, and silences the report. Outside `internal/`, in package main, over a nested module or after a load error, nothing is said at all | As above |
 | `shrink.fsl` | One pass converges: an unexported declaration is out of the rule, and no report starts after the fix | As above |
+| `shrink_ignore.fsl` | Over a run that reads a constrained file and one that leaves it out (#165), one `//declscope:ignore overexported` passes both wherever either needs it, and an ignore neither needs is reported by one of them. Only the run that reads the file keeps an ignore it does not silence, and only for a field, method or embedded type that nothing but constrained files uses | Every combination of the kind of declaration and whether an unconstrained file, a constrained file, or a use read in every configuration (a linkname, a satisfaction, an escape, an exposure) uses it |
 | `shrink_settle.fsl` | Settling which types keep their names ends, and leaves no fixed type that a declaration keeping its name carries, so no exported declaration hands out an unexported type | Every combination of three declarations, which of them are judged fixable, and what carries what, self-edges included |
 | `shrink_settle.fsl` | Every type kept this way has a carrier that keeps its name, so a second run holds it again, and a declaration unexported in the same run keeps nothing: one run of `-fix` settles the package | As above |
 | `shrink_claim.fsl` | Claiming new names once the types settle ends: every round adds a loser or releases one for good, and a loser is released once | Every combination of three fixes, which of them judging leaves fixable, which pairs lower to one name, and every fix set settling can leave standing |
@@ -120,7 +122,7 @@ step and needs gigabytes for the same claims these prove in single-digit
 megabytes.
 
 ```console
-./spec/verify.sh     # what CI runs: eighteen proved, two violated
+./spec/verify.sh     # what CI runs: twenty proved, two violated
 ```
 
 Or one at a time:
@@ -141,10 +143,12 @@ fslc verify surplus.fsl         --depth 2
 fslc verify surplus_strict.fsl  --depth 4
 fslc verify unused_bind.fsl     --depth 4
 fslc verify unused_ignore.fsl   --depth 2
+fslc verify unused_ignore_unseen.fsl --depth 3
 fslc verify unused_modes.fsl    --depth 6
 fslc verify shrink.fsl          --depth 6
 fslc verify shrink_settle.fsl   --depth 8
 fslc verify shrink_claim.fsl    --depth 8
+fslc verify shrink_ignore.fsl   --depth 3
 fslc verify rename_sound.fsl     --depth 2   # expected: violated
 fslc verify rename_siblings.fsl  --depth 3   # expected: violated
 ```
@@ -156,12 +160,14 @@ step 1 or 2; the others add a fix action and witness at step 2.
 product of every parameter, and witnesses by step 4. `unused_modes.fsl`
 configures in four steps for the same reason, judges, and fixes, so it witnesses
 by step 6. `shrink.fsl` configures in three steps, reports, and fixes, so it
-witnesses by step 5. The deadlock warning a bounded
+witnesses by step 5. `shrink_ignore.fsl` and `unused_ignore_unseen.fsl`
+configure once and judge the two runs one after the other, so they witness at
+step 3. The deadlock warning a bounded
 run prints is the shape of the model, not a failure, and `rename_guarded.fsl`
 also reports a vacuous antecedent — which is the guard working, and is stated as
 `NothingResolvedNewName` rather than left as a warning.
 
-The eighteen that pass are `proved` under `--engine induction`, which is what
+The twenty that pass are `proved` under `--engine induction`, which is what
 `verify.sh` and CI assert. Bounded verification alone would let an invariant be
 true to a depth without being inductive, and reading the exit code alone would
 let a spec that stopped parsing pass as "violated, as intended" — `fslc` exits
@@ -238,6 +244,10 @@ is a semantics that contradicts the documented one; each was run:
 | A bare ignore on a declaration answers a sibling's unused report | `violated` (`DeclAnswersByName`) |
 | A bare file-level ignore does not answer another's unused report | `reachable_failed` (`BareFileIgnoreAnswers`) |
 | An ignore that answers another's report is still called unused | `violated` (`AnsweringIsUse`) |
+| `shrink` keeps no ignore of a member used only behind a build constraint, as before #165 | `violated` (`OnePassesEvery`) |
+| `shrink` keeps such an ignore for any kind of declaration, or despite an unconstrained use, or despite a use read in every configuration | `violated` (`InKeepsOnlyConstrainedMembers`) |
+| The analyzer keeps no `boundary` ignore whose only crossing is in a build-excluded file, as before #168 | `violated` (`OnePassesEvery`) |
+| The analyzer keeps such an ignore for any rule, or whether or not the excluded file names the declaration | `violated` (`OutKeepsOnlyNamedBoundary`) |
 | `rules.boundary: off` is wired into `surplus` as well | `reachable_failed` (`SurplusFiresWhileBoundaryOff`) |
 | `rules.boundary: off` is wired into `qualify` as well | `reachable_failed` (`QualifyFiresWhileBoundaryOff`) |
 | The `rules.boundary` gate is dropped from the boundary report | `violated` (`BoundarySilencedWhenOff`) |
