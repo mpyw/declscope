@@ -1388,7 +1388,7 @@ Write `//declscope:ignore overexported // <why>` where any other ignore goes: on
 
 `shrink` reports an ignore of it that silenced nothing. `//declscope:ignore unused` answers that report, as it does for the analyzer.
 
-One ignore passes every build configuration. Where a field, a method, or a type a struct embeds is used outside its package only by files behind a build constraint, its ignore is not reported unused, though it silences nothing there:
+One ignore passes every build configuration. Where a field, a method, or a type a struct embeds is used outside its package only by files behind a build constraint, by name or by passing it to an interface, its ignore is not reported unused, though it silences nothing there:
 
 ```go
 // internal/a/a.go
