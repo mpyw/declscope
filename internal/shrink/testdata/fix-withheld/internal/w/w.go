@@ -22,6 +22,17 @@ var Version = "dev" // want: var Version is exported.*no fix: a string variable 
 
 func current() string { return Version }
 
+// Build is a string too, through an alias, so -X may set it.
+var Build alias = "dev" // want: var Build is exported.*no fix: a string variable may be set by -ldflags -X
+
+type alias = string
+
+// Sentinel is of a named string type, which the linker refuses to set, so no
+// -X names it and it is fixed.
+var Sentinel = errorText("sentinel") // want: var Sentinel is exported, but nothing.*uses it$
+
+type errorText string
+
 // Made keeps its name, since an example function names it, so the type it
 // returns must stay nameable. Deeper keeps its name for the same reason, so
 // Deep, which it hands out, keeps its name too, with its report. Unused, a
@@ -74,4 +85,6 @@ var (
 	_ = Lonely() + GenRef + Helper()
 	_ = Tool{}.Run
 	_ = current
+	_ = Build
+	_ = Sentinel
 )
