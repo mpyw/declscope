@@ -1,15 +1,26 @@
 // declscope shrink's unused report on //declscope:ignore overexported, over
-// the two build configurations a repository runs it under (#165).
+// the two build configurations a repository runs it under (#165, #171).
 //
 // One declaration carries the ignore. What uses it from outside its package:
 //
-//   free         a file under no build constraint. Every configuration reads it
-//   constrained  a file behind a build constraint, and nothing else of that
-//                file's kind. The configuration In reads it. The configuration
-//                Out leaves it out, and reads it for names only
-//   other        a linkname, a static interface satisfaction, an escape into
-//                an interface, or an exposure through an importable package's
-//                API. Each is read in every configuration
+//   free              a name spelled in a file under no build constraint, or a
+//                     linkname. Every configuration reads it, and the run
+//                     knows it does (evidence.everywhere)
+//   constrained       a name spelled in a file behind a build constraint. The
+//                     configuration In reads the file. The configuration Out
+//                     leaves it out, and reads it for names only
+//   otherFree         a static interface satisfaction, an escape into an
+//                     interface, an exposure through an importable package's
+//                     API, or a struct pairing, made by code every
+//                     configuration reads
+//   otherConstrained  one of those, made by code behind the constraint. Only
+//                     In sees it. None of the four records where it was found,
+//                     so In cannot tell it from otherFree
+//
+// And whether the files behind the constraint reach the declaration:
+//
+//   reach  a constrained file is in its package, or imports a path that
+//          reaches it (module.Reaches)
 //
 // What a run reports, without the ignore:
 //
@@ -20,11 +31,13 @@
 //        other declaration the excluded file writes pkg.Name, which is a use
 //
 // The ignore silences the report where there is one. The tool calls it unused
-// where it silences nothing, unless every use outside the package is in a
-// constrained file and the declaration is a member: Out reports it, and the
-// ignore answers that report there (run.usedOnlyConstrained). Out cannot keep
-// an ignore this way, since there the constrained file is not loaded and
-// shows no use.
+// where it silences nothing, except that In keeps it for a member that no
+// free use reaches, where a constrained file reaches the declaration
+// (run.neededWithoutConstrained). That is exactly where Out may report it.
+// How In uses the member does not enter: a use behind the constraint, spelled
+// or not, is gone in Out, and a use Out sees anyway keeps Out from reporting
+// the member, so Out reports a stale ignore itself. Out cannot keep an ignore
+// this way, since there the constrained file is not loaded and shows no use.
 //
 // What must hold is that one ignore passes both runs where either needs it,
 // and that a stale one is still reported by one of them.
@@ -32,14 +45,18 @@
 // ASSUME-1: one constrained file, read by In and left out by Out, is enough.
 //   More constraints make more configurations, each one In or Out for that
 //   file (modelling assumption)
-// ASSUME-2: a constrained file that uses the declaration imports its package,
-//   so Out finds that the file may reach it (module.Reaches)
+// ASSUME-2: a constrained file that uses the declaration, by name or not,
+//   reaches its package. A use is made through an import (modelling
+//   assumption, encoded as a requirement of configure)
+// ASSUME-3: a declaration other than a member is used from a constrained file
+//   by writing pkg.Name there, so Out reads that use (qualifiedIn)
 spec ShrinkIgnore {
   enum Kind { Member, Other }
 
   state {
     phase: Int,
-    kind: Kind, free: Bool, constrained: Bool, other: Bool,
+    kind: Kind, free: Bool, constrained: Bool,
+    otherFree: Bool, otherConstrained: Bool, reach: Bool,
     // reported*: the declaration would be reported without the ignore.
     // unused*: the run reports the ignore unused.
     reportedIn: Bool, reportedOut: Bool,
@@ -48,21 +65,25 @@ spec ShrinkIgnore {
 
   init {
     phase = 0
-    kind = Member  free = false  constrained = false  other = false
+    kind = Member  free = false  constrained = false
+    otherFree = false  otherConstrained = false  reach = false
     reportedIn = false  reportedOut = false
     unusedIn = false  unusedOut = false
   }
 
-  action configure(k: Kind, f: Bool, c: Bool, o: Bool) {
+  action configure(k: Kind, f: Bool, c: Bool, of: Bool, oc: Bool, r: Bool) {
     requires phase == 0
-    phase = 1  kind = k  free = f  constrained = c  other = o
+    // ASSUME-2.
+    requires not (c or oc) or r
+    phase = 1  kind = k  free = f  constrained = c
+    otherFree = of  otherConstrained = oc  reach = r
   }
 
   // What each run sees as a use.
-  def seenIn()  = free or constrained or other
-  def seenOut() = free or other or (constrained and kind == Other)
-  // The ignore is kept in In: run.usedOnlyConstrained.
-  def keptIn() = kind == Member and constrained and not free and not other
+  def seenIn()  = free or constrained or otherFree or otherConstrained
+  def seenOut() = free or otherFree or (kind == Other and (constrained or otherConstrained))
+  // The ignore is kept in In: run.neededWithoutConstrained.
+  def keptIn() = kind == Member and not free and reach
 
   fair action judgeIn() {
     requires phase == 1
@@ -92,16 +113,18 @@ spec ShrinkIgnore {
   invariant SilencingIsUseOut { (phase == 3 and reportedOut) => not unusedOut }
   // Out never keeps an ignore that silences nothing there.
   invariant OutKeepsNothing   { phase == 3 => (unusedOut == not reportedOut) }
-  // In keeps one only for a member that only constrained files use. Expanded
-  // rather than routed through keptIn(), so that mutating the guard moves one
-  // side only and the invariant can fail.
-  invariant InKeepsOnlyConstrainedMembers {
+  // In keeps one only for a member no free use reaches, where a constrained
+  // file reaches the declaration. Expanded rather than routed through
+  // keptIn(), so that mutating the guard moves one side only and the
+  // invariant can fail.
+  invariant InKeepsOnlyReachedMembers {
     (phase >= 2 and not reportedIn and not unusedIn)
-    => (kind == Member and constrained and not free and not other)
+    => (kind == Member and not free and reach)
   }
 
   // Auxiliary: each run records its judgment of inputs never assigned again.
   invariant PhaseInRange { phase >= 0 and phase <= 3 }
+  invariant ConstrainedUseReaches { (constrained or otherConstrained) => reach }
   invariant InRecordsItsJudgment {
     phase >= 2 => (reportedIn == not seenIn() and unusedIn == (seenIn() and not keptIn()))
   }
@@ -115,28 +138,46 @@ spec ShrinkIgnore {
   // #165: a field set only behind a tag. Out reports it, In sees the use, and
   // the ignore passes both.
   reachable ConstrainedMemberKept {
-    phase == 3 and kind == Member and constrained and not free and not other
+    phase == 3 and kind == Member and constrained and not free
+    and not otherFree and not otherConstrained
     and not reportedIn and reportedOut and not unusedIn and not unusedOut
   }
-  // An unconstrained file uses it too: no run needs the ignore, and In says so.
+  // #171: the code behind the tag only passes a value to an interface. In sees
+  // an escape, Out sees nothing, and the ignore passes both.
+  reachable EscapeBehindConstraintKept {
+    phase == 3 and kind == Member and not constrained and not free
+    and not otherFree and otherConstrained
+    and not reportedIn and reportedOut and not unusedIn and not unusedOut
+  }
+  // suve's SplitSpec: named and escaped behind the tag alike.
+  reachable SpelledAndEscapedBehindConstraintKept {
+    phase == 3 and kind == Member and constrained and otherConstrained
+    and not free and not otherFree
+    and reportedOut and not unusedIn and not unusedOut
+  }
+  // An unconstrained file spells it too: no run needs the ignore, and In says so.
   reachable FreeUseCaughtIn {
-    phase == 3 and kind == Member and constrained and free and not other
+    phase == 3 and kind == Member and constrained and free
     and unusedIn and unusedOut
   }
-  // A linkname, a satisfaction, an escape or an exposure is seen everywhere.
-  reachable OtherUseCaughtIn {
-    phase == 3 and kind == Member and constrained and not free and other
-    and unusedIn and unusedOut
+  // An escape every configuration reads, beside a use behind the tag. In
+  // cannot tell the escape's origin and keeps the ignore. Out sees the escape,
+  // has nothing to silence, and reports the stale ignore.
+  reachable OtherFreeUseCaughtOut {
+    phase == 3 and kind == Member and constrained and not free and otherFree
+    and not reportedOut and not unusedIn and unusedOut
   }
   // A function used only behind a tag: Out reads the qualified name, so no run
   // needs the ignore.
   reachable ConstrainedNonMemberCaught {
-    phase == 3 and kind == Other and constrained and not free and not other
+    phase == 3 and kind == Other and constrained and not free
+    and not otherFree and not otherConstrained
     and not reportedOut and unusedIn and unusedOut
   }
   // Nothing uses it: both runs report it, and the ignore silences both.
   reachable UnusedDeclarationSilenced {
-    phase == 3 and not free and not constrained and not other
+    phase == 3 and not free and not constrained
+    and not otherFree and not otherConstrained
     and reportedIn and reportedOut and not unusedIn and not unusedOut
   }
 
