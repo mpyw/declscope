@@ -189,6 +189,15 @@ Through `go vet`, which runs it with the same package loading as the rest of you
 go vet -vettool=$(which declscope) ./...
 ```
 
+> [!WARNING]
+> **`go vet` does not see changes to config or baseline files.** It caches the result of each package, and the cache key does not include these files. After a change to either one, run `go vet` once with **`-a`**:
+>
+> ```bash
+> go vet -a -vettool=$(which declscope) ./...
+> ```
+>
+> Without `-a`, `go vet` can report the result of the old configuration. New diagnostics can be missing, and old ones can remain. Running `declscope` directly is not affected.
+
 Without installing anything:
 
 ```bash
