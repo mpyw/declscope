@@ -333,6 +333,7 @@ func (c *collection) addToCollection(t *target) {
 	for _, ig := range t.dir.Ignores {
 		s := c.siteOfIgnore(ig)
 		s.decls = append(s.decls, t.name())
+		s.targets = append(s.targets, t)
 	}
 	if t.dir.HasScope {
 		s := c.scopeSite(t.dir)

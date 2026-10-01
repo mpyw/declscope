@@ -42,6 +42,11 @@ type ignoreSite struct {
 	//declscope:package // collect.go marks it when the directive is the file's
 	fileLevel bool
 	used      bool
+	// targets are the declarations the directive reaches, decls' objects. A
+	// file the build excluded may cross into one of them by name.
+	//
+	//declscope:package // collect.go adds each target as it names it
+	targets []*target
 	// siblings are the ignores parsed from the same comment group, which is
 	// where a //declscope:ignore unused answering for this one is written.
 	//
@@ -193,6 +198,13 @@ func (c *collection) reportUnusedIgnores(pass *analysis.Pass, opts Options) {
 		}
 		return s.fileLevel && s.ig.Covers(rule.Unused) && moduleWideFiles[c.fileAt(pass, s.ig.Pos)]
 	}
+	// An ignore that may silence a crossing this pass cannot see has done its
+	// job in the configuration that reads the crossing file.
+	for _, s := range c.ignores {
+		if !s.used && c.ignoreMayCrossUnseen(pass, s) {
+			s.used = true
+		}
+	}
 	sites := make([]*ignoreSite, 0, len(c.ignores))
 	for _, s := range c.ignores {
 		if !s.used && !s.ig.NamesModuleWide() && !answersModuleWide(s) {
@@ -233,4 +245,36 @@ func (c *collection) reportUnusedIgnores(pass *analysis.Pass, opts Options) {
 		}
 		c.problems = append(c.problems, directive.Problem{Pos: s.ig.Pos, Msg: msg, Rule: rule.Unused})
 	}
+}
+
+// ignoreMayCrossUnseen reports whether an ignore of boundary may be silencing a
+// crossing in a file the build excluded: that file writes the name of a
+// declaration the ignore reaches. A configuration that reads the file reports
+// the crossing, and the ignore answers it there, so it is not unused here.
+// A file-level ignore reaches every declaration of its file.
+//
+// The name is all an unseen file is read for, so a name it writes from the
+// declaration's own namespace counts too. Such an ignore is still reported by
+// the configuration that reads the file, which sees that nothing crosses.
+// Every other rule is judged on the declaration, not on its uses, so an
+// unseen file cannot make an ignore of one of them needed.
+func (c *collection) ignoreMayCrossUnseen(pass *analysis.Pass, s *ignoreSite) bool {
+	if !s.ig.Covers(rule.Boundary) {
+		return false
+	}
+	names := c.unseen(pass).names
+	if len(names) == 0 {
+		return false
+	}
+	targets := s.targets
+	if s.fileLevel {
+		file := c.fileAt(pass, s.ig.Pos)
+		targets = nil
+		for _, t := range c.targets {
+			if t.file == file {
+				targets = append(targets, t)
+			}
+		}
+	}
+	return slices.ContainsFunc(targets, func(t *target) bool { return names[t.obj.Name()] })
 }

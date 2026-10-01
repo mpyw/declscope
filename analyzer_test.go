@@ -70,6 +70,14 @@ func TestIgnoreUnused(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ignoreunused")
 }
 
+// TestIgnoreUnseen checks that an ignore of boundary is not unused when a
+// file the build excluded names the declaration it reaches: that file may
+// cross into it in a configuration that reads it. An ignore no unseen file
+// gives a job, or one of a rule judged on the declaration, is still unused.
+func TestIgnoreUnseen(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ignoreunseen")
+}
+
 // TestIgnoreModuleWide checks that an ignore naming a rule only declscope
 // shrink reports is never judged unused here, and that a bare ignore does not
 // reach such a rule, so the analyzer still judges it.

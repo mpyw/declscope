@@ -449,6 +449,7 @@ The `unused` rule reports a directive that changes nothing. A directive that dec
 - Without the directive, a declaration falls to the next row of [scope resolution](#scope-resolution). Only `defaults.unexported` there depends on the config.
 - Under `strict`, a directive that `loose` keeps also stays when deleting it would make a nearer directive redundant.
 - `off` still leaves the `directive` rule on.
+- An ignore of `boundary` is not reported where a file the build leaves out names a declaration it reaches. That file may cross into it under another build tag, where the ignore silences the crossing. The run that reads the file still reports an ignore with nothing to silence.
 
 > [!WARNING]
 > Under `strict`, changing `defaults.unexported` changes the reports. With `unexported: package`, every `//declscope:package` on an unexported declaration that nothing else widens is reported, and one `-fix` run deletes them. `loose` never reports a directive only because it names the current default.
