@@ -24,3 +24,26 @@ func aStale() int { return 3 }
 func aQualify() int { return 4 }
 
 func A() int { return aHelper() + aBare() + aStale() + aQualify() }
+
+// tagged.go writes an aPoint by position, which crosses into x without
+// naming it. The type's name counts for its fields.
+type aPoint struct {
+	//declscope:ignore boundary // tagged.go writes it by position
+	x int
+}
+
+// tagged.go writes an aCoord through an alias, which counts too.
+type aCoord struct {
+	//declscope:ignore boundary // tagged.go writes it by position, through aAlias
+	y int
+}
+
+type aAlias = aCoord
+
+// Nothing unseen names aPair or its field, so the ignore silences nothing.
+type aPair struct {
+	//declscope:ignore boundary // want `unused //declscope:ignore boundary on aPair.z`
+	z int
+}
+
+func B() int { return aPoint{x: 1}.x + aAlias{y: 2}.y + aPair{z: 3}.z }
