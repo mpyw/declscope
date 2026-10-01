@@ -30,6 +30,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/mpyw/declscope/internal/buildtag"
 )
 
 // of returns the default namespace for a file path.
@@ -57,8 +59,8 @@ func of(path string) string {
 	// _test must be stripped before the build suffixes: the canonical shape is
 	// name_GOOS_GOARCH_test.go.
 	base = trimSegment(base, func(s string) bool { return s == "test" })
-	base = trimSegment(base, isKnownArch)
-	base = trimSegment(base, isKnownOS)
+	base = trimSegment(base, buildtag.KnownArch)
+	base = trimSegment(base, buildtag.KnownOS)
 
 	return camel(base)
 }
@@ -255,8 +257,6 @@ func cutFold(name, prefix string) (rest string, ok bool) {
 }
 
 func isInitialism(s string) bool { return commonInitialisms[strings.ToUpper(s)] }
-func isKnownOS(s string) bool    { return knownOS[s] }
-func isKnownArch(s string) bool  { return knownArch[s] }
 
 // commonInitialisms is golint's list of the words that are spelled in
 // capitals. It is vendored rather than pulled in as a dependency: the list is
@@ -271,23 +271,6 @@ var commonInitialisms = map[string]bool{
 	"TTL": true, "UDP": true, "UI": true, "UID": true, "UUID": true,
 	"URI": true, "URL": true, "UTF8": true, "VM": true, "XML": true,
 	"XMPP": true, "XSRF": true, "XSS": true,
-}
-
-// Mirrors the lists in go/internal/syslist, which is not importable.
-var knownOS = map[string]bool{
-	"aix": true, "android": true, "darwin": true, "dragonfly": true,
-	"freebsd": true, "hurd": true, "illumos": true, "ios": true, "js": true,
-	"linux": true, "nacl": true, "netbsd": true, "openbsd": true, "plan9": true,
-	"solaris": true, "wasip1": true, "windows": true, "zos": true,
-}
-
-var knownArch = map[string]bool{
-	"386": true, "amd64": true, "amd64p32": true, "arm": true, "armbe": true,
-	"arm64": true, "arm64be": true, "loong64": true, "mips": true,
-	"mipsle": true, "mips64": true, "mips64le": true, "mips64p32": true,
-	"mips64p32le": true, "mips8": true, "ppc": true, "ppc64": true,
-	"ppc64le": true, "riscv": true, "riscv64": true, "s390": true,
-	"s390x": true, "sparc": true, "sparc64": true, "wasm": true,
 }
 
 // Contains reports whether ns is written in name, beginning at a word boundary.

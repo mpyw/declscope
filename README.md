@@ -1387,6 +1387,28 @@ Write `//declscope:ignore overexported // <why>` where any other ignore goes: on
 
 `shrink` reports an ignore of it that silenced nothing. `//declscope:ignore unused` answers that report, as it does for the analyzer.
 
+One ignore passes every build configuration. Where a field, a method, or a type a struct embeds is used outside its package only by files behind a build constraint, its ignore is not reported unused, though it silences nothing there:
+
+```go
+// internal/a/a.go
+type Mode struct {
+	//declscope:ignore overexported // app/gui.go sets it behind the gui tag
+	Flag string
+}
+```
+
+```go
+// app/gui.go
+//go:build gui
+
+var _ = a.Mode{Flag: "gui"}
+```
+
+| Run | What happens to `Flag` |
+| --- | --- |
+| `declscope shrink ./...` | `app/gui.go` is left out and read for names only, so `Flag` would be reported with no fix. The ignore silences it |
+| `GOFLAGS=-tags=gui declscope shrink ./...` | `app/gui.go` uses `Flag`. The ignore is kept for the run without the tag |
+
 ## Measuring what is there
 
 Two subcommands report what the analyzer found. Neither decides anything. The exit status is zero whatever the counts say, since gating is what the analyzer and a baseline are for.

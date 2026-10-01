@@ -105,6 +105,14 @@ func TestShrinkRenameGuards(t *testing.T) { shrinkCheck(t, "testdata/rename-guar
 // when it is itself reported unused.
 func TestShrinkIgnores(t *testing.T) { shrinkCheck(t, "testdata/ignores") }
 
+// TestShrinkIgnoresExcluded runs the same module with b/tagged.go left out.
+// Every report must read the same: an ignore needed only in one
+// configuration must pass the other as well.
+func TestShrinkIgnoresExcluded(t *testing.T) {
+	t.Setenv("GOFLAGS", "-tags=never")
+	shrinkCheck(t, "testdata/ignores")
+}
+
 // TestShrinkNotJudged pins the packages that are never judged, and that the
 // internal ones among them are named with the reason.
 func TestShrinkNotJudged(t *testing.T) {

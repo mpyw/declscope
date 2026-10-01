@@ -466,6 +466,11 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 	var vs []*verdict
 	for _, c := range candidates {
 		if r.usedOutside(c) {
+			// A configuration that leaves out the files using it reports it,
+			// and the ignore answers the report there.
+			if r.usedOnlyConstrained(c) {
+				r.ignoreSilenced(c)
+			}
 			continue
 		}
 		v := &verdict{c: c, f: Finding{
@@ -693,6 +698,33 @@ func (r *run) usedOutside(c *candidate) bool {
 		func() bool { return !c.kind.member() && c.qualifiedIn(r.mod.Excluded) },
 	}
 	return slices.ContainsFunc(uses, func(used func() bool) bool { return used() })
+}
+
+// usedOnlyConstrained reports whether every use outside the package that
+// usedOutside found is in a file behind a build constraint, and a
+// configuration that leaves those files out would report the candidate
+// anyway. Such a configuration reads them for names only, and for a field, a
+// method, or a type some struct embeds, a name is not enough, so the report
+// stands there with its fix withheld (maybeUsedIn). An ignore that answers it
+// is needed in that configuration, and is not unused in this one.
+//
+// Any other kind of use is seen in every configuration, and so is the
+// qualified name a build-excluded file writes for any other declaration, so
+// its ignore is needed in none of them.
+func (r *run) usedOnlyConstrained(c *candidate) bool {
+	ev, key := r.ev, c.key
+	if !r.usedImplicitly(c) || !ev.outside[key] || ev.everywhere[key] {
+		return false
+	}
+	// The kinds of use usedOutside reads besides a spelled name.
+	others := []bool{
+		ev.satisfied[key],
+		ev.exposed[key],
+		c.kind == kindField && ev.paired[key],
+		ev.escaped[key],
+		c.kind == kindMethod && ev.escaped[keyOf(r.mod.Fset, c.owner)],
+	}
+	return !slices.Contains(others, true)
 }
 
 // withheld returns why the fix is withheld for a reason other than the

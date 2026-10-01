@@ -85,3 +85,22 @@ var (
 	_ = Braced{}.n
 	_ = stray
 )
+
+// Mode's fields are used outside only by b/tagged.go, which is behind a build
+// constraint, except Plain, which b.go uses too. A configuration that leaves
+// tagged.go out reports Tagged, with its fix withheld, and the ignore answers
+// that report there, so it is not unused here either. Plain's ignore is,
+// since b.go uses Plain in every configuration.
+type Mode struct {
+	//declscope:ignore overexported
+	Tagged int
+	//declscope:ignore overexported // want: unused //declscope:ignore overexported
+	Plain int
+}
+
+// TaggedFunc is used only by b/tagged.go too, but tagged.go spells
+// i.TaggedFunc, which a configuration leaving it out still reads as a use.
+// The ignore is needed in none of them.
+//
+//declscope:ignore overexported // want: unused //declscope:ignore overexported
+func TaggedFunc() {}
