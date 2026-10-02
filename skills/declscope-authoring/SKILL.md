@@ -129,9 +129,9 @@ Only the namespace's own spelling and two generated forms carry it: a final `e` 
 | `walking.go` | `walkSpeed` | No | Same |
 | `index.go` | `indicesSorted` | No | An irregular form |
 
-**Name a file in the base form of its word.** `trace.go` is carried by `traceValue`, `tracerType` and `tracingStart`. `tracing.go` is carried only by the last. Generated forms and the free right edge both run from the namespace to longer words, so the base form reaches every form the inflected file name reaches, and more. The same holds for `entry.go` over `entries.go`, `walk.go` over `walking.go`, and `user.go` over `users.go`. An inflected file name is allowed. It only fits declscope worse.
+**Prefer the base form of a word for a new file name.** It is a recommendation, not a requirement. `trace.go` is carried by `traceValue`, `tracerType` and `tracingStart`. `tracing.go` is carried only by the last. Generated forms and the free right edge both run from the namespace to longer words, so the base form reaches every form the inflected file name reaches, and more. The same holds for `entry.go` over `entries.go`, `walk.go` over `walking.go`, and `user.go` over `users.go`. An inflected file name is allowed. It only fits declscope worse, so choose it when it reads clearly better.
 
-For an existing file, renaming it to the base form keeps every name that carried the old namespace. It still changes the namespace, so it is not free: rename its test files too, and update any `//declscope:namespace` that names it, baseline entries keyed by it, and each `// reason` that names the file. Propose the rename. When it is too wide, a vocabulary entry is the smaller change.
+For an existing file, renaming it to the base form keeps every name that carried the old namespace. It still changes the namespace, so it is not free: rename its test files too, and update any `//declscope:namespace` that names it, baseline entries keyed by it, and each `// reason` that names the file. Do not rename an existing file only for this. Mention the rename as an option. When it is too wide, or the owner prefers the current name, a vocabulary entry is the smaller change.
 
 `rules.naming.vocabulary` lists extra words that carry a namespace. A listed word goes through the same test as the namespace, so `trace` also covers `tracer`. When the namespace looks inflected, the diagnostic names the key: `list that form under rules.naming.vocabulary.tracing`.
 
@@ -147,7 +147,7 @@ Use it for a word that names what the namespace names: another form of it, or th
 
 | The name | Do this |
 | --- | --- |
-| Spells the base form of an inflected file name | Propose renaming the file to the base form. If that is too wide, a vocabulary entry |
+| Spells the base form of an inflected file name | Propose a vocabulary entry, and mention renaming the file to the base form as an option |
 | Spells the namespace in another form the base form cannot reach (`indices`), or the domain's word for part of it | Propose a vocabulary entry |
 | Spells a different word, which describes the thing better | The file may be named wrong, or the declaration may be in the wrong file. See [An ill-fitting prefix](#an-ill-fitting-prefix-means-the-declaration-is-in-the-wrong-file) |
 | Would need a long list of words | Split the file. A long list means the file declares things it is not about |
