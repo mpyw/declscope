@@ -9,4 +9,5 @@ var (
 	_ e.Due
 	_ = e.Mixed
 	_ = e.Week
+	_ = e.Current()
 )

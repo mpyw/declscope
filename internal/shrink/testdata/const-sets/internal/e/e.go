@@ -87,3 +87,14 @@ const (
 	ExcludedA Excluded = iota
 	ExcludedB
 )
+
+// Carried is never named outside, but a function another package calls
+// returns it, so it is used, and its values stay exported with it.
+type Carried int
+
+const (
+	CarriedA Carried = iota
+	CarriedB
+)
+
+func Current() Carried { return CarriedA }
