@@ -974,7 +974,7 @@ Two English inflections change the namespace's own spelling. Both are accepted.
 
 Only these whole forms are generated, from the namespace's side. The name is never stemmed, so `story` and `storm` do not carry `store`.
 
-The reverse is not generated: in `tracing.go`, `traceValue` is reported. The message names the vocabulary key to add.
+**The reverse is not generated**: in `tracing.go`, `traceValue` is reported. The message names the vocabulary key to add.
 
 `rules.naming.vocabulary` lists extra words that carry a namespace. A listed word goes through the same test, so `wheelDelta` carries `mouse` and `pinwheel` does not.
 
