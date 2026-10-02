@@ -159,11 +159,7 @@ func candidateConstSet(p *packages.Package, d *ast.GenDecl) *constSet {
 			if name.Name == "_" {
 				continue
 			}
-			c, ok := p.TypesInfo.Defs[name].(*types.Const)
-			if !ok {
-				return nil
-			}
-			named, ok := types.Unalias(c.Type()).(*types.Named)
+			named, ok := types.Unalias(p.TypesInfo.TypeOf(name)).(*types.Named)
 			if !ok || named.Obj().Pkg() != p.Types || typ != nil && named.Obj() != typ {
 				return nil
 			}
