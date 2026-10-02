@@ -60,8 +60,14 @@ func candidatesOf(p *packages.Package) ([]*candidate, map[token.Pos][]directive.
 				candidateFunc(p, d, slices.Concat(parse(b.Func(d)...), fileIgnores), add)
 			case *ast.GenDecl:
 				block := slices.Concat(parse(d.Doc), parse(b.Block(d)...))
+				first := len(out)
 				for _, spec := range d.Specs {
 					candidateSpec(p, d, spec, slices.Concat(parse(b.Spec(spec)...), block), fileIgnores, parse, add)
+				}
+				if set := candidateConstSet(p, d); set != nil {
+					for _, c := range out[first:] {
+						c.set = set
+					}
 				}
 			}
 		}
@@ -137,6 +143,34 @@ func candidateSpec(p *packages.Package, d *ast.GenDecl, spec ast.Spec, own, file
 			}
 		}
 	}
+}
+
+// candidateConstSet returns the set a const block is, or nil: a block of two
+// or more constants, every one of them of one exported named type of the
+// package, implicit types included. A blank constant is not counted.
+func candidateConstSet(p *packages.Package, d *ast.GenDecl) *constSet {
+	if d.Tok != token.CONST {
+		return nil
+	}
+	var typ *types.TypeName
+	n := 0
+	for _, spec := range d.Specs {
+		for _, name := range spec.(*ast.ValueSpec).Names {
+			if name.Name == "_" {
+				continue
+			}
+			named, ok := types.Unalias(p.TypesInfo.TypeOf(name)).(*types.Named)
+			if !ok || named.Obj().Pkg() != p.Types || typ != nil && named.Obj() != typ {
+				return nil
+			}
+			typ = named.Obj()
+			n++
+		}
+	}
+	if n < 2 || !typ.Exported() {
+		return nil
+	}
+	return &constSet{typ: typ}
 }
 
 // candidateDoc returns the doc comment of a declaration of names names: its

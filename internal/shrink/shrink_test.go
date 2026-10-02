@@ -92,6 +92,10 @@ func TestShrinkUses(t *testing.T) { shrinkCheck(t, "testdata/uses") }
 // TestShrinkEscapes pins that a value escaping into an interface is a use.
 func TestShrinkEscapes(t *testing.T) { shrinkCheck(t, "testdata/escapes") }
 
+// TestShrinkConstSets pins that a const block of one exported type of the
+// package is judged as a whole, with its type.
+func TestShrinkConstSets(t *testing.T) { shrinkCheck(t, "testdata/const-sets") }
+
 // TestShrinkFixWithheld pins the reports whose fix is withheld for a reason
 // other than the rename: build-excluded and generated files, example
 // functions, and -ldflags -X.
@@ -260,7 +264,7 @@ func TestShrinkRenamesDoc(t *testing.T) {
 // which also compiles the tests; every report that offered a fix is gone; and
 // no report appears that was not there before.
 func TestShrinkConverges(t *testing.T) {
-	for _, name := range []string{"uses", "escapes", "fix-withheld", "rename-guards", "ignores", "module-under-internal", "nested-module-uses"} {
+	for _, name := range []string{"uses", "escapes", "fix-withheld", "rename-guards", "ignores", "module-under-internal", "nested-module-uses", "const-sets"} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			if err := os.CopyFS(dir, os.DirFS(filepath.Join("testdata", name))); err != nil {
