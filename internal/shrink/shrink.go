@@ -264,6 +264,21 @@ type candidate struct {
 	// doc is the declaration's own doc comment, whose leading name the
 	// rename rewrites too.
 	doc *ast.CommentGroup
+	// set is the const block a constant is a value of, nil otherwise.
+	set *constSet
+}
+
+// constSet is a const block of two or more constants, every one of them of
+// one exported type of the package: the values of an enum. go doc lists a
+// lone default and a mixed block under the type too, so the block is what
+// tells a value of the set from another constant of the type. The block is
+// judged as a whole: it is left alone while its type is not reported, or
+// while another package uses any of its values, and otherwise each value is
+// reported, fixed only where every one of them is.
+//
+//declscope:package // candidate.go builds it
+type constSet struct {
+	typ *types.TypeName
 }
 
 // inOwnPackage reports whether a build-excluded file belongs to the
@@ -509,6 +524,7 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 		}
 		vs = append(vs, v)
 	}
+	vs = r.judgeSets(candidates, vs)
 	roots := r.carrierRoots(p)
 	first := map[*verdict]bool{}
 	for {
@@ -564,6 +580,29 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 	return findings
 }
 
+// judgeSets drops the verdicts of every const set left alone before the
+// types settle: one with a value another package uses, or whose type is not
+// reported, being used, silenced, baselined or no candidate at all. settle
+// drops the rest whose type turns out used. A value dropped keeps its name,
+// so it carries its type, and an ignore over it silenced nothing.
+func (r *run) judgeSets(candidates []*candidate, vs []*verdict) []*verdict {
+	byKey := map[string]*verdict{}
+	for _, v := range vs {
+		byKey[v.c.key] = v
+	}
+	alone := map[*constSet]bool{}
+	for _, c := range candidates {
+		if c.set == nil {
+			continue
+		}
+		tv := byKey[keyOf(r.mod.Fset, c.set.typ)]
+		if byKey[c.key] == nil || tv == nil || tv.silenced || tv.baselined {
+			alone[c.set] = true
+		}
+	}
+	return slices.DeleteFunc(vs, func(v *verdict) bool { return alone[v.c.set] })
+}
+
 // verdict is judge's working state for one candidate.
 type verdict struct {
 	c    *candidate
@@ -601,7 +640,15 @@ func verdictsFirst(vs []*verdict, first map[*verdict]bool, in bool) []*verdict {
 
 // settle settles which types are used and which keep their names, until
 // nothing changes. Each pass only takes fixes away.
+//
+// A const set goes with its type: a value of a used type is used too. And it
+// keeps its names or loses them together: one value that keeps its name
+// withholds the fix of every other.
 func (r *run) settle(within *types.Package, vs []*verdict, roots []types.Object) {
+	byKey := map[string]*verdict{}
+	for _, v := range vs {
+		byKey[v.c.key] = v
+	}
 	for changed := true; changed; {
 		changed = false
 		fixed := map[string]bool{}
@@ -618,6 +665,22 @@ func (r *run) settle(within *types.Package, vs []*verdict, roots []types.Object)
 				v.used, changed = true, true
 			case kept[v.c.key] && v.fixable():
 				v.kept, v.f.Withheld, changed = true, "an exported declaration that keeps its name hands it out", true
+			}
+		}
+		held := map[*constSet]bool{}
+		for _, v := range vs {
+			if v.c.set != nil && !v.fixable() {
+				held[v.c.set] = true
+			}
+		}
+		for _, v := range vs {
+			switch {
+			case v.c.set == nil || v.used:
+			// judgeSets left the verdict of the type in.
+			case byKey[keyOf(r.mod.Fset, v.c.set.typ)].used:
+				v.used, changed = true, true
+			case held[v.c.set] && v.fixable():
+				v.f.Withheld, changed = "another value of its const block keeps its name", true
 			}
 		}
 	}

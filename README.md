@@ -1242,6 +1242,27 @@ var _ = user.Format
 <td>
 
 ```go
+// internal/user/user.go
+type Status string
+
+const (
+	Active  Status = "active"
+	Blocked Status = "blocked"
+)
+
+const DefaultStatus Status = Active
+
+// api/api.go
+var _ = user.Active
+```
+
+</td>
+<td>Not reported: <code>Blocked</code>. A <code>const</code> block of 2 or more constants, all of one exported type of the package, is a set, judged with its type. While the type is not reported, or any value is used, no value is reported. Otherwise every value is reported, and fixed only where all of them are.<br><br>Reported: <code>DefaultStatus</code>. A constant outside such a block is judged on its own</td>
+</tr>
+<tr>
+<td>
+
+```go
 // internal/user/user_test.go
 package user_test
 
