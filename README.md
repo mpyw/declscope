@@ -974,6 +974,8 @@ Two English inflections change the namespace's own spelling. Both are accepted.
 
 Only these whole forms are generated, from the namespace's side. The name is never stemmed, so `story` and `storm` do not carry `store`.
 
+Generation only makes the namespace longer. So when the file name is the inflected form, its stem does not carry it: in `tracing.go`, `traceValue` and `tracerType` are reported. Finding the stem would mean guessing it (`tracing` could be `trace` or `trac`), and a wrong guess would accept names like `track`. The message for such a namespace names the vocabulary key to add instead.
+
 `rules.naming.vocabulary` lists extra words that carry a namespace. A listed word goes through the same test, so `wheelDelta` carries `mouse` and `pinwheel` does not.
 
 ```yaml
@@ -982,6 +984,7 @@ rules:
     vocabulary:
       mouse: [wheel]
       index: [indices]
+      tracing: [trace]
 ```
 
 > [!WARNING]

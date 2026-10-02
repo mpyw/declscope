@@ -92,6 +92,8 @@ for q in never ondemand always; do
 done
 ```
 
+Some reports will be names that spell the namespace in another form, such as `traceValue` in `tracing.go`. The message names a `rules.naming.vocabulary` key for those. Propose the entries in the same question as the naming rule, and do not count them as renames. When to list a word and when to move code instead is in [When the name spells the namespace in another form](../declscope-authoring/SKILL.md#when-the-name-spells-the-namespace-in-another-form).
+
 Every count in the rest of this skill assumes `qualify: ondemand` with `exported: true`. That is what the numbers were taken under, not a recommendation.
 
 ## Shrink the exported surface first

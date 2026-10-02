@@ -118,16 +118,36 @@ The namespace does not follow the subject's `//declscope:namespace`. If `user_ex
 
 **Uses only in `_test.go` files mean the test is misplaced.** Move the test. Never widen production code for a test, and never let `-fix` insert `//declscope:package` for one.
 
-### Inflected file names
+### When the name spells the namespace in another form
 
-When the file name is an inflected form, the stem is not derived from it. Inflections are generated only in the lengthening direction ([#64](https://github.com/mpyw/declscope/issues/64)), so `tracing.go` is not carried by `trace*`. A vocabulary entry covers it. It is a config change, so ask first:
+Only the namespace's own spelling and two generated forms carry it: a final `e` dropped before `ing` (`store` → `storing`) and `y` turned to `i` (`apply` → `applies`, `applied`). Generation only makes the namespace longer. Nothing else is guessed:
+
+| File | Name | Carried | Why |
+| --- | --- | --- | --- |
+| `store.go` | `storingKeys` | Yes | A generated form |
+| `tracing.go` | `traceValue`, `tracerType` | No | The stem of an inflected file name is not derived |
+| `walking.go` | `walkSpeed` | No | Same |
+| `index.go` | `indicesSorted` | No | An irregular form |
+
+`rules.naming.vocabulary` lists extra words that carry a namespace. A listed word goes through the same test as the namespace, so `trace` also covers `tracer`. When the namespace looks inflected, the diagnostic names the key: `list that form under rules.naming.vocabulary.tracing`.
 
 ```yaml
 rules:
   naming:
     vocabulary:
       tracing: [trace]
+      index: [indices]
 ```
+
+Use it for a word that names what the namespace names: another form of it, or the domain's word for part of it (`mouse: [wheel]`). For those, the rename the message offers would stutter (`tracingTraceValue`).
+
+| The name | Do this |
+| --- | --- |
+| Spells the namespace in another form, or the domain's word for part of it | Propose a vocabulary entry |
+| Spells a different word, which describes the thing better | The file may be named wrong, or the declaration may be in the wrong file. See [An ill-fitting prefix](#an-ill-fitting-prefix-means-the-declaration-is-in-the-wrong-file) |
+| Would need a long list of words | Split the file. A long list means the file declares things it is not about |
+
+A vocabulary entry is a config change, so ask first. List the word the name actually spells. Do not list a stem you guessed: `trac` would also carry `track`.
 
 ## Directives
 

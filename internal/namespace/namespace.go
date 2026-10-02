@@ -343,6 +343,38 @@ func inflections(ns string) []string {
 	return nil
 }
 
+// LooksInflected reports whether ns looks like a form that inflections
+// generates from another namespace: tracing from trace, applies from apply.
+// The naming rule uses it only to point at rules.naming.vocabulary in its
+// message. It decides nothing about what carries a namespace.
+//
+// Generation runs one way, from the namespace to longer forms, and is never
+// reversed. Reversing it needs a guess at the stem: tracing could be trace or
+// trac, heading is head and not heade, mapping is map. A wrong guess carries
+// names the author never meant (trac would carry track). So an inflected
+// namespace is not carried by its stem, and the message tells the author
+// where to list the stem instead.
+//
+// The shape is asked of inflections itself, so the two cannot drift apart.
+// The one rule added here is that the stem of the final word holds a vowel,
+// which keeps string, ring and ping out.
+func LooksInflected(ns string) bool {
+	word := ns
+	for i := len(ns) - 1; i > 0; i-- {
+		if wordStart(ns, i) {
+			word = ns[i:]
+			break
+		}
+	}
+	word = strings.ToLower(word)
+	if len(word) < len("ing") {
+		return false
+	}
+	stem := word[:len(word)-len("ing")]
+	generates := func(base string) bool { return slices.Contains(inflections(base), word) }
+	return (generates(stem+"e") || generates(stem+"y")) && strings.ContainsFunc(stem, isVowel)
+}
+
 // isVowel reports an English vowel letter, case-folded. y is deliberately not
 // one here: apply's y is what inflects, so for the letter before the tail the
 // question never arises in a real namespace.

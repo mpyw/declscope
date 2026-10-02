@@ -1,0 +1,6 @@
+# The naming rule is off by default. This package pins the message an
+# inflected namespace gets: its stem does not carry it, and the vocabulary key
+# to list the stem under.
+rules:
+  naming:
+    qualify: ondemand

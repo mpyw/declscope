@@ -123,6 +123,14 @@ func TestQualifyInflections(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "qualifyinflect")
 }
 
+// TestQualifyInflectedNamespace checks the message of a namespace that is
+// itself an inflected form. Its stem does not carry it, since generation runs
+// only from the namespace, so the message names the vocabulary key instead.
+// A namespace with no vowel before -ing (string) gets the plain message.
+func TestQualifyInflectedNamespace(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "qualifyinflected")
+}
+
 // TestQualifyVocabulary checks rules.naming.vocabulary: a word listed for a
 // namespace satisfies the naming rule under the same test as the namespace
 // itself — word boundary on the left, free right edge — and nothing more.
