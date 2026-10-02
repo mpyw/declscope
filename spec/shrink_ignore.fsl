@@ -54,21 +54,13 @@ spec ShrinkIgnore {
   enum Kind { Member, Other }
 
   state {
-    phase: Int,
-    kind: Kind, free: Bool, constrained: Bool,
-    otherFree: Bool, otherConstrained: Bool, reach: Bool,
+    phase: 0..3 = 0,
+    kind: Kind = Member, free: Bool = false, constrained: Bool = false,
+    otherFree: Bool = false, otherConstrained: Bool = false, reach: Bool = false,
     // reported*: the declaration would be reported without the ignore.
     // unused*: the run reports the ignore unused.
-    reportedIn: Bool, reportedOut: Bool,
-    unusedIn: Bool, unusedOut: Bool
-  }
-
-  init {
-    phase = 0
-    kind = Member  free = false  constrained = false
-    otherFree = false  otherConstrained = false  reach = false
-    reportedIn = false  reportedOut = false
-    unusedIn = false  unusedOut = false
+    reportedIn: Bool = false, reportedOut: Bool = false,
+    unusedIn: Bool = false, unusedOut: Bool = false
   }
 
   action configure(k: Kind, f: Bool, c: Bool, of: Bool, oc: Bool, r: Bool) {
@@ -123,7 +115,6 @@ spec ShrinkIgnore {
   }
 
   // Auxiliary: each run records its judgment of inputs never assigned again.
-  invariant PhaseInRange { phase >= 0 and phase <= 3 }
   invariant ConstrainedUseReaches { (constrained or otherConstrained) => reach }
   invariant InRecordsItsJudgment {
     phase >= 2 => (reportedIn == not seenIn() and unusedIn == (seenIn() and not keptIn()))
@@ -181,5 +172,8 @@ spec ShrinkIgnore {
     and reportedIn and reportedOut and not unusedIn and not unusedOut
   }
 
-  leadsTo BothRunsJudge { phase == 1 ~> phase == 3 }
+  leadsTo BothRunsJudge {
+    phase >= 1 ~> phase == 3
+    decreases 3 - phase
+  }
 }

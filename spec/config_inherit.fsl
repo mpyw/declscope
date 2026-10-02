@@ -32,29 +32,19 @@ spec ConfigInherit {
   enum Level  { Builtin, Outer, Mid, Near }
 
   state {
-    configured: Bool,
+    configured: Bool = false,
     // rules.naming.qualify, stated or not at each of the three levels.
-    qOuter: Stated, qMid: Stated, qNear: Stated,
+    qOuter: Stated = Unset, qMid: Stated = Unset, qNear: Stated = Unset,
     // rules.naming.vocabulary, two namespaces over two levels. Two namespaces
     // are what separates "the maps merge" from "the nearer map replaces the
     // other", and two levels are enough to see it.
-    aOuter: Word, aNear: Word,
-    bOuter: Flag, bNear: Flag,
+    aOuter: Word = NoWord, aNear: Word = NoWord,
+    bOuter: Flag = Off, bNear: Flag = Off,
     // Recording the resolution keeps the chain load-bearing: an invariant over
     // the defs alone would hold however resolve() was written.
-    resolved: Bool,
-    qValue: Mode, qFrom: Level,
-    aValue: Word, bValue: Flag
-  }
-
-  init {
-    configured = false
-    qOuter = Unset  qMid = Unset  qNear = Unset
-    aOuter = NoWord  aNear = NoWord
-    bOuter = Off  bNear = Off
-    resolved = false
-    qValue = Never  qFrom = Builtin
-    aValue = NoWord  bValue = Off
+    resolved: Bool = false,
+    qValue: Mode = Never, qFrom: Level = Builtin,
+    aValue: Word = NoWord, bValue: Flag = Off
   }
 
   action configure(qo: Stated, qm: Stated, qn: Stated,

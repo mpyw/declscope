@@ -65,13 +65,22 @@ else
   echo "  ok       knobs.fsl and boundary_fix.fsl share one scope model"
 fi
 
+## A leadsTo without a ranking measure is checked only to --depth, and the
+## spec still comes back proved. So each one must be proved by its decreases,
+## or a measure deleted or never written would leave a bounded check behind a
+## green verdict.
 for f in "${proving[@]}"; do
   out=$(fslc verify "$f.fsl" --engine induction 2>&1)
-  if [[ "$(field "$out" result)" == "proved" ]]; then
-    echo "  ok       $f.fsl (proved)"
-  else
+  declared=$(grep -c '^[[:space:]]*leadsTo ' "$f.fsl")
+  ranked=$(grep -c '"proof"[[:space:]]*:[[:space:]]*"ranking"' <<< "$out")
+  if [[ "$(field "$out" result)" != "proved" ]]; then
     echo "  FAILED   $f.fsl is $(field "$out" result), want proved" >&2
     status=1
+  elif [[ "$ranked" != "$declared" ]]; then
+    echo "  FAILED   $f.fsl proves $ranked of its $declared leadsTo by ranking; the rest are bounded" >&2
+    status=1
+  else
+    echo "  ok       $f.fsl (proved)"
   fi
 done
 for i in "${!failing_specs[@]}"; do

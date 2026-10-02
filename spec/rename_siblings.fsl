@@ -10,18 +10,14 @@ spec RenameSiblings {
   enum Name { NameA, NameB, NameT }
 
   state {
-    configured: Bool,
-    nameA: Name, nameB: Name,     // Current names
-    origA: Name, origB: Name,     // Names in the state the fixes were generated from
-    tgtA:  Name, tgtB:  Name,     // What each fix renames to
-    appliedA: Bool, appliedB: Bool
-  }
-
-  init {
-    configured = false
-    nameA = NameA  nameB = NameB  origA = NameA  origB = NameB
-    tgtA = NameA   tgtB = NameB
-    appliedA = false  appliedB = false
+    configured: Bool = false,
+    // Current names
+    nameA: Name = NameA, nameB: Name = NameB,
+    // Names in the state the fixes were generated from
+    origA: Name = NameA, origB: Name = NameB,
+    // What each fix renames to
+    tgtA:  Name = NameA, tgtB:  Name = NameB,
+    appliedA: Bool = false, appliedB: Bool = false
   }
 
   action configure(ta: Name, tb: Name) {

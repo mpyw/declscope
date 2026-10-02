@@ -28,24 +28,17 @@ spec FixMembers {
   enum Refs  { NoRefs, SameNs, CrossNs }
 
   state {
-    configured: Bool, cfgUnexported: Scope,
-    typeExported: Bool, memberExported: Bool,
+    configured: Bool = false, cfgUnexported: Scope = Private,
+    typeExported: Bool = false, memberExported: Bool = false,
     // What the author wrote. A fix never assigns these.
-    typeDir: Dir, memberDir: Dir, fileDir: Dir,
-    typeRefs: Refs, memberRefs: Refs,
+    typeDir: Dir = NoDir, memberDir: Dir = NoDir, fileDir: Dir = NoDir,
+    typeRefs: Refs = NoRefs, memberRefs: Refs = NoRefs,
     // What this run inserted.
-    typeFixed: Bool, memberFixed: Bool,
+    typeFixed: Bool = false, memberFixed: Bool = false,
     // A pass that reported and did not fix — -fix off, or the fix withheld. It
     // is what lets a run go on with a crossing pending, which is what makes
     // `fair` on the two fix actions a claim rather than decoration.
-    stalled: Bool
-  }
-  init {
-    configured = false  cfgUnexported = Private
-    typeExported = false  memberExported = false
-    typeDir = NoDir  memberDir = NoDir  fileDir = NoDir
-    typeRefs = NoRefs  memberRefs = NoRefs
-    typeFixed = false  memberFixed = false  stalled = false
+    stalled: Bool = false
   }
   action configure(u: Scope, tx: Bool, mx: Bool,
                    td: Dir, md: Dir, fd: Dir, tr: Refs, mr: Refs) {
@@ -227,8 +220,13 @@ spec FixMembers {
   // directive reaches it when the type is fixed, and its own does otherwise.
   leadsTo MemberEventuallySettled {
     configured and memberCrosses() and memberStated() == NoDir ~> not memberCrossesAfter()
+    helpful fixType()
+    helpful fixMember()
+    decreases if memberCrossesAfter() then 1 else 0
   }
   leadsTo TypeEventuallySettled {
     configured and typeCrosses() and typeStated() == NoDir ~> not typeCrossesAfter()
+    helpful fixType()
+    decreases if typeCrossesAfter() then 1 else 0
   }
 }

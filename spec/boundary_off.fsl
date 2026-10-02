@@ -22,29 +22,20 @@ spec BoundaryOff {
   enum Mode  { Never, OnDemand, Always }
 
   state {
-    configured: Bool,
+    configured: Bool = false,
     // The two switches: rules.boundary and rules.surplus, each set to off.
-    boundaryOff: Bool,
-    surplusOff: Bool,
+    boundaryOff: Bool = false,
+    surplusOff: Bool = false,
     // What each rule reads.
-    scope: Scope, refs: Refs,
-    qualify: Mode, carries: Bool, twoNamespaces: Bool,
-    hasPackageDir: Bool, sawEveryFile: Bool,
+    scope: Scope = Private, refs: Refs = NoRefs,
+    qualify: Mode = Never, carries: Bool = false, twoNamespaces: Bool = false,
+    hasPackageDir: Bool = false, sawEveryFile: Bool = false,
     // Recording each report keeps the guards load-bearing. An invariant over
     // the defs alone would be a tautology, and deleting a guard would not
     // break it.
-    boundaryReported: Bool,
-    qualifyReported: Bool,
-    surplusReported: Bool
-  }
-
-  init {
-    configured = false
-    boundaryOff = false  surplusOff = false
-    scope = Private  refs = NoRefs
-    qualify = Never  carries = false  twoNamespaces = false
-    hasPackageDir = false  sawEveryFile = false
-    boundaryReported = false  qualifyReported = false  surplusReported = false
+    boundaryReported: Bool = false,
+    qualifyReported: Bool = false,
+    surplusReported: Bool = false
   }
 
   action configure(bo: Bool, as_: Bool, sc: Scope, r: Refs,

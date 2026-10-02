@@ -17,7 +17,7 @@
 // paths below. Everything else here exists to make that property bite.
 //
 //   usedOutside     another namespace spells the name
-//   satisfies       a method participates in an interface contract in the package
+//   satisfaction    a method participates in an interface contract in the package
 //   carrierExposed  an exported type carries an unexported method out of the
 //                   package, where an importer completes the satisfaction. No
 //                   go/analysis pass can see that, so the rule only detects the
@@ -39,26 +39,18 @@
 // one declaration at a time.
 spec Surplus {
   state {
-    configured: Bool, ruleOn: Bool,
-    widened: Bool, seesAllFiles: Bool,
-    usedOutside: Bool, satisfies: Bool, carrierExposed: Bool,
-    linkname: Bool, opaqueSource: Bool,
-    reported: Bool, stalled: Bool
-  }
-
-  init {
-    configured = false  ruleOn = false
-    widened = false  seesAllFiles = true
-    usedOutside = false  satisfies = false  carrierExposed = false
-    linkname = false  opaqueSource = false
-    reported = false  stalled = false
+    configured: Bool = false, ruleOn: Bool = false,
+    widened: Bool = false, seesAllFiles: Bool = true,
+    usedOutside: Bool = false, satisfaction: Bool = false, carrierExposed: Bool = false,
+    linkname: Bool = false, opaqueSource: Bool = false,
+    reported: Bool = false, stalled: Bool = false
   }
 
   action configure(on: Bool, w: Bool, sa: Bool, uo: Bool,
                    sat: Bool, ce: Bool, ln: Bool, op: Bool) {
     requires not configured
     configured = true  ruleOn = on  widened = w  seesAllFiles = sa
-    usedOutside = uo  satisfies = sat  carrierExposed = ce
+    usedOutside = uo  satisfaction = sat  carrierExposed = ce
     linkname = ln  opaqueSource = op
   }
 
@@ -67,7 +59,7 @@ spec Surplus {
 
   // Every way the declaration is reached from outside its namespace, whether or
   // not this pass can see it.
-  def reachable() = usedOutside or satisfies or carrierExposed
+  def reachable() = usedOutside or satisfaction or carrierExposed
                     or linkname or opaqueSource
   def fires() = ruleOn and widened and seesAllFiles and not reachable()
 
@@ -98,27 +90,27 @@ spec Surplus {
   // none of them is dead weight satisfied by another.
   reachable SilentOnUseOutside {
     configured and ruleOn and widened and seesAllFiles
-    and usedOutside and not satisfies and not carrierExposed
+    and usedOutside and not satisfaction and not carrierExposed
     and not linkname and not opaqueSource and not fires()
   }
   reachable SilentOnInterfaceSatisfaction {
     configured and ruleOn and widened and seesAllFiles
-    and not usedOutside and satisfies and not carrierExposed
+    and not usedOutside and satisfaction and not carrierExposed
     and not linkname and not opaqueSource and not fires()
   }
   reachable SilentOnExportedCarrier {
     configured and ruleOn and widened and seesAllFiles
-    and not usedOutside and not satisfies and carrierExposed
+    and not usedOutside and not satisfaction and carrierExposed
     and not linkname and not opaqueSource and not fires()
   }
   reachable SilentOnLinkname {
     configured and ruleOn and widened and seesAllFiles
-    and not usedOutside and not satisfies and not carrierExposed
+    and not usedOutside and not satisfaction and not carrierExposed
     and linkname and not opaqueSource and not fires()
   }
   reachable SilentOnOpaqueSource {
     configured and ruleOn and widened and seesAllFiles
-    and not usedOutside and not satisfies and not carrierExposed
+    and not usedOutside and not satisfaction and not carrierExposed
     and not linkname and opaqueSource and not fires()
   }
   reachable SilentWhenNotEveryFileIsRead {
@@ -139,5 +131,7 @@ spec Surplus {
 
   leadsTo EventuallyReported {
     configured and fires() ~> reported
+    helpful report()
+    decreases if reported then 0 else 1
   }
 }

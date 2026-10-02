@@ -55,21 +55,13 @@ spec UnusedIgnoreUnseen {
   enum Rule { Boundary, Other }
 
   state {
-    phase: Int,
-    rule: Rule, seenCross: Bool, unseenNamed: Bool, unseenUnkeyed: Bool,
-    names: Bool, field: Bool, typeNames: Bool, fires: Bool,
+    phase: 0..3 = 0,
+    rule: Rule = Boundary, seenCross: Bool = false, unseenNamed: Bool = false, unseenUnkeyed: Bool = false,
+    names: Bool = false, field: Bool = false, typeNames: Bool = false, fires: Bool = false,
     // silenced*: the run has a finding for the ignore to silence.
     // unused*: the run reports the ignore unused.
-    silencedIn: Bool, silencedOut: Bool,
-    unusedIn: Bool, unusedOut: Bool
-  }
-
-  init {
-    phase = 0
-    rule = Boundary  seenCross = false  unseenNamed = false  unseenUnkeyed = false
-    names = false  field = false  typeNames = false  fires = false
-    silencedIn = false  silencedOut = false
-    unusedIn = false  unusedOut = false
+    silencedIn: Bool = false, silencedOut: Bool = false,
+    unusedIn: Bool = false, unusedOut: Bool = false
   }
 
   action configure(r: Rule, sc: Bool, un: Bool, uu: Bool, n: Bool, fd: Bool, tn: Bool, f: Bool) {
@@ -126,7 +118,6 @@ spec UnusedIgnoreUnseen {
   }
 
   // Auxiliary: each run records its judgment of inputs never assigned again.
-  invariant PhaseInRange { phase >= 0 and phase <= 3 }
   invariant UnseenNamedIsNamed { unseenNamed => names }
   invariant UnseenUnkeyedIsAField { unseenUnkeyed => (field and typeNames) }
   invariant InRecordsItsJudgment {
@@ -179,5 +170,8 @@ spec UnusedIgnoreUnseen {
     phase == 3 and rule == Other and names and not fires and unusedIn and unusedOut
   }
 
-  leadsTo BothRunsJudge { phase == 1 ~> phase == 3 }
+  leadsTo BothRunsJudge {
+    phase >= 1 ~> phase == 3
+    decreases 3 - phase
+  }
 }

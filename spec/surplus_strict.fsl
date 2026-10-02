@@ -70,19 +70,11 @@ spec SurplusStrict {
   enum Shape { Plain, MixedEntry, MembersQuiet, MembersKeep, OwnerNarrowed }
 
   state {
-    phase: Int,
-    mode: Mode, source: Source, level: Level,
-    seesAllFiles: Bool, reach: Reach, shape: Shape,
-    otherLive: Bool, otherDecided: Bool, restated: Bool, rewords: Bool,
-    looseReported: Bool, strictReported: Bool, fixed: Bool, stalled: Bool
-  }
-
-  init {
-    phase = 0
-    mode = Loose  source = Enclosed  level = OnFile
-    seesAllFiles = true  reach = Unreached  shape = Plain
-    otherLive = false  otherDecided = false  restated = false  rewords = false
-    looseReported = false  strictReported = false  fixed = false  stalled = false
+    phase: 0..2 = 0,
+    mode: Mode = Loose, source: Source = Enclosed, level: Level = OnFile,
+    seesAllFiles: Bool = true, reach: Reach = Unreached, shape: Shape = Plain,
+    otherLive: Bool = false, otherDecided: Bool = false, restated: Bool = false, rewords: Bool = false,
+    looseReported: Bool = false, strictReported: Bool = false, fixed: Bool = false, stalled: Bool = false
   }
 
   // Two steps rather than one: one action with every parameter is the product
@@ -203,7 +195,6 @@ spec SurplusStrict {
 
   // Auxiliary: nothing assigns the inputs once configured, so each guard
   // still holds of the state the action fired in.
-  invariant PhaseInRange { phase >= 0 and phase <= 2 }
   invariant LooseRecordsItsGuard  { looseReported => configured() and looseFires() }
   invariant StrictRecordsItsGuard { strictReported => configured() and strictFires() }
   invariant FixRecordsItsGuard    { fixed => strictReported and fixable() }
@@ -328,7 +319,20 @@ spec SurplusStrict {
   // The rule reporting nothing for a pass, which is what the leadsTo escapes.
   reachable PendingReportSurvivesAPass { stalled and strictFires() and not strictReported }
 
-  leadsTo LooseEventuallyReported  { configured() and looseFires() ~> looseReported }
-  leadsTo StrictEventuallyReported { configured() and strictFires() ~> strictReported }
-  leadsTo EventuallyFixed          { configured() and fixable() ~> fixed }
+  leadsTo LooseEventuallyReported {
+    configured() and looseFires() ~> looseReported
+    helpful reportLoose()
+    decreases if looseReported then 0 else 1
+  }
+  leadsTo StrictEventuallyReported {
+    configured() and strictFires() ~> strictReported
+    helpful reportStrict()
+    decreases if strictReported then 0 else 1
+  }
+  leadsTo EventuallyFixed {
+    configured() and fixable() ~> fixed
+    helpful reportStrict()
+    helpful fix()
+    decreases (if strictReported then 0 else 1) + (if fixed then 0 else 1)
+  }
 }
