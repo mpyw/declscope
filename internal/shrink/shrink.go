@@ -644,6 +644,7 @@ func verdictsFirst(vs []*verdict, first map[*verdict]bool, in bool) []*verdict {
 // A const set goes with its type: a value of a used type is used too. And it
 // keeps its names or loses them together: one value that keeps its name
 // withholds the fix of every other.
+// spec/shrink_settle.fsl proves that this still ends, and leaves no set split.
 func (r *run) settle(within *types.Package, vs []*verdict, roots []types.Object) {
 	byKey := map[string]*verdict{}
 	for _, v := range vs {
