@@ -24,29 +24,22 @@
 // algebra within one level is filter.fsl's. This spec is the chain.
 spec FilterChain {
   state {
-    configured: Bool,
+    configured: Bool = false,
     // Which lists each level states. An empty list places no restriction,
     // which for only is a rule rather than a consequence (filter.fsl).
-    oOnlyEmpty: Bool, oOmitEmpty: Bool,
-    nOnlyEmpty: Bool, nOmitEmpty: Bool,
+    oOnlyEmpty: Bool = true, oOmitEmpty: Bool = true,
+    nOnlyEmpty: Bool = true, nOmitEmpty: Bool = true,
     // Two files, because the warning below is about there being no file left.
     // For each: does it match the outer level's only, the outer's omit, the
     // nearer level's only, the nearer's omit.
-    f1oOnly: Bool, f1oOmit: Bool, f1nOnly: Bool, f1nOmit: Bool,
-    f2oOnly: Bool, f2oOmit: Bool, f2nOnly: Bool, f2nOmit: Bool,
+    f1oOnly: Bool = false, f1oOmit: Bool = false,
+    f1nOnly: Bool = false, f1nOmit: Bool = false,
+    f2oOnly: Bool = false, f2oOmit: Bool = false,
+    f2nOnly: Bool = false, f2nOmit: Bool = false,
     // Recording the outcome keeps the guards load-bearing.
-    decided: Bool,
-    kept1: Bool, kept2: Bool,
-    warned: Bool
-  }
-
-  init {
-    configured = false
-    oOnlyEmpty = true  oOmitEmpty = true
-    nOnlyEmpty = true  nOmitEmpty = true
-    f1oOnly = false  f1oOmit = false  f1nOnly = false  f1nOmit = false
-    f2oOnly = false  f2oOmit = false  f2nOnly = false  f2nOmit = false
-    decided = false  kept1 = false  kept2 = false  warned = false
+    decided: Bool = false,
+    kept1: Bool = false, kept2: Bool = false,
+    warned: Bool = false
   }
 
   action configure(oe: Bool, xe: Bool, ne: Bool, me: Bool,

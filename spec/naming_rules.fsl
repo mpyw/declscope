@@ -40,28 +40,21 @@ spec NamingRules {
   enum Carry   { Absent, Inside, AtStart, Equal }
 
   state {
-    configured: Bool, cfgQualify: Qualify,
-    cfgExportedNames: Bool, manyNs: Bool,
-    kind: Kind, exported: Bool, canPrefix: Bool, isCore: Bool,
-    carry: Carry, fixed: Bool,
+    configured: Bool = false, cfgQualify: Qualify = Never,
+    cfgExportedNames: Bool = false, manyNs: Bool = false,
+    kind: Kind = Pkg, exported: Bool = false,
+    canPrefix: Bool = true, isCore: Bool = false,
+    carry: Carry = Absent, fixed: Bool = false,
     // renameOffered stands for everything internal/rename.go renameSafe
     // withholds beyond exportedness: a collision in any scope, a //go:linkname,
     // an unseen test variant, a name that cannot be spelled. The violation is
     // reported either way; only the fix is withheld.
-    renameOffered: Bool,
+    renameOffered: Bool = true,
     // stalled records a pass that reported without fixing — -fix off, or the
     // rename withheld. It is what lets a run go on forever with a violation
     // pending, which is what makes `fair` on fixQualify a claim rather than
     // decoration.
-    stalled: Bool
-  }
-
-  init {
-    configured = false  cfgQualify = Never
-    cfgExportedNames = false  manyNs = false
-    kind = Pkg  exported = false  canPrefix = true  isCore = false
-    carry = Absent  fixed = false
-    renameOffered = true  stalled = false
+    stalled: Bool = false
   }
 
   action configure(q: Qualify, e: Bool, m: Bool,
@@ -201,5 +194,7 @@ spec NamingRules {
 
   leadsTo QualifyEventuallyFixed {
     configured and qualifyFires() and fixable() ~> not qualifyFires()
+    helpful fixQualify()
+    decreases if qualifyFires() then 1 else 0
   }
 }

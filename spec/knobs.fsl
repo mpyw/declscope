@@ -22,22 +22,17 @@ spec Knobs {
   enum Refs  { NoRefs, SameNs, CrossNs }
 
   state {
-    configured: Bool, cfgUnexported: Scope,
-    kind: Kind, exported: Bool,
-    declDir: Dir, blockDir: Dir, typeDir: Dir, fileDir: Dir,
-    refs: Refs,
+    configured: Bool = false, cfgUnexported: Scope = Private,
+    kind: Kind = Pkg, exported: Bool = false,
+    declDir: Dir = NoDir, blockDir: Dir = NoDir,
+    typeDir: Dir = NoDir, fileDir: Dir = NoDir,
+    refs: Refs = NoRefs,
     // reported records that the boundary check fired. Without it every
     // invariant here would be a tautology over the defs: a spec whose only
     // action assigns the whole state at once cannot say anything about
     // reachability. Recording the report makes the guards that produce it
     // load-bearing, which is what an invariant is for.
-    reported: Bool
-  }
-  init {
-    configured = false  cfgUnexported = Private
-    kind = Pkg  exported = false
-    declDir = NoDir  blockDir = NoDir  typeDir = NoDir  fileDir = NoDir
-    refs = NoRefs  reported = false
+    reported: Bool = false
   }
   action configure(u: Scope, k: Kind, x: Bool,
                    dd: Dir, bd: Dir, td: Dir, fd: Dir, r: Refs) {

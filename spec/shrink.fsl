@@ -65,21 +65,12 @@ spec Shrink {
   enum Doubt { NoDoubt, Escapes, ExcludedName }
 
   state {
-    phase: Int,
-    kind: Kind, placement: Placement, exposed: Bool, hiddenUse: Bool,
-    outside: Outside, doubt: Doubt, dynamicUse: Bool, staticSatisfaction: Bool,
-    excludedSamePkg: Bool, generatedRef: Bool, renameUnsafe: Bool, kept: Bool,
-    exported: Bool,
-    reported: Bool, reportedTestOnly: Bool, fixed: Bool, stalled: Bool
-  }
-
-  init {
-    phase = 0
-    kind = Value  placement = Internal  exposed = false  hiddenUse = false
-    outside = None  doubt = NoDoubt  dynamicUse = false  staticSatisfaction = false
-    excludedSamePkg = false  generatedRef = false  renameUnsafe = false  kept = false
-    exported = true
-    reported = false  reportedTestOnly = false  fixed = false  stalled = false
+    phase: 0..3 = 0,
+    kind: Kind = Value, placement: Placement = Internal, exposed: Bool = false, hiddenUse: Bool = false,
+    outside: Outside = None, doubt: Doubt = NoDoubt, dynamicUse: Bool = false, staticSatisfaction: Bool = false,
+    excludedSamePkg: Bool = false, generatedRef: Bool = false, renameUnsafe: Bool = false, kept: Bool = false,
+    exported: Bool = true,
+    reported: Bool = false, reportedTestOnly: Bool = false, fixed: Bool = false, stalled: Bool = false
   }
 
   // Three steps rather than one: one action with every parameter is the
@@ -160,7 +151,6 @@ spec Shrink {
   invariant FixFollowsReport { fixed => reported }
   // The configuration keeps what configure required of it: nothing hides an
   // importer inside the range, and a dynamic use leaves a trace.
-  invariant PhaseInRange { phase >= 0 and phase <= 3 }
   invariant PlacementUnsetBeforeItsStep {
     phase == 0 => kind == Value and placement == Internal and not exposed and not hiddenUse
   }
@@ -284,6 +274,14 @@ spec Shrink {
 
   reachable PendingReportSurvivesAPass { stalled and fires() and not reported }
 
-  leadsTo EventuallyReported { configured() and fires() ~> reported }
-  leadsTo EventuallyFixed { configured() and fixable() and reported ~> fixed }
+  leadsTo EventuallyReported {
+    configured() and fires() ~> reported
+    helpful report()
+    decreases if reported then 0 else 1
+  }
+  leadsTo EventuallyFixed {
+    configured() and fixable() and reported ~> fixed
+    helpful fix()
+    decreases if fixed then 0 else 1
+  }
 }

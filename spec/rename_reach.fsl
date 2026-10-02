@@ -30,16 +30,11 @@ spec RenameReach {
   enum Kind { Rewritten, Uncollected, UnseenTest, BuildExcluded }
 
   state {
-    configured:  Bool,
-    kind:        Kind,
-    spellsOld:   Bool,   // The file writes the name being renamed away
-    declaresNew: Bool,   // The file declares the name the rename would take
-    renamed:     Bool
-  }
-
-  init {
-    configured = false  kind = Rewritten
-    spellsOld = false  declaresNew = false  renamed = false
+    configured:  Bool = false,
+    kind:        Kind = Rewritten,
+    spellsOld:   Bool = false,  // The file writes the name being renamed away
+    declaresNew: Bool = false,  // The file declares the name the rename would take
+    renamed:     Bool = false
   }
 
   action configure(k: Kind, s: Bool, d: Bool) {

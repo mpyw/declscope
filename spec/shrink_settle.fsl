@@ -29,17 +29,15 @@ spec ShrinkSettle {
   type Decl = 0..2
 
   state {
-    phase: Int,
+    phase: 0..2 = 0,
     fixable0: Map<Decl, Bool>,
-    carries: relation Decl -> Decl,
+    carries: relation Decl -> Decl = Set {},
     fixable: Map<Decl, Bool>
   }
 
   init {
-    phase = 0
     forall d: Decl { fixable0[d] = false }
     forall d: Decl { fixable[d] = false }
-    carries = Set {}
   }
 
   // The judgment of each declaration on its own, and what carries what. A
@@ -75,7 +73,6 @@ spec ShrinkSettle {
 
   terminal { phase == 2 }
 
-  invariant PhaseInRange { phase >= 0 and phase <= 2 }
   invariant FixedOnlyWhenJudged { forall d: Decl { fixable[d] => fixable0[d] } }
   // Before settling starts, the fix set is the judgment itself.
   invariant UnsettledBeforeStart { phase == 0 => forall d: Decl { fixable[d] == fixable0[d] } }

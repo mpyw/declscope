@@ -18,22 +18,16 @@ spec RenameSound {
   enum Target { ToDecl, ToLocal, ToFile, ToOtherPkg, ToUniverse, Unresolved }
 
   state {
-    configured: Bool,
-    declName:   NameId,   // The declaration's current name
-    localAt:    Bind,     // What the innermost scope at the reference binds
-    fileAt:     Bind,     // What that file's imports bind
-    otherPkg:   Bind,     // Another package-scope declaration
-    universeNew: Bool,    // NewName is predeclared (len, error, string, ...)
-    renamed:    Bool,
+    configured:  Bool = false,
+    declName:    NameId = OldName,  // The declaration's current name
+    localAt:     Bind = Unbound,    // What the innermost scope at the reference binds
+    fileAt:      Bind = Unbound,    // What that file's imports bind
+    otherPkg:    Bind = Unbound,    // Another package-scope declaration
+    universeNew: Bool = false,      // NewName is predeclared (len, error, string, ...)
+    renamed:     Bool = false,
     // What a second site elsewhere in the package resolved NewName to before
     // the rename. Captured so the rename can be checked not to capture it.
-    elsewhereBefore: Target
-  }
-
-  init {
-    configured = false  declName = OldName
-    localAt = Unbound  fileAt = Unbound  otherPkg = Unbound
-    universeNew = false  renamed = false  elsewhereBefore = Unresolved
+    elsewhereBefore: Target = Unresolved
   }
 
   action configure(l: Bind, f: Bind, o: Bind, u: Bool) {

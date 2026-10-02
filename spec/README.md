@@ -175,6 +175,12 @@ non-zero for a parse error too. `verify.sh` reads the JSON verdict, pins each
 failing spec to the invariant it must break, and checks that `knobs.fsl` and
 `boundary_fix.fsl` still share one scope model.
 
+Each `leadsTo` carries a `decreases` measure, with `helpful` naming the fair
+action that makes the progress. Without a measure, induction proves the
+invariants for all depths but checks a `leadsTo` only to `--depth`, and the spec
+is still reported `proved`. `verify.sh` therefore also requires every `leadsTo`
+to be proved by ranking.
+
 ## Negative controls
 
 A spec that passes whether or not the code is correct proves nothing. These were
@@ -197,14 +203,14 @@ is a semantics that contradicts the documented one; each was run:
 | The core namespace is named like any other | `reachable_failed` |
 | A prefix fix does not record itself | `reachable_failed` |
 | A fix is applied to an exported declaration | `violated` |
-| `fair` is dropped from a fix action | `violated` (`leadsTo`) |
+| `fair` is dropped from a fix action | `violated` (`leadsTo`); under induction, `unknown_cti` (`progress_action_not_fair`) |
 | A fix is offered where no violation exists, or over the author's own directive | `violated` |
 | A scope directive stops at the first thing in its reach, or at the last | `reachable_failed` |
 | The binding test reads `defaults.unexported` instead of quantifying over it | `violated` |
 | The binding test asks only whether the name is exported, ignoring an enclosing directive | `violated` |
 | A `var`/`const`/`type` block's directive does not reach the members of a type it holds | `reachable_failed` |
 | `boundary_fix.fsl` stops reading `blockDir`, or stops discriminating exportedness | `reachable_failed` |
-| `fair` is dropped from `fixBoundary` | `violated` (`leadsTo`) |
+| `fair` is dropped from `fixBoundary` | `violated` (`leadsTo`); under induction, `unknown_cti` (`progress_action_not_fair`) |
 | A scope directive ignores a nearer directive that shadows it | `violated` |
 | Any one of the four scope checks in `renameSafe` is dropped | `violated` |
 | The build-excluded file is not consulted, so a rename disturbs a name only another configuration writes | `violated` |
@@ -232,7 +238,7 @@ is a semantics that contradicts the documented one; each was run:
 | `shrink` reports whatever no package in the build spells, external tests and excluded files included | `violated` (`NeverReportsVisibleUse`) |
 | A build-excluded name silences the `shrink` report instead of withholding only the fix | `reachable_failed` (`WithheldOnExcludedName`, `ReportedDespiteADynamicUse`) |
 | `shrink` fixes a declaration only external tests use | `violated` (`FixFollowsReport`) |
-| `fair` is dropped from the `shrink` fix | `violated` (`EventuallyFixed`) |
+| `fair` is dropped from the `shrink` fix | `violated` (`EventuallyFixed`); under induction, `unknown_cti` (`progress_action_not_fair`) |
 | `shrink` fixes a type that an exported declaration keeping its name hands out | `violated` (`FixNeverBreaks`) |
 | Settling stops before no carrier that keeps its name is left | `violated` (`Sound`) |
 | A fixed declaration counts as a carrier, so a declaration and the type it returns never go together | `reachable_failed` (`FixedTogether`) |

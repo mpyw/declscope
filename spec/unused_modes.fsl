@@ -60,27 +60,16 @@ spec UnusedModes {
   enum Mode  { Off, Loose, Strict }
 
   state {
-    phase: Int,
-    mode: Mode, stated: Scope, cfgUnexported: Scope,
-    aPresent: Bool, aExported: Bool, aOuter: Dir,
-    bPresent: Bool, bExported: Bool, bOuter: Dir,
-    aCrosses: Bool, ownerWidened: Bool, surplusHolds: Bool, outerStuck: Bool,
-    blind: Bool, crossUnseen: Bool,
-    reported: Bool, fixed: Bool,
+    phase: 0..5 = 0,
+    mode: Mode = Loose, stated: Scope = Package, cfgUnexported: Scope = Private,
+    aPresent: Bool = false, aExported: Bool = false, aOuter: Dir = NoDir,
+    bPresent: Bool = false, bExported: Bool = false, bOuter: Dir = NoDir,
+    aCrosses: Bool = false, ownerWidened: Bool = false, surplusHolds: Bool = false, outerStuck: Bool = false,
+    blind: Bool = false, crossUnseen: Bool = false,
+    reported: Bool = false, fixed: Bool = false,
     // What the fix left: a's scope, and what the directive shadowing b is
     // judged against.
-    aAfter: Scope, bAfter: Scope
-  }
-
-  init {
-    phase = 0
-    mode = Loose  stated = Package  cfgUnexported = Private
-    aPresent = false  aExported = false  aOuter = NoDir
-    bPresent = false  bExported = false  bOuter = NoDir
-    aCrosses = false  ownerWidened = false  surplusHolds = false  outerStuck = false
-    blind = false  crossUnseen = false
-    reported = false  fixed = false
-    aAfter = Package  bAfter = Package
+    aAfter: Scope = Package, bAfter: Scope = Package
   }
 
   // One step per concern rather than one action for all of them: an action's
@@ -164,7 +153,6 @@ spec UnusedModes {
   invariant FixKeepsOtherReports { fixed => not aCrosses and not ownerWidened and not surplusHolds and not outerStuck }
 
   // Auxiliary: the inputs are never assigned once configured.
-  invariant PhaseInRange { phase >= 0 and phase <= 5 }
   invariant JudgedLast   { (reported or fixed) => phase == 5 }
   invariant FixRecordsItsGuard { fixed => fixable() }
   invariant UnseenIsACrossing  { crossUnseen => aCrosses and blind }

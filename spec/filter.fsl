@@ -22,26 +22,18 @@
 // on one file. OrderDoesNotMatter below is that statement, made checkable.
 spec Filter {
   state {
-    configured: Bool,
+    configured: Bool = false,
     // The only list: which of the three patterns it holds.
-    o0: Bool, o1: Bool, o2: Bool,
+    o0: Bool = false, o1: Bool = false, o2: Bool = false,
     // The omit list, over the same three patterns.
-    x0: Bool, x1: Bool, x2: Bool,
+    x0: Bool = false, x1: Bool = false, x2: Bool = false,
     // Which of the three this file matches.
-    m0: Bool, m1: Bool, m2: Bool,
+    m0: Bool = false, m1: Bool = false, m2: Bool = false,
     // Recording the decision is what makes the guards below load-bearing.
     // An invariant written over the defs alone would hold however the actions
     // were guarded, and deleting a guard would not break it.
-    decided: Bool,
-    admitted: Bool
-  }
-
-  init {
-    configured = false
-    o0 = false  o1 = false  o2 = false
-    x0 = false  x1 = false  x2 = false
-    m0 = false  m1 = false  m2 = false
-    decided = false  admitted = false
+    decided: Bool = false,
+    admitted: Bool = false
   }
 
   action configure(a0: Bool, a1: Bool, a2: Bool,

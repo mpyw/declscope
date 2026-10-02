@@ -42,23 +42,15 @@ spec UnusedBind {
   enum Dir   { NoDir, DirPackage, DirPrivate }
 
   state {
-    configured: Bool,
+    configured: Bool = false,
     // what this directive names, and what the levels outside it say
-    stated: Scope, outerDir: Dir, cfgUnexported: Scope,
+    stated: Scope = Package, outerDir: Dir = NoDir, cfgUnexported: Scope = Private,
     // the declaration the directive is written on, if any
-    hasTarget: Bool, targetExported: Bool,
+    hasTarget: Bool = false, targetExported: Bool = false,
     // two declarations within its reach, each possibly shadowed by a nearer one
-    aPresent: Bool, aExported: Bool, aShadowed: Bool,
-    bPresent: Bool, bExported: Bool, bShadowed: Bool,
-    bound: Bool
-  }
-  init {
-    configured = false
-    stated = Package  outerDir = NoDir  cfgUnexported = Private
-    hasTarget = false  targetExported = false
-    aPresent = false  aExported = false  aShadowed = false
-    bPresent = false  bExported = false  bShadowed = false
-    bound = false
+    aPresent: Bool = false, aExported: Bool = false, aShadowed: Bool = false,
+    bPresent: Bool = false, bExported: Bool = false, bShadowed: Bool = false,
+    bound: Bool = false
   }
   action configure(st: Scope, od: Dir, cu: Scope,
                    ht: Bool, tx: Bool,

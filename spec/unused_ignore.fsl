@@ -32,23 +32,15 @@ spec UnusedIgnore {
   enum Names { Other, Unused, Bare }
 
   state {
-    phase: Int,
-    mode: Mode, level: Level,
+    phase: 0..2 = 0,
+    mode: Mode = Loose, level: Level = Decl,
     // I is the ignore judged. silenced: it silenced some finding that is not
     // an unused-ignore report.
-    iNames: Names, iSilenced: Bool,
+    iNames: Names = Other, iSilenced: Bool = false,
     // J is another ignore at the same level: the same comment group for Decl,
     // the same file for File.
-    jPresent: Bool, jNames: Names, jSilenced: Bool,
-    iReported: Bool, jReported: Bool
-  }
-
-  init {
-    phase = 0
-    mode = Loose  level = Decl
-    iNames = Other  iSilenced = false
-    jPresent = false  jNames = Other  jSilenced = false
-    iReported = false  jReported = false
+    jPresent: Bool = false, jNames: Names = Other, jSilenced: Bool = false,
+    iReported: Bool = false, jReported: Bool = false
   }
 
   action configure(m: Mode, l: Level, in: Names, is: Bool, jp: Bool, jn: Names, js: Bool) {
@@ -91,7 +83,6 @@ spec UnusedIgnore {
   invariant DeclAnswersByName { (level == Decl and iAnswersJ()) => iNames == Unused }
 
   // Auxiliary.
-  invariant PhaseInRange { phase >= 0 and phase <= 2 }
   invariant JudgedLast   { (iReported or jReported) => phase == 2 }
   invariant JOnlyWhenPresent { jReported => jPresent }
 
