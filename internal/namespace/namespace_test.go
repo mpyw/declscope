@@ -222,6 +222,44 @@ func TestContainsCases(t *testing.T) {
 	}
 }
 
+func TestLooksInflected(t *testing.T) {
+	tests := []struct {
+		ns   string
+		want bool
+	}{
+		// The forms inflections generates, read back from the namespace.
+		{"tracing", true},
+		{"storing", true},
+		{"walking", true},
+		{"mapping", true},
+		{"applies", true},
+		{"unified", true},
+		// Only the final word of a compound namespace inflects.
+		{"userTracing", true},
+		{"tracingUser", false},
+		{"exprString", false},
+		// No vowel before the suffix, so there is no stem to list.
+		{"string", false},
+		{"ring", false},
+		{"ping", false},
+		{"dies", false},
+		// After a vowel, e and y keep their spelling, so nothing is generated.
+		{"freeing", false},
+		{"deploying", true}, // deploy + ing: y is not a vowel here
+		{"agreed", false},
+		// Not an inflected form at all.
+		{"trace", false},
+		{"user", false},
+		{"ing", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		if got := LooksInflected(tt.ns); got != tt.want {
+			t.Errorf("LooksInflected(%q) = %v, want %v", tt.ns, got, tt.want)
+		}
+	}
+}
+
 func TestUnexported(t *testing.T) {
 	tests := map[string]string{
 		"Load":        "load",

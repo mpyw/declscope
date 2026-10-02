@@ -157,7 +157,7 @@ The three compose. `depguard` keeps the package graph honest, declscope keeps ea
 
 | Method | Command | Needs |
 | --- | --- | --- |
-| **[mise](https://mise.jdx.dev/)** *(recommended)* | `mise use "github:mpyw/declscope@0.17.1"` | Nothing. Installs the prebuilt binary |
+| **[mise](https://mise.jdx.dev/)** *(recommended)* | `mise use "github:mpyw/declscope@0.17.2"` | Nothing. Installs the prebuilt binary |
 | `go tool` | `go get -tool github.com/mpyw/declscope/cmd/declscope@latest` | Go 1.27+ |
 | `go install` | `go install github.com/mpyw/declscope/cmd/declscope@latest` | Go 1.27+ |
 | Release archive | See below | Nothing |
@@ -173,7 +173,7 @@ declscope ./...
 
 ```toml
 [tools]
-"github:mpyw/declscope" = "0.17.1"
+"github:mpyw/declscope" = "0.17.2"
 ```
 
 As a tool dependency in `go.mod`:
@@ -207,7 +207,7 @@ go run github.com/mpyw/declscope/cmd/declscope@latest ./...
 From a release archive, verified against the published checksums:
 
 ```bash
-VERSION=0.17.1
+VERSION=0.17.2
 curl -LO "https://github.com/mpyw/declscope/releases/download/v${VERSION}/declscope_${VERSION}_darwin_arm64.tar.gz"
 curl -LO "https://github.com/mpyw/declscope/releases/download/v${VERSION}/checksums.txt"
 shasum -a 256 -c checksums.txt --ignore-missing
@@ -974,6 +974,8 @@ Two English inflections change the namespace's own spelling. Both are accepted.
 
 Only these whole forms are generated, from the namespace's side. The name is never stemmed, so `story` and `storm` do not carry `store`.
 
+**The reverse is not generated**: in `tracing.go`, `traceValue` is reported. The message names the vocabulary key to add.
+
 `rules.naming.vocabulary` lists extra words that carry a namespace. A listed word goes through the same test, so `wheelDelta` carries `mouse` and `pinwheel` does not.
 
 ```yaml
@@ -982,6 +984,7 @@ rules:
     vocabulary:
       mouse: [wheel]
       index: [indices]
+      tracing: [trace]
 ```
 
 > [!WARNING]

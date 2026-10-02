@@ -6,7 +6,7 @@ license: MIT
 
 # Adopting declscope
 
-Written against **declscope 0.17.1**. Check the version first with `declscope -V=full`: this describes how that release behaves, not how an older one does.
+Written against **declscope 0.17.2**. Check the version first with `declscope -V=full`: this describes how that release behaves, not how an older one does.
 
 **Read [the README](https://github.com/mpyw/declscope#readme) before the first decision.** This skill covers what to do about the diagnostics. What each directive means, and what the config accepts, is there.
 
@@ -91,6 +91,8 @@ for q in never ondemand always; do
   printf '%-9s %s\n' "$q" "$(declscope survey -config /tmp/q.yaml -format=json ./... | jq .totals.qualify.found)"
 done
 ```
+
+Some reports will be names that spell the namespace in another form, such as `traceValue` in `tracing.go`. The message names a `rules.naming.vocabulary` key for those. Propose the entries in the same question as the naming rule, and do not count them as renames. When to list a word and when to move code instead is in [When the name spells the namespace in another form](../declscope-authoring/SKILL.md#when-the-name-spells-the-namespace-in-another-form).
 
 Every count in the rest of this skill assumes `qualify: ondemand` with `exported: true`. That is what the numbers were taken under, not a recommendation.
 

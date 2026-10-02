@@ -481,6 +481,13 @@ func (c *collection) qualifyFindingForReport(pass *analysis.Pass, opts Options, 
 			t.kind, name, namespaceInReport(t.file.ns, t.file.path),
 			namespace.Qualify(name, t.file.ns), t.file.ns),
 	}
+	// An inflected namespace is not carried by its stem (see
+	// namespace.LooksInflected), and the rename would stutter: tracingTraceValue.
+	// The vocabulary is the answer, so the message names the key to add.
+	if namespace.LooksInflected(t.file.ns) {
+		f.msg += fmt.Sprintf("; if the name spells %q in another form, list that form under rules.naming.vocabulary.%s",
+			t.file.ns, t.file.ns)
+	}
 	if fix, ok := c.renameFix(pass, t, namespace.Qualify(name, t.file.ns),
 		"prefix it with its namespace"); ok {
 		f.fixes = append(f.fixes, fix)
