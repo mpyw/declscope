@@ -26,6 +26,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/mpyw/declscope/internal/directive"
+	"github.com/mpyw/declscope/internal/namespace"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
@@ -70,6 +71,12 @@ func (f *fileInfo) key() string {
 	return "\x00" + f.path
 }
 
+// spelledNamespace spells the namespace for the baseline and the survey, the
+// way namespace.Spell spells it for declscope shrink too.
+func (f *fileInfo) spelledNamespace() string {
+	return namespace.Spell(namespace.Resolved{Core: f.core, Name: f.ns}, f.path)
+}
+
 // kind describes what a target declares, for diagnostic wording.
 type kind string
 
@@ -80,6 +87,19 @@ const (
 	kindConst  kind = "const"
 	kindMethod kind = "method"
 	kindField  kind = "field"
+)
+
+// boundLevel names which level supplied a scope. A diagnostic that
+// inferred it from the kind instead would tell a reader to look for a comment
+// that is not there: a field takes its type's directive and its file's alike,
+// and only the level knows which one decided.
+type boundLevel int
+
+const (
+	boundAtDefault boundLevel = iota
+	boundAtDecl
+	boundAtContainer
+	boundAtFile
 )
 
 // target is a declaration whose scope declscope enforces.
@@ -119,7 +139,7 @@ type target struct {
 	// own directive in those cases would point at a comment that is not there.
 	boundBy directive.Decl
 	// boundAt names which level that was.
-	boundAt scopesiteLevel
+	boundAt boundLevel
 	// decided records whether that directive settled anything for THIS
 	// declaration: a scope it could not have had under any configuration.
 	// An exported name resolves to package scope whatever the config says, so
@@ -222,7 +242,7 @@ func methodOwner(fn *types.Func) types.Object {
 
 // ref is a use of a target from somewhere in the package.
 // ref is one use site. It holds a node rather than an identifier because a
-// composite literal with no keysForReport writes a field without naming it, and that
+// composite literal with no keys writes a field without naming it, and that
 // use has to be reported at the element that writes it.
 type ref struct {
 	node ast.Node
@@ -262,7 +282,7 @@ type collection struct {
 	scopesiteBook
 	collectingBook
 	renameBook
-	reportBook
+	insertBook
 	surplusBook
 
 	// namespaces is how many distinct namespaces the package's non-test files

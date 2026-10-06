@@ -6,6 +6,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
+	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/measure"
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
@@ -37,7 +38,7 @@ func (c *collection) surveyed(pass *analysis.Pass, opts Options) measure.Package
 
 	for _, t := range c.targets {
 		crossed := measure.FindingState("")
-		for _, f := range c.surveyedFindingsForReport(pass, opts, t) {
+		for _, f := range c.surveyedFindings(pass, opts, t) {
 			bumpSurveyCount(out.Findings, f)
 			switch f.Rule {
 			case rule.Boundary:
@@ -51,7 +52,7 @@ func (c *collection) surveyed(pass *analysis.Pass, opts Options) measure.Package
 
 	// The unused, directive and filter rules are settled once every other
 	// finding has been seen, exactly as the report settles them.
-	maps.Copy(out.Findings, c.surveyedProblemsForReport(pass, opts))
+	maps.Copy(out.Findings, c.surveyedProblems(pass, opts))
 
 	out.Namespaces, out.AllCore = namespacesForSurvey(pass, c, opts)
 	return out.Sorted()
@@ -68,7 +69,7 @@ func edgesForSurvey(c *collection, t *target, crossed measure.FindingState) []me
 	uses := map[string]int{}
 	for _, r := range c.refs[t.obj] {
 		if r.file.key() != t.file.key() {
-			uses[r.file.namespaceForReport()]++
+			uses[r.file.spelledNamespace()]++
 		}
 	}
 	if len(uses) == 0 {
@@ -82,7 +83,7 @@ func edgesForSurvey(c *collection, t *target, crossed measure.FindingState) []me
 	for from, n := range uses {
 		out = append(out, measure.Edge{
 			From:        from,
-			To:          t.file.namespaceForReport(),
+			To:          t.file.spelledNamespace(),
 			Declaration: t.name(),
 			Kind:        string(t.kind),
 			Uses:        n,
@@ -122,7 +123,7 @@ func stateOfUnreportedSurveyedEdge(t *target) measure.EdgeState {
 // was found on.
 func nameFindingForSurvey(t *target, f measure.Finding) measure.NameFinding {
 	return measure.NameFinding{
-		Namespace:   t.file.namespaceForReport(),
+		Namespace:   t.file.spelledNamespace(),
 		File:        filepath.Base(t.file.path),
 		Declaration: f.Declaration,
 		Kind:        string(t.kind),
@@ -159,7 +160,7 @@ func nameStateForSurvey(state measure.FindingState) measure.NameState {
 
 // namespacesForSurvey counts, per namespace, what the two rules divide by.
 //
-// The naming denominator is qualifyExaminesForReport, which is the whole gate
+// The naming denominator is qualifyFindingApplies, which is the whole gate
 // the rule itself applies. Spelling any part of it out a second time here
 // would let a change to the rule move a survey number without moving a
 // diagnostic, which is the drift this command exists not to introduce.
@@ -169,7 +170,7 @@ func namespacesForSurvey(pass *analysis.Pass, c *collection, opts Options) ([]me
 	for _, fi := range c.files {
 		ns, ok := byKey[fi.key()]
 		if !ok {
-			ns = &measure.Namespace{Name: fi.namespaceForReport(), Core: fi.core}
+			ns = &measure.Namespace{Name: fi.spelledNamespace(), Core: fi.core}
 			byKey[fi.key()] = ns
 			order = append(order, fi.key())
 		}
@@ -182,7 +183,7 @@ func namespacesForSurvey(pass *analysis.Pass, c *collection, opts Options) ([]me
 	for _, t := range c.targets {
 		ns := byKey[t.file.key()]
 		ns.Declarations++
-		if c.qualifyExaminesForReport(pass, opts, t) {
+		if c.qualifyFindingApplies(pass, opts, t) {
 			ns.QualifyTargets++
 		}
 	}
@@ -227,4 +228,90 @@ func bumpSurveyCount(counts map[rule.Rule]measure.Count, f measure.Finding) {
 		count.Reported++
 	}
 	counts[f.Rule] = count
+}
+
+// surveyedFindings returns one target's findings together with what
+// became of each: silenced by a directive, absorbed by the baseline, or
+// reported.
+//
+// The findings come from findingsOf, the judgment report reads too, so that
+// the survey never asks "is this a violation" a second way: a second answer
+// would drift from that one, and the difference would read as a bug in one of
+// them rather than as two different questions. The two suppressions are
+// consulted in report's order: an ignore before the baseline, so a
+// suppression the baseline would also have absorbed still counts as the
+// directive doing its job.
+func (c *collection) surveyedFindings(pass *analysis.Pass, opts Options, t *target) []measure.Finding {
+	findings := c.findingsOf(pass, opts, t)
+	out := make([]measure.Finding, 0, len(findings))
+	for _, f := range findings {
+		if f.settled(pass, opts) {
+			continue
+		}
+		state := measure.FindingReported
+		switch {
+		case c.silencedByIgnore(t, f.rule):
+			state = measure.FindingIgnored
+		case opts.Baseline.Has(f.key(pass, t)):
+			state = measure.FindingBaselined
+		}
+		out = append(out, measure.Finding{
+			Rule:        f.rule,
+			Declaration: f.decl,
+			State:       state,
+			// The fix the analyzer decided on, not a rerun of the decision:
+			// renameFix reserves the name it claims, so asking again would
+			// answer about a package that already contains this fix.
+			Fixable: len(f.fixes) > 0,
+		})
+	}
+	return out
+}
+
+// surveyedProblems tallies the rules that carry no baseline key: the
+// unused and directive rules, whose findings are settled in a second pass once
+// every other finding has been seen, and the filter rule, which reports at
+// most once per package.
+//
+// It runs the same two stages report runs, in the same order, for the same
+// reason: an ignore written for a directive problem silences something
+// attached to no declaration, so it has to be consulted before the unused
+// ignores are judged, or the author is told to delete the comment doing the
+// job.
+func (c *collection) surveyedProblems(pass *analysis.Pass, opts Options) map[rule.Rule]measure.Count {
+	counts := map[rule.Rule]measure.Count{
+		rule.Unused:    {Asked: opts.Unused.Reports()},
+		rule.Directive: {Asked: true},
+		rule.Filter:    {Asked: true},
+	}
+	tally := func(found bool, problems []directive.Problem) {
+		for _, p := range problems {
+			count := counts[p.Rule]
+			if found {
+				count.Found++
+			} else {
+				count.Reported++
+			}
+			counts[p.Rule] = count
+		}
+	}
+
+	c.reportUnusedScopeSites(pass, opts, nil)
+	tally(true, c.problems)
+	c.problems = c.problemsLeftByIgnores(pass)
+
+	kept := len(c.problems)
+	c.reportUnusedIgnores(pass, opts)
+	tally(true, c.problems[kept:])
+	c.problems = c.problemsLeftByIgnores(pass)
+	tally(false, c.problems)
+
+	for r, count := range counts {
+		count.Ignored = count.Found - count.Reported
+		counts[r] = count
+	}
+	if c.filterWarning != nil {
+		counts[rule.Filter] = measure.Count{Asked: true, Found: 1, Reported: 1}
+	}
+	return counts
 }

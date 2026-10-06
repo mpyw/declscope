@@ -188,7 +188,7 @@ func (c *collection) computeSurplus(pass *analysis.Pass) *surplusState {
 // exactly what the checks above could not rule out.
 func surplusMessage(rep *target, group []*target) string {
 	directive := scope.PackageInternal.Directive()
-	if rep.boundAt == scopesiteLevelFile {
+	if rep.boundAt == boundAtFile {
 		return "the file's " + directive + ": no use from another namespace is visible to declscope"
 	}
 	names := make([]string, 0, len(group))
@@ -233,7 +233,7 @@ func (c *collection) surplusSeesEveryFile(pass *analysis.Pass) bool {
 
 // surplusSeesUseOutside reports whether another namespace spells the name — the
 // same evidence the boundary rule reads, from the same index, so whatever a
-// composite literal without keysForReport or a selection on a generic type counts for
+// composite literal without keys or a selection on a generic type counts for
 // there counts here.
 func (c *collection) surplusSeesUseOutside(t *target) bool {
 	return slices.ContainsFunc(c.refs[t.obj], func(r ref) bool { return r.file.key() != t.file.key() })
@@ -511,7 +511,7 @@ func (c *collection) checkSurplusDeclaration(pass *analysis.Pass, opts Options, 
 	}
 	fix := analysis.SuggestedFix{
 		Message:   fmt.Sprintf("add %s to %s", scope.Private.Directive(), t.name()),
-		TextEdits: []analysis.TextEdit{c.directiveEditInReport(pass, t, scope.Private, t.doc)},
+		TextEdits: []analysis.TextEdit{c.directiveInsertion(pass, t, scope.Private, t.doc)},
 	}
 	return f.msg, &fix, f.settledBy, true
 }
@@ -544,8 +544,8 @@ func surplusEnclosed(opts Options, t *target) bool {
 	}
 	// Package scope on an unexported name under a private default came from
 	// a directive, so the level is never the default here.
-	return t.boundAt == scopesiteLevelContainer || t.boundAt == scopesiteLevelFile ||
-		t.boundAt == scopesiteLevelDecl && t.fromBlock
+	return t.boundAt == boundAtContainer || t.boundAt == boundAtFile ||
+		t.boundAt == boundAtDecl && t.fromBlock
 }
 
 // computeSurplusDeclarations judges each declaration under a directive that is
@@ -580,7 +580,7 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 	entries := make(map[token.Pos][]*target)
 	var anchors []token.Pos
 	for _, t := range c.targets {
-		if t.contained && t.boundAt != scopesiteLevelDecl {
+		if t.contained && t.boundAt != boundAtDecl {
 			inheriting[t.ownerObj] = append(inheriting[t.ownerObj], t)
 		}
 		if _, seen := entries[t.anchor]; !seen {
@@ -674,9 +674,9 @@ func surplusToolchainNamed(pass *analysis.Pass, t *target) bool {
 func surplusDeclarationMessage(t *target) string {
 	var from string
 	switch t.boundAt {
-	case scopesiteLevelFile:
+	case boundAtFile:
 		from = "the file's " + scope.PackageInternal.Directive()
-	case scopesiteLevelContainer:
+	case boundAtContainer:
 		from = scope.PackageInternal.Directive() + " on " + t.owner
 	default:
 		from = "the " + scope.PackageInternal.Directive() + " on its block"
@@ -723,7 +723,7 @@ func (c *collection) surplusNarrowedByTypeFix(pass *analysis.Pass, opts Options,
 		entries[t.anchor] = append(entries[t.anchor], t)
 	}
 	wide := func(t *target) bool {
-		return !isExported(t.obj.Name()) && t.boundAt == scopesiteLevelDefault &&
+		return !isExported(t.obj.Name()) && t.boundAt == boundAtDefault &&
 			!s.reachesOutside(c, t) && !c.ignoreWouldSilence(t, rule.Surplus)
 	}
 	var out []*target

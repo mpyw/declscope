@@ -127,8 +127,6 @@ func (c *collection) ignoreWouldSilence(t *target, r rule.Rule) bool {
 // An ignore never silences the report written at its own position, which is
 // the report that it is unused. One that could would never be called unused,
 // and that report exists to catch it.
-//
-//declscope:package // report.go consults it for problems, which no target holds
 func (c *collection) ignoreSilencesFile(fi *fileInfo, p directive.Problem) bool {
 	if fi == nil {
 		return false
@@ -309,4 +307,14 @@ func (c *collection) ignoreCrossingNames(pass *analysis.Pass, t *target) []strin
 		}
 	}
 	return append(append(out, t.ownerObj.Name()), c.aliasNames[t.ownerObj]...)
+}
+
+// problemsLeftByIgnores drops the problems a file-level ignore stands
+// down, marking the directive that did it used.
+//
+//declscope:package // report.go and survey.go settle the problems no target holds
+func (c *collection) problemsLeftByIgnores(pass *analysis.Pass) []directive.Problem {
+	return slices.DeleteFunc(c.problems, func(p directive.Problem) bool {
+		return c.ignoreSilencesFile(c.fileAt(pass, p.Pos), p)
+	})
 }
