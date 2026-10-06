@@ -10,6 +10,7 @@
 //
 // //declscope:package, the name shared had before, is still read as shared,
 // and is reported with a fix that writes the new name.
+// TODO(#185): drop this paragraph with the alias.
 //
 // Declaration level, suppressing diagnostics for the declaration. With no
 // argument it silences every rule; with one it silences only the rules named,
@@ -101,6 +102,7 @@ type Problem struct {
 	// Fixes is at most one suggested fix. A redundant scope directive under
 	// rules.unused: strict carries one, which deletes it, and so does a
 	// directive spelled with a renamed keyword, which rewrites it.
+	// TODO(#185): the rename fix goes with the alias.
 	Fixes []analysis.SuggestedFix
 }
 
@@ -146,6 +148,8 @@ type Decl struct {
 	// ScopeRenamed records that the scope directive is spelled with
 	// scope.Renamed. A fix that deletes the directive makes the rename report
 	// on it moot, and the two would edit the same comment.
+	//
+	// TODO(#185): delete with the alias, and the lines in Merge that copy it.
 	ScopeRenamed bool
 
 	Ignores []Ignore
@@ -176,9 +180,11 @@ func (d Decl) Merge(inner Decl) Decl {
 	out := d
 	if inner.HasScope {
 		if d.HasScope {
-			out.Beneath = &Decl{Scope: d.Scope, HasScope: true, ScopePos: d.ScopePos, ScopeRenamed: d.ScopeRenamed}
+			out.Beneath = &Decl{Scope: d.Scope, HasScope: true, ScopePos: d.ScopePos}
+			out.Beneath.ScopeRenamed = d.ScopeRenamed // TODO(#185): delete with the alias.
 		}
-		out.Scope, out.HasScope, out.ScopePos, out.ScopeRenamed = inner.Scope, true, inner.ScopePos, inner.ScopeRenamed
+		out.Scope, out.HasScope, out.ScopePos = inner.Scope, true, inner.ScopePos
+		out.ScopeRenamed = inner.ScopeRenamed // TODO(#185): delete with the alias.
 	}
 	out.Ignores = slices.Concat(d.Ignores, inner.Ignores)
 	out.Problems = slices.Concat(d.Problems, inner.Problems)
@@ -225,40 +231,34 @@ func (d *Decl) consume(pos token.Pos, keyword, arg string) {
 		d.problem(pos, "declscope:core must appear before the package clause")
 
 	default:
-		s, renamed, ok := parseScope(keyword)
+		s, ok := scope.Parse(keyword)
 		if !ok {
 			d.problem(pos, fmt.Sprintf("unknown directive declscope:%s", keyword))
 			return
 		}
 		if arg != "" {
-			d.problem(pos, fmt.Sprintf("//declscope:%s takes no argument", keyword))
+			d.problem(pos, fmt.Sprintf("%s takes no argument", s.Directive()))
 			return
 		}
 		if d.HasScope && d.Scope != s {
 			d.problem(pos, fmt.Sprintf("conflicting scope directives: %s and %s", d.Scope.Directive(), s.Directive()))
 			return
 		}
-		d.Scope, d.HasScope, d.ScopePos, d.ScopeRenamed = s, true, pos, renamed
-		if renamed {
+		d.Scope, d.HasScope, d.ScopePos = s, true, pos
+		// TODO(#185): delete with the alias.
+		if keyword == scope.Renamed {
+			d.ScopeRenamed = true
 			d.Problems = append(d.Problems, renamedProblem(pos))
 		}
 	}
 }
 
-// parseScope resolves a keyword naming a scope, the renamed one included.
-// renamed reports that it was spelled with scope.Renamed.
-func parseScope(keyword string) (s scope.Scope, renamed, ok bool) {
-	if keyword == scope.Renamed {
-		return scope.Shared, true, true
-	}
-	s, ok = scope.Parse(keyword)
-	return s, false, ok
-}
-
 // renamedProblem reports a scope directive spelled with scope.Renamed, at pos,
-// and rewrites the keyword alone, so that an argument or a trailing reason
-// stays as written. The directive still takes effect, so the report changes
+// and rewrites the keyword alone, so that a trailing reason stays as
+// written. The directive still takes effect, so the report changes
 // nothing else the analysis finds.
+//
+// TODO(#185): delete with the alias.
 func renamedProblem(pos token.Pos) Problem {
 	start := pos + token.Pos(len("//"+tool+":"))
 	return Problem{
@@ -347,10 +347,10 @@ func ParseFile(file *ast.File) File {
 				f.problem(c.Pos(), malformedMessage)
 				continue
 			}
-			// parseScope is asked first, so that the keywords naming a
+			// scope.Parse is asked first, so that the keywords naming a
 			// scope are listed in one place rather than restated here.
-			if sc, renamed, ok := parseScope(keyword); ok {
-				f.scope(c.Pos(), sc, renamed, keyword, arg)
+			if sc, ok := scope.Parse(keyword); ok {
+				f.scope(c.Pos(), sc, keyword, arg)
 				continue
 			}
 			switch keyword {
@@ -403,16 +403,18 @@ func (f *File) core(pos token.Pos, arg string) {
 // scope reads a file-level scope directive, the default for what the file
 // declares. The caller has already resolved the keyword, which is why there is
 // no branch here for one that names no scope.
-func (f *File) scope(pos token.Pos, sc scope.Scope, renamed bool, keyword, arg string) {
+func (f *File) scope(pos token.Pos, sc scope.Scope, keyword, arg string) {
 	switch {
 	case arg != "":
 		f.problem(pos, fmt.Sprintf("//declscope:%s takes no argument", keyword))
 	case f.Scope.HasScope && f.Scope.Scope != sc:
-		f.problem(pos, fmt.Sprintf("conflicting scope directives: %s and %s on one file",
-			f.Scope.Scope.Directive(), sc.Directive()))
+		f.problem(pos, fmt.Sprintf("conflicting scope directives: %s and //declscope:%s on one file",
+			f.Scope.Scope.Directive(), keyword))
 	default:
-		f.Scope.Scope, f.Scope.HasScope, f.Scope.ScopePos, f.Scope.ScopeRenamed = sc, true, pos, renamed
-		if renamed {
+		f.Scope.Scope, f.Scope.HasScope, f.Scope.ScopePos = sc, true, pos
+		// TODO(#185): delete with the alias.
+		if keyword == scope.Renamed {
+			f.Scope.ScopeRenamed = true
 			f.Problems = append(f.Problems, renamedProblem(pos))
 		}
 	}

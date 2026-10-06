@@ -254,6 +254,8 @@ func TestSuggestedFixLineDirective(t *testing.T) {
 // keeping a trailing reason. Where rules.unused: strict deletes the directive
 // instead, the rename is not reported, since the two fixes would overlap,
 // unless a file-level ignore silences the deletion (report.go).
+//
+// TODO(#185): delete with the alias, and testdata/src/fixrenamed with it.
 func TestSuggestedFixRenamed(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixrenamed")
 }

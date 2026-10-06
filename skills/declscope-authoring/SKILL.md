@@ -230,7 +230,7 @@ Keep that type and its fields private. Expose small shared functions that return
 | `//declscope:shared on X: no use from another namespace is visible` | Did the use that justified it go away? | Delete the directive |
 | `X takes shared scope from //declscope:shared on Y, but no use ...` | Does any other file read `X`? | Accept `-fix`'s `//declscope:private` on `X`. For a field, move it to the end of the struct |
 | `unused //declscope:...` | Does the directive still change anything? | Delete it |
-| `//declscope:package is renamed //declscope:shared` | None. It is the old spelling of the same directive | Accept `-fix`, which rewrites the keyword. Write `//declscope:shared` in new code |
+| `//declscope:package is renamed //declscope:shared` <!-- TODO(#185): delete this row with the alias --> | None. It is the old spelling of the same directive | Accept `-fix`, which rewrites the keyword. Write `//declscope:shared` in new code |
 | `X does not carry namespace "a"` | Is the name accurate, and is `X` in the right file? | See [Naming](#naming). Rename only when both answers are yes |
 | `X is exported, but nothing outside ... uses it` (`declscope shrink`) | Does another package really need it? | See [Reading what shrink reports](#reading-what-shrink-reports) |
 

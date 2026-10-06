@@ -14,3 +14,5 @@ func userSave() int { return 2 }
 // UserName is exported, so the directive restates its scope. Its deletion is
 // offered instead of the rename, since both would edit the one comment.
 func UserName() string { return "" }
+
+// TODO(#185): delete this fixture with the //declscope:package alias.

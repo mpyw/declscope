@@ -36,12 +36,22 @@ func TestScopeSpellings(t *testing.T) {
 	}
 }
 
+// TestScopeRenamed checks that the keyword shared had before still parses, so
+// that code and config written for an older release keep their meaning.
+//
+// TODO(#185): delete with the alias, and add "package" to the keywords
+// TestScopeRejectsUnknown refuses.
+func TestScopeRenamed(t *testing.T) {
+	if got, ok := scope.Parse(scope.Renamed); !ok || got != scope.Shared {
+		t.Errorf("Parse(%q) = %v, %v, want %v, true", scope.Renamed, got, ok, scope.Shared)
+	}
+}
+
 // TestScopeRejectsUnknown checks the other half: a keyword naming no level is
 // refused rather than resolved to the zero value, which is shared and would
-// silently widen whatever carried the typo. The renamed keyword is refused
-// too: a caller that still reads it does so through scope.Renamed.
+// silently widen whatever carried the typo.
 func TestScopeRejectsUnknown(t *testing.T) {
-	for _, keyword := range []string{"", "public", "Shared", "internal", scope.Renamed} {
+	for _, keyword := range []string{"", "public", "Shared", "internal"} {
 		if got, ok := scope.Parse(keyword); ok {
 			t.Errorf("Parse(%q) = %v, true, want false", keyword, got)
 		}

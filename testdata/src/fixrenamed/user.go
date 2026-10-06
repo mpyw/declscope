@@ -16,3 +16,5 @@ func userSave() int { return 2 }
 //
 //declscope:package // want `unused //declscope:shared on UserName: it already has shared scope`
 func UserName() string { return "" }
+
+// TODO(#185): delete this fixture with the //declscope:package alias.

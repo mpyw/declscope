@@ -7,3 +7,5 @@ package fixrenamed
 //
 //declscope:package // want `//declscope:package is renamed //declscope:shared; it still means shared`
 func ReportName() string { return "" }
+
+// TODO(#185): delete this fixture with the //declscope:package alias.

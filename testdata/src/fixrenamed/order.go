@@ -5,3 +5,5 @@ package fixrenamed
 func orderTotal() int { return 3 }
 
 func OrderRun() int { return userLoad() + userSave() }
+
+// TODO(#185): delete this fixture with the //declscope:package alias.

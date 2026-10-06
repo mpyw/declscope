@@ -310,6 +310,8 @@ func TestParseFileScope(t *testing.T) {
 // still states shared, and is reported once with a fix that rewrites the
 // keyword alone, so a trailing reason survives. ScopeRenamed survives a merge,
 // since the unused rule reads it from the merged Decl.
+//
+// TODO(#185): delete with the alias.
 func TestParseRenamed(t *testing.T) {
 	const src = "//declscope:package\n\npackage repo\n\n//declscope:package // why\nfunc f() {}\n"
 	file := parse(t, src)

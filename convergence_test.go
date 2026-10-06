@@ -38,6 +38,8 @@ type fixCase struct {
 }
 
 var fixCases = []fixCase{
+	// TODO(#185): delete the four cases spelled with the renamed keyword
+	// with the alias.
 	{
 		// The rename edits the keyword alone, so the reason stays and the
 		// directive goes on widening userShared for order.go.
