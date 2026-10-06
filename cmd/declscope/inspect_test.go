@@ -48,6 +48,33 @@ func TestInspectRefusesMoreThanOnePackage(t *testing.T) {
 	}
 }
 
+// TestInspectRefusesMoreThanOnePackageBeforeTypeChecking checks that the
+// refusal is about the pattern even when one of the packages it names does not
+// type-check. The names are counted before the full load, so the broken
+// package is never type-checked.
+func TestInspectRefusesMoreThanOnePackageBeforeTypeChecking(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, "a/a.go", "package a\n\nfunc Run() int { return 1 }\n")
+	writeTree(t, dir, "broken/broken.go", "package broken\n\nfunc Run() int { return nope }\n")
+
+	for _, args := range [][]string{{"./..."}, {"./a", "./broken"}} {
+		out, code := runIn(t, bin, dir, append([]string{"inspect"}, args...)...)
+		if code != 1 {
+			t.Fatalf("inspect %v exited %d, want 1\n%s", args, code, out)
+		}
+		if !strings.Contains(out, "matches 2 packages") || strings.Contains(out, "type-check") {
+			t.Errorf("inspect %v refused for the wrong reason:\n%s", args, out)
+		}
+	}
+
+	// A mistyped directory is not counted: its own error says what is wrong.
+	out, code := runIn(t, bin, dir, "inspect", "./a", "./nope")
+	if code != 1 || !strings.Contains(out, "directory not found") || strings.Contains(out, "matches") {
+		t.Errorf("exited %d, want 1 with the missing directory's error:\n%s", code, out)
+	}
+}
+
 // TestInspectDoesNotMistakeARealTestSuffixForAnExternalTest checks that an
 // ordinary package named q_test is not discarded merely because q is present.
 func TestInspectDoesNotMistakeARealTestSuffixForAnExternalTest(t *testing.T) {
