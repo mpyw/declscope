@@ -127,7 +127,6 @@ func (c *collection) ignoreWouldSilence(t *target, r rule.Rule) bool {
 // An ignore never silences the report written at its own position, which is
 // the report that it is unused. One that could would never be called unused,
 // and that report exists to catch it.
-//
 func (c *collection) ignoreSilencesFile(fi *fileInfo, p directive.Problem) bool {
 	if fi == nil {
 		return false
