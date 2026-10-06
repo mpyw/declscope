@@ -6,7 +6,7 @@ package unusedloose
 // spec, so it binds, whatever the file says. The block's directive and the
 // file's reach no declaration that takes their scope, and are reported.
 //
-//declscope:package // want `unused //declscope:package: every declaration it reaches states its own scope`
+//declscope:shared // want `unused //declscope:shared: every declaration it reaches states its own scope`
 var (
 	//declscope:private
 	bNarrowed = 1

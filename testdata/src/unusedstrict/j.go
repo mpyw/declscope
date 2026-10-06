@@ -7,6 +7,6 @@ package unusedstrict
 //declscope:private // want `unused //declscope:private: every declaration it reaches states its own scope or already has private scope$`
 type _ struct {
 	jTaken int
-	//declscope:package
+	//declscope:shared
 	jWidened int
 }

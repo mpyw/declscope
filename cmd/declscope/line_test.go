@@ -38,7 +38,7 @@ func TestLineDirectiveFix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "package p\n\n//line user.tmpl:1\ntype kept struct {\n\t//declscope:package\n\tflag bool\n}\n\nfunc UserMake() kept { return kept{flag: true} }\n"
+	want := "package p\n\n//line user.tmpl:1\ntype kept struct {\n\t//declscope:shared\n\tflag bool\n}\n\nfunc UserMake() kept { return kept{flag: true} }\n"
 	if string(got) != want {
 		t.Errorf("-fix wrote:\n%s\nwant:\n%s", got, want)
 	}

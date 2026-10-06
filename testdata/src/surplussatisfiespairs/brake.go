@@ -1,7 +1,7 @@
 package surplussatisfiespairs
 
-//declscope:package
+//declscope:shared
 type brake struct{}
 
-//declscope:package
+//declscope:shared
 func (brake) stop() {}

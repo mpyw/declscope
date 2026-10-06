@@ -5,7 +5,7 @@ package linefix
 //
 //line user.tmpl:1
 type kept struct {
-	//declscope:package
+	//declscope:shared
 	flag bool
 } // want `field kept.flag is private to namespace "user", but is used from namespace "order"`
 

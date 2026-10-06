@@ -1,5 +1,5 @@
 //declscope:ignore unused
-//declscope:package
+//declscope:shared
 
 package ignoreunused
 

@@ -1,7 +1,7 @@
 package surplussatisfies
 
-//declscope:package
+//declscope:shared
 type closer struct{}
 
-//declscope:package
+//declscope:shared
 func (closer) close() string { return "c" }

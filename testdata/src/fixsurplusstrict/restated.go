@@ -1,4 +1,4 @@
-//declscope:package
+//declscope:shared
 
 package fixsurplusstrict
 
@@ -7,7 +7,7 @@ func restatedHelper() int { return 3 }
 
 // restatedSpare takes it too, and nothing else calls it. Its narrowing gives
 // this file an edit whatever the rest gets, so the golden is compared.
-func restatedSpare() int { return 4 } // want `func restatedSpare takes package scope`
+func restatedSpare() int { return 4 } // want `func restatedSpare takes shared scope`
 
 var _ = restatedSpare
 
@@ -16,10 +16,10 @@ var _ = restatedSpare
 // reword that report, so the fix is withheld. The block is the thing to
 // delete, which no fix does.
 //
-//declscope:package // want `unused //declscope:package on restatedShared, restatedLocal: nothing it reaches takes a scope`
+//declscope:shared // want `unused //declscope:shared on restatedShared, restatedLocal: nothing it reaches takes a scope`
 var (
 	restatedShared = 1
-	restatedLocal  = 2 // want `var restatedLocal takes package scope`
+	restatedLocal  = 2 // want `var restatedLocal takes shared scope`
 )
 
 var _ = restatedLocal
@@ -28,10 +28,10 @@ var _ = restatedLocal
 // alone, and a field it reaches is never named. Narrowing spare leaves that
 // report reading the same, so the fix is offered.
 //
-//declscope:package // want `unused //declscope:package on restatedEntry: nothing it reaches takes a scope`
+//declscope:shared // want `unused //declscope:shared on restatedEntry: nothing it reaches takes a scope`
 type restatedEntry struct {
 	key   int
-	spare int // want `field restatedEntry.spare takes package scope`
+	spare int // want `field restatedEntry.spare takes shared scope`
 }
 
 var _ = restatedEntry{}.spare
@@ -40,8 +40,8 @@ var _ = restatedEntry{}.spare
 // anything took its scope. Wide takes it and stays, so narrowing spare leaves
 // the report reading the same, and the fix is offered.
 //
-//declscope:package // want `unused //declscope:package: nothing it reaches takes a scope`
+//declscope:shared // want `unused //declscope:shared: nothing it reaches takes a scope`
 type _ struct {
 	Wide  int
-	spare int // want `field _.spare takes package scope`
+	spare int // want `field _.spare takes shared scope`
 }

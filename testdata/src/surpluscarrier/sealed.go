@@ -4,6 +4,6 @@ package surpluscarrier
 // exported interface, and an importer that embeds it passes it on.
 type Sealed interface {
 	Do()
-	//declscope:package
+	//declscope:shared
 	seal()
 }

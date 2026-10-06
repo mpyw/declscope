@@ -1,10 +1,10 @@
 package surplusstrictdefaults
 
-// Under defaults.unexported: package the field would be package-scoped with
+// Under defaults.unexported: shared the field would be shared with
 // no directive at all, so the type's directive widened nothing and the rule
 // has nothing to say.
 //
-//declscope:package
+//declscope:shared
 type userCard struct {
 	id   int
 	note int

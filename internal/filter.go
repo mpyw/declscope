@@ -19,7 +19,7 @@ import (
 // from one of them; a floating matcher has no bases and matches the path as
 // given, at any depth.
 //
-//declscope:package
+//declscope:shared
 type filterMatcher struct {
 	//declscope:private
 	re *regexp.Regexp
@@ -33,7 +33,7 @@ type filterMatcher struct {
 // /private/tmp, and a pattern anchored to one spelling must still recognise
 // the other. Anchoring on text alone would silently exclude nothing.
 //
-//declscope:package
+//declscope:shared
 func filterBases(dir string) []string {
 	if dir == "" {
 		return nil
@@ -67,7 +67,7 @@ func filterBases(dir string) []string {
 // matches nothing at all, with no error to say so. The join happens here, per
 // path, against every spelling the directory has.
 //
-//declscope:package
+//declscope:shared
 func compileFilter(pattern string, bases []string) (filterMatcher, error) {
 	p := filepath.ToSlash(pattern)
 	for strings.HasPrefix(p, "./") {
@@ -148,7 +148,7 @@ func compileFilter(pattern string, bases []string) (filterMatcher, error) {
 // done once per file and only when an anchored pattern exists, so a config
 // without one costs nothing.
 //
-//declscope:package
+//declscope:shared
 func filterMatches(ms []filterMatcher, path string) bool {
 	resolved, tried := "", false
 	for _, m := range ms {

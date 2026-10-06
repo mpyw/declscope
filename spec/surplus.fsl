@@ -1,4 +1,4 @@
-// surplus reports a //declscope:package that nothing outside the namespace
+// surplus reports a //declscope:shared that nothing outside the namespace
 // needed. Four such directives were found by hand while auditing this
 // repository, which is the argument for having the rule.
 //

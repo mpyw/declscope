@@ -39,7 +39,7 @@ Run a subcommand with -h for its flags.
 // driver does. The driver answers a run with flags but no package on its own,
 // without the subcommands.
 //
-//declscope:package // main.go installs it before the driver runs
+//declscope:shared // main.go installs it before the driver runs
 func usageInstall() {
 	bare := len(os.Args) == 1
 	if bare {

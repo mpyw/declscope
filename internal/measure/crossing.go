@@ -54,12 +54,12 @@ type Crossing struct {
 
 // crossings folds the edge set into one row per ordered pair, heaviest first.
 //
-// Open edges are left out. They are declarations that are package-scoped
+// Open edges are left out. They are declarations that are shared
 // because nothing says otherwise, so listing them would bury the crossings
 // somebody decided on under the ones nobody was ever asked about. The count of
 // them is reported separately.
 //
-//declscope:package // json.go, markdown.go and summary.go render the rows
+//declscope:shared // json.go, markdown.go and summary.go render the rows
 func (p Package) crossings() []Crossing {
 	declarations := map[string]int{}
 	for _, ns := range p.Namespaces {
@@ -123,7 +123,7 @@ func (p Package) crossings() []Crossing {
 // rule tallies a finding per declaration, and the crossing table's own columns
 // are per declaration within a pair.
 //
-//declscope:package // markdown.go reports each state's count, and summary.go the declared one
+//declscope:shared // markdown.go reports each state's count, and summary.go the declared one
 func (p Package) declarationsCrossing(state EdgeState) int {
 	seen := map[[2]string]bool{}
 	for _, e := range p.Edges {

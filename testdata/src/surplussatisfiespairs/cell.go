@@ -1,10 +1,10 @@
 package surplussatisfiespairs
 
-//declscope:package
+//declscope:shared
 type cell[T any] struct{}
 
-//declscope:package
+//declscope:shared
 func (cell[T]) peek() (v T) { return v }
 
-//declscope:package
+//declscope:shared
 func (*cell[T]) poke(T) {}

@@ -21,7 +21,7 @@ var (
 // A spec narrowing its block's package is not redundant: without it the spec
 // would take the block's scope, not the default.
 //
-//declscope:package
+//declscope:shared
 var (
 	//declscope:private
 	narrowed = 4

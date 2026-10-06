@@ -1,6 +1,6 @@
-# strict, but under defaults.unexported: package the directive widens nothing.
+# strict, but under defaults.unexported: shared the directive widens nothing.
 defaults:
-  unexported: package
+  unexported: shared
 rules:
   surplus: strict
   unused: loose

@@ -2,7 +2,7 @@ package surpluscarrier
 
 type hidden struct{}
 
-//declscope:package
+//declscope:shared
 func (hidden) tick() {}
 
 // Wrapper carries tick out of the package through the embedding.

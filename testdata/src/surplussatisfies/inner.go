@@ -1,7 +1,7 @@
 package surplussatisfies
 
-//declscope:package
+//declscope:shared
 type inner struct{}
 
-//declscope:package
+//declscope:shared
 func (*inner) run() {}

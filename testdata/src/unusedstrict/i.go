@@ -6,6 +6,6 @@ package unusedstrict
 //
 //declscope:private // want `unused //declscope:private: every declaration it reaches states its own scope`
 type _ struct {
-	//declscope:package
+	//declscope:shared
 	x int
 }

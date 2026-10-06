@@ -1,4 +1,4 @@
-// Inserting //declscope:package always removes the boundary crossing, it is
+// Inserting //declscope:shared always removes the boundary crossing, it is
 // offered only where one exists, and it never overwrites a scope the author
 // stated on the declaration itself.
 //
@@ -6,11 +6,11 @@
 // must win over the containing type's directive and the file's alike — a `private`
 // inherited from either is a default, not a decision.
 spec BoundaryFix {
-  enum Scope { Package, Private }
+  enum Scope { Shared, Private }
   // Member is anything written inside a type's declaration: a struct field,
   // and an interface's method name. Method is a method with a receiver.
   enum Kind  { Pkg, Member, Method }
-  enum Dir   { NoDir, DirPackage, DirPrivate }
+  enum Dir   { NoDir, DirShared, DirPrivate }
   enum Refs  { NoRefs, SameNs, CrossNs }
 
   state {
@@ -38,7 +38,7 @@ spec BoundaryFix {
   // analysis cannot answer — a type escapes through an exported signature, an
   // embedding, an alias or an interface it satisfies — and guessing produced
   // boundary reports on API that every importer reaches.
-  def defaultScope() = if exported then Package else cfgUnexported
+  def defaultScope() = if exported then Shared else cfgUnexported
   // What contains a member: its type, and through the type the var/const/type
   // block the type is declared in — addGenDecl merges the block into the spec's
   // own directive and passes that as the member's container, so a block reaches
@@ -48,13 +48,13 @@ spec BoundaryFix {
     else NoDir
   def blockOf() = if kind == Pkg then blockDir else NoDir
   def effScope() =
-    if declDir == DirPackage then Package
+    if declDir == DirShared then Shared
     else if declDir == DirPrivate then Private
-    else if blockOf() == DirPackage then Package
+    else if blockOf() == DirShared then Shared
     else if blockOf() == DirPrivate then Private
-    else if contained() == DirPackage then Package
+    else if contained() == DirShared then Shared
     else if contained() == DirPrivate then Private
-    else if fileDir == DirPackage then Package
+    else if fileDir == DirShared then Shared
     else if fileDir == DirPrivate then Private
     else defaultScope()
   def boundaryFires() = effScope() == Private and refs == CrossNs
@@ -74,13 +74,13 @@ spec BoundaryFix {
 
   fair action fixBoundary() {
     requires configured  requires boundaryFires()  requires stated() == NoDir
-    declDir = DirPackage  fixed = true
+    declDir = DirShared  fixed = true
   }
 
   // Auxiliary: a fix happens only after configuration, and is recorded by the
   // directive it inserts. Together these make BoundaryFixSettles inductive.
   invariant FixImpliesConfigured { fixed => configured }
-  invariant FixRecordsDirective  { fixed => declDir == DirPackage }
+  invariant FixRecordsDirective  { fixed => declDir == DirShared }
   invariant BoundaryFixSettles   { fixed => not boundaryFires() }
 
   // The guards are load-bearing: without these a spurious fix, or one that
@@ -120,7 +120,7 @@ spec BoundaryFix {
   // defaults.unexported must reach this spec too, not only knobs: under a
   // package default there is no crossing to fix in the first place.
   reachable PackageDefaultLeavesNothingToFix {
-    configured and cfgUnexported == Package and stated() == NoDir
+    configured and cfgUnexported == Shared and stated() == NoDir
     and not exported and refs == CrossNs and not boundaryFires()
   }
 
@@ -130,7 +130,7 @@ spec BoundaryFix {
   reachable BoundaryFromBlockDirectiveFires {
     configured and kind == Pkg and blockDir == DirPrivate
     and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
-    and cfgUnexported == Package and refs == CrossNs and boundaryFires()
+    and cfgUnexported == Shared and refs == CrossNs and boundaryFires()
   }
   reachable ExportedNeverCrossesByDefault {
     configured and exported and kind == Pkg

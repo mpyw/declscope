@@ -1,0 +1,7 @@
+//declscope:package // want `//declscope:package is renamed //declscope:shared; it still means shared`
+
+package fixrenamed
+
+func orderTotal() int { return 3 }
+
+func OrderRun() int { return userLoad() + userSave() }

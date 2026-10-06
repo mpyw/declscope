@@ -19,7 +19,7 @@ type explicit struct {
 // A directive that changes the scope is kept: package widens an unexported
 // declaration, and private narrows an exported one.
 //
-//declscope:package
+//declscope:shared
 func widened() int { return 1 }
 
 //declscope:private
@@ -28,7 +28,7 @@ func Narrowed() int { return 2 }
 // A type's directive that one field overrides is judged by that field too:
 // without the type's, the field's own would restate the default instead.
 //
-//declscope:package
+//declscope:shared
 type mixed struct {
 	shared int
 	//declscope:private

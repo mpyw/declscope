@@ -120,7 +120,7 @@ A crossing has two answers.
 | Answer | How |
 | --- | --- |
 | Keep the boundary | Move the call inside the namespace |
-| Share on purpose | Write `//declscope:package`, which `-fix` inserts |
+| Share on purpose | Write `//declscope:shared`, which `-fix` inserts |
 
 Here the helper belongs to neither repository. The repair is a third file, and a stated scope.
 
@@ -130,7 +130,7 @@ package database
 
 import "strings"
 
-//declscope:package
+//declscope:shared
 func normalizeEmail(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
@@ -268,7 +268,7 @@ baseline: .declscope-baseline.yaml
 
 | Key | Values | Default | Effect |
 | --- | --- | --- | --- |
-| `defaults.unexported` | `package`, `private` | `private` | Scope of a declaration that carries no directive and inherits none |
+| `defaults.unexported` | `shared`, `private` | `private` | Scope of a declaration that carries no directive and inherits none |
 | `rules.naming.qualify` | `always`, `never`, `ondemand` | `never` | When a name must carry its namespace. See [the naming rule](#when-it-applies) |
 | `rules.naming.exported` | `true`, `false` | `false` | Whether the naming rule also reaches exported declarations. The rename is never offered there |
 | `rules.naming.vocabulary` | Namespace to a list of words | None | Extra words that carry a namespace. See [what carries a namespace](#what-carries-a-namespace) |
@@ -347,34 +347,37 @@ The report is that narrow on purpose. A package that reads nothing is usually th
 A **directive** is a line comment `//declscope:name`, with a lowercase name, no spaces, and any argument after a space. Any other comment starting with `declscope:` is [malformed](#malformed-directives). A trailing `// reason` is ignored.
 
 ```go
-//declscope:package // shared with the reporting code
+//declscope:shared // used by the reporting code
 ```
 
 | Directive | Level | Effect |
 | --- | --- | --- |
-| `//declscope:package`, `//declscope:private` | Declaration or file | States the [scope](#scope-resolution). On a type it also reaches the type's [fields](#members), but not its methods |
+| `//declscope:shared`, `//declscope:private` | Declaration or file | States the [scope](#scope-resolution). On a type it also reaches the type's [fields](#members), but not its methods |
 | `//declscope:ignore` | Declaration or file | Silences every rule the analyzer reports. [`overexported`](#silencing-it) must be named |
 | `//declscope:ignore <rules>` | Declaration or file | Silences the named [rules](#rules), comma-separated |
 | `//declscope:core` | File | Joins the file to the [core namespace](#the-core-namespace) |
-| `//declscope:namespace <name>` | File | Joins the file to a [shared namespace](#namespaces) |
+| `//declscope:namespace <name>` | File | Joins the file to a [named namespace](#namespaces) |
+
+> [!NOTE]
+> `//declscope:shared` was spelled `//declscope:package` before 0.19.0. The old spelling still means `shared`. Each use is reported under the [`directive`](#malformed-directives) rule, and `-fix` rewrites it. `defaults.unexported: package` is still read as `shared` too.
 
 ### Placement
 
 A declaration-level directive goes in the doc comment, directly above the declaration. A file-level directive goes above the package clause.
 
 ```go
-//declscope:package
+//declscope:shared
 
 package database
 
-//declscope:package
+//declscope:shared
 func userSeed() {}
 ```
 
 A directive on a block reaches every spec in it. A directive on one spec overrides the block's.
 
 ```go
-//declscope:package
+//declscope:shared
 var (
 	seed  = 1
 	//declscope:private
@@ -448,7 +451,7 @@ The `unused` rule reports a directive that changes nothing. A directive that dec
 
 #### Off, loose and strict
 
-| `rules.unused` | `//declscope:ignore` is reported when | `//declscope:package` or `//declscope:private` is reported when | `-fix` |
+| `rules.unused` | `//declscope:ignore` is reported when | `//declscope:shared` or `//declscope:private` is reported when | `-fix` |
 | --- | --- | --- | --- |
 | `off` | Never | Never | None |
 | `loose` | It silenced no report | Deleting it would change no declaration's scope under any config | None |
@@ -461,7 +464,7 @@ The `unused` rule reports a directive that changes nothing. A directive that dec
 - An ignore of `boundary` is not reported where a file the build leaves out names a declaration it reaches, or for a field, its type: a literal written by position names only the type. That file may cross into it under another build tag, where the ignore silences the crossing. The run that reads the file still reports an ignore with nothing to silence.
 
 > [!WARNING]
-> Under `strict`, changing `defaults.unexported` changes the reports. With `unexported: package`, every `//declscope:package` on an unexported declaration that nothing else widens is reported, and one `-fix` run deletes them. `loose` never reports a directive only because it names the current default.
+> Under `strict`, changing `defaults.unexported` changes the reports. With `unexported: shared`, every `//declscope:shared` on an unexported declaration that nothing else widens is reported, and one `-fix` run deletes them. `loose` never reports a directive only because it names the current default.
 
 <details>
 <summary>Example: one file under each mode</summary>
@@ -474,7 +477,7 @@ type user struct {
 	name string
 }
 
-//declscope:package
+//declscope:shared
 func Helper() {}
 
 //declscope:ignore boundary
@@ -484,7 +487,7 @@ func greet(u user) string { return u.name }
 | Line | `off` | `loose` | `strict` |
 | --- | --- | --- | --- |
 | 4 | Nothing | Nothing | `unused //declscope:private on user.name: it already has private scope` |
-| 8 | Nothing | `unused //declscope:package on Helper: nothing it reaches takes a scope` | `unused //declscope:package on Helper: it already has package scope` |
+| 8 | Nothing | `unused //declscope:shared on Helper: nothing it reaches takes a scope` | `unused //declscope:shared on Helper: it already has shared scope` |
 | 11 | Nothing | `unused //declscope:ignore boundary on greet` | `unused //declscope:ignore boundary on greet` |
 
 Line 4 is where the modes differ. Deleting line 4 leaves `user.name` private only because `defaults.unexported` is private, which `loose` does not rely on.
@@ -557,17 +560,17 @@ user.go:7:1: unused //declscope:private on trim: it already has private scope
 ```go
 package app
 
-//declscope:package
+//declscope:shared
 //declscope:ignore unused
 func A() {}
 
-//declscope:package
+//declscope:shared
 //declscope:ignore directive
 func B() {}
 
 //declscope:ignore unused
 type T struct {
-	//declscope:package
+	//declscope:shared
 	F int
 }
 
@@ -581,8 +584,8 @@ func D() {}
 
 ```console
 $ declscope ./...
-user.go:7:1: unused //declscope:package on B: nothing it reaches takes a scope
-user.go:13:2: unused //declscope:package on T.F: nothing it reaches takes a scope
+user.go:7:1: unused //declscope:shared on B: nothing it reaches takes a scope
+user.go:13:2: unused //declscope:shared on T.F: nothing it reaches takes a scope
 user.go:8:1: unused //declscope:ignore directive on B
 user.go:11:1: unused //declscope:ignore unused on T
 user.go:21:1: unused //declscope:ignore unused on D
@@ -600,7 +603,7 @@ user.go:21:1: unused //declscope:ignore unused on D
 
 ### Malformed directives
 
-Only `//declscope:name` is a directive. Any other comment starting with `declscope:`, and an unknown, conflicting or misplaced directive, is reported by the `directive` rule and has no effect.
+Only `//declscope:name` is a directive. Any other comment starting with `declscope:`, and an unknown, conflicting or misplaced directive, is reported by the `directive` rule and has no effect. The one exception is a renamed keyword: it is reported, and still takes effect.
 
 <details>
 <summary>Every malformed-directive report</summary>
@@ -610,14 +613,15 @@ The rule is always on, and has no configuration key. `//declscope:ignore directi
 | Directive | Report |
 | --- | --- |
 | `//declscope:foo` | `unknown directive declscope:foo` |
-| `// declscope:package`, `/*declscope:package*/`, or any other comment starting with `declscope:` that is not `//declscope:name` | `malformed declscope directive: write it as //declscope:name` |
-| `//declscope:package x` | `//declscope:package takes no argument` |
-| `//declscope:private` and `//declscope:package` together | `conflicting scope directives: ...` |
+| `// declscope:shared`, `/*declscope:shared*/`, or any other comment starting with `declscope:` that is not `//declscope:name` | `malformed declscope directive: write it as //declscope:name` |
+| `//declscope:shared x` | `//declscope:shared takes no argument` |
+| `//declscope:private` and `//declscope:shared` together | `conflicting scope directives: ...` |
 | `//declscope:core` and `//declscope:namespace` together | `conflicting namespace directives: a core file's namespace is the core` |
 | `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, surplus, unused, directive, filter, overexported)` |
 | `//declscope:ignore ,` or `//declscope:ignore boundary,` | `empty rule name in declscope:ignore` |
 | `//declscope:namespace` after the package clause | `declscope:namespace must appear before the package clause` |
-| A directive attached to no declaration, such as one inside a function body | `misplaced declscope:package: no declaration here for it to bind to; ...` |
+| A directive attached to no declaration, such as one inside a function body | `misplaced declscope:shared: no declaration here for it to bind to; ...` |
+| `//declscope:package`, the spelling of `//declscope:shared` before 0.19.0 | `//declscope:package is renamed //declscope:shared; it still means shared`. `-fix` rewrites the keyword. Where `rules.unused: strict` deletes the directive, only the deletion is reported |
 
 </details>
 
@@ -636,7 +640,7 @@ A **namespace** is the unit within which a `private` declaration may be used. By
 
 The namespace comes *from* the file name and is not equal to it. So you can rename a file without renaming what it declares.
 
-Files join a **shared** namespace with a directive before the package clause. This is how one unit spans several files. The name must be an unexported identifier.
+Files join a **named** namespace with a directive before the package clause. This is how one unit spans several files. The name must be an unexported identifier.
 
 ```go
 //declscope:namespace user
@@ -662,7 +666,7 @@ The core has no prefix, so [the naming rule](#the-naming-rule) asks nothing of i
 > | Written on a file | Effect |
 > | --- | --- |
 > | `//declscope:core` | The file joins the core. What it declares keeps the default scope |
-> | `//declscope:core` and `//declscope:package` | Both apply. The file is core, and what it declares is package-wide |
+> | `//declscope:core` and `//declscope:shared` | Both apply. The file is core, and what it declares is package-wide |
 > | `//declscope:core` and `//declscope:namespace` | Refused. A core file's namespace *is* the core |
 
 ## Scopes
@@ -673,7 +677,7 @@ A **scope** is how far a declaration may be used. There are two.
 
 | Scope | Meaning | Rust equivalent |
 | --- | --- | --- |
-| `package` | Usable anywhere in the package | `pub(super)` |
+| `shared` | Usable anywhere in the package | `pub(super)` |
 | `private` | Usable only inside its own [namespace](#namespaces) | No modifier |
 
 There is no `public`. Go already spells that with a capital letter, and declscope never sees a use beyond the package edge.
@@ -684,18 +688,18 @@ A declaration's scope comes from the first row that applies.
 
 | The declaration | Scope |
 | --- | --- |
-| Carries `//declscope:package` or `//declscope:private` | The directive's |
+| Carries `//declscope:shared` or `//declscope:private` | The directive's |
 | Is contained by something that carries one | The container's |
 | Sits in a file carrying a [file-level directive](#directives) | The file's |
-| Is exported | `package` |
+| Is exported | `shared` |
 | Otherwise | [`defaults.unexported`](#configuration), which is `private` unless configured |
 
 Containment means a [field](#members) inside its type, or a spec inside its `var`, `const` or `type` block.
 
-An unexported declaration is `package` only where something says so: a directive, or the `defaults` key. Its *name* plays no part. A prefix marks ownership and grants nothing.
+An unexported declaration is `shared` only where something says so: a directive, or the `defaults` key. Its *name* plays no part. A prefix marks ownership and grants nothing.
 
 > [!IMPORTANT]
-> Exportedness decides the default, and nothing else. An **exported field of an unexported type** still resolves to `package`, so making the type unexported protects nothing.
+> Exportedness decides the default, and nothing else. An **exported field of an unexported type** still resolves to `shared`, so making the type unexported protects nothing.
 >
 > State the boundary instead. `//declscope:private` on the type binds every field it reaches.
 >
@@ -781,11 +785,11 @@ A **rule** is one check. A rule's name is the diagnostic's category, its [baseli
 
 | Rule | Reports | Fix | Configured by | Default |
 | --- | --- | --- | --- | --- |
-| [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:package` | `rules.boundary` | `on` |
+| [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:shared` | `rules.boundary` | `on` |
 | [`qualify`](#the-naming-rule) | A name that does not carry its namespace | Rename to prefix it | `rules.naming.*` | Off |
-| [`surplus`](#surplus) | Package scope with no visible use from another namespace | Under `strict`, insert `//declscope:private` | `rules.surplus` | `strict` |
+| [`surplus`](#surplus) | Shared scope with no visible use from another namespace | Under `strict`, insert `//declscope:private` | `rules.surplus` | `strict` |
 | [`unused`](#unused-directives) | An ignore that silenced nothing, or a scope directive that changes no scope | Under `strict`, delete a redundant scope directive | `rules.unused` | `strict` |
-| [`directive`](#malformed-directives) | A directive that is malformed, unknown, conflicting or misplaced | None | No | On |
+| [`directive`](#malformed-directives) | A directive that is malformed, unknown, conflicting, misplaced or renamed | Rewrite a renamed keyword | No | On |
 | [`filter`](#the-filter-rule) | A `filter.only` that an `only` above it cancels | None | No | On |
 | [`overexported`](#unexporting-what-no-importer-uses) | An exported declaration of an `internal/` package that nothing outside its package uses | Unexport it | Running `declscope shrink` | Not run by the analyzer |
 
@@ -824,7 +828,7 @@ rules:
   surplus: off
 ```
 
-Set `surplus: off` alongside it. `surplus` audits `//declscope:package`, which means nothing once reach is not checked.
+Set `surplus: off` alongside it. `surplus` audits `//declscope:shared`, which means nothing once reach is not checked.
 
 > [!TIP]
 > This is not how to adopt declscope gradually. A [baseline](#adopting-on-an-existing-codebase) records what a codebase already has and still reports what is new. A switch reports nothing, so you never learn what turning it on later would cost.
@@ -1028,25 +1032,25 @@ A rename is offered only when it provably changes nothing but the spelling. The 
 
 ### `surplus`
 
-`surplus` is the converse of `boundary`. It reports package scope that no visible use from another namespace needs.
+`surplus` is the converse of `boundary`. It reports shared scope that no visible use from another namespace needs.
 
 | `rules.surplus` | Reports | Fix |
 | --- | --- | --- |
 | `off` | Nothing | |
-| `loose` | A `//declscope:package` that nothing it reaches needs | None |
+| `loose` | A `//declscope:shared` that nothing it reaches needs | None |
 | `strict` *(default)* | What `loose` reports, plus each declaration a directive in use widens for nothing | Insert `//declscope:private` |
 
 ```go
 // email.go
 package database
 
-//declscope:package
+//declscope:shared
 func normalizeEmail(s string) string { return s }
 ```
 
 ```console
 $ declscope ./...
-email.go:3:1: //declscope:package on normalizeEmail: no use from another namespace is visible to declscope
+email.go:3:1: //declscope:shared on normalizeEmail: no use from another namespace is visible to declscope
 ```
 
 One comment gets one report, however many declarations take their scope from it. A declaration that states its own scope does not depend on the comment, so it neither keeps it alive nor appears under it.
@@ -1062,7 +1066,7 @@ Under `loose`, one used declaration keeps its whole directive quiet. The rest of
 // account.go
 package bank
 
-//declscope:package
+//declscope:shared
 type account struct {
 	id      int
 	balance int
@@ -1080,13 +1084,13 @@ func ledgerKey(a account) int { return a.id }
 
 ```console
 $ declscope ./...
-account.go:7:2: field account.balance takes package scope from //declscope:package on account, but no use from another namespace is visible to declscope
+account.go:7:2: field account.balance takes shared scope from //declscope:shared on account, but no use from another namespace is visible to declscope
 ```
 
 `-fix` changes `account.go`:
 
 ```diff
- //declscope:package
+ //declscope:shared
  type account struct {
 -	id      int
 +	id int
@@ -1112,7 +1116,7 @@ Every enclosing directive is judged the same way.
 
 `declscope shrink` finds the exported declarations of `internal/` packages that nothing outside their package uses. With `-fix` it unexports them.
 
-**Why it matters.** An exported declaration takes package scope by default, so the analyzer never reports a boundary on it. An exported name that nothing outside needs hides a declaration from every check here. Unexported, it takes `private`, and the analyzer checks who reaches it.
+**Why it matters.** An exported declaration takes shared scope by default, so the analyzer never reports a boundary on it. An exported name that nothing outside needs hides a declaration from every check here. Unexported, it takes `private`, and the analyzer checks who reaches it.
 
 **Why a subcommand.** The analyzer reads one package, and any importer might use an exported name. Inside `internal/`, Go limits the importers to one directory tree. `shrink` loads the whole module, so it sees every one of them. In a workspace, it loads every module of the workspace. A nested module whose path lies under an `internal/` parent can import the package too, so `shrink` loads it as well, and counts its uses. `go vet` and golangci-lint never run it.
 
@@ -1502,7 +1506,7 @@ $ declscope inspect -config .declscope-strict.yaml ./internal/measure
 | golden → (core)   |        |        4 |         0 |        0 |      0 |  4 of 78 |    9 |
 | format → json     |        |        2 |         0 |        0 |      0 | 2 of 105 |    2 |
 
-114 declarations are further: open, package-scoped by default rather than by decision, so left out of the table and of the diagram.
+114 declarations are further: open, shared by default rather than by decision, so left out of the table and of the diagram.
 
 Declarations crossed: 0 reported, 0 baselined, 20 declared.
 ```
@@ -1675,7 +1679,7 @@ declscope reads one package at a time, and counts a use only where a name is wri
 
 | Not seen | Consequence |
 | --- | --- |
-| Uses outside the package | A scope beyond `package` could not be checked, so none exists. [`declscope shrink`](#unexporting-what-no-importer-uses) loads the module to judge exportedness inside `internal/` |
+| Uses outside the package | A scope beyond `shared` could not be checked, so none exists. [`declscope shrink`](#unexporting-what-no-importer-uses) loads the module to judge exportedness inside `internal/` |
 | Whole-value operations on a struct | Copying, comparing or zeroing a value names no field |
 | A composite literal of a type parameter | `T{1}` fills the fields of whatever `T` is instantiated with, without naming them |
 | Reflection, `//go:linkname`, generated files | These reach a declaration without spelling it |

@@ -1,9 +1,9 @@
-//declscope:package // want `unused file-level //declscope:package$`
+//declscope:shared // want `unused file-level //declscope:shared$`
 
 package unusedscope
 
 // A file-level scope is the default for what the file declares, and every
-// declaration here is exported: an exported declaration is package-internal
+// declaration here is exported: an exported declaration is shared
 // under every configuration, so nothing below takes its scope from the line
 // above. The file-level report names no declaration, since the directive was
 // written about the file rather than about any one of them.

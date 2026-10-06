@@ -422,8 +422,13 @@ func keysOf(section any) []string {
 func (f *File) Apply(opts *internal.Options) error {
 	if f.Defaults.Unexported != "" {
 		s, ok := scope.Parse(f.Defaults.Unexported)
+		// The renamed keyword is still read, as the directive is. A config
+		// error stops the run, which a rename alone should not.
+		if f.Defaults.Unexported == scope.Renamed {
+			s, ok = scope.Shared, true
+		}
 		if !ok {
-			return fmt.Errorf("defaults.unexported: unknown scope %q (want package or private)", f.Defaults.Unexported)
+			return fmt.Errorf("defaults.unexported: unknown scope %q (want shared or private)", f.Defaults.Unexported)
 		}
 		opts.Unexported = s
 	}

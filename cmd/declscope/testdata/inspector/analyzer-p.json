@@ -8,13 +8,13 @@
 				"message": "func helper is private to namespace \"user\", but is used from namespace \"order\"",
 				"suggested_fixes": [
 					{
-						"message": "add //declscope:package to helper",
+						"message": "add //declscope:shared to helper",
 						"edits": [
 							{
 								"filename": "$ROOT/p/user.go",
 								"start": 11,
 								"end": 11,
-								"new": "//declscope:package\n"
+								"new": "//declscope:shared\n"
 							}
 						]
 					}
@@ -40,13 +40,13 @@
 				"message": "type userPoint is private to namespace \"user\", but is used from namespace \"order\"",
 				"suggested_fixes": [
 					{
-						"message": "add //declscope:package to userPoint",
+						"message": "add //declscope:shared to userPoint",
 						"edits": [
 							{
 								"filename": "$ROOT/p/user.go",
 								"start": 43,
 								"end": 43,
-								"new": "//declscope:package\n"
+								"new": "//declscope:shared\n"
 							}
 						]
 					}
@@ -97,13 +97,13 @@
 				"message": "type userA is private to namespace \"user\", but is used from namespace \"order\"",
 				"suggested_fixes": [
 					{
-						"message": "add //declscope:package to userA",
+						"message": "add //declscope:shared to userA",
 						"edits": [
 							{
 								"filename": "$ROOT/p/user.go",
 								"start": 78,
 								"end": 78,
-								"new": "//declscope:package\n"
+								"new": "//declscope:shared\n"
 							}
 						]
 					}

@@ -9,7 +9,7 @@
 // every other file reads.
 //
 //declscope:core
-//declscope:package
+//declscope:shared
 
 package internal
 
@@ -142,8 +142,8 @@ type target struct {
 	boundAt boundLevel
 	// decided records whether that directive settled anything for THIS
 	// declaration: a scope it could not have had under any configuration.
-	// An exported name resolves to package scope whatever the config says, so
-	// a file-level //declscope:package above it decides nothing, however many
+	// An exported name resolves to shared scope whatever the config says, so
+	// a file-level //declscope:shared above it decides nothing, however many
 	// of its neighbours the same directive does decide for. The accounting
 	// behind the unused-directive report is per directive and cannot answer
 	// this: one unexported declaration in reach marks the whole site used.
@@ -356,7 +356,7 @@ func comparePos(fset *token.FileSet, a, b token.Pos) int {
 // isExported is Go's own rule, not an ASCII approximation of it. name[0] is the
 // first *byte*: for Äpfel that is 0xC3, so a byte-range test answers
 // "unexported" for a name Go exports — which gave the declaration
-// defaults.unexported instead of package scope, reported a boundary on
+// defaults.unexported instead of shared scope, reported a boundary on
 // published API, and let -fix rename it with in-package edits only, breaking
 // every importer.
 func isExported(name string) bool { return ast.IsExported(name) }
@@ -381,7 +381,7 @@ type unseenFiles struct {
 	// all withholds every rename: an in-package test file this pass does not
 	// see, or something in the directory that could not be read or parsed.
 	//
-	//declscope:package // rename.go, ignore.go, surplus.go and scopesite.go defer wholesale on it
+	//declscope:shared // rename.go, ignore.go, surplus.go and scopesite.go defer wholesale on it
 	all bool
 
 	// names is every identifier written in an unseen file that was read. A
@@ -390,7 +390,7 @@ type unseenFiles struct {
 	// find the new one declared twice. It is complete only while all is
 	// false, since the scan stops once all is set, so read it after all.
 	//
-	//declscope:package // rename.go and scopesite.go check names against it; surplus.go defers on any
+	//declscope:shared // rename.go and scopesite.go check names against it; surplus.go defers on any
 	names map[string]bool
 }
 

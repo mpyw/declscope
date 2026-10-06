@@ -1,4 +1,4 @@
-// surplus.go implements the surplus rule: a //declscope:package directive is
+// surplus.go implements the surplus rule: a //declscope:shared directive is
 // reported when declscope can see no use of what it widens from another
 // namespace. spec/surplus.fsl is the model; NeverReportsReachable is the
 // property everything here serves.
@@ -28,7 +28,7 @@
 //
 // Under rules.surplus: strict the rule also judges one declaration at a time.
 // A directive stays quiet as a whole when any one thing under it is reached,
-// so a file-level //declscope:package over one helper another file calls and
+// so a file-level //declscope:shared over one helper another file calls and
 // one it does not says nothing about the second. strict reports that one, on
 // the same evidence, and offers //declscope:private above it. That fix cannot
 // break a build: a directive is a comment. What it could do is turn a use
@@ -55,9 +55,9 @@ import (
 
 // surplusBook is surplus.go's half of the collection, embedded there.
 //
-//declscope:package // collection embeds it, and collection lives in the core
+//declscope:shared // collection embeds it, and collection lives in the core
 type surplusBook struct {
-	// surplus is the judgment over every //declscope:package directive in the
+	// surplus is the judgment over every //declscope:shared directive in the
 	// package. It is computed on first use, so a run that asks nothing of this
 	// rule, or one that cannot see every file, never pays for it.
 	//
@@ -93,7 +93,7 @@ type surplusDeclaration struct {
 // declaration: fired says which directives the judgment condemned, and
 // reached is the evidence that no name index holds, beside the linknames
 // the collection reads. The evidence is gathered on the first question,
-// never before: a package with no //declscope:package asks none under loose,
+// never before: a package with no //declscope:shared asks none under loose,
 // and interface satisfaction is the costly part of it.
 type surplusState struct {
 	pass     *analysis.Pass
@@ -107,11 +107,11 @@ type surplusState struct {
 }
 
 // checkSurplus reports whether t is the declaration a fired
-// //declscope:package directive is reported through, with the position of the
+// //declscope:shared directive is reported through, with the position of the
 // directive and the message. report.go words nothing here: the judgment and
 // its phrasing both belong to this rule.
 //
-//declscope:package // report.go turns it into the finding it reports
+//declscope:shared // report.go turns it into the finding it reports
 func (c *collection) checkSurplus(pass *analysis.Pass, opts Options, t *target) (token.Pos, string, bool) {
 	if !opts.Surplus.Reports() {
 		return token.NoPos, "", false
@@ -146,7 +146,7 @@ func (s *surplusState) reachesOutside(c *collection, t *target) bool {
 	return s.reached[t.obj] || c.linknamed(s.pass)[t.obj.Name()] || c.surplusSeesUseOutside(t)
 }
 
-// computeSurplus judges every //declscope:package directive in the package.
+// computeSurplus judges every //declscope:shared directive in the package.
 //
 // A directive is judged per physical comment, never per declaration: a block's
 // directive reaches every spec and a type's reaches its fields, and the advice
@@ -163,7 +163,7 @@ func (c *collection) computeSurplus(pass *analysis.Pass) *surplusState {
 
 	groups := make(map[token.Pos][]*target)
 	for _, t := range c.targets {
-		if t.boundBy.HasScope && t.boundBy.Scope == scope.PackageInternal {
+		if t.boundBy.HasScope && t.boundBy.Scope == scope.Shared {
 			groups[t.boundBy.ScopePos] = append(groups[t.boundBy.ScopePos], t)
 		}
 	}
@@ -187,7 +187,7 @@ func (c *collection) computeSurplus(pass *analysis.Pass) *surplusState {
 // did: it saw no use, which is weaker than "unused" — a use it cannot see is
 // exactly what the checks above could not rule out.
 func surplusMessage(rep *target, group []*target) string {
-	directive := scope.PackageInternal.Directive()
+	directive := scope.Shared.Directive()
 	if rep.boundAt == boundAtFile {
 		return "the file's " + directive + ": no use from another namespace is visible to declscope"
 	}
@@ -210,7 +210,7 @@ func surplusMessage(rep *target, group []*target) string {
 //   - cgo and assembly reach declarations from sources the analysis never
 //     parses at all.
 //
-//declscope:package // the survey reports whether the rule was asked at all
+//declscope:shared // the survey reports whether the rule was asked at all
 func (c *collection) surplusSeesEveryFile(pass *analysis.Pass) bool {
 	if u := c.unseen(pass); u.all || len(u.names) > 0 {
 		return false
@@ -494,7 +494,7 @@ func (c *collection) surplusConversions(pass *analysis.Pass, reached map[types.O
 // its own, with the message, the fix, and the type whose finding settles it
 // (see surplusDeclaration.settledBy).
 //
-//declscope:package // report.go turns it into the finding it reports
+//declscope:shared // report.go turns it into the finding it reports
 func (c *collection) checkSurplusDeclaration(pass *analysis.Pass, opts Options, t *target) (string, *analysis.SuggestedFix, *target, bool) {
 	if !opts.Surplus.ReportsDeclarations() {
 		return "", nil, nil, false
@@ -516,19 +516,19 @@ func (c *collection) checkSurplusDeclaration(pass *analysis.Pass, opts Options, 
 	return f.msg, &fix, f.settledBy, true
 }
 
-// surplusEnclosed reports whether t takes package scope from a directive it
+// surplusEnclosed reports whether t takes shared scope from a directive it
 // did not write itself — its type's, its block's, or its file's — and would be
 // private without it, under the configuration in force.
 //
 // Four things each settle it the other way, and none of them is an enclosing
 // directive's doing:
 //
-//   - An exported declaration is package-scoped by exportedness alone.
+//   - An exported declaration is shared by exportedness alone.
 //   - A declaration that states its own scope answers for itself. A redundant
-//     //declscope:package there is the unused rule's report, not this one.
+//     //declscope:shared there is the unused rule's report, not this one.
 //   - A declaration whose scope comes from defaults.unexported took no
 //     directive.
-//   - Under defaults.unexported: package it would be package-scoped with no
+//   - Under defaults.unexported: shared it would be shared with no
 //     directive at all, so the directive widened nothing.
 //
 // The last one reads the configuration, which the unused rule's binding
@@ -539,10 +539,10 @@ func (c *collection) checkSurplusDeclaration(pass *analysis.Pass, opts Options, 
 // configuration regardless: the enclosing directive fixes the scope the
 // declaration would otherwise take, so //declscope:private under it differs.
 func surplusEnclosed(opts Options, t *target) bool {
-	if isExported(t.obj.Name()) || t.scope != scope.PackageInternal || opts.Unexported != scope.Private {
+	if isExported(t.obj.Name()) || t.scope != scope.Shared || opts.Unexported != scope.Private {
 		return false
 	}
-	// Package scope on an unexported name under a private default came from
+	// Shared scope on an unexported name under a private default came from
 	// a directive, so the level is never the default here.
 	return t.boundAt == boundAtContainer || t.boundAt == boundAtFile ||
 		t.boundAt == boundAtDecl && t.fromBlock
@@ -675,20 +675,20 @@ func surplusDeclarationMessage(t *target) string {
 	var from string
 	switch t.boundAt {
 	case boundAtFile:
-		from = "the file's " + scope.PackageInternal.Directive()
+		from = "the file's " + scope.Shared.Directive()
 	case boundAtContainer:
-		from = scope.PackageInternal.Directive() + " on " + t.owner
+		from = scope.Shared.Directive() + " on " + t.owner
 	default:
-		from = "the " + scope.PackageInternal.Directive() + " on its block"
+		from = "the " + scope.Shared.Directive() + " on its block"
 	}
-	return fmt.Sprintf("%s %s takes package scope from %s, but no use from another namespace is visible to declscope",
+	return fmt.Sprintf("%s %s takes shared scope from %s, but no use from another namespace is visible to declscope",
 		t.kind, t.name(), from)
 }
 
 // surplusNarrowedByTypeFix names the members a boundary fix on typ has to
 // narrow in the same edit, under strict.
 //
-// That fix writes //declscope:package on a type that took its private scope
+// That fix writes //declscope:shared on a type that took its private scope
 // from defaults.unexported, and the directive reaches every member. A member
 // no other namespace reads would then be exactly what strict reports, so the
 // run would end with a diagnostic it did not start with. The answer is the one
@@ -702,7 +702,7 @@ func surplusDeclarationMessage(t *target) string {
 // is consulted without being marked used: nothing in this run is silenced by
 // it.
 //
-//declscope:package // report.go's boundary fix on a type asks it
+//declscope:shared // report.go's boundary fix on a type asks it
 func (c *collection) surplusNarrowedByTypeFix(pass *analysis.Pass, opts Options, typ *target) []*target {
 	if !opts.Surplus.ReportsDeclarations() || opts.Unexported != scope.Private {
 		return nil

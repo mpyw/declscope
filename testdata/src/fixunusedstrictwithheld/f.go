@@ -4,9 +4,9 @@ package fixunusedstrictwithheld
 // Deleting FExported's directive would hand FExported to the block, and the
 // block's report would name it.
 //
-//declscope:package // want `unused //declscope:package: every declaration it reaches states its own scope`
+//declscope:shared // want `unused //declscope:shared: every declaration it reaches states its own scope`
 var (
-	//declscope:package // want `unused //declscope:package on FExported: it already has package scope`
+	//declscope:shared // want `unused //declscope:shared on FExported: it already has shared scope`
 	FExported = 1
 	//declscope:private
 	fNarrowed = 2

@@ -5,7 +5,7 @@ package fixmembers
 // bind nothing, and the directive rule would report what -fix had just
 // written.
 //
-//declscope:package
+//declscope:shared
 type entry struct { // want `type entry is private to namespace "user", but is used from namespace "order"`
 	key string // want `field entry.key is private to namespace "user", but is used from namespace "order"`
 }
@@ -14,7 +14,7 @@ type entry struct { // want `type entry is private to namespace "user", but is u
 // it without ever naming it — so nothing widens the field but its own
 // directive, and the fix is offered.
 type kept struct {
-	//declscope:package
+	//declscope:shared
 	flag bool // want `field kept.flag is private to namespace "user", but is used from namespace "order"`
 }
 

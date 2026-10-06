@@ -18,7 +18,7 @@ import (
 
 // renamePlanned is a rename the guards allow, before it claims its name.
 //
-//declscope:package // the core claims it once the package's judgment settles
+//declscope:shared // the core claims it once the package's judgment settles
 type renamePlanned struct {
 	// taken is how the report reads when another fix of the run takes the
 	// name. It reads the same as the name already being taken, since after
@@ -57,7 +57,7 @@ type renamePlanned struct {
 // What other fixes of the run claim is not asked here. Which declarations are
 // fixed is settled first, and renameClaimIn claims the names afterwards.
 //
-//declscope:package // the core plans every fix before settling which stand
+//declscope:shared // the core plans every fix before settling which stand
 func (r *run) renamePlan(c *candidate) (*renamePlanned, string) {
 	newName, spelled := namespace.Unexported(c.obj.Name())
 	variants := r.mod.Variants(c.pkg.PkgPath)
@@ -115,7 +115,7 @@ func (r *run) renamePlan(c *candidate) (*renamePlanned, string) {
 
 // renameClaims is what the fixes of one package have claimed so far.
 //
-//declscope:package // the core claims through it, one package at a time
+//declscope:shared // the core claims through it, one package at a time
 type renameClaims struct {
 	pkg map[string]bool
 	// member is every member name claimed, with the types that hold it.
@@ -128,7 +128,7 @@ type renameClaims struct {
 // whether it was free. Two exported names can lower to one (Foo and FOO both
 // become foo), and the fixes cannot see each other.
 //
-//declscope:package // the core claims each fix that stands
+//declscope:shared // the core claims each fix that stands
 func (r *run) renameClaimIn(claims *renameClaims, c *candidate, plan *renamePlanned) bool {
 	if !r.renameClaimFree(claims, c, plan) {
 		return false
@@ -146,7 +146,7 @@ func (r *run) renameClaimIn(claims *renameClaims, c *candidate, plan *renamePlan
 // holds, claiming nothing. A nil plan was never made, so nothing claims its
 // name.
 //
-//declscope:package // the core asks it of the fixes it withheld
+//declscope:shared // the core asks it of the fixes it withheld
 func (r *run) renameClaimFree(claims *renameClaims, c *candidate, plan *renamePlanned) bool {
 	if plan == nil {
 		return true
@@ -284,7 +284,7 @@ func renameNameIn(t renameTyped, newName string) bool {
 // renameFacts is what the guards ask of one package, gathered once over all
 // of its variants rather than once per candidate.
 //
-//declscope:package // run caches one per package
+//declscope:shared // run caches one per package
 type renameFacts struct {
 	// linknamed is every local name a //go:linkname or //export binds.
 	//

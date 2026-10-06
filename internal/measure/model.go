@@ -15,8 +15,8 @@
 // The file joins the core namespace for the reason subject.go does: every
 // renderer reads this model, and in a named namespace each type would have to
 // spell that namespace into its own name. It states no scope: everything here
-// is exported, which already resolves to package scope, so a
-// //declscope:package would decide nothing. The core is about the naming rule,
+// is exported, which already resolves to shared scope, so a
+// //declscope:shared would decide nothing. The core is about the naming rule,
 // which asks nothing of a namespace that has no name.
 //
 //declscope:core
@@ -43,7 +43,7 @@ type EdgeState string
 
 const (
 	// EdgeDeclared is a crossing whose declaration was widened by a
-	// //declscope:package directive. The decision is recorded in the source.
+	// //declscope:shared directive. The decision is recorded in the source.
 	EdgeDeclared EdgeState = "declared"
 
 	// EdgeBaselined is a crossing the baseline suppresses. The decision is
@@ -58,7 +58,7 @@ const (
 	// but it withholds the report rather than widening the declaration.
 	EdgeIgnored EdgeState = "ignored"
 
-	// EdgeOpen is a crossing of a declaration that is package-scoped without
+	// EdgeOpen is a crossing of a declaration that is shared without
 	// any directive saying so — an exported declaration, or one widened by
 	// defaults.unexported. It is a default, not a decision.
 	EdgeOpen EdgeState = "open"

@@ -6,7 +6,7 @@ package unusedstrict
 // block reaches no declaration that takes its scope. The file's private is
 // what fNarrowed would have from the default anyway.
 //
-//declscope:package // want `unused //declscope:package: every declaration it reaches states its own scope`
+//declscope:shared // want `unused //declscope:shared: every declaration it reaches states its own scope`
 var (
 	//declscope:private
 	fNarrowed = 1

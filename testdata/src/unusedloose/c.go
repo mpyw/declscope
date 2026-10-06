@@ -5,7 +5,7 @@ package unusedloose
 //
 //declscope:private
 var (
-	//declscope:package
+	//declscope:shared
 	CWidened = 2
 	cOther   = 3
 )

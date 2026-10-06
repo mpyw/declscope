@@ -227,10 +227,10 @@ func Apply(findings []Finding) error {
 // kind is what a candidate declares, for the message and for which evidence
 // applies to it.
 //
-//declscope:package // candidate.go and rename.go classify candidates by it
+//declscope:shared // candidate.go and rename.go classify candidates by it
 type kind string
 
-//declscope:package // candidate.go classifies each candidate
+//declscope:shared // candidate.go classifies each candidate
 const (
 	kindFunc   kind = "func"
 	kindVar    kind = "var"
@@ -243,12 +243,12 @@ const (
 // member reports whether the kind is reached through a value of its owner,
 // which is how another module uses one without naming the owner.
 //
-//declscope:package // rename.go asks it
+//declscope:shared // rename.go asks it
 func (k kind) member() bool { return k == kindMethod || k == kindField }
 
 // candidate is an exported declaration of a judged package.
 //
-//declscope:package // candidate.go builds it, and every stage reads it
+//declscope:shared // candidate.go builds it, and every stage reads it
 type candidate struct {
 	obj  types.Object
 	key  string
@@ -276,7 +276,7 @@ type candidate struct {
 // while another package uses any of its values, and otherwise each value is
 // reported, fixed only where every one of them is.
 //
-//declscope:package // candidate.go builds it
+//declscope:shared // candidate.go builds it
 type constSet struct {
 	typ *types.TypeName
 }
@@ -351,7 +351,7 @@ func (r *run) usedImplicitly(c *candidate) bool {
 // package writes name. The rename cannot rewrite that file, which would keep
 // the old name or declare the new one twice.
 //
-//declscope:package // rename.go asks it about the new name
+//declscope:shared // rename.go asks it about the new name
 func (c *candidate) writtenInOwn(xs []*excluded.File, name string) bool {
 	return slices.ContainsFunc(xs, func(x *excluded.File) bool { return c.inOwnPackage(x) && x.Writes(name) })
 }
@@ -373,7 +373,7 @@ func (c *candidate) linkerSet() bool {
 
 // run is the state one invocation shares across the packages it judges.
 //
-//declscope:package // rename.go and ignore.go add methods of their own
+//declscope:shared // rename.go and ignore.go add methods of their own
 type run struct {
 	mod *module.Module
 	ev  *evidence
@@ -832,7 +832,7 @@ func (r *run) withheld(c *candidate) string {
 // its own objects. They share the parsed files, so the declaring identifier's
 // place is the one identity they agree on.
 //
-//declscope:package // every stage keys its evidence by it
+//declscope:shared // every stage keys its evidence by it
 func keyOf(fset *token.FileSet, obj types.Object) string {
 	if obj == nil || !obj.Pos().IsValid() {
 		return ""
@@ -845,7 +845,7 @@ func keyOf(fset *token.FileSet, obj types.Object) string {
 // go/types records the instantiated one in Uses for a selection on a generic
 // type. The analyzer's own origin does the same for the same reason.
 //
-//declscope:package // evidence.go and rename.go normalize every object with it
+//declscope:shared // evidence.go and rename.go normalize every object with it
 func origin(obj types.Object) types.Object {
 	switch o := obj.(type) {
 	case *types.Var:
@@ -860,7 +860,7 @@ func origin(obj types.Object) types.Object {
 // and nil for any other object. A selection of the field (s.T) is spelled
 // with the type's name, so renaming the type rewrites it too.
 //
-//declscope:package // evidence.go and rename.go follow embedded fields
+//declscope:shared // evidence.go and rename.go follow embedded fields
 func embeddedTypeName(obj types.Object) *types.TypeName {
 	v, ok := obj.(*types.Var)
 	if !ok || !v.Embedded() {

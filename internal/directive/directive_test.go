@@ -39,10 +39,10 @@ func TestParseDeclScope(t *testing.T) {
 		want    scope.Scope
 		wantHas bool
 	}{
-		{"package", "//declscope:package", scope.PackageInternal, true},
+		{"package", "//declscope:shared", scope.Shared, true},
 		{"private", "//declscope:private", scope.Private, true},
-		{"with reason", "//declscope:package // shared with the reporter", scope.PackageInternal, true},
-		{"reason flush against it", "//declscope:package// shared", scope.PackageInternal, true},
+		{"with reason", "//declscope:shared // shared with the reporter", scope.Shared, true},
+		{"reason flush against it", "//declscope:shared// shared", scope.Shared, true},
 		{"unrelated", "// an ordinary comment", 0, false},
 		{"other tool", "//nolint:all", 0, false},
 	}
@@ -66,15 +66,15 @@ func TestParseDeclProblems(t *testing.T) {
 		comment string
 	}{
 		{"unknown keyword", "//declscope:bogus"},
-		{"argument where none is taken", "//declscope:package user"},
+		{"argument where none is taken", "//declscope:shared user"},
 		{"ignore of an unknown rule", "//declscope:ignore why"},
 		{"ignore of an empty rule list", "//declscope:ignore ,"},
 		{"ignore with a trailing comma", "//declscope:ignore boundary,"},
 		{"ignore with a reason after a dash", "//declscope:ignore - why"},
 		{"namespace on a declaration", "//declscope:namespace user"},
 		{"core on a declaration", "//declscope:core"},
-		{"conflicting scopes", "//declscope:package\n//declscope:private"},
-		{"keyword with a suffix", "//declscope:packagex"},
+		{"conflicting scopes", "//declscope:shared\n//declscope:private"},
+		{"keyword with a suffix", "//declscope:sharedx"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -91,9 +91,9 @@ func TestParseDeclProblems(t *testing.T) {
 func TestParseDeclNotADirective(t *testing.T) {
 	for _, comment := range []string{
 		"//declscopex:package",
-		"//xdeclscope:package",
-		"// see declscope:package for why",
-		"//go:generate declscope:package",
+		"//xdeclscope:shared",
+		"// see declscope:shared for why",
+		"//go:generate declscope:shared",
 	} {
 		t.Run(comment, func(t *testing.T) {
 			fn := firstFunc(t, "package p\n\n"+comment+"\nfunc f() {}\n")
@@ -176,13 +176,13 @@ func TestParseDeclIgnoreAccumulates(t *testing.T) {
 }
 
 func TestMerge(t *testing.T) {
-	outer := directive.Decl{Scope: scope.PackageInternal, HasScope: true}
+	outer := directive.Decl{Scope: scope.Shared, HasScope: true}
 	inner := directive.Decl{Scope: scope.Private, HasScope: true}
 
 	if got := outer.Merge(inner); got.Scope != scope.Private {
 		t.Errorf("a spec directive should override its block, got %v", got.Scope)
 	}
-	if got := outer.Merge(directive.Decl{}); got.Scope != scope.PackageInternal {
+	if got := outer.Merge(directive.Decl{}); got.Scope != scope.Shared {
 		t.Errorf("a block directive should survive an empty spec, got %v", got.Scope)
 	}
 }
@@ -191,11 +191,11 @@ func TestMerge(t *testing.T) {
 // is kept beneath the spec's: the strict directive rule asks what the spec
 // would take if its own directive were deleted.
 func TestMergeKeepsBeneath(t *testing.T) {
-	outer := directive.Decl{Scope: scope.PackageInternal, HasScope: true, ScopePos: 10}
+	outer := directive.Decl{Scope: scope.Shared, HasScope: true, ScopePos: 10}
 	inner := directive.Decl{Scope: scope.Private, HasScope: true, ScopePos: 20}
 
 	got := outer.Merge(inner).BeneathScope()
-	if !got.HasScope || got.Scope != scope.PackageInternal || got.ScopePos != 10 {
+	if !got.HasScope || got.Scope != scope.Shared || got.ScopePos != 10 {
 		t.Errorf("BeneathScope() = %+v, want the block's directive", got)
 	}
 	if got := outer.Merge(directive.Decl{}).BeneathScope(); got.HasScope {
@@ -297,13 +297,51 @@ func TestParseFileIgnore(t *testing.T) {
 // utility file wants instead of an ignore: a scope states what the declarations
 // are, where an ignore only stands a rule down.
 func TestParseFileScope(t *testing.T) {
-	f := directive.ParseFile(parse(t, "//declscope:package\n\npackage repo\n"))
+	f := directive.ParseFile(parse(t, "//declscope:shared\n\npackage repo\n"))
 	if len(f.Problems) != 0 {
 		t.Fatalf("want no problem, got %v", f.Problems)
 	}
-	if !f.Scope.HasScope || f.Scope.Scope != scope.PackageInternal {
-		t.Errorf("Scope = %+v, want package-internal", f.Scope)
+	if !f.Scope.HasScope || f.Scope.Scope != scope.Shared {
+		t.Errorf("Scope = %+v, want shared", f.Scope)
 	}
+}
+
+// TestParseRenamed checks the keyword shared had before, at both levels: it
+// still states shared, and is reported once with a fix that rewrites the
+// keyword alone, so a trailing reason survives. ScopeRenamed survives a merge,
+// since the unused rule reads it from the merged Decl.
+func TestParseRenamed(t *testing.T) {
+	const src = "//declscope:package\n\npackage repo\n\n//declscope:package // why\nfunc f() {}\n"
+	file := parse(t, src)
+	check := func(t *testing.T, d directive.Decl, problems []directive.Problem) {
+		t.Helper()
+		if !d.HasScope || d.Scope != scope.Shared || !d.ScopeRenamed {
+			t.Fatalf("Scope = %+v, want shared, renamed", d)
+		}
+		if len(problems) != 1 || problems[0].Rule != rule.Directive || len(problems[0].Fixes) != 1 {
+			t.Fatalf("problems = %+v, want one directive report with one fix", problems)
+		}
+		edits := problems[0].Fixes[0].TextEdits
+		if len(edits) != 1 {
+			t.Fatalf("edits = %+v, want one", edits)
+		}
+		e := edits[0]
+		// token.Pos is 1-based in a file set holding one file.
+		if got := src[e.Pos-1:e.End-1] + "->" + string(e.NewText); got != "package->shared" {
+			t.Errorf("edit = %q, want %q", got, "package->shared")
+		}
+	}
+	t.Run("file", func(t *testing.T) {
+		f := directive.ParseFile(file)
+		check(t, f.Scope, f.Problems)
+	})
+	t.Run("declaration", func(t *testing.T) {
+		d := directive.ParseDecl(file.Decls[0].(*ast.FuncDecl).Doc)
+		check(t, d, d.Problems)
+		if m := (directive.Decl{}).Merge(d); !m.ScopeRenamed {
+			t.Errorf("Merge dropped ScopeRenamed: %+v", m)
+		}
+	})
 }
 
 // TestParseFileCore checks the core directive, and that naming a namespace as
@@ -339,13 +377,13 @@ func TestParseFileProblems(t *testing.T) {
 	}{
 		{
 			name: "argument where none is taken",
-			src:  "//declscope:package everything\n\npackage repo\n",
-			want: "//declscope:package takes no argument",
+			src:  "//declscope:shared everything\n\npackage repo\n",
+			want: "//declscope:shared takes no argument",
 		},
 		{
 			name: "two scopes on one file",
-			src:  "//declscope:package\n//declscope:private\n\npackage repo\n",
-			want: "conflicting scope directives: //declscope:package and //declscope:private on one file",
+			src:  "//declscope:shared\n//declscope:private\n\npackage repo\n",
+			want: "conflicting scope directives: //declscope:shared and //declscope:private on one file",
 		},
 		{
 			// A declaration-level keyword written before the package clause
@@ -357,8 +395,8 @@ func TestParseFileProblems(t *testing.T) {
 		},
 		{
 			name: "keyword with a suffix",
-			src:  "//declscope:packagex\n\npackage repo\n",
-			want: "declscope:packagex is not a file-level directive",
+			src:  "//declscope:sharedx\n\npackage repo\n",
+			want: "declscope:sharedx is not a file-level directive",
 		},
 		{
 			name: "ignore of an unknown rule",
@@ -387,12 +425,12 @@ func TestParseFileProblems(t *testing.T) {
 // TestParseFileScopeSurvivesRepetition checks that the same scope written
 // twice is not a conflict. Only a second scope that disagrees is.
 func TestParseFileScopeSurvivesRepetition(t *testing.T) {
-	f := directive.ParseFile(parse(t, "//declscope:package\n//declscope:package\n\npackage repo\n"))
+	f := directive.ParseFile(parse(t, "//declscope:shared\n//declscope:shared\n\npackage repo\n"))
 	if len(f.Problems) != 0 {
 		t.Errorf("want no problem, got %v", f.Problems)
 	}
-	if !f.Scope.HasScope || f.Scope.Scope != scope.PackageInternal {
-		t.Errorf("Scope = %+v, want package-internal", f.Scope)
+	if !f.Scope.HasScope || f.Scope.Scope != scope.Shared {
+		t.Errorf("Scope = %+v, want shared", f.Scope)
 	}
 }
 
@@ -458,9 +496,9 @@ func TestParseDeclSkipsNilGroups(t *testing.T) {
 func TestMalformed(t *testing.T) {
 	const want = "malformed declscope directive: write it as //declscope:name"
 	for _, comment := range []string{
-		"// declscope:package",
+		"// declscope:shared",
 		"//declscope: package",
-		"/*declscope:package*/",
+		"/*declscope:shared*/",
 		"//declscope:Package",
 		"//declscope:",
 	} {

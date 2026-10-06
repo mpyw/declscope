@@ -6,7 +6,7 @@ func userHelper() int { return 1 } // want `func userHelper is private to namesp
 
 // Surplus is always an explicit act.
 //
-//declscope:package
+//declscope:shared
 func userShared() int { return 2 }
 
 // Exported identifiers carry no boundary, and no prefix unless
@@ -15,7 +15,7 @@ func Exported() int { return userHelper() }
 
 var userCount int // want `var userCount is private to namespace "user", but is used from namespace "order"`
 
-//declscope:package
+//declscope:shared
 var userTotal int
 
 const userLimit = 10 // want `const userLimit is private to namespace "user", but is used from namespace "order"`

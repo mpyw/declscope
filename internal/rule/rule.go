@@ -9,7 +9,7 @@
 // This file is the package's core, and mode.go is its own namespace: the
 // rule names are what every caller spells, and a named namespace would spell
 // itself into each of them (rule.RuleBoundary). Everything here is exported
-// and already package-scoped, so the core states no scope.
+// and already shared, so the core states no scope.
 //
 //declscope:core
 
@@ -27,9 +27,9 @@ const (
 	// Qualify: a package-level declaration whose name does not carry its
 	// namespace, which namespace.Qualify fixes by prefixing.
 	Qualify Rule = "qualify"
-	// Surplus: package scope wider than any use visible to declscope. It
+	// Surplus: shared scope wider than any use visible to declscope. It
 	// reports from an absence, in two shapes that share the name. Under
-	// rules.surplus: loose, a //declscope:package whose every dependent is
+	// rules.surplus: loose, a //declscope:shared whose every dependent is
 	// unreached, with no fix — every remaining false positive would be an
 	// automatic edit deleting a load-bearing directive. Under strict, also
 	// each unreached dependent of a directive that is otherwise in use, fixed

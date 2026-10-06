@@ -87,7 +87,7 @@ type jsonName struct {
 
 // writeJSON renders one package.
 //
-//declscope:package // format.go dispatches to it
+//declscope:shared // format.go dispatches to it
 func (p Package) writeJSON(w io.Writer) error {
 	out := jsonPackage{
 		Package:  p.Path,
@@ -233,7 +233,7 @@ type jsonLargest struct {
 
 // writeJSON renders a whole run.
 //
-//declscope:package // format.go dispatches to it
+//declscope:shared // format.go dispatches to it
 func (s Summary) writeJSON(w io.Writer) error {
 	out := jsonSummary{
 		Checks: jsonChecks{

@@ -29,7 +29,7 @@ import (
 // is what makes Fixable the analyzer's own answer rather than an optimistic
 // one.
 //
-//declscope:package // the survey entry, driven from analyzer.go
+//declscope:shared // the survey entry, driven from analyzer.go
 func (c *collection) surveyed(pass *analysis.Pass, opts Options) measure.Package {
 	out := measure.Package{
 		Path:     pass.Pkg.Path(),
@@ -99,11 +99,11 @@ func edgesForSurvey(c *collection, t *target, crossed measure.FindingState) []me
 // shared, so the crossing is a decision somebody recorded. Three things it is
 // not. Not "bound by a directive", since //declscope:private is one of those
 // too. Not "unexported", since a declaration widened by defaults.unexported
-// reaches package scope with nothing written down about it, which is the same
+// reaches shared scope with nothing written down about it, which is the same
 // absence of a decision as an exported name. And not "the directive that
 // supplied the scope was used": that is a question about the directive, and
 // this is a question about the declaration. One file-level
-// //declscope:package can decide for an unexported name and decide nothing
+// //declscope:shared can decide for an unexported name and decide nothing
 // for the exported one beside it, and target.decided is that per-declaration
 // answer, taken where the scope was resolved.
 func stateOfUnreportedSurveyedEdge(t *target) measure.EdgeState {
@@ -112,7 +112,7 @@ func stateOfUnreportedSurveyedEdge(t *target) measure.EdgeState {
 		// Private, crossed, and nothing reported: the rule was not asked.
 		// Nothing about this crossing has been decided.
 		return measure.EdgeUnchecked
-	case t.decided && t.boundBy.Scope == scope.PackageInternal:
+	case t.decided && t.boundBy.Scope == scope.Shared:
 		return measure.EdgeDeclared
 	default:
 		return measure.EdgeOpen

@@ -330,7 +330,7 @@ func TestBraceIgnore(t *testing.T) {
 }
 
 // TestAliases checks what a directive on a type alias reaches. The alias name
-// is an ordinary declaration, so //declscope:package on it widens the name and
+// is an ordinary declaration, so //declscope:shared on it widens the name and
 // use.go may take an al — the silence on alias.go is the assertion. It does not
 // reach the aliased defined type's members, so Base.n keeps base.go's boundary.
 // An alias to a struct written inline does contain its fields.
@@ -364,7 +364,7 @@ func TestToolchainNames(t *testing.T) {
 }
 
 // TestSurplus checks the surplus rule's reporting shapes: one report per
-// physical //declscope:package, listing every declaration that takes its
+// physical //declscope:shared, listing every declaration that takes its
 // scope from it, at every level the directive can be written. The quiet cases
 // carry as much: an ignore silences it, and an exported name anywhere in the
 // comment's reach keeps the whole comment.
@@ -470,8 +470,8 @@ func TestSurplusStrictReach(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusstrictreach")
 }
 
-// TestSurplusStrictDefaults checks that under defaults.unexported: package
-// strict adds nothing: the declaration would be package-scoped with no
+// TestSurplusStrictDefaults checks that under defaults.unexported: shared
+// strict adds nothing: the declaration would be shared with no
 // directive, so the directive widened nothing.
 func TestSurplusStrictDefaults(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusstrictdefaults")
@@ -534,10 +534,10 @@ func TestUnusedOff(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unusedoff")
 }
 
-// TestUnusedStrictPackageDefault checks strict under defaults.unexported:
-// package, where the same private field binds and a package directive on an
+// TestUnusedStrictSharedDefault checks strict under defaults.unexported:
+// shared, where the same private field binds and a shared directive on an
 // unexported declaration is the redundant one.
-func TestUnusedStrictPackageDefault(t *testing.T) {
+func TestUnusedStrictSharedDefault(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unusedstrictpkg")
 }
 

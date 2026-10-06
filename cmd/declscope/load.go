@@ -39,7 +39,7 @@ import (
 // a typo would otherwise replace the real one with an empty file. command
 // names the subcommand in the warning.
 //
-//declscope:package // every subcommand that reads packages starts here
+//declscope:shared // every subcommand that reads packages starts here
 func loadPackages(command string, patterns []string, tests bool) ([]*packages.Package, error) {
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles |
@@ -75,7 +75,7 @@ func loadPackages(command string, patterns []string, tests bool) ([]*packages.Pa
 // nothing could be measured for. One entry per import path, since the two
 // variants of a package report the same error twice.
 //
-//declscope:package // survey refuses on it, and says which packages failed
+//declscope:shared // survey refuses on it, and says which packages failed
 func loadErrors(pkgs []*packages.Package) []string {
 	seen := map[string]bool{}
 	var failed []string
@@ -95,7 +95,7 @@ func loadErrors(pkgs []*packages.Package) []string {
 // scope declared by package foo_test, so an error in the skipped package must
 // not prevent the requested package from being measured.
 //
-//declscope:package // inspect applies the loader's package-selection rules
+//declscope:shared // inspect applies the loader's package-selection rules
 func loadErrorsForInspect(pkgs []*packages.Package) []string {
 	subjects := map[string]bool{}
 	for _, pkg := range loadWidestVariants(pkgs) {
@@ -116,7 +116,7 @@ func loadErrorsForInspect(pkgs []*packages.Package) []string {
 // config or baseline could ever be looked up from it, and it has nothing of
 // its own to say.
 //
-//declscope:package // both subcommands skip the same packages
+//declscope:shared // both subcommands skip the same packages
 func loadIsAnalyzable(pkg *packages.Package) bool {
 	if len(pkg.Syntax) == 0 || pkg.TypesInfo == nil || pkg.Types == nil {
 		return false
@@ -153,7 +153,7 @@ func loadIsTestMain(pkg *packages.Package) bool {
 // ForTest is the build system's answer; trimming an import-path suffix would
 // also discard an ordinary package that is genuinely named foo_test.
 //
-//declscope:package // inspect excludes this separate scope when its subject is present
+//declscope:shared // inspect excludes this separate scope when its subject is present
 func loadIsExternalTest(pkg *packages.Package) bool {
 	return pkg.ForTest != "" && pkg.PkgPath != pkg.ForTest && !loadIsTestMain(pkg)
 }
@@ -172,7 +172,7 @@ func loadIsExternalTest(pkg *packages.Package) bool {
 // because it is a different package, with its own namespaces and its own
 // scope, and folding it into its subject would mix two packages' counts.
 //
-//declscope:package // survey measures one row per package, not per variant
+//declscope:shared // survey measures one row per package, not per variant
 func loadWidestVariants(pkgs []*packages.Package) []*packages.Package {
 	widest := map[string]*packages.Package{}
 	var paths []string
@@ -206,7 +206,7 @@ func loadWidestVariants(pkgs []*packages.Package) []*packages.Package {
 // another and the output does not depend on scheduling. The analysis is safe
 // to run this way: singlechecker already runs it on many packages at once.
 //
-//declscope:package // survey and baseline analyze every package through it
+//declscope:shared // survey and baseline analyze every package through it
 func loadInParallel(n int, f func(i int)) {
 	slots := make(chan struct{}, runtime.GOMAXPROCS(0))
 	var wg sync.WaitGroup
@@ -231,7 +231,7 @@ func loadInParallel(n int, f func(i int)) {
 // ResultOf holds what a driver would have run first: the analyzer's one
 // requirement, the inspector over the same files.
 //
-//declscope:package // every subcommand analyzes through this one pass
+//declscope:shared // every subcommand analyzes through this one pass
 func loadedPass(pkg *packages.Package) *analysis.Pass {
 	return &analysis.Pass{
 		Analyzer:     declscope.Analyzer,
@@ -251,7 +251,7 @@ func loadedPass(pkg *packages.Package) *analysis.Pass {
 // loadedPackageDir is the directory a package's config and baseline are looked
 // up from.
 //
-//declscope:package // both subcommands resolve options per package
+//declscope:shared // both subcommands resolve options per package
 func loadedPackageDir(pkg *packages.Package) string {
 	for _, f := range slices.Concat(pkg.GoFiles, pkg.CompiledGoFiles) {
 		return filepath.Dir(f)

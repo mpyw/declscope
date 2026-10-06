@@ -32,7 +32,7 @@ const (
 	// formatJSON is for an agent and for anything scripted. It is the
 	// interface the adoption skill reads.
 	//
-	//declscope:package // the golden test renders it
+	//declscope:shared // the golden test renders it
 	formatJSON Format = "json"
 )
 

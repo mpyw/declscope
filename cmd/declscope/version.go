@@ -29,7 +29,7 @@ var version string
 // written for is cmd/internal/objabi doing exactly this, so registering ours
 // first replaces it rather than colliding with it.
 //
-//declscope:package // main.go registers it before handing over to the driver
+//declscope:shared // main.go registers it before handing over to the driver
 func registerVersionFlag() {
 	flag.Var(versionFlag{}, "V", "print version and exit")
 }
@@ -80,7 +80,7 @@ func printVersion() {
 // The leading v is dropped so that the two sources read alike: goreleaser
 // spells a tag without it, and the module system keeps it.
 //
-//declscope:package // skills.go stamps an installed skill with the same release
+//declscope:shared // skills.go stamps an installed skill with the same release
 func versionString() string {
 	if version != "" {
 		return strings.TrimPrefix(version, "v")

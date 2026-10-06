@@ -2,7 +2,7 @@
 // loose, that is all the rule asks. helperLocal is not reported;
 // strict is what judges it on its own.
 //
-//declscope:package
+//declscope:shared
 
 package surplusloose
 

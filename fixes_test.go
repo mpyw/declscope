@@ -150,7 +150,7 @@ func TestSuggestedFixUnusedStrictWithheld(t *testing.T) {
 }
 
 // TestSuggestedFixUnusedStrictSurplus checks the reasons the directive
-// rule's strict fix is withheld while surplus reads a //declscope:package: an
+// rule's strict fix is withheld while surplus reads a //declscope:shared: an
 // ignore answering surplus (b.go), and a directive restating an enclosing one
 // (c.go). Only a.go, where the deletion settles surplus's report too, takes
 // an edit.
@@ -247,4 +247,13 @@ func TestSuggestedFixSurplusStrictUnusedStrict(t *testing.T) {
 // field in the middle of a line look like it starts one.
 func TestSuggestedFixLineDirective(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "linefix")
+}
+
+// TestSuggestedFixRenamed checks the keyword shared had before: it still
+// takes effect, it is reported, and the fix rewrites the keyword alone,
+// keeping a trailing reason. Where rules.unused: strict deletes the directive
+// instead, the rename is not reported, since the two fixes would overlap,
+// unless a file-level ignore silences the deletion (report.go).
+func TestSuggestedFixRenamed(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixrenamed")
 }

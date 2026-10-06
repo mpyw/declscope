@@ -28,7 +28,7 @@ would answer a question nobody asked.
 
 // inspectRun reports one package.
 //
-//declscope:package // a subcommand, dispatched from main.go
+//declscope:shared // a subcommand, dispatched from main.go
 func inspectRun(args []string) {
 	fs := flag.NewFlagSet("declscope inspect", flag.ExitOnError)
 	configPath := fs.String("config", "", "path to a declscope YAML config file")

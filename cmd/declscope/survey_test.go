@@ -113,15 +113,15 @@ func TestSurveyRefusesAPatternItCannotLoad(t *testing.T) {
 }
 
 // TestSurveyCountsADecisionPerDeclaration checks the state a package row calls
-// declared. One file-level //declscope:package can settle the scope of an
+// declared. One file-level //declscope:shared can settle the scope of an
 // unexported declaration and settle nothing for the exported one beside it,
-// which already had package scope whatever the config said. Counting the
+// which already had shared scope whatever the config said. Counting the
 // directive rather than the declarations under it made a file of exported
 // names read as a file of decisions.
 func TestSurveyCountsADecisionPerDeclaration(t *testing.T) {
 	dir := t.TempDir()
 	writeTree(t, dir, "go.mod", testModule)
-	writeTree(t, dir, "p/util.go", "//declscope:package\n\npackage p\n\nfunc utilHelper() int { return 1 }\n\nfunc UtilExported() int { return 2 }\n")
+	writeTree(t, dir, "p/util.go", "//declscope:shared\n\npackage p\n\nfunc utilHelper() int { return 1 }\n\nfunc UtilExported() int { return 2 }\n")
 	writeTree(t, dir, "p/order.go", "package p\n\nfunc orderTotal() int { return utilHelper() + UtilExported() }\n")
 
 	out, code := runIn(t, bin, dir, "inspect", "-format=json", "./p")
@@ -208,7 +208,7 @@ func TestFormatNamesWhatItAccepts(t *testing.T) {
 func TestSurveyLeavesTheSurplusRuleAloneWhereTheAnalyzerDoes(t *testing.T) {
 	dir := t.TempDir()
 	writeTree(t, dir, "go.mod", testModule)
-	writeTree(t, dir, "p/a.go", "package p\n\n//declscope:package\nfunc wide() int { return 1 }\n")
+	writeTree(t, dir, "p/a.go", "package p\n\n//declscope:shared\nfunc wide() int { return 1 }\n")
 	writeTree(t, dir, "p/b.go", "package p\n\nfunc local() int { return wide() }\n")
 	writeTree(t, dir, "p/p.s", "")
 

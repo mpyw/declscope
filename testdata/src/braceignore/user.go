@@ -45,7 +45,7 @@ func userLoose() int { return 5 } // want `func userLoose is private to namespac
 
 // ...one inside a function body...
 func userBody() int {
-	//declscope:package // want `misplaced declscope:package: no declaration here for it to bind to`
+	//declscope:shared // want `misplaced declscope:shared: no declaration here for it to bind to`
 	return 6
 }
 

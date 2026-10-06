@@ -1,4 +1,4 @@
-//declscope:package // want `unused file-level //declscope:package: every declaration it reaches takes a nearer directive's scope or already has package scope`
+//declscope:shared // want `unused file-level //declscope:shared: every declaration it reaches takes a nearer directive's scope or already has shared scope`
 
 package unusedstrictpkg
 

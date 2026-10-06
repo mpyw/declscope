@@ -30,7 +30,7 @@ var coverDir string
 // coverSetUp resolves DECLSCOPE_COVERDIR and creates it. TestMain calls it
 // before building, since the build flags depend on the answer.
 //
-//declscope:package // TestMain calls it before building for every test here
+//declscope:shared // TestMain calls it before building for every test here
 func coverSetUp() error {
 	dir := os.Getenv("DECLSCOPE_COVERDIR")
 	if dir == "" {
@@ -71,7 +71,7 @@ func coverBuildFlags() []string {
 // macOS a temporary directory then comes back as /private/var/... where the
 // test holds /var/... . Callers set cmd.Dir before calling this.
 //
-//declscope:package // every subcommand's tests point their runs at the counters
+//declscope:shared // every subcommand's tests point their runs at the counters
 func coverEnv(cmd *exec.Cmd) *exec.Cmd {
 	if coverDir != "" {
 		cmd.Env = append(cmd.Environ(), "GOCOVERDIR="+coverDir)
@@ -82,7 +82,7 @@ func coverEnv(cmd *exec.Cmd) *exec.Cmd {
 // coverBuild assembles a `go build` of this package, with the coverage flags
 // in front of the caller's own.
 //
-//declscope:package // TestMain and version_test.go each build a binary with it
+//declscope:shared // TestMain and version_test.go each build a binary with it
 func coverBuild(args ...string) *exec.Cmd {
 	argv := append([]string{"build"}, coverBuildFlags()...)
 	argv = append(argv, args...)

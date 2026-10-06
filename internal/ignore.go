@@ -16,7 +16,7 @@ import (
 // ignoreBook is ignore.go's half of the collection, embedded there. Its field
 // belongs to this file's namespace, so only this file may reach it.
 //
-//declscope:package // collection embeds it, and collection lives in the core
+//declscope:shared // collection embeds it, and collection lives in the core
 type ignoreBook struct {
 	// ignores is every ignore directive in the package, keyed by where it is
 	// written, so that one shared by several declarations is judged once.
@@ -38,26 +38,26 @@ type ignoreSite struct {
 	// carried only by declarations declscope does not check (init, _, an
 	// embedded field), which is then unused by construction.
 	//
-	//declscope:package // collect.go names each target on it as it adds them
+	//declscope:shared // collect.go names each target on it as it adds them
 	decls []string
-	//declscope:package // collect.go marks it when the directive is the file's
+	//declscope:shared // collect.go marks it when the directive is the file's
 	fileLevel bool
 	used      bool
 	// targets are the declarations the directive reaches, decls' objects. A
 	// file the build excluded may cross into one of them by name.
 	//
-	//declscope:package // collect.go adds each target as it names it
+	//declscope:shared // collect.go adds each target as it names it
 	targets []*target
 	// siblings are the ignores parsed from the same comment group, which is
 	// where a //declscope:ignore unused answering for this one is written.
 	//
-	//declscope:package // collect.go records them as it parses the group
+	//declscope:shared // collect.go records them as it parses the group
 	siblings []directive.Ignore
 }
 
 // siteOfIgnore returns the accounting entry for ig, keyed by where it is written.
 //
-//declscope:package // the collector registers every directive it parses
+//declscope:shared // the collector registers every directive it parses
 func (c *collection) siteOfIgnore(ig directive.Ignore) *ignoreSite {
 	if c.ignores == nil {
 		c.ignores = make(map[token.Pos]*ignoreSite)
@@ -78,7 +78,7 @@ func (c *collection) siteOfIgnore(ig directive.Ignore) *ignoreSite {
 // covers the rule is marked used, so overlapping directives at different
 // levels do not make each other look unused.
 //
-//declscope:package // report.go consults it before every finding
+//declscope:shared // report.go consults it before every finding
 func (c *collection) silencedByIgnore(t *target, r rule.Rule) bool {
 	hit := c.ignored(t.dir.Ignores, r)
 	// A member is written inside its type's declaration, so the type's ignores
@@ -101,7 +101,7 @@ func (c *collection) silencedByIgnore(t *target, r rule.Rule) bool {
 // finding does not exist in this run, so no directive has done any work yet,
 // and marking one would hide the unused-ignore report this run owes.
 //
-//declscope:package // surplus.go predicts what a boundary fix leaves behind
+//declscope:shared // surplus.go predicts what a boundary fix leaves behind
 func (c *collection) ignoreWouldSilence(t *target, r rule.Rule) bool {
 	covers := func(ignores []directive.Ignore) bool {
 		return slices.ContainsFunc(ignores, func(ig directive.Ignore) bool { return ig.Covers(r) })
@@ -127,6 +127,8 @@ func (c *collection) ignoreWouldSilence(t *target, r rule.Rule) bool {
 // An ignore never silences the report written at its own position, which is
 // the report that it is unused. One that could would never be called unused,
 // and that report exists to catch it.
+//
+//declscope:shared // scopesite.go asks it before dropping a rename report
 func (c *collection) ignoreSilencesFile(fi *fileInfo, p directive.Problem) bool {
 	if fi == nil {
 		return false
@@ -145,7 +147,7 @@ func (c *collection) ignoreSilencesFile(fi *fileInfo, p directive.Problem) bool 
 // that does as used. All of them are marked, not just the first, so that
 // overlapping directives are not reported as unused.
 //
-//declscope:package // the collector and the scope accounting consult it too
+//declscope:shared // the collector and the scope accounting consult it too
 func (c *collection) ignored(ignores []directive.Ignore, r rule.Rule) bool {
 	hit := false
 	for _, ig := range ignores {
@@ -176,7 +178,7 @@ func (c *collection) ignored(ignores []directive.Ignore, r rule.Rule) bool {
 // that silenced nothing before any answer counts, so the result does not
 // depend on which is judged first. spec/unused_ignore.fsl is the model.
 //
-//declscope:package // report.go drains it after every finding has been seen
+//declscope:shared // report.go drains it after every finding has been seen
 func (c *collection) reportUnusedIgnores(pass *analysis.Pass, opts Options) {
 	if !opts.Unused.Reports() || c.unseen(pass).all {
 		return
@@ -312,7 +314,7 @@ func (c *collection) ignoreCrossingNames(pass *analysis.Pass, t *target) []strin
 // problemsLeftByIgnores drops the problems a file-level ignore stands
 // down, marking the directive that did it used.
 //
-//declscope:package // report.go and survey.go settle the problems no target holds
+//declscope:shared // report.go and survey.go settle the problems no target holds
 func (c *collection) problemsLeftByIgnores(pass *analysis.Pass) []directive.Problem {
 	return slices.DeleteFunc(c.problems, func(p directive.Problem) bool {
 		return c.ignoreSilencesFile(c.fileAt(pass, p.Pos), p)

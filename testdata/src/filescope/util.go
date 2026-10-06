@@ -1,4 +1,4 @@
-//declscope:package
+//declscope:shared
 
 package filescope
 

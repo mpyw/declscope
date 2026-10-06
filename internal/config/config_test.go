@@ -25,10 +25,27 @@ func write(t *testing.T, dir, name, body string) string {
 	return path
 }
 
+// TestRenamedUnexported checks that the name shared had before is still read,
+// so that a config written for an older release does not stop the run.
+func TestRenamedUnexported(t *testing.T) {
+	path := write(t, t.TempDir(), ".declscope.yaml", "defaults:\n  unexported: package\n")
+	f, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := internal.DefaultOptions()
+	if err := f.Apply(&opts); err != nil {
+		t.Fatal(err)
+	}
+	if opts.Unexported != scope.Shared {
+		t.Errorf("Unexported = %v, want %v", opts.Unexported, scope.Shared)
+	}
+}
+
 func TestLoadAndApply(t *testing.T) {
 	path := write(t, t.TempDir(), ".declscope.yaml", `
 defaults:
-  unexported: package
+  unexported: shared
 rules:
   naming:
     qualify: never
@@ -51,7 +68,7 @@ filter:
 		t.Fatal(err)
 	}
 
-	if opts.Unexported != scope.PackageInternal {
+	if opts.Unexported != scope.Shared {
 		t.Errorf("defaults not applied: %+v", opts)
 	}
 	if opts.Qualify != rule.QualifyModeNever || !opts.NameExported {
@@ -175,7 +192,7 @@ func TestApplyRejectsUnknownScope(t *testing.T) {
 	if err == nil {
 		t.Fatal("want an error for an unknown scope name")
 	}
-	if want := "package or private"; !strings.Contains(err.Error(), want) {
+	if want := "shared or private"; !strings.Contains(err.Error(), want) {
 		t.Fatalf("error %q does not name the accepted values %q", err, want)
 	}
 }

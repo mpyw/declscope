@@ -8,7 +8,7 @@ package unusedscope
 //declscope:private // want `unused //declscope:private on eOther: nothing it reaches takes a scope`
 var (
 	eOther = 1
-	//declscope:package
+	//declscope:shared
 	eWidened = 2
 )
 

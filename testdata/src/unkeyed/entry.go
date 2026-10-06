@@ -1,7 +1,7 @@
 package unkeyed
 
 type Entry struct {
-	// ID is exported, so it resolves to package and carries no boundary.
+	// ID is exported, so it resolves to shared and carries no boundary.
 	ID int
 	// count is unexported, so it is bounded by the namespace declaring Entry.
 	// An unkeyed literal writes it without naming it, and that is still a use.

@@ -1,7 +1,7 @@
 package surplussatisfiespairs
 
-//declscope:package
+//declscope:shared
 type ticket struct{}
 
-//declscope:package
+//declscope:shared
 func (ticket) fetch() int { return 1 }

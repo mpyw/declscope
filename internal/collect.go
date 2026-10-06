@@ -19,7 +19,7 @@ import (
 
 // collectingBook is collect.go's half of the collection, embedded there.
 //
-//declscope:package // collection embeds it, and collection lives in the core
+//declscope:shared // collection embeds it, and collection lives in the core
 type collectingBook struct {
 	// consumed is every comment group some declaration or file took its
 	// directives from; a directive outside them reached nothing.
@@ -32,7 +32,7 @@ type collectingBook struct {
 // entirely: they are neither checked nor treated as reference sites, since a
 // violation in generated code is not something the author can act on.
 //
-//declscope:package // the pipeline's first stage, driven from analyzer.go
+//declscope:shared // the pipeline's first stage, driven from analyzer.go
 func collectFiles(pass *analysis.Pass, opts Options) *collection {
 	c := &collection{
 		byFile: make(map[*ast.File]*fileInfo),
@@ -119,7 +119,7 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 
 // collectTargets walks every declaration and resolves its scope.
 //
-//declscope:package // the pipeline's second stage, driven from analyzer.go
+//declscope:shared // the pipeline's second stage, driven from analyzer.go
 func (c *collection) collectTargets(pass *analysis.Pass, opts Options) {
 	for _, fi := range c.files {
 		for _, d := range fi.file.Decls {
@@ -437,7 +437,7 @@ func (c *collection) collectUnkeyedFields(pass *analysis.Pass, fi *fileInfo, lit
 // than one shadowing the other. Returning after a hit in Defs would drop the
 // type use, and with it both a rename edit and a boundary diagnostic.
 //
-//declscope:package // the pipeline's third stage, driven from analyzer.go
+//declscope:shared // the pipeline's third stage, driven from analyzer.go
 func (c *collection) collectRefs(pass *analysis.Pass) {
 	in := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 	// The inspector holds pass.Files in order, and c.files is a subsequence of

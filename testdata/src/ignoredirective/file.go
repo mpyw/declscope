@@ -7,7 +7,7 @@ package ignoredirective
 // is. The file-level ignore above stands the rule down for the whole file,
 // which is why nothing below is reported.
 func fileLoose() int {
-	//declscope:package
+	//declscope:shared
 	return 1
 }
 
