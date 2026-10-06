@@ -356,7 +356,7 @@ A **directive** is a line comment `//declscope:name`, with a lowercase name, no 
 | `//declscope:ignore` | Declaration or file | Silences every rule the analyzer reports. [`overexported`](#silencing-it) must be named |
 | `//declscope:ignore <rules>` | Declaration or file | Silences the named [rules](#rules), comma-separated |
 | `//declscope:core` | File | Joins the file to the [core namespace](#the-core-namespace) |
-| `//declscope:namespace <name>` | File | Joins the file to a [named namespace](#namespaces) |
+| `//declscope:namespace <name>` | File | Joins the file to an [explicitly named namespace](#namespaces) |
 
 > [!CAUTION]
 > `//declscope:shared` was spelled `//declscope:package` before v0.19.0, and `defaults.unexported: shared` was `package`. v0.20.0 and later read neither. To upgrade from v0.18.x or earlier, go through v0.19.0 first and run `-fix` there: see [#186](https://github.com/mpyw/declscope/issues/186).
@@ -639,7 +639,7 @@ A **namespace** is the unit within which a `private` declaration may be used. By
 
 The namespace comes *from* the file name and is not equal to it. So you can rename a file without renaming what it declares.
 
-Files join a **named** namespace with a directive before the package clause. This is how one unit spans several files. The name must be an unexported identifier.
+Files join an **explicitly named** namespace with a directive before the package clause. This is how one unit spans several files. The name must be an unexported identifier.
 
 ```go
 //declscope:namespace user
