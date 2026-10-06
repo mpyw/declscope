@@ -50,6 +50,10 @@ func inspectRun(args []string) {
 		inspectFail(err)
 	}
 
+	if err := inspectRefuseManyBeforeLoad(patterns); err != nil {
+		inspectFail(err)
+	}
+
 	pkgs, err := loadPackages("inspect", patterns, *tests)
 	if err != nil {
 		inspectFail(err)
@@ -120,9 +124,64 @@ func inspectOnePackage(pkgs []*packages.Package) (*packages.Package, error) {
 	case 1:
 		return byPath[paths[0]], nil
 	default:
-		return nil, fmt.Errorf("this pattern matches %d packages, and a namespace of one means nothing in another:\n  %s\nname one of them",
-			len(paths), strings.Join(paths, "\n  "))
+		return nil, inspectManyPackagesError(paths)
 	}
+}
+
+// inspectRefuseManyBeforeLoad refuses patterns that name more than one package
+// before the full load type-checks every one of them.
+//
+// Over ./... in a large module the full load takes seconds and ends in a
+// refusal anyway, and where one of the packages does not type-check the
+// refusal is about that package instead of the pattern. A load of names alone
+// costs about a tenth of a second, so it is made only for patterns that can
+// name more than one package: several patterns, a wildcard, or a meta
+// pattern. A single plain path names at most one package and its test
+// variants, so it goes straight to the full load.
+//
+// The load leaves tests out. An in-package test variant shares its package's
+// path, and an external test package is skipped beside its subject, so
+// neither changes the count. A package the go command could not list, such as
+// a directory that does not exist, is not counted: the full load reports its
+// error, which says more than a count would. inspectOnePackage still decides
+// what the full load hands back.
+func inspectRefuseManyBeforeLoad(patterns []string) error {
+	if len(patterns) == 1 && !inspectPatternMayMatchMany(patterns[0]) {
+		return nil
+	}
+	pkgs, err := packages.Load(&packages.Config{Mode: packages.NeedName}, patterns...)
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	var paths []string
+	for _, pkg := range pkgs {
+		if len(pkg.Errors) > 0 || seen[pkg.PkgPath] {
+			continue
+		}
+		seen[pkg.PkgPath] = true
+		paths = append(paths, pkg.PkgPath)
+	}
+	if len(paths) <= 1 {
+		return nil
+	}
+	slices.Sort(paths)
+	return inspectManyPackagesError(paths)
+}
+
+// inspectPatternMayMatchMany reports whether one pattern can name more than one
+// package: a wildcard, or one of the go command's meta patterns.
+func inspectPatternMayMatchMany(p string) bool {
+	switch p {
+	case "all", "std", "cmd", "tool", "work":
+		return true
+	}
+	return strings.Contains(p, "...")
+}
+
+func inspectManyPackagesError(paths []string) error {
+	return fmt.Errorf("this pattern matches %d packages, and a namespace of one means nothing in another:\n  %s\nname one of them",
+		len(paths), strings.Join(paths, "\n  "))
 }
 
 func inspectFail(err error) {

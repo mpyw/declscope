@@ -461,6 +461,12 @@ func TestSubcommandsReportALoadFailure(t *testing.T) {
 			t.Errorf("%s exited %d, want 1 with the go command's error:\n%s", sub, code, out)
 		}
 	}
+	// A wildcard sends inspect through its names-only load first, which has
+	// to stop on the same error.
+	out, code := runIn(t, bin, dir, "inspect", "./...")
+	if code != 1 || !strings.Contains(out, "declscope inspect:") || !strings.Contains(out, "-mod=bogus") {
+		t.Errorf("inspect ./... exited %d, want 1 with the go command's error:\n%s", code, out)
+	}
 }
 
 // TestBaselineWithNothingToRecord checks a module with no package: the run
