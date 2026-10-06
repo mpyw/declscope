@@ -39,7 +39,7 @@ func TestParseDeclScope(t *testing.T) {
 		want    scope.Scope
 		wantHas bool
 	}{
-		{"package", "//declscope:shared", scope.Shared, true},
+		{"shared", "//declscope:shared", scope.Shared, true},
 		{"private", "//declscope:private", scope.Private, true},
 		{"with reason", "//declscope:shared // shared with the reporter", scope.Shared, true},
 		{"reason flush against it", "//declscope:shared// shared", scope.Shared, true},
@@ -75,6 +75,7 @@ func TestParseDeclProblems(t *testing.T) {
 		{"core on a declaration", "//declscope:core"},
 		{"conflicting scopes", "//declscope:shared\n//declscope:private"},
 		{"keyword with a suffix", "//declscope:sharedx"},
+		{"keyword before v0.19.0", "//declscope:package"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -304,46 +305,6 @@ func TestParseFileScope(t *testing.T) {
 	if !f.Scope.HasScope || f.Scope.Scope != scope.Shared {
 		t.Errorf("Scope = %+v, want shared", f.Scope)
 	}
-}
-
-// TestParseRenamed checks the keyword shared had before, at both levels: it
-// still states shared, and is reported once with a fix that rewrites the
-// keyword alone, so a trailing reason survives. ScopeRenamed survives a merge,
-// since the unused rule reads it from the merged Decl.
-//
-// TODO(#185): delete with the alias.
-func TestParseRenamed(t *testing.T) {
-	const src = "//declscope:package\n\npackage repo\n\n//declscope:package // why\nfunc f() {}\n"
-	file := parse(t, src)
-	check := func(t *testing.T, d directive.Decl, problems []directive.Problem) {
-		t.Helper()
-		if !d.HasScope || d.Scope != scope.Shared || !d.ScopeRenamed {
-			t.Fatalf("Scope = %+v, want shared, renamed", d)
-		}
-		if len(problems) != 1 || problems[0].Rule != rule.Directive || len(problems[0].Fixes) != 1 {
-			t.Fatalf("problems = %+v, want one directive report with one fix", problems)
-		}
-		edits := problems[0].Fixes[0].TextEdits
-		if len(edits) != 1 {
-			t.Fatalf("edits = %+v, want one", edits)
-		}
-		e := edits[0]
-		// token.Pos is 1-based in a file set holding one file.
-		if got := src[e.Pos-1:e.End-1] + "->" + string(e.NewText); got != "package->shared" {
-			t.Errorf("edit = %q, want %q", got, "package->shared")
-		}
-	}
-	t.Run("file", func(t *testing.T) {
-		f := directive.ParseFile(file)
-		check(t, f.Scope, f.Problems)
-	})
-	t.Run("declaration", func(t *testing.T) {
-		d := directive.ParseDecl(file.Decls[0].(*ast.FuncDecl).Doc)
-		check(t, d, d.Problems)
-		if m := (directive.Decl{}).Merge(d); !m.ScopeRenamed {
-			t.Errorf("Merge dropped ScopeRenamed: %+v", m)
-		}
-	})
 }
 
 // TestParseFileCore checks the core directive, and that naming a namespace as

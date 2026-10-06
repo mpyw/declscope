@@ -52,7 +52,7 @@ func (s Scope) Directive() string {
 // Parse resolves a directive keyword to its scope.
 func Parse(keyword string) (Scope, bool) {
 	switch keyword {
-	case "shared", Renamed: // TODO(#185): drop Renamed with the alias.
+	case "shared":
 		return Shared, true
 	case "private":
 		return Private, true
@@ -60,11 +60,3 @@ func Parse(keyword string) (Scope, bool) {
 		return 0, false
 	}
 }
-
-// Renamed is the keyword that selected Shared before it was named shared.
-// Parse still reads it, so that code and config written for an older release
-// keep their meaning. A directive spelled with it is reported with a fix that
-// writes the new keyword.
-//
-// TODO(#185): delete with the alias, together with every use of it.
-const Renamed = "package"

@@ -8,10 +8,6 @@
 //	//declscope:shared
 //	//declscope:private
 //
-// //declscope:package, the name shared had before, is still read as shared,
-// and is reported with a fix that writes the new name.
-// TODO(#185): drop this paragraph with the alias.
-//
 // Declaration level, suppressing diagnostics for the declaration. With no
 // argument it silences every rule; with one it silences only the rules named,
 // so that a declaration can opt out of one check while staying subject to the
@@ -99,10 +95,8 @@ type Problem struct {
 	// finds, unused for a directive the analysis finds deciding nothing.
 	Rule rule.Rule
 
-	// Fixes is at most one suggested fix. A redundant scope directive under
-	// rules.unused: strict carries one, which deletes it, and so does a
-	// directive spelled with a renamed keyword, which rewrites it.
-	// TODO(#185): the rename fix goes with the alias.
+	// Fixes is at most one suggested fix. Only a redundant scope directive
+	// under rules.unused: strict carries one, which deletes it.
 	Fixes []analysis.SuggestedFix
 }
 
@@ -145,12 +139,6 @@ type Decl struct {
 	Scope    scope.Scope
 	HasScope bool
 	ScopePos token.Pos
-	// ScopeRenamed records that the scope directive is spelled with
-	// scope.Renamed. A fix that deletes the directive makes the rename report
-	// on it moot, and the two would edit the same comment.
-	//
-	// TODO(#185): delete with the alias, and the lines in Merge that copy it.
-	ScopeRenamed bool
 
 	Ignores []Ignore
 
@@ -181,10 +169,8 @@ func (d Decl) Merge(inner Decl) Decl {
 	if inner.HasScope {
 		if d.HasScope {
 			out.Beneath = &Decl{Scope: d.Scope, HasScope: true, ScopePos: d.ScopePos}
-			out.Beneath.ScopeRenamed = d.ScopeRenamed // TODO(#185): delete with the alias.
 		}
 		out.Scope, out.HasScope, out.ScopePos = inner.Scope, true, inner.ScopePos
-		out.ScopeRenamed = inner.ScopeRenamed // TODO(#185): delete with the alias.
 	}
 	out.Ignores = slices.Concat(d.Ignores, inner.Ignores)
 	out.Problems = slices.Concat(d.Problems, inner.Problems)
@@ -245,35 +231,6 @@ func (d *Decl) consume(pos token.Pos, keyword, arg string) {
 			return
 		}
 		d.Scope, d.HasScope, d.ScopePos = s, true, pos
-		// TODO(#185): delete with the alias.
-		if keyword == scope.Renamed {
-			d.ScopeRenamed = true
-			d.Problems = append(d.Problems, renamedProblem(pos))
-		}
-	}
-}
-
-// renamedProblem reports a scope directive spelled with scope.Renamed, at pos,
-// and rewrites the keyword alone, so that a trailing reason stays as
-// written. The directive still takes effect, so the report changes
-// nothing else the analysis finds.
-//
-// TODO(#185): delete with the alias.
-func renamedProblem(pos token.Pos) Problem {
-	start := pos + token.Pos(len("//"+tool+":"))
-	return Problem{
-		Pos:  pos,
-		Rule: rule.Directive,
-		Msg: fmt.Sprintf("//declscope:%s is renamed %s; it still means %s",
-			scope.Renamed, scope.Shared.Directive(), scope.Shared),
-		Fixes: []analysis.SuggestedFix{{
-			Message: fmt.Sprintf("rename to %s", scope.Shared.Directive()),
-			TextEdits: []analysis.TextEdit{{
-				Pos:     start,
-				End:     start + token.Pos(len(scope.Renamed)),
-				NewText: []byte(strings.TrimPrefix(scope.Shared.Directive(), "//"+tool+":")),
-			}},
-		}},
 	}
 }
 
@@ -412,11 +369,6 @@ func (f *File) scope(pos token.Pos, sc scope.Scope, keyword, arg string) {
 			f.Scope.Scope.Directive(), keyword))
 	default:
 		f.Scope.Scope, f.Scope.HasScope, f.Scope.ScopePos = sc, true, pos
-		// TODO(#185): delete with the alias.
-		if keyword == scope.Renamed {
-			f.Scope.ScopeRenamed = true
-			f.Problems = append(f.Problems, renamedProblem(pos))
-		}
 	}
 }
 

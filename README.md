@@ -358,9 +358,8 @@ A **directive** is a line comment `//declscope:name`, with a lowercase name, no 
 | `//declscope:core` | File | Joins the file to the [core namespace](#the-core-namespace) |
 | `//declscope:namespace <name>` | File | Joins the file to a [named namespace](#namespaces) |
 
-<!-- TODO(#185): delete this note with the //declscope:package alias. -->
-> [!NOTE]
-> `//declscope:shared` was spelled `//declscope:package` before 0.19.0. The old spelling still means `shared`. Each use is reported under the [`directive`](#malformed-directives) rule, and `-fix` rewrites it. `defaults.unexported: package` is still read as `shared` too.
+> [!CAUTION]
+> `//declscope:shared` was spelled `//declscope:package` before v0.19.0, and `defaults.unexported: shared` was `package`. v0.20.0 and later read neither. To upgrade from v0.18.x or earlier, go through v0.19.0 first and run `-fix` there: see [#186](https://github.com/mpyw/declscope/issues/186).
 
 ### Placement
 
@@ -604,7 +603,7 @@ user.go:21:1: unused //declscope:ignore unused on D
 
 ### Malformed directives
 
-Only `//declscope:name` is a directive. Any other comment starting with `declscope:`, and an unknown, conflicting or misplaced directive, is reported by the `directive` rule and has no effect. The one exception is a renamed keyword: it is reported, and still takes effect. <!-- TODO(#185): delete this sentence with the //declscope:package alias. -->
+Only `//declscope:name` is a directive. Any other comment starting with `declscope:`, and an unknown, conflicting or misplaced directive, is reported by the `directive` rule and has no effect.
 
 <details>
 <summary>Every malformed-directive report</summary>
@@ -622,7 +621,6 @@ The rule is always on, and has no configuration key. `//declscope:ignore directi
 | `//declscope:ignore ,` or `//declscope:ignore boundary,` | `empty rule name in declscope:ignore` |
 | `//declscope:namespace` after the package clause | `declscope:namespace must appear before the package clause` |
 | A directive attached to no declaration, such as one inside a function body | `misplaced declscope:shared: no declaration here for it to bind to; ...` |
-| `//declscope:package`, the spelling of `//declscope:shared` before 0.19.0 <!-- TODO(#185): delete this row with the alias --> | `//declscope:package is renamed //declscope:shared; it still means shared`. `-fix` rewrites the keyword. Where `rules.unused: strict` deletes the directive, only the deletion is reported |
 
 </details>
 
@@ -790,7 +788,7 @@ A **rule** is one check. A rule's name is the diagnostic's category, its [baseli
 | [`qualify`](#the-naming-rule) | A name that does not carry its namespace | Rename to prefix it | `rules.naming.*` | Off |
 | [`surplus`](#surplus) | Shared scope with no visible use from another namespace | Under `strict`, insert `//declscope:private` | `rules.surplus` | `strict` |
 | [`unused`](#unused-directives) | An ignore that silenced nothing, or a scope directive that changes no scope | Under `strict`, delete a redundant scope directive | `rules.unused` | `strict` |
-| [`directive`](#malformed-directives) | A directive that is malformed, unknown, conflicting, misplaced or renamed <!-- TODO(#185): with the alias, drop "or renamed" and the fix, which goes back to None --> | Rewrite a renamed keyword | No | On |
+| [`directive`](#malformed-directives) | A directive that is malformed, unknown, conflicting or misplaced | None | No | On |
 | [`filter`](#the-filter-rule) | A `filter.only` that an `only` above it cancels | None | No | On |
 | [`overexported`](#unexporting-what-no-importer-uses) | An exported declaration of an `internal/` package that nothing outside its package uses | Unexport it | Running `declscope shrink` | Not run by the analyzer |
 

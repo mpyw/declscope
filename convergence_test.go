@@ -38,42 +38,6 @@ type fixCase struct {
 }
 
 var fixCases = []fixCase{
-	// TODO(#185): delete the four cases spelled with the renamed keyword
-	// with the alias.
-	{
-		// The rename edits the keyword alone, so the reason stays and the
-		// directive goes on widening userShared for order.go.
-		name: "a directive spelled with the renamed keyword, with a reason",
-		files: map[string]string{
-			"user.go":  "package x\n\n//declscope:package // order.go reads it\nfunc userShared() int { return 1 }\n",
-			"order.go": "package x\n\nfunc OrderRun() int { return userShared() }\n",
-		},
-	},
-	{
-		name: "a file-level directive spelled with the renamed keyword",
-		files: map[string]string{
-			"user.go":  "//declscope:package\n\npackage x\n\nfunc userShared() int { return 1 }\n",
-			"order.go": "package x\n\nfunc OrderRun() int { return userShared() }\n",
-		},
-	},
-	{
-		// The deletion and the rename would edit the same comment. Only the
-		// deletion is offered, on the declaration and on the file.
-		name:   "a redundant directive spelled with the renamed keyword, under unused strict",
-		config: unusedStrictConfig,
-		files: map[string]string{
-			"user.go": "//declscope:package\n\npackage x\n\n//declscope:package\nfunc UserShared() int { return 1 }\n",
-		},
-	},
-	{
-		// Under loose the redundant directive is reported without a fix, so
-		// the rename is offered on it.
-		name:   "a redundant directive spelled with the renamed keyword, under unused loose",
-		config: "rules:\n  unused: loose\n",
-		files: map[string]string{
-			"user.go": "package x\n\n//declscope:package\nfunc UserShared() int { return 1 }\n",
-		},
-	},
 	{
 		name:   "boundary and qualify on the same declaration",
 		config: "rules:\n  naming:\n    qualify: ondemand\n",
