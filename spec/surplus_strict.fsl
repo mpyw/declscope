@@ -60,7 +60,7 @@ spec SurplusStrict {
   // Why the declaration has the scope it has. Each value other than Enclosed
   // is one reason the enclosing directive is not what widened it. They are one
   // variable rather than four flags for the reason Reach is, below.
-  enum Source { Enclosed, Own, Exported, PackageDefault, NoEnclosing }
+  enum Source { Enclosed, Own, Exported, SharedDefault, NoEnclosing }
   // The reach paths are one variable: reach is a disjunction, so no property
   // reads two of them at once, and flags would multiply the states the checker
   // holds where an enum adds to them.
@@ -98,7 +98,7 @@ spec SurplusStrict {
 
   def exported() = source == Exported
   def ownDir() = source == Own
-  def cfgUnexported() = if source == PackageDefault then Shared else Private
+  def cfgUnexported() = if source == SharedDefault then Shared else Private
   def entryMixed() = shape == MixedEntry
   def carriesMembers() = shape == MembersQuiet or shape == MembersKeep
   def membersKeep() = shape == MembersKeep
@@ -185,7 +185,7 @@ spec SurplusStrict {
   invariant StrictImpliesEnclosing          { strictReported => enclosing() }
   invariant NeverReportsOwnDirective        { strictReported => not ownDir() }
   invariant NeverReportsExported            { strictReported => not exported() }
-  invariant NeverReportsUnderPackageDefault { strictReported => cfgUnexported() == Private }
+  invariant NeverReportsUnderSharedDefault { strictReported => cfgUnexported() == Private }
   invariant NeverReportsMixedEntry          { strictReported => not entryMixed() }
   invariant NeverNarrowsAReachedMember      { strictReported => not (carriesMembers() and membersKeep()) }
   invariant NeverRepeatsTheOwnersFinding    { strictReported => not ownerNarrowed() }
@@ -303,7 +303,7 @@ spec SurplusStrict {
     and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
     and not strictFires()
   }
-  reachable SilentUnderPackageDefault {
+  reachable SilentUnderSharedDefault {
     configured() and mode == Strict and enclosing() and not ownDir() and not exported()
     and cfgUnexported() == Shared and seesAllFiles and otherLive
     and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()

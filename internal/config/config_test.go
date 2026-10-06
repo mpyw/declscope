@@ -25,25 +25,6 @@ func write(t *testing.T, dir, name, body string) string {
 	return path
 }
 
-// TestRenamedUnexported checks that the name shared had before is still read,
-// so that a config written for an older release does not stop the run.
-//
-// TODO(#185): delete with the alias.
-func TestRenamedUnexported(t *testing.T) {
-	path := write(t, t.TempDir(), ".declscope.yaml", "defaults:\n  unexported: package\n")
-	f, err := config.Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	opts := internal.DefaultOptions()
-	if err := f.Apply(&opts); err != nil {
-		t.Fatal(err)
-	}
-	if opts.Unexported != scope.Shared {
-		t.Errorf("Unexported = %v, want %v", opts.Unexported, scope.Shared)
-	}
-}
-
 func TestLoadAndApply(t *testing.T) {
 	path := write(t, t.TempDir(), ".declscope.yaml", `
 defaults:

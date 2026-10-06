@@ -29,7 +29,7 @@ spec BoundaryOff {
     // What each rule reads.
     scope: Scope = Private, refs: Refs = NoRefs,
     qualify: Mode = Never, carries: Bool = false, twoNamespaces: Bool = false,
-    hasPackageDir: Bool = false, sawEveryFile: Bool = false,
+    hasSharedDir: Bool = false, sawEveryFile: Bool = false,
     // Recording each report keeps the guards load-bearing. An invariant over
     // the defs alone would be a tautology, and deleting a guard would not
     // break it.
@@ -45,7 +45,7 @@ spec BoundaryOff {
     boundaryOff = bo  surplusOff = as_
     scope = sc  refs = r
     qualify = q  carries = c  twoNamespaces = two
-    hasPackageDir = pd  sawEveryFile = saw
+    hasSharedDir = pd  sawEveryFile = saw
   }
 
   // The naming rule applies always, never, or once a second namespace exists.
@@ -75,7 +75,7 @@ spec BoundaryOff {
     requires configured
     requires not surplusOff
     requires sawEveryFile
-    requires hasPackageDir
+    requires hasSharedDir
     requires refs != CrossNs
     surplusReported = true
   }
@@ -98,7 +98,7 @@ spec BoundaryOff {
     boundaryOff and qualifyApplies() and not carries and qualifyReported
   }
   reachable SurplusFiresWhileBoundaryOff {
-    boundaryOff and sawEveryFile and hasPackageDir and refs != CrossNs
+    boundaryOff and sawEveryFile and hasSharedDir and refs != CrossNs
     and surplusReported
   }
   // Both at once, with boundary off: the state the README describes for a
@@ -124,7 +124,7 @@ spec BoundaryOff {
   invariant QualifyNeedsApplies    { qualifyReported => qualifyApplies() }
   invariant QualifyNeedsBareName   { qualifyReported => not carries }
   invariant SurplusNeedsEveryFile  { surplusReported => sawEveryFile }
-  invariant SurplusNeedsDirective  { surplusReported => hasPackageDir }
+  invariant SurplusNeedsDirective  { surplusReported => hasSharedDir }
   invariant SurplusNeedsNoCrossUse { surplusReported => refs != CrossNs }
   invariant ReportsImplyConfigured {
     boundaryReported or qualifyReported or surplusReported => configured

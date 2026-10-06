@@ -176,12 +176,12 @@ spec UnusedModes {
     phase == 5 and mode == Strict and aPresent and not aExported and aOuter == NoDir
     and cfgUnexported == Private and stated == Private and not bPresent and reported and fixed
   }
-  // The same comment under the package default says something, in either mode.
-  reachable ImplicitBindsUnderPackageDefault {
+  // The same comment under the shared default says something, in either mode.
+  reachable ImplicitBindsUnderSharedDefault {
     phase == 5 and mode == Strict and aPresent and not aExported and aOuter == NoDir
     and cfgUnexported == Shared and stated == Private and not bPresent and not reported
   }
-  reachable PackageRedundantUnderPackageDefault {
+  reachable SharedRedundantUnderSharedDefault {
     phase == 5 and mode == Strict and aPresent and not aExported and aOuter == NoDir
     and cfgUnexported == Shared and stated == Shared and not bPresent and reported and fixed
   }
@@ -230,7 +230,7 @@ spec UnusedModes {
     phase == 5 and mode == Strict and reported and redundant() and aCrosses and crossUnseen
     and not ownerWidened and not surplusHolds and not outerStuck and not fixed
   }
-  // An exported declaration takes package whatever the default says, so
+  // An exported declaration takes shared whatever the default says, so
   // //declscope:private on it binds in both modes.
   reachable ExportedNarrowedBinds {
     phase == 5 and mode == Strict and aPresent and aExported and aOuter == NoDir

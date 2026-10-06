@@ -24,7 +24,7 @@
 // "The levels outside" are every level a deletion would fall through to. For a
 // spec that states its own scope, the first of them is the block's directive
 // the spec overrides, then the type's for a field, then the file's. Skipping
-// the block judges a spec's private under a package block against the file,
+// the block judges a spec's private under a shared block against the file,
 // and calls it inert where deleting it widens the spec. outerDir is the
 // nearest of them, whichever level that is.
 //
@@ -107,7 +107,7 @@ spec UnusedBind {
   // --- the two quantifiers -------------------------------------------------
   // Over configurations: an unexported declaration takes defaults.unexported,
   // which may be either scope, so neither spelling is ever inert on one.
-  reachable UnexportedBindsPackageUnderPackageDefault {
+  reachable UnexportedBindsSharedUnderSharedDefault {
     configured and hasTarget and not targetExported and outerDir == NoDir
     and cfgUnexported == Shared and stated == Shared
     and not aPresent and not bPresent and bound
@@ -117,14 +117,14 @@ spec UnusedBind {
     and cfgUnexported == Private and stated == Private
     and not aPresent and not bPresent and bound
   }
-  // Over enclosing directives: package on an exported declaration is inert with
+  // Over enclosing directives: shared on an exported declaration is inert with
   // nothing outside it, and binds under an enclosing private — the surplus
   // that an exportedness-only test would have called dead.
-  reachable ExportedPackageIsInert {
+  reachable ExportedSharedIsInert {
     configured and hasTarget and targetExported and outerDir == NoDir
     and stated == Shared and not aPresent and not bPresent and reported()
   }
-  reachable ExportedPackageBindsUnderPrivateOuter {
+  reachable ExportedSharedBindsUnderPrivateOuter {
     configured and hasTarget and targetExported and outerDir == DirPrivate
     and stated == Shared and not aPresent and not bPresent and bound
   }
@@ -132,7 +132,7 @@ spec UnusedBind {
     configured and hasTarget and targetExported and outerDir == NoDir
     and stated == Private and not aPresent and not bPresent and bound
   }
-  // A spec's private under a package block binds, whatever the file says:
+  // A spec's private under a shared block binds, whatever the file says:
   // the block is the level a deletion falls through to.
   reachable SpecNarrowingItsBlockBinds {
     configured and hasTarget and not targetExported and outerDir == DirShared

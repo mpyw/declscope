@@ -286,30 +286,11 @@ func (c *collection) reportUnusedScopeSites(pass *analysis.Pass, opts Options, w
 		if redundant {
 			if fix, ok := removals.fix(s); ok {
 				fixes = []analysis.SuggestedFix{fix}
-				// A file-level ignore of unused silences the deletion, and
-				// the rename is then all that is left to report.
-				// TODO(#185): delete with the alias.
-				silenced := c.ignoreSilencesFile(c.fileAt(pass, s.dir.ScopePos),
-					directive.Problem{Pos: s.dir.ScopePos, Rule: rule.Unused})
-				if s.dir.ScopeRenamed && !silenced {
-					c.dropRenameAtScopeSite(s.dir.ScopePos)
-				}
 			}
 		}
 		msg := messageOfScopeSite(s, redundant)
 		c.problems = append(c.problems, directive.Problem{Pos: s.dir.ScopePos, Msg: msg, Rule: rule.Unused, Fixes: fixes})
 	}
-}
-
-// dropRenameAtScopeSite drops the rename report on the scope directive at pos,
-// whose deletion is offered instead. Both fixes would edit the one comment,
-// and the deletion leaves nothing to rename.
-//
-// TODO(#185): delete with the alias.
-func (c *collection) dropRenameAtScopeSite(pos token.Pos) {
-	c.problems = slices.DeleteFunc(c.problems, func(p directive.Problem) bool {
-		return p.Pos == pos && p.Rule == rule.Directive
-	})
 }
 
 // messageOfScopeSite words the report on an unused scope directive, under
@@ -320,11 +301,6 @@ func (c *collection) dropRenameAtScopeSite(pos token.Pos) {
 // it may name the other scope. Only the declarations that take the directive's
 // scope are named, and a file-level report, which names none, says which of
 // the two kinds it reached.
-//
-// The directive is named by its new name even when written with the renamed
-// keyword: the rename fix may stand beside this report, and the report must
-// read the same once it is applied. TODO(#185): drop this paragraph with
-// the alias.
 //
 // A strict reason says what the declarations already have and not where it
 // comes from: deleting an outer directive in the same run can move the source,

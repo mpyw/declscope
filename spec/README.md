@@ -221,7 +221,7 @@ is a semantics that contradicts the documented one; each was run:
 | `strict` reports without checking reach | `violated` (`NeverReportsReachable`) |
 | `strict` also reports where `loose` already reports the directive | `violated` (`NeverTwiceOnOneDeclaration`) |
 | `strict` reports under `loose` | `violated` (`StrictOnlyUnderStrict`) |
-| `strict` ignores `defaults.unexported` | `violated` (`NeverReportsUnderPackageDefault`) |
+| `strict` ignores `defaults.unexported` | `violated` (`NeverReportsUnderSharedDefault`) |
 | `strict` narrows a type one of whose members is reached | `violated` (`NeverNarrowsAReachedMember`) |
 | `strict` reports a member of a type it already narrows | `violated` (`NeverRepeatsTheOwnersFinding`) |
 | The `strict` fix is offered where it would leave the directive binding nothing | `violated` (`FixKeepsTheDirectiveBound`) |

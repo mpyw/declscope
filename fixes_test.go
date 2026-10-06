@@ -248,14 +248,3 @@ func TestSuggestedFixSurplusStrictUnusedStrict(t *testing.T) {
 func TestSuggestedFixLineDirective(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "linefix")
 }
-
-// TestSuggestedFixRenamed checks the keyword shared had before: it still
-// takes effect, it is reported, and the fix rewrites the keyword alone,
-// keeping a trailing reason. Where rules.unused: strict deletes the directive
-// instead, the rename is not reported, since the two fixes would overlap,
-// unless a file-level ignore silences the deletion (report.go).
-//
-// TODO(#185): delete with the alias, and testdata/src/fixrenamed with it.
-func TestSuggestedFixRenamed(t *testing.T) {
-	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixrenamed")
-}

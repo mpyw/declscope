@@ -127,11 +127,6 @@ func (c *collection) ignoreWouldSilence(t *target, r rule.Rule) bool {
 // An ignore never silences the report written at its own position, which is
 // the report that it is unused. One that could would never be called unused,
 // and that report exists to catch it.
-//
-// TODO(#185): its only use from another namespace goes with the
-// //declscope:package alias; delete this directive then.
-//
-//declscope:shared // scopesite.go asks it before dropping a rename report
 func (c *collection) ignoreSilencesFile(fi *fileInfo, p directive.Problem) bool {
 	if fi == nil {
 		return false
