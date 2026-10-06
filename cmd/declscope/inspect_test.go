@@ -1,6 +1,8 @@
 package main_test
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -58,7 +60,7 @@ func TestInspectRefusesMoreThanOnePackageBeforeTypeChecking(t *testing.T) {
 	writeTree(t, dir, "a/a.go", "package a\n\nfunc Run() int { return 1 }\n")
 	writeTree(t, dir, "broken/broken.go", "package broken\n\nfunc Run() int { return nope }\n")
 
-	for _, args := range [][]string{{"./..."}, {"./a", "./broken"}} {
+	for _, args := range [][]string{{"./..."}, {"all"}, {"./a", "./broken"}} {
 		out, code := runIn(t, bin, dir, append([]string{"inspect"}, args...)...)
 		if code != 1 {
 			t.Fatalf("inspect %v exited %d, want 1\n%s", args, code, out)
@@ -72,6 +74,36 @@ func TestInspectRefusesMoreThanOnePackageBeforeTypeChecking(t *testing.T) {
 	out, code := runIn(t, bin, dir, "inspect", "./a", "./nope")
 	if code != 1 || !strings.Contains(out, "directory not found") || strings.Contains(out, "matches") {
 		t.Errorf("exited %d, want 1 with the missing directory's error:\n%s", code, out)
+	}
+}
+
+// TestInspectRefusesMoreThanOnePackageFromADriverPattern checks the refusal
+// after the full load. A driver's pattern can name several packages without
+// a wildcard, so it skips the count before the load. The driver hands back
+// two packages for one such pattern.
+func TestInspectRefusesMoreThanOnePackageFromADriverPattern(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "a/a.go", "package a\n")
+	writeTree(t, dir, "b/b.go", "package b\n")
+	response := fmt.Sprintf(`{"Compiler":"gc","Arch":"amd64","Roots":["example.com/a","example.com/b"],"Packages":[`+
+		`{"ID":"example.com/a","Name":"a","PkgPath":"example.com/a","GoFiles":[%[1]q],"CompiledGoFiles":[%[1]q]},`+
+		`{"ID":"example.com/b","Name":"b","PkgPath":"example.com/b","GoFiles":[%[2]q],"CompiledGoFiles":[%[2]q]}]}`,
+		filepath.Join(dir, "a", "a.go"), filepath.Join(dir, "b", "b.go"))
+	writeTree(t, dir, "response.json", response)
+	driver := filepath.Join(dir, "driver")
+	if err := os.WriteFile(driver, []byte("#!/bin/sh\ncat "+filepath.Join(dir, "response.json")+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOPACKAGESDRIVER", driver)
+
+	out, code := runIn(t, bin, dir, "inspect", "//:everything")
+	if code != 1 {
+		t.Fatalf("inspect exited %d, want 1\n%s", code, out)
+	}
+	for _, want := range []string{"matches 2 packages", "example.com/a", "example.com/b"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the refusal does not name %q:\n%s", want, out)
+		}
 	}
 }
 
