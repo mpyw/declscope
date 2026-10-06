@@ -116,22 +116,6 @@ func (c *collection) shadowedAtScopeSite(outer, merged directive.Decl) {
 	}
 }
 
-// scopesiteLevel names which level supplied a scope. A diagnostic that
-// inferred it from the kind instead would tell a reader to look for a comment
-// that is not there: a field takes its type's directive and its file's alike,
-// and only the level knows which one decided.
-//
-//declscope:package // subject.go's target records it in boundAt
-type scopesiteLevel int
-
-//declscope:package // report.go words each boundary finding by the level
-const (
-	scopesiteLevelDefault scopesiteLevel = iota
-	scopesiteLevelDecl
-	scopesiteLevelContainer
-	scopesiteLevelFile
-)
-
 // bindAtScopeSite resolves a declaration's scope and records which directive supplied it.
 //
 // The second result is the directive that supplied the scope, zero when the
@@ -140,14 +124,14 @@ const (
 // author's decision or merely state an exception to a default.
 //
 //declscope:package // the one scope resolution, shared with the collector
-func (c *collection) bindAtScopeSite(opts Options, name string, dir, container, file directive.Decl) (scope.Scope, directive.Decl, scopesiteLevel, bool) {
+func (c *collection) bindAtScopeSite(opts Options, name string, dir, container, file directive.Decl) (scope.Scope, directive.Decl, boundLevel, bool) {
 	// The chain as written: a merge hides the block's directive beneath a spec
 	// that states its own, and both judgments need it back. Without it, a
 	// spec's //declscope:private under a //declscope:package block would be
 	// judged against the file, and called inert where deleting it widens the
 	// spec. Resolution is unaffected: a hidden directive is never the first.
 	chain := []directive.Decl{dir, dir.BeneathScope(), container, container.BeneathScope(), file}
-	levels := []scopesiteLevel{scopesiteLevelDecl, scopesiteLevelDecl, scopesiteLevelContainer, scopesiteLevelContainer, scopesiteLevelFile}
+	levels := []boundLevel{boundAtDecl, boundAtDecl, boundAtContainer, boundAtContainer, boundAtFile}
 	c.redundantAtScopeSite(opts, name, chain)
 	for i, d := range chain {
 		if !d.HasScope {
@@ -160,7 +144,7 @@ func (c *collection) bindAtScopeSite(opts Options, name string, dir, container, 
 		return d.Scope, d, levels[i], decided
 	}
 	outer, _ := outerScopeOfScopeSite(opts, name, nil)
-	return outer, directive.Decl{}, scopesiteLevelDefault, false
+	return outer, directive.Decl{}, boundAtDefault, false
 }
 
 // outerScopeOfScopeSite is the scope a declaration would take from the levels outside the
