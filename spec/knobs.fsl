@@ -95,7 +95,7 @@ spec Knobs {
   }
   invariant SameNamespaceNeverCrosses  { reported => refs != SameNs }
   invariant NoRefsNeverCrosses         { reported => refs != NoRefs }
-  invariant PackageScopeNeverFires     { reported => effScope() == Private }
+  invariant SharedScopeNeverFires      { reported => effScope() == Private }
   reachable BoundaryReported { reported }
 
   // --- defaults.unexported bites, per kind, in both directions ---------------

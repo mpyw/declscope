@@ -30,7 +30,7 @@ func userBlock() int { return 9 }
 //declscope:Package // want `malformed declscope directive: write it as //declscope:name`
 func userUppercase() int { return 10 }
 
-func userTrailing() int { return 6 } //declscope:shared // shared with the reporting code
+func userTrailing() int { return 6 } //declscope:shared // used by the reporting code
 
 var (
 	//declscope:shared

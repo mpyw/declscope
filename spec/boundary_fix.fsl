@@ -118,8 +118,8 @@ spec BoundaryFix {
     configured and boundaryFires() and declDir == DirPrivate and not fixed
   }
   // defaults.unexported must reach this spec too, not only knobs: under a
-  // package default there is no crossing to fix in the first place.
-  reachable PackageDefaultLeavesNothingToFix {
+  // shared default there is no crossing to fix in the first place.
+  reachable SharedDefaultLeavesNothingToFix {
     configured and cfgUnexported == Shared and stated() == NoDir
     and not exported and refs == CrossNs and not boundaryFires()
   }
