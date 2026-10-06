@@ -32,7 +32,7 @@ interface, the report stays and says why no fix is offered.
 
 // shrinkRun reports, and with -fix unexports, what no importer uses.
 //
-//declscope:package // a subcommand, dispatched from main.go
+//declscope:shared // a subcommand, dispatched from main.go
 func shrinkRun(args []string) {
 	fs := flag.NewFlagSet("declscope shrink", flag.ExitOnError)
 	fix := fs.Bool("fix", false, "unexport every declaration a fix is offered for")

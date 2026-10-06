@@ -423,7 +423,7 @@ func (f *File) Apply(opts *internal.Options) error {
 	if f.Defaults.Unexported != "" {
 		s, ok := scope.Parse(f.Defaults.Unexported)
 		if !ok {
-			return fmt.Errorf("defaults.unexported: unknown scope %q (want package or private)", f.Defaults.Unexported)
+			return fmt.Errorf("defaults.unexported: unknown scope %q (want shared or private)", f.Defaults.Unexported)
 		}
 		opts.Unexported = s
 	}

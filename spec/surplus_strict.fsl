@@ -1,4 +1,4 @@
-// surplus under rules.surplus: strict. loose judges a //declscope:package as a
+// surplus under rules.surplus: strict. loose judges a //declscope:shared as a
 // whole and stays quiet when any one thing under it is reached. strict also
 // judges each declaration under a directive that is otherwise in use: a field
 // under its type's, a spec under its block's, anything under the file's. The
@@ -52,7 +52,7 @@
 //   else the directive reaches matters only through otherLive and otherDecided,
 //   and a type's members only through membersKeep (modelling assumption)
 spec SurplusStrict {
-  enum Scope { Package, Private }
+  enum Scope { Shared, Private }
   enum Mode  { Off, Loose, Strict }
   // Where the enclosing directive is written. The rule treats the three the
   // same, and a witness per level is what shows it.
@@ -98,7 +98,7 @@ spec SurplusStrict {
 
   def exported() = source == Exported
   def ownDir() = source == Own
-  def cfgUnexported() = if source == PackageDefault then Package else Private
+  def cfgUnexported() = if source == PackageDefault then Shared else Private
   def entryMixed() = shape == MixedEntry
   def carriesMembers() = shape == MembersQuiet or shape == MembersKeep
   def membersKeep() = shape == MembersKeep
@@ -120,7 +120,7 @@ spec SurplusStrict {
   def looseFires() = mode != Off and looseCondition()
 
   // --- strict: this one declaration ---------------------------------------
-  // The enclosing directive is what made it package-scoped: without it, under
+  // The enclosing directive is what made it shared: without it, under
   // this configuration, the declaration would be private.
   def widened() = dependsOnDirective() and not exported() and cfgUnexported() == Private
   def strictFires() =
@@ -145,14 +145,14 @@ spec SurplusStrict {
   // --- the source after the run -------------------------------------------
   def scopeAfter() =
     if fixed then Private
-    else if dependsOnDirective() then Package
-    else if exported() then Package
+    else if dependsOnDirective() then Shared
+    else if exported() then Shared
     else cfgUnexported()
   // unused_bind.fsl's binding test, over the fixed source: the scope the
   // declaration would take from outside its own directive, and whether that
   // is the same under every configuration.
   def outerFixed() = enclosing() or exported()
-  def outerScope() = if enclosing() or exported() then Package else cfgUnexported()
+  def outerScope() = if enclosing() or exported() then Shared else cfgUnexported()
   def insertedInert() = outerFixed() and Private == outerScope()
 
   def widenedAfter() = enclosing() and not (ownDir() or fixed) and not exported() and cfgUnexported() == Private
@@ -305,7 +305,7 @@ spec SurplusStrict {
   }
   reachable SilentUnderPackageDefault {
     configured() and mode == Strict and enclosing() and not ownDir() and not exported()
-    and cfgUnexported() == Package and seesAllFiles and otherLive
+    and cfgUnexported() == Shared and seesAllFiles and otherLive
     and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
     and not strictFires()
   }

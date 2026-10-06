@@ -4,7 +4,7 @@
 //
 // The file is shared on purpose, so it says so once.
 //
-//declscope:package
+//declscope:shared
 
 package measure
 

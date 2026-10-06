@@ -2,7 +2,7 @@ package surpluscarrier
 
 type impl struct{}
 
-//declscope:package
+//declscope:shared
 func (impl) fire() {}
 
 // Public is an exported alias: the method set travels under its name.

@@ -4,5 +4,5 @@ package surpluscarrier
 // interface satisfaction this analysis never sees.
 type Base struct{}
 
-//declscope:package
+//declscope:shared
 func (Base) run() {}

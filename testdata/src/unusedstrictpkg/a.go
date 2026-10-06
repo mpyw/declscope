@@ -1,21 +1,21 @@
 package unusedstrictpkg
 
-// Under defaults.unexported: package the private field narrows it, and is kept.
+// Under defaults.unexported: shared the private field narrows it, and is kept.
 type implicit struct {
 	//declscope:private
 	x int
 }
 
-// A package directive on an unexported declaration restates the default.
+// A shared directive on an unexported declaration restates the default.
 //
-//declscope:package // want `unused //declscope:package on helper: it already has package scope`
+//declscope:shared // want `unused //declscope:shared on helper: it already has shared scope`
 func helper() int { return 1 }
 
 // So does a type's, and a field's restating it.
 //
-//declscope:package // want `unused //declscope:package on shape: it already has package scope`
+//declscope:shared // want `unused //declscope:shared on shape: it already has shared scope`
 type shape struct {
-	//declscope:package // want `unused //declscope:package on shape.side: it already has package scope`
+	//declscope:shared // want `unused //declscope:shared on shape.side: it already has shared scope`
 	side int
 }
 

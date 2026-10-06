@@ -33,7 +33,7 @@ type Reach struct {
 // mostReached returns the declarations reached from the most namespaces, at
 // most limit of them. A limit of zero returns all of them.
 //
-//declscope:package // markdown.go renders the rows
+//declscope:shared // markdown.go renders the rows
 func (p Package) mostReached(limit int) []Reach {
 	// Keyed on the pair, not on a joined string: a namespace can be spelled
 	// "(file x.go)" and a member "Type.member", so both sides may hold a dot

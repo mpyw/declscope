@@ -38,7 +38,7 @@ func (q QualifyRow) Saturation() int { return q.Baselined + q.Reported }
 // every namespace, including those with nothing against them: a namespace the
 // rule is satisfied by is the evidence that it was asked at all.
 //
-//declscope:package // markdown.go renders the rows
+//declscope:shared // markdown.go renders the rows
 func (p Package) qualifyRows() []QualifyRow {
 	byNamespace := map[string]*QualifyRow{}
 	out := make([]QualifyRow, 0, len(p.Namespaces))
@@ -85,7 +85,7 @@ func (p Package) qualifyRows() []QualifyRow {
 // namespaces past a threshold, which would hide a cutoff that one ignore
 // directive can flip.
 //
-//declscope:package // summary.go names it for each package
+//declscope:shared // summary.go names it for each package
 func (p Package) worstQualified() (QualifyRow, bool) {
 	var worst QualifyRow
 	found := false

@@ -252,7 +252,7 @@ func load(t *testing.T, path string) *baseline.Set {
 // code. Diagnostics and refusals both exit non-zero, so only a failure to
 // start is fatal.
 //
-//declscope:package // every subcommand's tests drive the same binary through it
+//declscope:shared // every subcommand's tests drive the same binary through it
 func runIn(t *testing.T, bin, dir string, args ...string) (string, int) {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
@@ -273,7 +273,7 @@ func runIn(t *testing.T, bin, dir string, args ...string) (string, int) {
 // drives the same binary, and a build per test multiplies the memory that a
 // full `go test ./...` peaks at.
 //
-//declscope:package // TestMain builds it for every test in the package, version_test.go included
+//declscope:shared // TestMain builds it for every test in the package, version_test.go included
 var bin string
 
 func TestMain(m *testing.M) {
@@ -299,10 +299,10 @@ func TestMain(m *testing.M) {
 
 // testModule is the go.mod every temporary module here is built around.
 //
-//declscope:package // every subcommand's tests lay out a module with it
+//declscope:shared // every subcommand's tests lay out a module with it
 const testModule = "module example.com/declscopetest\n\ngo 1.25\n"
 
-//declscope:package // every subcommand's tests lay out a module with it
+//declscope:shared // every subcommand's tests lay out a module with it
 func writeTree(t *testing.T, root, name, body string) {
 	t.Helper()
 	path := filepath.Join(root, name)
@@ -391,7 +391,7 @@ func TestBaselineRecordsSettledMembers(t *testing.T) {
 	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
 	writeTree(t, root, ".declscope.yaml", "rules:\n  surplus: strict\n")
 	writeTree(t, root, "order.go", "package x\n\nfunc orderRun(k boxKind) int { return int(k) }\n\nvar _ = orderRun\n")
-	box := "//declscope:package\n\npackage x\n\ntype boxKind int\n\ntype boxed struct {\n\tn int\n%s}\n\nvar _ = boxed{}\n"
+	box := "//declscope:shared\n\npackage x\n\ntype boxKind int\n\ntype boxed struct {\n\tn int\n%s}\n\nvar _ = boxed{}\n"
 	writeTree(t, root, "box.go", fmt.Sprintf(box, ""))
 
 	out, code := runIn(t, bin, root, "./...")

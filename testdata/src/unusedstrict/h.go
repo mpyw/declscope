@@ -1,4 +1,4 @@
-//declscope:package
+//declscope:shared
 
 package unusedstrict
 
@@ -6,7 +6,7 @@ package unusedstrict
 // states private, so the report says the spec states its own scope: it does
 // not have the block's.
 //
-//declscope:package // want `unused //declscope:package: every declaration it reaches states its own scope`
+//declscope:shared // want `unused //declscope:shared: every declaration it reaches states its own scope`
 var (
 	//declscope:private
 	hNarrowed = 1

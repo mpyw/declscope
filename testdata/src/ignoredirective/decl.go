@@ -12,7 +12,7 @@ func declTypo() int { return 3 }
 // the unused rule's, so the ignore silenced nothing and is reported beside
 // the directive it was written for.
 //
-//declscope:package // want `unused //declscope:package on DeclLeftover: nothing it reaches takes a scope`
+//declscope:shared // want `unused //declscope:shared on DeclLeftover: nothing it reaches takes a scope`
 //declscope:ignore directive // want `unused //declscope:ignore directive on DeclLeftover`
 func DeclLeftover() int { return 4 }
 

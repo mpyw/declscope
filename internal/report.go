@@ -20,7 +20,7 @@ type pendingReport struct {
 }
 
 // widensReport reports whether this finding's fix widens the declaration to
-// package scope, and with it every member the declaration contains. Only a
+// shared scope, and with it every member the declaration contains. Only a
 // type contains members, and only an inserted directive widens: a rename
 // changes no reach at all.
 func (f finding) widensReport(t *target) bool {
@@ -53,7 +53,7 @@ func subsumedByReport(t *target, f finding, widened map[types.Object]bool) bool 
 
 // report renders every diagnostic of the pass.
 //
-//declscope:package // the analyzer's reporting entry, driven from analyzer.go
+//declscope:shared // the analyzer's reporting entry, driven from analyzer.go
 func (c *collection) report(pass *analysis.Pass, opts Options) {
 	// Every surviving finding is collected before any of them is reported,
 	// because one fix can subsume another and no fix can see the edits of the
@@ -153,7 +153,7 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 // keysForReport returns every violation the pass would report, ignoring the baseline.
 // It is what regenerating a baseline records.
 //
-//declscope:package // the baseline regeneration entry, driven from analyzer.go
+//declscope:shared // the baseline regeneration entry, driven from analyzer.go
 func (c *collection) keysForReport(pass *analysis.Pass, opts Options) []baseline.Key {
 	var out []baseline.Key
 	for _, t := range c.targets {

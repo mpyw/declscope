@@ -1,7 +1,7 @@
 package surplussatisfies
 
-//declscope:package
+//declscope:shared
 type myInt int
 
-//declscope:package
+//declscope:shared
 func (myInt) str() string { return "n" }

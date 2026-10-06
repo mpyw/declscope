@@ -5,7 +5,7 @@ package surplusstrictreach
 
 // A composite literal without keys writes both fields by position.
 //
-//declscope:package
+//declscope:shared
 type userRec struct {
 	a int
 	b int
@@ -13,7 +13,7 @@ type userRec struct {
 
 // A selection through an embedding names the field of the embedded type.
 //
-//declscope:package
+//declscope:shared
 type userInner struct {
 	n int
 }
@@ -21,7 +21,7 @@ type userInner struct {
 // A selection on an instantiation names the instantiated field, which is
 // mapped back to the declared one.
 //
-//declscope:package
+//declscope:shared
 type userList[T any] struct {
 	items []T
 }
@@ -29,7 +29,7 @@ type userList[T any] struct {
 // The same for an instantiation of a generic struct, whose fields are mapped
 // back to the declared ones.
 //
-//declscope:package
+//declscope:shared
 type userPair[T any] struct {
 	k int
 	v T
@@ -37,26 +37,26 @@ type userPair[T any] struct {
 
 // A struct conversion pairs every field by name and spells none of them.
 //
-//declscope:package
+//declscope:shared
 type userModel struct {
 	rev int
 }
 
 // The same for a conversion from an instantiation of a generic struct.
 //
-//declscope:package
+//declscope:shared
 type userGenModel[T any] struct {
 	gen T
 }
 
 // A method written in order.go reads the field from there.
 //
-//declscope:package
+//declscope:shared
 type userBox struct {
 	v int
 	// stray is read by nothing outside, which shows the guards above are
 	// precise rather than off.
-	stray int // want `field userBox.stray takes package scope from //declscope:package on userBox, but no use from another namespace is visible to declscope`
+	stray int // want `field userBox.stray takes shared scope from //declscope:shared on userBox, but no use from another namespace is visible to declscope`
 }
 
 func userTouch(b userBox) int { return b.stray }

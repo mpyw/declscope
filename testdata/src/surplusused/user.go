@@ -2,31 +2,31 @@ package surplusused
 
 // Spelled from order.go, so the directive is doing its job.
 //
-//declscope:package
+//declscope:shared
 func userShared() int { return 1 }
 
 // One field's use keeps the whole comment: deleting it would narrow second
 // back, which order.go still reaches.
 //
-//declscope:package
+//declscope:shared
 type userPair struct {
 	first  int
 	second int
 }
 
-//declscope:package
+//declscope:shared
 func userMakePair() userPair { return userPair{} }
 
 // The field narrows itself back, so it does not depend on the type's
 // directive, and the type's comment is judged on the type alone.
 //
-//declscope:package // want `//declscope:package on userSolo: no use from another namespace is visible to declscope`
+//declscope:shared // want `//declscope:shared on userSolo: no use from another namespace is visible to declscope`
 type userSolo struct {
 	//declscope:private
 	name string
 }
 
-//declscope:package
+//declscope:shared
 func userMake() userSolo { return userSolo{name: "n"} }
 
 // UserRec is exported, so spelling it from order.go keeps nothing here alive.
@@ -34,6 +34,6 @@ func userMake() userSolo { return userSolo{name: "n"} }
 // which writes the field without spelling it and still counts as the use it
 // is.
 type UserRec struct {
-	//declscope:package
+	//declscope:shared
 	n int
 }

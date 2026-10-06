@@ -1,5 +1,5 @@
 rules:
   unused: strict
-  # surplus would report the package directives kept here as widening for
+  # surplus would report the shared directives kept here as widening for
   # nothing; this package is about the unused rule alone.
   surplus: off

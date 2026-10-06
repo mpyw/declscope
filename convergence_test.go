@@ -38,6 +38,42 @@ type fixCase struct {
 }
 
 var fixCases = []fixCase{
+	// TODO(#185): delete the four cases spelled with the renamed keyword
+	// with the alias.
+	{
+		// The rename edits the keyword alone, so the reason stays and the
+		// directive goes on widening userShared for order.go.
+		name: "a directive spelled with the renamed keyword, with a reason",
+		files: map[string]string{
+			"user.go":  "package x\n\n//declscope:package // order.go reads it\nfunc userShared() int { return 1 }\n",
+			"order.go": "package x\n\nfunc OrderRun() int { return userShared() }\n",
+		},
+	},
+	{
+		name: "a file-level directive spelled with the renamed keyword",
+		files: map[string]string{
+			"user.go":  "//declscope:package\n\npackage x\n\nfunc userShared() int { return 1 }\n",
+			"order.go": "package x\n\nfunc OrderRun() int { return userShared() }\n",
+		},
+	},
+	{
+		// The deletion and the rename would edit the same comment. Only the
+		// deletion is offered, on the declaration and on the file.
+		name:   "a redundant directive spelled with the renamed keyword, under unused strict",
+		config: unusedStrictConfig,
+		files: map[string]string{
+			"user.go": "//declscope:package\n\npackage x\n\n//declscope:package\nfunc UserShared() int { return 1 }\n",
+		},
+	},
+	{
+		// Under loose the redundant directive is reported without a fix, so
+		// the rename is offered on it.
+		name:   "a redundant directive spelled with the renamed keyword, under unused loose",
+		config: "rules:\n  unused: loose\n",
+		files: map[string]string{
+			"user.go": "package x\n\n//declscope:package\nfunc UserShared() int { return 1 }\n",
+		},
+	},
 	{
 		name:   "boundary and qualify on the same declaration",
 		config: "rules:\n  naming:\n    qualify: ondemand\n",
@@ -129,9 +165,9 @@ var fixCases = []fixCase{
 		name:   "fields a type's directive widens for nothing, under strict",
 		config: strictConfig,
 		files: map[string]string{
-			"user.go": "package x\n\n//declscope:package\ntype account struct {\n\tid int\n\n" +
+			"user.go": "package x\n\n//declscope:shared\ntype account struct {\n\tid int\n\n" +
 				"\t// balance is local.\n\tbalance int\n\tleft, right int\n}\n\n" +
-				"//declscope:package\ntype tiny struct{ id int; n int }\n\n" +
+				"//declscope:shared\ntype tiny struct{ id int; n int }\n\n" +
 				"func userLocal(a account, t tiny) int { return a.balance + a.left + a.right + t.n }\n\nvar _ = userLocal\n",
 			"order.go": "package x\n\nfunc orderRun(a account, t tiny) int { return a.id + t.id }\n\nvar _ = orderRun\n",
 		},
@@ -143,7 +179,7 @@ var fixCases = []fixCase{
 		name:   "declarations a file's directive widens for nothing, under strict",
 		config: strictConfig,
 		files: map[string]string{
-			"user.go": "//declscope:package\n\npackage x\n\n// userShared is called from order.go.\nfunc userShared() int { return userLocal() }\n\n" +
+			"user.go": "//declscope:shared\n\npackage x\n\n// userShared is called from order.go.\nfunc userShared() int { return userLocal() }\n\n" +
 				"// userLocal is not.\nfunc userLocal() int { return 1 }\n\nvar userA, userB = 1, 2\n\n" +
 				"type box struct {\n\tn int\n}\n\ntype pair struct {\n\tx int\n\ty int\n}\n\n" +
 				"func userPair() pair { return pair{} }\n\nvar _ = userA + userB + box{}.n + userPair().y\n",
@@ -156,7 +192,7 @@ var fixCases = []fixCase{
 		name:   "a field whose narrowing would leave the directive unused, under strict",
 		config: strictConfig,
 		files: map[string]string{
-			"user.go": "package x\n\n//declscope:package\ntype DTO struct {\n\tName string\n\tseq  int\n}\n\n" +
+			"user.go": "package x\n\n//declscope:shared\ntype DTO struct {\n\tName string\n\tseq  int\n}\n\n" +
 				"func userSeq(d DTO) int { return d.seq }\n\nvar _ = userSeq\n",
 		},
 	},
@@ -194,7 +230,7 @@ var fixCases = []fixCase{
 		name:   "a spec narrowing its block, under unused strict",
 		config: unusedStrictConfig,
 		files: map[string]string{
-			"user.go": "//declscope:private\n\npackage x\n\n//declscope:package\nvar (\n\t//declscope:private\n\tuserA = 1\n)\n\nvar _ = userA\n",
+			"user.go": "//declscope:private\n\npackage x\n\n//declscope:shared\nvar (\n\t//declscope:private\n\tuserA = 1\n)\n\nvar _ = userA\n",
 		},
 	},
 	{
@@ -225,7 +261,7 @@ var fixCases = []fixCase{
 		name:   "a block every spec overrides, under unused strict",
 		config: unusedStrictConfig,
 		files: map[string]string{
-			"user.go": "package x\n\n//declscope:private\n//declscope:ignore directive\nvar (\n\t//declscope:private\n\tuserA = 1\n\t//declscope:package\n\tUserB = 2\n)\n\nvar _ = userA\n",
+			"user.go": "package x\n\n//declscope:private\n//declscope:ignore directive\nvar (\n\t//declscope:private\n\tuserA = 1\n\t//declscope:shared\n\tUserB = 2\n)\n\nvar _ = userA\n",
 		},
 	},
 	{
@@ -239,23 +275,23 @@ var fixCases = []fixCase{
 		},
 	},
 	{
-		// Under the package default surplus reports the same directive; the
+		// Under the shared default surplus reports the same directive; the
 		// deletion settles both. Where an ignore answers surplus, the fix is
 		// withheld, or the ignore would be left answering nothing.
-		name:   "a package directive restating the package default, under unused strict",
-		config: "defaults:\n  unexported: package\nrules:\n  unused: strict\n",
+		name:   "a shared directive restating the shared default, under unused strict",
+		config: "defaults:\n  unexported: shared\nrules:\n  unused: strict\n",
 		files: map[string]string{
-			"user.go": "package x\n\n//declscope:package\nfunc userHelper() int { return 1 }\n\n" +
-				"//declscope:package\n//declscope:ignore surplus\nfunc userQuiet() int { return 2 }\n\nvar _ = userHelper() + userQuiet()\n",
+			"user.go": "package x\n\n//declscope:shared\nfunc userHelper() int { return 1 }\n\n" +
+				"//declscope:shared\n//declscope:ignore surplus\nfunc userQuiet() int { return 2 }\n\nvar _ = userHelper() + userQuiet()\n",
 		},
 	},
 	{
 		// Deleting the member's directive would make it a dependent of the
 		// file's, which surplus strict judges one declaration at a time.
-		name:   "a package directive restating the file's, under unused and surplus strict",
+		name:   "a shared directive restating the file's, under unused and surplus strict",
 		config: "rules:\n  unused: strict\n  surplus: strict\n",
 		files: map[string]string{
-			"user.go":  "//declscope:package\n\npackage x\n\nfunc userShared() int { return 1 }\n\n//declscope:package\nfunc userLocal() int { return 2 }\n\nvar _ = userLocal()\n",
+			"user.go":  "//declscope:shared\n\npackage x\n\nfunc userShared() int { return 1 }\n\n//declscope:shared\nfunc userLocal() int { return 2 }\n\nvar _ = userLocal()\n",
 			"order.go": "package x\n\nfunc OrderRun() int { return userShared() }\n",
 		},
 	},
@@ -288,20 +324,20 @@ var fixCases = []fixCase{
 		name:   "a spec restating a block that is reported but not redundant, under unused strict",
 		config: "rules:\n  unused: strict\n  surplus: off\n",
 		files: map[string]string{
-			"user.go": "package x\n\n//declscope:package\nvar (\n\t//declscope:package\n\tExported = 1\n\t//declscope:private\n\tnarrowed = 2\n)\n\nvar _ = narrowed\n",
+			"user.go": "package x\n\n//declscope:shared\nvar (\n\t//declscope:shared\n\tExported = 1\n\t//declscope:private\n\tnarrowed = 2\n)\n\nvar _ = narrowed\n",
 		},
 	},
 	{
 		// The file's package restates the default. userNarrow states private
 		// and userOwn restates the file. Deleting userOwn's directive hands
 		// userOwn to the file, whose report would then change from "takes a
-		// nearer directive's scope" to name package scope too. The two are
+		// nearer directive's scope" to name shared scope too. The two are
 		// deleted in one run, or neither is.
 		name:   "a file-level directive one declaration overrides and one restates, under unused strict",
-		config: "defaults:\n  unexported: package\nrules:\n  unused: strict\n  surplus: off\n",
+		config: "defaults:\n  unexported: shared\nrules:\n  unused: strict\n  surplus: off\n",
 		files: map[string]string{
-			"user.go": "//declscope:package\n\npackage x\n\n//declscope:private\nfunc userNarrow() int { return 1 }\n\n" +
-				"//declscope:package\nfunc userOwn() int { return 2 }\n\nvar _ = userNarrow() + userOwn()\n",
+			"user.go": "//declscope:shared\n\npackage x\n\n//declscope:private\nfunc userNarrow() int { return 1 }\n\n" +
+				"//declscope:shared\nfunc userOwn() int { return 2 }\n\nvar _ = userNarrow() + userOwn()\n",
 		},
 	},
 	{
@@ -312,7 +348,7 @@ var fixCases = []fixCase{
 		name:   "a spec under a block that decides nothing, under surplus strict",
 		config: strictConfig,
 		files: map[string]string{
-			"user.go": "//declscope:package\n\npackage x\n\n//declscope:package\nvar (\n\tuserShared = 1\n\tuserLocal  = 2\n)\n\n" +
+			"user.go": "//declscope:shared\n\npackage x\n\n//declscope:shared\nvar (\n\tuserShared = 1\n\tuserLocal  = 2\n)\n\n" +
 				"func userF() int { return userLocal }\n\nvar _ = userF()\n",
 			"order.go": "package x\n\nfunc OrderRun() int { return userShared + userF() }\n",
 		},
@@ -324,7 +360,7 @@ var fixCases = []fixCase{
 		name:   "a field under a type that decides nothing, under surplus strict",
 		config: strictConfig,
 		files: map[string]string{
-			"user.go": "//declscope:package\n\npackage x\n\n//declscope:package\ntype userEntry struct {\n\tuserKey   int\n\tuserSpare int\n}\n\n" +
+			"user.go": "//declscope:shared\n\npackage x\n\n//declscope:shared\ntype userEntry struct {\n\tuserKey   int\n\tuserSpare int\n}\n\n" +
 				"var _ = userEntry{}.userSpare\n",
 			"order.go": "package x\n\nfunc OrderRun() int { return userEntry{}.userKey }\n",
 		},
@@ -337,7 +373,7 @@ var fixCases = []fixCase{
 		name:   "a field under an unnamed type that decides nothing, under surplus and unused strict",
 		config: "rules:\n  surplus: strict\n  unused: strict\n",
 		files: map[string]string{
-			"user.go":  "//declscope:package\n\npackage x\n\nfunc userF() int { return 1 }\n\n//declscope:package\ntype _ struct {\n\tUserWide  int\n\tuserSpare int\n}\n",
+			"user.go":  "//declscope:shared\n\npackage x\n\nfunc userF() int { return 1 }\n\n//declscope:shared\ntype _ struct {\n\tUserWide  int\n\tuserSpare int\n}\n",
 			"order.go": "package x\n\nfunc OrderRun() int { return userF() }\n",
 		},
 	},
@@ -351,19 +387,19 @@ var fixCases = []fixCase{
 		config: "rules:\n  unused: strict\n  surplus: off\n",
 		files: map[string]string{
 			"user.go": "package x\n\n//declscope:private\ntype _ struct {\n\tuserTaken int\n\t//declscope:private\n\tuserSame int\n" +
-				"\t//declscope:package\n\tuserWide int\n}\n",
+				"\t//declscope:shared\n\tuserWide int\n}\n",
 		},
 	},
 	{
-		// The same shape kept: the type's //declscope:package restates the
+		// The same shape kept: the type's //declscope:shared restates the
 		// file's while surplus reads it, so its deletion is withheld, and so is
 		// the deletion of the field that restates it. Both reports read the
 		// same after the run.
 		name:   "an unnamed type whose report is kept beside a field that restates it, under unused strict",
 		config: unusedStrictConfig,
 		files: map[string]string{
-			"user.go": "//declscope:package\n\npackage x\n\nfunc userF() int { return 1 }\n\n//declscope:package\ntype _ struct {\n" +
-				"\tuserTaken int\n\t//declscope:package\n\tuserSame int\n\t//declscope:private\n\tuserNarrow int\n}\n\nvar _ = userF()\n",
+			"user.go": "//declscope:shared\n\npackage x\n\nfunc userF() int { return 1 }\n\n//declscope:shared\ntype _ struct {\n" +
+				"\tuserTaken int\n\t//declscope:shared\n\tuserSame int\n\t//declscope:private\n\tuserNarrow int\n}\n\nvar _ = userF()\n",
 		},
 	},
 
@@ -403,7 +439,7 @@ var fixCases = []fixCase{
 		name:   "reference in a generated file",
 		config: "rules:\n  naming:\n    qualify: ondemand\n",
 		files: map[string]string{
-			"user.go":   "package x\n\n//declscope:package\nfunc helper() int { return 1 }\n",
+			"user.go":   "package x\n\n//declscope:shared\nfunc helper() int { return 1 }\n",
 			"order.go":  "package x\n\nfunc OrderRun() int { return helper() }\n",
 			"zz_gen.go": "// Code generated by a tool. DO NOT EDIT.\n\npackage x\n\nfunc GenUse() int { return helper() }\n",
 		},
@@ -412,7 +448,7 @@ var fixCases = []fixCase{
 		name:   "reference in an omitted file",
 		config: "rules:\n  naming:\n    qualify: ondemand\nfilter:\n  omit:\n    - \"**/ext.go\"\n",
 		files: map[string]string{
-			"user.go":  "package x\n\n//declscope:package\nfunc helper() int { return 1 }\n",
+			"user.go":  "package x\n\n//declscope:shared\nfunc helper() int { return 1 }\n",
 			"order.go": "package x\n\nfunc OrderRun() int { return helper() }\n",
 			"ext.go":   "package x\n\nfunc ExtUse() int { return helper() }\n",
 		},

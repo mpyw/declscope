@@ -3,18 +3,18 @@ package unusedscope
 // Nothing beneath an exported func takes a scope, so the directive binds
 // nothing and is reported.
 //
-//declscope:package // want `unused //declscope:package on Helper: nothing it reaches takes a scope`
+//declscope:shared // want `unused //declscope:shared on Helper: nothing it reaches takes a scope`
 func Helper() int { return 1 }
 
 // An exported type whose every field is exported is the same case.
 //
-//declscope:package // want `unused //declscope:package on Box: nothing it reaches takes a scope`
+//declscope:shared // want `unused //declscope:shared on Box: nothing it reaches takes a scope`
 type Box struct{ Name string }
 
 // But an exported type with an unexported field does have a subject beneath it,
 // and the directive lives through it. This is the whole of the carve-out.
 //
-//declscope:package
+//declscope:shared
 type Entry struct{ key string }
 
 // Restating the scope already in force is NOT reported. The test is quantified
@@ -31,7 +31,7 @@ var _ = restates
 // as one written where nothing checked can carry it — and the report has to
 // separate the two, since one line is redundant and the other is misplaced.
 //
-//declscope:package // want `unused //declscope:package: every declaration it reaches states its own scope`
+//declscope:shared // want `unused //declscope:shared: every declaration it reaches states its own scope`
 var (
 	//declscope:private
 	seed = 1
@@ -42,7 +42,7 @@ var (
 // One spec taking the block's scope is enough to keep it: nothing is reported
 // here.
 //
-//declscope:package
+//declscope:shared
 var (
 	//declscope:private
 	other  = 3
@@ -51,17 +51,17 @@ var (
 
 // Written where no checked declaration can carry it.
 //
-//declscope:package // want `unused //declscope:package: no checked declaration carries it`
+//declscope:shared // want `unused //declscope:shared: no checked declaration carries it`
 func init() {}
 
 // The blank function is declared but never checked, like init.
 //
-//declscope:package // want `unused //declscope:package: no checked declaration carries it`
+//declscope:shared // want `unused //declscope:shared: no checked declaration carries it`
 func _() {}
 
 // A blank field declares nothing to check either.
 type blankField struct {
-	//declscope:package // want `unused //declscope:package: no checked declaration carries it`
+	//declscope:shared // want `unused //declscope:shared: no checked declaration carries it`
 	_ int
 }
 

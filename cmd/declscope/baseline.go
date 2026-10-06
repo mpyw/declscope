@@ -51,7 +51,7 @@ const baselineDefaultName = ".declscope-baseline.yaml"
 // inspector and exports no facts, so driving it over go/packages directly is a
 // few lines and avoids parsing the analyzer's own messages back out of strings.
 //
-//declscope:package
+//declscope:shared
 func baselineRun(args []string) {
 	fs := flag.NewFlagSet("declscope baseline", flag.ExitOnError)
 	out := fs.String("o", "", "write every entry to this one file instead")

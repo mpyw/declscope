@@ -1,5 +1,5 @@
 defaults:
-  unexported: package
+  unexported: shared
 rules:
   unused: strict
   surplus: off

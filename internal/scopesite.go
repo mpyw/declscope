@@ -15,7 +15,7 @@ import (
 
 // scopesiteBook is scopesite.go's half of the collection, embedded there.
 //
-//declscope:package // collection embeds it, and collection lives in the core
+//declscope:shared // collection embeds it, and collection lives in the core
 type scopesiteBook struct {
 	// scopes is the accounting for scope directives: one entry per physical
 	// comment, marked when something in its reach takes its scope.
@@ -42,11 +42,11 @@ type scopesiteBook struct {
 // Quantified, the answer cannot depend on configuration at all:
 //
 //   - An UNEXPORTED declaration takes defaults.unexported, which may be either
-//     scope, so neither //declscope:private nor //declscope:package is ever
+//     scope, so neither //declscope:private nor //declscope:shared is ever
 //     inert on one. Under loose, recording an intent that matches today's
 //     default is not reported, because tomorrow's default may differ.
 //   - An EXPORTED declaration has no boundary unless a directive gives it one,
-//     under every configuration. //declscope:package is the scope it already
+//     under every configuration. //declscope:shared is the scope it already
 //     has, so it is provably inert; //declscope:private narrows it, so it is
 //     not.
 type scopeSite struct {
@@ -54,9 +54,9 @@ type scopeSite struct {
 	// decls names the declarations in its reach, in source order, for the
 	// report. Empty for a file-level directive.
 	//
-	//declscope:package // collect.go names each target on it as it adds them
+	//declscope:shared // collect.go names each target on it as it adds them
 	decls []string
-	//declscope:package // collect.go marks it when the directive is the file's
+	//declscope:shared // collect.go marks it when the directive is the file's
 	fileLevel bool
 	bound     bool
 
@@ -92,7 +92,7 @@ type scopeSite struct {
 // scopeSite returns the accounting entry for a scope directive, keyed by where
 // it is written.
 //
-//declscope:package // the collector registers every directive it parses
+//declscope:shared // the collector registers every directive it parses
 func (c *collection) scopeSite(d directive.Decl) *scopeSite {
 	if c.scopes == nil {
 		c.scopes = make(map[token.Pos]*scopeSite)
@@ -109,7 +109,7 @@ func (c *collection) scopeSite(d directive.Decl) *scopeSite {
 // reaches. Called where the two are merged, since after the merge only the
 // winner's position survives.
 //
-//declscope:package // the collector merges directives, so it reports these
+//declscope:shared // the collector merges directives, so it reports these
 func (c *collection) shadowedAtScopeSite(outer, merged directive.Decl) {
 	if outer.HasScope && merged.HasScope && merged.ScopePos != outer.ScopePos {
 		c.scopeSite(outer).shadowed = true
@@ -123,11 +123,11 @@ func (c *collection) shadowedAtScopeSite(outer, merged directive.Decl) {
 // know whether inserting a directive on the declaration would overwrite an
 // author's decision or merely state an exception to a default.
 //
-//declscope:package // the one scope resolution, shared with the collector
+//declscope:shared // the one scope resolution, shared with the collector
 func (c *collection) bindAtScopeSite(opts Options, name string, dir, container, file directive.Decl) (scope.Scope, directive.Decl, boundLevel, bool) {
 	// The chain as written: a merge hides the block's directive beneath a spec
 	// that states its own, and both judgments need it back. Without it, a
-	// spec's //declscope:private under a //declscope:package block would be
+	// spec's //declscope:private under a //declscope:shared block would be
 	// judged against the file, and called inert where deleting it widens the
 	// spec. Resolution is unaffected: a hidden directive is never the first.
 	chain := []directive.Decl{dir, dir.BeneathScope(), container, container.BeneathScope(), file}
@@ -161,7 +161,7 @@ func outerScopeOfScopeSite(opts Options, name string, rest []directive.Decl) (sc
 		return d.Scope, true
 	}
 	if isExported(name) {
-		return scope.PackageInternal, true
+		return scope.Shared, true
 	}
 	return opts.Unexported, false
 }
@@ -171,7 +171,7 @@ func outerScopeOfScopeSite(opts Options, name string, rest []directive.Decl) (sc
 // setting could have made it otherwise.
 //
 // Asking only "is the name exported" would be wrong in both directions. It
-// would call //declscope:package inert on an exported field whose type says
+// would call //declscope:shared inert on an exported field whose type says
 // private — where it is the only thing surplus the field back, so a codebase
 // could narrow an exported declaration and never widen it again without a
 // permanent false report. And it would miss a directive that restates an
@@ -192,7 +192,7 @@ func isInertScopeSite(opts Options, name string, stated scope.Scope, rest []dire
 // The chain is the one bindAtScopeSite walks, with what a merge hid put back:
 // a block's directive beneath a spec that states its own, for the spec and for
 // a field of the type the spec declares. Without it, a spec's
-// //declscope:private under a //declscope:package block would be judged
+// //declscope:private under a //declscope:shared block would be judged
 // against the file, and deleting it would widen the spec.
 //
 // A shadowed declaration is judged as well, against the levels beyond the
@@ -253,7 +253,7 @@ func (s *scopeSite) redundant() bool { return s.reached && !s.needed }
 // nothing, and so offers nothing. widened names the types a boundary fix in
 // this run widens; nil when no fix is made.
 //
-//declscope:package // report.go drains it after every finding has been seen
+//declscope:shared // report.go drains it after every finding has been seen
 func (c *collection) reportUnusedScopeSites(pass *analysis.Pass, opts Options, widened map[types.Object]bool) {
 	if !opts.Unused.Reports() {
 		return
@@ -286,11 +286,30 @@ func (c *collection) reportUnusedScopeSites(pass *analysis.Pass, opts Options, w
 		if redundant {
 			if fix, ok := removals.fix(s); ok {
 				fixes = []analysis.SuggestedFix{fix}
+				// A file-level ignore of unused silences the deletion, and
+				// the rename is then all that is left to report.
+				// TODO(#185): delete with the alias.
+				silenced := c.ignoreSilencesFile(c.fileAt(pass, s.dir.ScopePos),
+					directive.Problem{Pos: s.dir.ScopePos, Rule: rule.Unused})
+				if s.dir.ScopeRenamed && !silenced {
+					c.dropRenameAtScopeSite(s.dir.ScopePos)
+				}
 			}
 		}
 		msg := messageOfScopeSite(s, redundant)
 		c.problems = append(c.problems, directive.Problem{Pos: s.dir.ScopePos, Msg: msg, Rule: rule.Unused, Fixes: fixes})
 	}
+}
+
+// dropRenameAtScopeSite drops the rename report on the scope directive at pos,
+// whose deletion is offered instead. Both fixes would edit the one comment,
+// and the deletion leaves nothing to rename.
+//
+// TODO(#185): delete with the alias.
+func (c *collection) dropRenameAtScopeSite(pos token.Pos) {
+	c.problems = slices.DeleteFunc(c.problems, func(p directive.Problem) bool {
+		return p.Pos == pos && p.Rule == rule.Directive
+	})
 }
 
 // messageOfScopeSite words the report on an unused scope directive, under
@@ -301,6 +320,11 @@ func (c *collection) reportUnusedScopeSites(pass *analysis.Pass, opts Options, w
 // it may name the other scope. Only the declarations that take the directive's
 // scope are named, and a file-level report, which names none, says which of
 // the two kinds it reached.
+//
+// The directive is named by its new name even when written with the renamed
+// keyword: the rename fix may stand beside this report, and the report must
+// read the same once it is applied. TODO(#185): drop this paragraph with
+// the alias.
 //
 // A strict reason says what the declarations already have and not where it
 // comes from: deleting an outer directive in the same run can move the source,
@@ -359,7 +383,7 @@ func messageOfScopeSite(s *scopeSite, redundant bool) string {
 // d decides does not move, since each narrowed declaration is judged against
 // the same levels beyond it, so the report is only reworded, never dropped.
 //
-//declscope:package // surplus.go withholds a narrowing that would reword it
+//declscope:shared // surplus.go withholds a narrowing that would reword it
 func (c *collection) rewordedAtScopeSite(opts Options, d directive.Decl, narrowed map[*target]bool) bool {
 	if !opts.Unused.Reports() {
 		return false
@@ -397,7 +421,7 @@ func (c *collection) rewordedAtScopeSite(opts Options, d directive.Decl, narrowe
 //     level moves.
 //   - It is a field whose type a boundary fix in this run widens. The field
 //     would take the type's new directive instead of the level beyond this one.
-//   - The directive is //declscope:package and surplus reads it: a declaration
+//   - The directive is //declscope:shared and surplus reads it: a declaration
 //     would join an enclosing directive's dependents, or an ignore answering
 //     the surplus rule covers it and could be left answering nothing.
 //   - The level beyond it is a directive that is reported and keeps its
@@ -467,7 +491,7 @@ func (r *scopesiteRemovals) decide(s *scopeSite) bool {
 	if r.c.unseen(r.pass).all {
 		return false
 	}
-	surplusReads := s.dir.Scope == scope.PackageInternal && r.opts.Surplus.Reports()
+	surplusReads := s.dir.Scope == scope.Shared && r.opts.Surplus.Reports()
 	if surplusReads && s.restatesOuter {
 		return false
 	}

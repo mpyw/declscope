@@ -5,7 +5,7 @@ package fixsurplusnarrow
 // memo shares its line, so one directive narrows both, and extra takes its
 // own.
 
-//declscope:package
+//declscope:shared
 type entry struct { // want `type entry is private to namespace "user", but is used from namespace "order"`
 	key  string // want `field entry.key is private to namespace "user", but is used from namespace "order"`
 	//declscope:private

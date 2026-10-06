@@ -101,7 +101,7 @@ func modeJoin(names []string) string {
 type SurplusMode int
 
 const (
-	// SurplusModeLoose reports a //declscope:package when nothing that takes
+	// SurplusModeLoose reports a //declscope:shared when nothing that takes
 	// its scope from it is reached from another namespace. It is the default.
 	SurplusModeLoose SurplusMode = iota
 
@@ -109,7 +109,7 @@ const (
 	SurplusModeOff
 
 	// SurplusModeStrict reports what loose does, and also each declaration
-	// that takes package scope from an enclosing directive which is otherwise
+	// that takes shared scope from an enclosing directive which is otherwise
 	// in use, when nothing reaches that declaration from another namespace.
 	SurplusModeStrict
 )

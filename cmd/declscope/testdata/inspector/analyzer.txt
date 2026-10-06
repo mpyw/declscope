@@ -14,5 +14,5 @@ $ROOT/q/model.go:14:6: type ledger is private to namespace "model", but is used 
 $ROOT/q/snapshot.go:13:23: 	used here, in namespace "snapshot"
 $ROOT/q/snapshot.go:13:39: 	used here, in namespace "snapshot"
 $ROOT/q/model.go:14:6: type ledger does not carry namespace "model" anywhere in its name; rename it to modelLedger, or to another name that carries "model"
-$ROOT/q/model.go:15:2: //declscope:package on ledger.n: no use from another namespace is visible to declscope
+$ROOT/q/model.go:15:2: //declscope:shared on ledger.n: no use from another namespace is visible to declscope
 $ROOT/q/model.go:20:6: func ledgerNew does not carry namespace "model" anywhere in its name; rename it to modelLedgerNew, or to another name that carries "model"

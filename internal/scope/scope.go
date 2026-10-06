@@ -17,10 +17,10 @@ package scope
 type Scope int
 
 const (
-	// PackageInternal is visible anywhere in the package — what Go's unexported
-	// already means. It is selected with //declscope:package, or by configuring
+	// Shared is visible anywhere in the package — what Go's unexported
+	// already means. It is selected with //declscope:shared, or by configuring
 	// it as the default.
-	PackageInternal Scope = iota
+	Shared Scope = iota
 
 	// Private is visible only within its own namespace. It is the default.
 	Private
@@ -28,8 +28,8 @@ const (
 
 func (s Scope) String() string {
 	switch s {
-	case PackageInternal:
-		return "package-internal"
+	case Shared:
+		return "shared"
 	case Private:
 		return "private"
 	default:
@@ -40,8 +40,8 @@ func (s Scope) String() string {
 // Directive returns the comment directive that selects s explicitly.
 func (s Scope) Directive() string {
 	switch s {
-	case PackageInternal:
-		return "//declscope:package"
+	case Shared:
+		return "//declscope:shared"
 	case Private:
 		return "//declscope:private"
 	default:
@@ -52,11 +52,19 @@ func (s Scope) Directive() string {
 // Parse resolves a directive keyword to its scope.
 func Parse(keyword string) (Scope, bool) {
 	switch keyword {
-	case "package":
-		return PackageInternal, true
+	case "shared", Renamed: // TODO(#185): drop Renamed with the alias.
+		return Shared, true
 	case "private":
 		return Private, true
 	default:
 		return 0, false
 	}
 }
+
+// Renamed is the keyword that selected Shared before it was named shared.
+// Parse still reads it, so that code and config written for an older release
+// keep their meaning. A directive spelled with it is reported with a fix that
+// writes the new keyword.
+//
+// TODO(#185): delete with the alias, together with every use of it.
+const Renamed = "package"

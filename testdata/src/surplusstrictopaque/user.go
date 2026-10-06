@@ -4,7 +4,7 @@ package surplusstrictopaque
 // reference site. The package holds a source the rule cannot read, so the
 // rule switches off for it.
 //
-//declscope:package
+//declscope:shared
 type userCard struct {
 	id   int
 	note int

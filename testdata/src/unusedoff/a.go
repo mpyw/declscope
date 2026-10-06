@@ -8,7 +8,7 @@ func aIgnore() int { return 1 }
 
 // nor a scope directive no configuration could make bind,
 //
-//declscope:package
+//declscope:shared
 func AExported() int { return 2 }
 
 // nor one naming the scope the declaration would have without it.

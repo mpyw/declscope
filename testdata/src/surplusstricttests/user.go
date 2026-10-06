@@ -4,7 +4,7 @@ package surplusstricttests
 // The test variant sees it and stays quiet. The ordinary variant does not see
 // every file, so the rule switches off there instead of reporting.
 //
-//declscope:package
+//declscope:shared
 type userCard struct {
 	id   int
 	note int

@@ -1,10 +1,10 @@
 package surplussatisfiespairs
 
-//declscope:package
+//declscope:shared
 type clock struct{}
 
-//declscope:package
+//declscope:shared
 func (clock) tick() {}
 
-//declscope:package
+//declscope:shared
 func (clock) tock() {}

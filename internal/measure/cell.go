@@ -5,7 +5,7 @@
 // The file is shared on purpose, so it says so once rather than declaration by
 // declaration.
 //
-//declscope:package
+//declscope:shared
 
 package measure
 

@@ -26,7 +26,7 @@
 //
 // "The next level out" includes a block's directive under a spec that states
 // its own, which the merged declaration hides. Without it, a spec's
-// //declscope:private under a //declscope:package block would be called
+// //declscope:private under a //declscope:shared block would be called
 // redundant against the file, and deleting it would widen the spec.
 //
 // The fix is withheld where deleting the directive would change another
@@ -36,7 +36,7 @@
 //                  names the level that decided, and that level moves.
 //   ownerWidened   a is a field whose type a boundary fix widens in the same
 //                  run. The field would take the type's new directive.
-//   surplusHolds   the directive is //declscope:package and surplus judges
+//   surplusHolds   the directive is //declscope:shared and surplus judges
 //                  what depends on it: a would join an enclosing directive's
 //                  dependents, or an ignore answers the directive's own
 //                  surplus report and would be left answering nothing.
@@ -55,13 +55,13 @@
 //   here where it is a disjunction in unused_bind.fsl, and a conjunction
 //   of two is what shows each half is read (modelling assumption)
 spec UnusedModes {
-  enum Scope { Package, Private }
-  enum Dir   { NoDir, DirPackage, DirPrivate }
+  enum Scope { Shared, Private }
+  enum Dir   { NoDir, DirShared, DirPrivate }
   enum Mode  { Off, Loose, Strict }
 
   state {
     phase: 0..5 = 0,
-    mode: Mode = Loose, stated: Scope = Package, cfgUnexported: Scope = Private,
+    mode: Mode = Loose, stated: Scope = Shared, cfgUnexported: Scope = Private,
     aPresent: Bool = false, aExported: Bool = false, aOuter: Dir = NoDir,
     bPresent: Bool = false, bExported: Bool = false, bOuter: Dir = NoDir,
     aCrosses: Bool = false, ownerWidened: Bool = false, surplusHolds: Bool = false, outerStuck: Bool = false,
@@ -69,7 +69,7 @@ spec UnusedModes {
     reported: Bool = false, fixed: Bool = false,
     // What the fix left: a's scope, and what the directive shadowing b is
     // judged against.
-    aAfter: Scope = Package, bAfter: Scope = Package
+    aAfter: Scope = Shared, bAfter: Scope = Shared
   }
 
   // One step per concern rather than one action for all of them: an action's
@@ -99,9 +99,9 @@ spec UnusedModes {
   // configuration. unused_bind.fsl's outerFixed and outerScope.
   def outerFixed(o: Dir, x: Bool) = o != NoDir or x
   def outerScope(o: Dir, x: Bool) =
-    if o == DirPackage then Package
+    if o == DirShared then Shared
     else if o == DirPrivate then Private
-    else if x then Package
+    else if x then Shared
     else cfgUnexported
 
   // loose: bound when a takes a scope it could not have had under any
@@ -179,11 +179,11 @@ spec UnusedModes {
   // The same comment under the package default says something, in either mode.
   reachable ImplicitBindsUnderPackageDefault {
     phase == 5 and mode == Strict and aPresent and not aExported and aOuter == NoDir
-    and cfgUnexported == Package and stated == Private and not bPresent and not reported
+    and cfgUnexported == Shared and stated == Private and not bPresent and not reported
   }
   reachable PackageRedundantUnderPackageDefault {
     phase == 5 and mode == Strict and aPresent and not aExported and aOuter == NoDir
-    and cfgUnexported == Package and stated == Package and not bPresent and reported and fixed
+    and cfgUnexported == Shared and stated == Shared and not bPresent and reported and fixed
   }
   // Restating the type's directive is reported by both modes; strict deletes it.
   reachable RestatingReportedUnderLoose {
@@ -198,7 +198,7 @@ spec UnusedModes {
   // without this one keeps it: reported by neither mode as redundant.
   reachable ShadowedDisagreementKeepsIt {
     phase == 5 and mode == Strict and not aPresent and bPresent and not bExported
-    and bOuter == NoDir and cfgUnexported == Private and stated == Package and reported and not fixed
+    and bOuter == NoDir and cfgUnexported == Private and stated == Shared and reported and not fixed
   }
   reachable ShadowedAgreementDeletes {
     phase == 5 and mode == Strict and not aPresent and bPresent and not bExported

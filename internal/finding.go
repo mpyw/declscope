@@ -22,7 +22,7 @@ import (
 // them, both from findingsOf, so the two cannot disagree about what is a
 // violation.
 //
-//declscope:package // report.go reports it and survey.go counts it
+//declscope:shared // report.go reports it and survey.go counts it
 type finding struct {
 	rule    rule.Rule
 	decl    string
@@ -50,7 +50,7 @@ type finding struct {
 // Regeneration does not ask. It records the members with their type, because
 // the baseline it writes is what absorbs the type.
 //
-//declscope:package // report.go and survey.go both drop what a type settles
+//declscope:shared // report.go and survey.go both drop what a type settles
 func (f finding) settled(pass *analysis.Pass, opts Options) bool {
 	o := f.settledBy
 	if o == nil {
@@ -61,7 +61,7 @@ func (f finding) settled(pass *analysis.Pass, opts Options) bool {
 
 // key identifies the finding for the baseline, independently of position.
 //
-//declscope:package // report.go and survey.go both look the finding up in the baseline
+//declscope:shared // report.go and survey.go both look the finding up in the baseline
 func (f finding) key(pass *analysis.Pass, t *target) baseline.Key {
 	return baseline.Key{
 		Package:   pass.Pkg.Path(),
@@ -74,10 +74,10 @@ func (f finding) key(pass *analysis.Pass, t *target) baseline.Key {
 // findingsOf returns every finding of one target, before any ignore or the
 // baseline is consulted.
 //
-//declscope:package // report.go reports them, and survey.go counts them
+//declscope:shared // report.go reports them, and survey.go counts them
 func (c *collection) findingsOf(pass *analysis.Pass, opts Options, t *target) []finding {
 	var out []finding
-	// An exported declaration resolves to package scope unless a directive
+	// An exported declaration resolves to shared scope unless a directive
 	// narrows it, so the one test below covers both: what is reachable from
 	// outside carries no boundary, and what an author narrowed does.
 	if opts.Boundary.Reports() && t.scope == scope.Private {
@@ -160,9 +160,9 @@ func (c *collection) boundaryFinding(pass *analysis.Pass, opts Options, t *targe
 	if t.boundAt != boundAtDefault {
 		return f, true
 	}
-	fix := c.directiveInsertionFix(pass, t, scope.PackageInternal)
+	fix := c.directiveInsertionFix(pass, t, scope.Shared)
 	// The directive reaches the type's members too, so under strict a member
-	// no other namespace reads would come out of this fix package-scoped, and
+	// no other namespace reads would come out of this fix shared, and
 	// surplus would report what -fix had just written. The fix narrows those
 	// members in the same edit, which is the state the two rules agree on;
 	// surplus.go decides which members they are.
@@ -245,7 +245,7 @@ func (c *collection) qualifyFinding(pass *analysis.Pass, opts Options, t *target
 //
 // main is a name the toolchain requires, so nothing can be asked of it.
 //
-//declscope:package // the survey divides by it, and must divide by this one
+//declscope:shared // the survey divides by it, and must divide by this one
 func (c *collection) qualifyFindingApplies(pass *analysis.Pass, opts Options, t *target) bool {
 	if !opts.Qualify.Applies(c.namespaces) || !t.findingReachesName(opts) {
 		return false

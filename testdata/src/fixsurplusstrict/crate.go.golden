@@ -5,7 +5,7 @@ package fixsurplusstrict
 //
 //declscope:ignore surplus // want `unused //declscope:ignore surplus on crateItem`
 //
-//declscope:package
+//declscope:shared
 type crateItem struct { // want `type crateItem is private to namespace "crate", but is used from namespace "order"`
 	weight int
 }

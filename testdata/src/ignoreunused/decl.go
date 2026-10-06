@@ -34,11 +34,11 @@ func declBoth() int { return 5 }
 // The unused report on a scope directive is answered by an ignore naming the
 // rule on the same declaration, and a bare one there answers it too.
 //
-//declscope:package
+//declscope:shared
 //declscope:ignore unused
 func DeclNamed() int { return 6 }
 
-//declscope:package
+//declscope:shared
 //declscope:ignore
 func DeclBare() int { return 7 }
 

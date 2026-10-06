@@ -12,7 +12,7 @@ import (
 
 // renameBook is rename.go's half of the collection, embedded there.
 //
-//declscope:package // collection embeds it, and collection lives in the core
+//declscope:shared // collection embeds it, and collection lives in the core
 type renameBook struct {
 	// rename is what the rename fix knows beyond the references the index
 	// holds. It is created on first use, since most passes offer no rename.
@@ -57,7 +57,7 @@ func (c *collection) renames() *renameState {
 // is reserved for the rest of the pass, since a later fix checking the same
 // pre-fix state would otherwise find the name still free.
 //
-//declscope:package // report.go attaches it to the naming findings
+//declscope:shared // report.go attaches it to the naming findings
 func (c *collection) renameFix(pass *analysis.Pass, t *target, newName, message string) (analysis.SuggestedFix, bool) {
 	if newName == t.obj.Name() {
 		return analysis.SuggestedFix{}, false

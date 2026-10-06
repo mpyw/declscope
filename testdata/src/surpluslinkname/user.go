@@ -6,16 +6,16 @@ import _ "unsafe"
 // reference.
 //
 //go:linkname userClock
-//declscope:package
+//declscope:shared
 func userClock() int64 { return 0 }
 
 // userTick is named by an //export directive the same way.
 //
 //export userTick
-//declscope:package
+//declscope:shared
 func userTick() int32 { return 1 }
 
 // userQuiet is named by neither, so its directive is reported.
 //
-//declscope:package // want `//declscope:package on userQuiet: no use from another namespace is visible to declscope`
+//declscope:shared // want `//declscope:shared on userQuiet: no use from another namespace is visible to declscope`
 func userQuiet() int { return 2 }

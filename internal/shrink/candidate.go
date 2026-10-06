@@ -27,7 +27,7 @@ import (
 // analyzer's ignoreSite.siblings are, so that an ignore naming unused answers
 // the same reports in both tools.
 //
-//declscope:package // the core judges each of them
+//declscope:shared // the core judges each of them
 func candidatesOf(p *packages.Package) ([]*candidate, map[token.Pos][]directive.Ignore) {
 	siblings := map[token.Pos][]directive.Ignore{}
 	parse := func(groups ...*ast.CommentGroup) []directive.Ignore {

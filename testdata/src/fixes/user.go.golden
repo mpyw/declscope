@@ -1,10 +1,10 @@
 package fixes
 
-//declscope:package
+//declscope:shared
 func userHelper() int { return 1 } // want `func userHelper is private to namespace "user", but is used from namespace "order"`
 
 var (
-	//declscope:package
+	//declscope:shared
 	userSeed = 2 // want `var userSeed is private to namespace "user", but is used from namespace "order"`
 )
 
@@ -12,7 +12,7 @@ var (
 // directive lands on the type that crosses, and the one beside it keeps the
 // scope it had.
 type (
-	//declscope:package
+	//declscope:shared
 	userBox  struct{ n int } // want `type userBox is private to namespace "user", but is used from namespace "order"`
 	userCase struct{ n int }
 )

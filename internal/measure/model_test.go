@@ -10,7 +10,7 @@ import "github.com/mpyw/declscope/internal/rule"
 // It is built by hand rather than analyzed, which is the point of the model
 // being its own package: a renderer can be tested without building a pass.
 //
-//declscope:package // the goldens are rendered from it
+//declscope:shared // the goldens are rendered from it
 func fixturePackage() Package {
 	return Package{
 		Path:   "example.com/x/internal/cmd",
@@ -52,7 +52,7 @@ func fixturePackage() Package {
 	}
 }
 
-//declscope:package // the goldens are rendered from it
+//declscope:shared // the goldens are rendered from it
 func fixtureSummary() Summary {
 	return SummaryOf([]Package{fixturePackage(), {
 		Path:       "example.com/x/internal/legacy",
@@ -85,7 +85,7 @@ func fixtureSummary() Summary {
 // crossings are real and nobody was asked about them. Every count a renderer
 // prints for it has to be a dash rather than a zero.
 //
-//declscope:package // the goldens are rendered from it
+//declscope:shared // the goldens are rendered from it
 func fixtureUncheckedPackage() Package {
 	return Package{
 		Path: "example.com/x/internal/legacy",
@@ -106,7 +106,7 @@ func fixtureUncheckedPackage() Package {
 // fixtureQuietPackage is a package where every file joined the core: nothing
 // crosses, and no name is asked to carry a namespace that has none.
 //
-//declscope:package // the goldens are rendered from it
+//declscope:shared // the goldens are rendered from it
 func fixtureQuietPackage() Package {
 	return Package{
 		Path:       "example.com/x/internal/only",

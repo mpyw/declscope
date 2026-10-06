@@ -1,4 +1,4 @@
-//declscope:package
+//declscope:shared
 
 package fixsurplusstrictunusedoff
 
@@ -7,17 +7,17 @@ func userHelper() int { return 3 }
 
 // userSpare takes it too, and nothing else calls it. Its narrowing gives
 // this file an edit whatever the block's specs get, so the golden is compared.
-func userSpare() int { return 4 } // want `func userSpare takes package scope`
+func userSpare() int { return 4 } // want `func userSpare takes shared scope`
 
 var _ = userSpare
 
 // The block restates the file's package and decides nothing. With the unused
 // rule off nothing reports it, so userLocal is narrowed.
 //
-//declscope:package
+//declscope:shared
 var (
 	userShared = 1
-	userLocal  = 2 // want `var userLocal takes package scope`
+	userLocal  = 2 // want `var userLocal takes shared scope`
 )
 
 var _ = userLocal

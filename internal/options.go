@@ -29,7 +29,7 @@ type Options struct {
 	// this tool exists for, so turning it off leaves only the naming rule.
 	//
 	// It is here for the repository that wants the ownership mark in a name
-	// without the scope behind it. Reach stays unchecked, //declscope:package
+	// without the scope behind it. Reach stays unchecked, //declscope:shared
 	// stops meaning anything, and surplus keeps auditing directives that no
 	// longer do a job -- set surplus: off alongside it.
 	//
@@ -39,7 +39,7 @@ type Options struct {
 	Boundary rule.BoundaryMode
 
 	// Surplus says how much the surplus rule reports. Strict is the default.
-	// Loose reports a //declscope:package when declscope sees no use of anything
+	// Loose reports a //declscope:shared when declscope sees no use of anything
 	// that takes its scope from it. Strict also reports each declaration a
 	// directive in use widens for nothing, and offers to narrow it. Off
 	// reports nothing.

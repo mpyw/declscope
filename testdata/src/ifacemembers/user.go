@@ -12,14 +12,14 @@ type Sealed interface {
 // The type's directive reaches its methods, the way it reaches a struct's
 // fields: both are written inside the declaration.
 //
-//declscope:package
+//declscope:shared
 type Widened interface {
 	shared() int
 }
 
 // A method may state its own scope, which outranks the type's.
 type Mixed interface {
-	//declscope:package
+	//declscope:shared
 	ok() int
 	nope() int // want `method Mixed.nope is private to namespace "user", but is used from namespace "order"`
 }

@@ -11,7 +11,7 @@ import (
 // writeMarkdown renders one package as padded Markdown: readable in a terminal
 // and ready to paste into an issue, a pull request or a README.
 //
-//declscope:package // format.go dispatches to it
+//declscope:shared // format.go dispatches to it
 func (p Package) writeMarkdown(w io.Writer) error {
 	out := newSink(w)
 	out.printf("# %s\n\n", p.Path)
@@ -50,7 +50,7 @@ func writeMarkdownCrossings(out *sink, p Package, asked bool) {
 		if open == 0 {
 			out.print("## Crossings\n\nNothing crosses a namespace in this package.\n\n")
 		} else {
-			out.printf("## Crossings\n\nOpen crossings only: %s package-scoped by default rather than by decision, so there is nothing to put in the table or diagram.\n\n",
+			out.printf("## Crossings\n\nOpen crossings only: %s shared by default rather than by decision, so there is nothing to put in the table or diagram.\n\n",
 				cellPlural(open, "declaration is", "declarations are"))
 		}
 		return
@@ -67,7 +67,7 @@ func writeMarkdownCrossings(out *sink, p Package, asked bool) {
 	}
 	writeMarkdownTable(out, "Crossings", rows)
 	if open := p.declarationsCrossing(EdgeOpen); open > 0 {
-		out.printf("%s further: open, package-scoped by default rather than by decision, so left out of the table and of the diagram.\n",
+		out.printf("%s further: open, shared by default rather than by decision, so left out of the table and of the diagram.\n",
 			cellPlural(open, "declaration is", "declarations are"))
 	}
 	out.print("\n")
@@ -169,7 +169,7 @@ func writeMarkdownQualify(out *sink, p Package, asked bool) {
 // writeMarkdown renders a whole run. It carries no diagram: the unit
 // here is the package, and there is no edge set at that level to draw.
 //
-//declscope:package // format.go dispatches to it
+//declscope:shared // format.go dispatches to it
 func (s Summary) writeMarkdown(w io.Writer) error {
 	out := newSink(w)
 	rows := [][]string{{"check", "value", "packages"}}

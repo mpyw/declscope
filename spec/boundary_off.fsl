@@ -6,7 +6,7 @@
 // project set out to avoid, and the shape a later change is most likely to
 // introduce by being helpful.
 //
-// Turning boundary off does leave surplus auditing //declscope:package
+// Turning boundary off does leave surplus auditing //declscope:shared
 // directives that no longer do a job, and the README says to set both. That is
 // advice to a reader, not a coupling in the code. SurplusFiresWhileBoundaryOff
 // below is what fails if someone makes it one.
@@ -15,7 +15,7 @@
 // takes the resolved scope as an input, because rules.boundary is a gate on the
 // report and not a participant in the resolution.
 spec BoundaryOff {
-  enum Scope { Package, Private }
+  enum Scope { Shared, Private }
   enum Refs  { NoRefs, SameNs, CrossNs }
   // The naming rule's three modes. OnDemand asks only once a package holds a
   // second namespace, which is why the count is an input below.

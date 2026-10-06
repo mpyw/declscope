@@ -15,7 +15,7 @@ import (
 // candidate. A bare ignore does not reach a module-wide rule: see
 // rule.IsModuleWide.
 //
-//declscope:package // the core asks it of every candidate
+//declscope:shared // the core asks it of every candidate
 func ignoreCovers(c *candidate) bool {
 	return slices.ContainsFunc(c.ignores, func(ig directive.Ignore) bool {
 		return slices.Contains(ig.Rules, rule.Overexported)
@@ -25,7 +25,7 @@ func ignoreCovers(c *candidate) bool {
 // ignoreSilenced records every ignore naming overexported that covers the
 // candidate as used: it silenced the candidate's report.
 //
-//declscope:package // the core calls it once the report stands
+//declscope:shared // the core calls it once the report stands
 func (r *run) ignoreSilenced(c *candidate) {
 	for _, ig := range c.ignores {
 		if slices.Contains(ig.Rules, rule.Overexported) {
@@ -45,7 +45,7 @@ func (r *run) ignoreSilenced(c *candidate) {
 // unused, since it cannot see the report it answers. siblings maps each
 // ignore bound to a declaration to the ignores bound beside it.
 //
-//declscope:package // the core drains it after judging the package
+//declscope:shared // the core drains it after judging the package
 func (r *run) unusedIgnores(p *packages.Package, siblings map[token.Pos][]directive.Ignore) []Finding {
 	var findings []Finding
 	for _, file := range p.Syntax {

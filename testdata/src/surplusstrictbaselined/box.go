@@ -1,4 +1,4 @@
-//declscope:package
+//declscope:shared
 
 package surplusstrictbaselined
 
@@ -9,7 +9,7 @@ type boxKind int
 // type's finding then offers no fix to narrow extra, which came later.
 type boxed struct {
 	n     int
-	extra int // want `field boxed.extra takes package scope from the file's //declscope:package, but no use from another namespace is visible to declscope`
+	extra int // want `field boxed.extra takes shared scope from the file's //declscope:shared, but no use from another namespace is visible to declscope`
 }
 
 func boxRead(b boxed) int { return b.n + b.extra }

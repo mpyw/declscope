@@ -17,7 +17,7 @@ func TestScopeSpellings(t *testing.T) {
 		directive string
 		text      string
 	}{
-		{scope.PackageInternal, "package", "//declscope:package", "package-internal"},
+		{scope.Shared, "shared", "//declscope:shared", "shared"},
 		{scope.Private, "private", "//declscope:private", "private"},
 	}
 	for _, tt := range tests {
@@ -36,11 +36,22 @@ func TestScopeSpellings(t *testing.T) {
 	}
 }
 
+// TestScopeRenamed checks that the keyword shared had before still parses, so
+// that code and config written for an older release keep their meaning.
+//
+// TODO(#185): delete with the alias, and add "package" to the keywords
+// TestScopeRejectsUnknown refuses.
+func TestScopeRenamed(t *testing.T) {
+	if got, ok := scope.Parse(scope.Renamed); !ok || got != scope.Shared {
+		t.Errorf("Parse(%q) = %v, %v, want %v, true", scope.Renamed, got, ok, scope.Shared)
+	}
+}
+
 // TestScopeRejectsUnknown checks the other half: a keyword naming no level is
-// refused rather than resolved to the zero value, which is package-internal
-// and would silently widen whatever carried the typo.
+// refused rather than resolved to the zero value, which is shared and would
+// silently widen whatever carried the typo.
 func TestScopeRejectsUnknown(t *testing.T) {
-	for _, keyword := range []string{"", "public", "Package", "internal"} {
+	for _, keyword := range []string{"", "public", "Shared", "internal"} {
 		if got, ok := scope.Parse(keyword); ok {
 			t.Errorf("Parse(%q) = %v, true, want false", keyword, got)
 		}

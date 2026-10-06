@@ -23,8 +23,8 @@
 // ASSUME-1: one type and one of its members are enough — this convergence needs
 //   exactly a container and something it contains (modelling assumption)
 spec FixMembers {
-  enum Scope { Package, Private }
-  enum Dir   { NoDir, DirPackage, DirPrivate }
+  enum Scope { Shared, Private }
+  enum Dir   { NoDir, DirShared, DirPrivate }
   enum Refs  { NoRefs, SameNs, CrossNs }
 
   state {
@@ -50,23 +50,23 @@ spec FixMembers {
   }
 
   // Exportedness decides the default and nothing else, as everywhere else.
-  def defaultScope(x: Bool) = if x then Package else cfgUnexported
+  def defaultScope(x: Bool) = if x then Shared else cfgUnexported
   def fileOrDefault(x: Bool) =
-    if fileDir == DirPackage then Package
+    if fileDir == DirShared then Shared
     else if fileDir == DirPrivate then Private
     else defaultScope(x)
 
   // --- the pre-fix source, which every guard reads -------------------------
   def typeScope() =
-    if typeDir == DirPackage then Package
+    if typeDir == DirShared then Shared
     else if typeDir == DirPrivate then Private
     else fileOrDefault(typeExported)
   // The member's chain has the containing type in it, which is the whole
   // reason the two fixes can converge.
   def memberScope() =
-    if memberDir == DirPackage then Package
+    if memberDir == DirShared then Shared
     else if memberDir == DirPrivate then Private
-    else if typeDir == DirPackage then Package
+    else if typeDir == DirShared then Shared
     else if typeDir == DirPrivate then Private
     else fileOrDefault(memberExported)
 
@@ -100,8 +100,8 @@ spec FixMembers {
   }
 
   // --- what the source says once the run has finished ----------------------
-  def typeDirAfter()   = if typeFixed   then DirPackage else typeDir
-  def memberDirAfter() = if memberFixed then DirPackage else memberDir
+  def typeDirAfter()   = if typeFixed   then DirShared else typeDir
+  def memberDirAfter() = if memberFixed then DirShared else memberDir
 
   // The scope the member takes from the levels outside its own directive, and
   // whether that scope is the same under every configuration — it is not when
@@ -110,28 +110,28 @@ spec FixMembers {
   def memberOuterFixed() =
     typeDirAfter() != NoDir or fileDir != NoDir or memberExported
   def memberOuterScope() =
-    if typeDirAfter() == DirPackage then Package
+    if typeDirAfter() == DirShared then Shared
     else if typeDirAfter() == DirPrivate then Private
     else fileOrDefault(memberExported)
   def memberInert() =
     memberOuterFixed()
-    and (if memberDirAfter() == DirPackage then Package else Private) == memberOuterScope()
+    and (if memberDirAfter() == DirShared then Shared else Private) == memberOuterScope()
 
   def typeOuterFixed() = fileDir != NoDir or typeExported
   def typeOuterScope() = fileOrDefault(typeExported)
   def typeInert() =
     typeOuterFixed()
-    and (if typeDirAfter() == DirPackage then Package else Private) == typeOuterScope()
+    and (if typeDirAfter() == DirShared then Shared else Private) == typeOuterScope()
 
   // --- what the run leaves ---------------------------------------------------
   def memberScopeAfter() =
-    if memberDirAfter() == DirPackage then Package
+    if memberDirAfter() == DirShared then Shared
     else if memberDirAfter() == DirPrivate then Private
-    else if typeDirAfter() == DirPackage then Package
+    else if typeDirAfter() == DirShared then Shared
     else if typeDirAfter() == DirPrivate then Private
     else fileOrDefault(memberExported)
   def typeScopeAfter() =
-    if typeDirAfter() == DirPackage then Package
+    if typeDirAfter() == DirShared then Shared
     else if typeDirAfter() == DirPrivate then Private
     else fileOrDefault(typeExported)
   def memberCrossesAfter() = memberScopeAfter() == Private and memberRefs == CrossNs
@@ -157,10 +157,10 @@ spec FixMembers {
   // only one side of the implication and the invariant can actually fail.
   invariant InsertedMemberDirectiveBinds {
     memberFixed =>
-      not (memberOuterFixed() and Package == memberOuterScope())
+      not (memberOuterFixed() and Shared == memberOuterScope())
   }
   invariant InsertedTypeDirectiveBinds {
-    typeFixed => not (typeOuterFixed() and Package == typeOuterScope())
+    typeFixed => not (typeOuterFixed() and Shared == typeOuterScope())
   }
 
   // And the fixes still do their job: what each one writes settles the

@@ -28,7 +28,7 @@ counts say. Use declscope itself for that, and a baseline to adopt it.
 
 // surveyRun measures every matching package.
 //
-//declscope:package // a subcommand, dispatched from main.go
+//declscope:shared // a subcommand, dispatched from main.go
 func surveyRun(args []string) {
 	fs := flag.NewFlagSet("declscope survey", flag.ExitOnError)
 	configPath := fs.String("config", "", "path to a declscope YAML config file")

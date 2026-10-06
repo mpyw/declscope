@@ -5,7 +5,7 @@ package fixsurplusstrict
 // leaves shared, which order.go reads, and memo, whose author asked this rule
 // to stay out.
 //
-//declscope:package
+//declscope:shared
 type boxItem struct { // want `type boxItem is private to namespace "box", but is used from namespace "order"`
 	shared int // want `field boxItem.shared is private to namespace "box", but is used from namespace "order"`
 

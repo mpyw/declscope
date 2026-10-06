@@ -6,7 +6,7 @@ package unusedstrict
 //
 //declscope:private
 var (
-	//declscope:package
+	//declscope:shared
 	GWidened = 2
 	gOther   = 3
 )

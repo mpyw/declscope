@@ -18,17 +18,17 @@ import (
 type Summary struct {
 	// checks is what was in force for the run.
 	//
-	//declscope:package // json.go and markdown.go render it
+	//declscope:shared // json.go and markdown.go render it
 	checks Checks
 
 	// totals is one tally per rule, across every package.
 	//
-	//declscope:package // json.go and markdown.go render it
+	//declscope:shared // json.go and markdown.go render it
 	totals map[rule.Rule]Count
 
 	// rows are the packages, heaviest first.
 	//
-	//declscope:package // json.go and markdown.go render it
+	//declscope:shared // json.go and markdown.go render it
 	rows []SummaryRow
 }
 

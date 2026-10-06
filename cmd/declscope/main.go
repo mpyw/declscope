@@ -1,5 +1,5 @@
 // Command declscope is a linter that enforces private and
-// package-internal pseudo scopes within a Go package.
+// shared pseudo scopes within a Go package.
 //
 // Usage:
 //

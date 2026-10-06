@@ -24,7 +24,7 @@ import (
 // Outside variable, satisfied is staticSatisfaction, exposed is exposed,
 // escaped is the Escapes doubt, and generated is generatedRef.
 //
-//declscope:package // the core judges from it, and rename.go reads its sites
+//declscope:shared // the core judges from it, and rename.go reads its sites
 type evidence struct {
 	// outside is every declaration a package other than its own names,
 	// external tests aside: spelled, written in an unkeyed literal, or
@@ -76,7 +76,7 @@ type evidence struct {
 // evidenceSite is one identifier naming a declaration, in the package
 // variant whose scopes it resolves in.
 //
-//declscope:package // rename.go rewrites and checks each one
+//declscope:shared // rename.go rewrites and checks each one
 type evidenceSite struct {
 	pkg   *packages.Package
 	ident *ast.Ident
@@ -84,7 +84,7 @@ type evidenceSite struct {
 
 // evidenceCollect gathers the evidence over every package of the module.
 //
-//declscope:package // the core collects it once per run
+//declscope:shared // the core collects it once per run
 func evidenceCollect(m *module.Module) (ev *evidence, err error) {
 	ev = &evidence{
 		outside: map[string]bool{}, everywhere: map[string]bool{}, extTest: map[string]bool{}, generated: map[string]bool{}, example: map[string]bool{},
@@ -136,7 +136,7 @@ func evidenceCollect(m *module.Module) (ev *evidence, err error) {
 
 // evidenceConstrained is one file behind a build constraint.
 //
-//declscope:package // shrink.go asks it whether a file reaches a candidate
+//declscope:shared // shrink.go asks it whether a file reaches a candidate
 type evidenceConstrained struct {
 	pkg     string
 	imports []string

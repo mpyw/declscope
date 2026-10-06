@@ -17,7 +17,7 @@
 //     changes what it reports. unused_modes.fsl models strict and off beside
 //     loose, and its loose is this spec's.
 //   - Over enclosing directives, not only exportedness. Asking only whether
-//     the name is exported would call //declscope:package under an enclosing
+//     the name is exported would call //declscope:shared under an enclosing
 //     `private` inert, although it is the one thing that widens an exported
 //     declaration back, so a codebase could narrow and never widen again.
 //
@@ -38,13 +38,13 @@
 // declarations are modelled because one cannot distinguish "nothing to bind"
 // from "this one had nothing to bind".
 spec UnusedBind {
-  enum Scope { Package, Private }
-  enum Dir   { NoDir, DirPackage, DirPrivate }
+  enum Scope { Shared, Private }
+  enum Dir   { NoDir, DirShared, DirPrivate }
 
   state {
     configured: Bool = false,
     // what this directive names, and what the levels outside it say
-    stated: Scope = Package, outerDir: Dir = NoDir, cfgUnexported: Scope = Private,
+    stated: Scope = Shared, outerDir: Dir = NoDir, cfgUnexported: Scope = Private,
     // the declaration the directive is written on, if any
     hasTarget: Bool = false, targetExported: Bool = false,
     // two declarations within its reach, each possibly shadowed by a nearer one
@@ -66,9 +66,9 @@ spec UnusedBind {
 
   def outerFixed(x: Bool) = outerDir != NoDir or x
   def outerScope(x: Bool) =
-    if outerDir == DirPackage then Package
+    if outerDir == DirShared then Shared
     else if outerDir == DirPrivate then Private
-    else if x then Package
+    else if x then Shared
     else cfgUnexported
   def inert(x: Bool) = outerFixed(x) and stated == outerScope(x)
 
@@ -109,7 +109,7 @@ spec UnusedBind {
   // which may be either scope, so neither spelling is ever inert on one.
   reachable UnexportedBindsPackageUnderPackageDefault {
     configured and hasTarget and not targetExported and outerDir == NoDir
-    and cfgUnexported == Package and stated == Package
+    and cfgUnexported == Shared and stated == Shared
     and not aPresent and not bPresent and bound
   }
   reachable UnexportedBindsPrivateUnderPrivateDefault {
@@ -122,11 +122,11 @@ spec UnusedBind {
   // that an exportedness-only test would have called dead.
   reachable ExportedPackageIsInert {
     configured and hasTarget and targetExported and outerDir == NoDir
-    and stated == Package and not aPresent and not bPresent and reported()
+    and stated == Shared and not aPresent and not bPresent and reported()
   }
   reachable ExportedPackageBindsUnderPrivateOuter {
     configured and hasTarget and targetExported and outerDir == DirPrivate
-    and stated == Package and not aPresent and not bPresent and bound
+    and stated == Shared and not aPresent and not bPresent and bound
   }
   reachable ExportedNarrowedByPrivateBinds {
     configured and hasTarget and targetExported and outerDir == NoDir
@@ -135,7 +135,7 @@ spec UnusedBind {
   // A spec's private under a package block binds, whatever the file says:
   // the block is the level a deletion falls through to.
   reachable SpecNarrowingItsBlockBinds {
-    configured and hasTarget and not targetExported and outerDir == DirPackage
+    configured and hasTarget and not targetExported and outerDir == DirShared
     and stated == Private and not aPresent and not bPresent and bound
   }
   // Restating what the enclosing level already said decides nothing either.
@@ -146,7 +146,7 @@ spec UnusedBind {
 
   // --- the reach ------------------------------------------------------------
   reachable UsedViaFirstEnclosedOnly {
-    configured and hasTarget and targetExported and stated == Package
+    configured and hasTarget and targetExported and stated == Shared
     and outerDir == NoDir
     and aPresent and not aExported and not aShadowed and not bPresent and bound
   }
@@ -156,7 +156,7 @@ spec UnusedBind {
     and bound
   }
   reachable UnusedOnExportedLeaf {
-    configured and hasTarget and targetExported and stated == Package
+    configured and hasTarget and targetExported and stated == Shared
     and outerDir == NoDir and not aPresent and not bPresent and reported()
   }
   reachable UnusedBecauseAllShadowed {

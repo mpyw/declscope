@@ -4,5 +4,5 @@ package surplusopaque
 // The package holds a source the rule cannot read, so the rule switches off
 // rather than read the absence as evidence.
 //
-//declscope:package
+//declscope:shared
 func userMagic() int { return 7 }

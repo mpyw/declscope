@@ -4,5 +4,5 @@ package surplustests
 // the ordinary variant does not see every file, so the rule switches off there
 // instead of reporting.
 //
-//declscope:package
+//declscope:shared
 func userHelp() int { return 1 }

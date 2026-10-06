@@ -1,4 +1,4 @@
-//declscope:package
+//declscope:shared
 
 package fixsurplusstrictunusedstrict
 
@@ -7,7 +7,7 @@ func userHelper() int { return 3 }
 
 // userSpare takes it too, and nothing else calls it. Its narrowing gives
 // this file an edit whatever the rest gets, so the golden is compared.
-func userSpare() int { return 4 } // want `func userSpare takes package scope`
+func userSpare() int { return 4 } // want `func userSpare takes shared scope`
 
 var _ = userSpare
 
@@ -15,10 +15,10 @@ var _ = userSpare
 // Narrowing spare leaves it reading the same, so the fix is offered. The
 // directive's own deletion is withheld, since surplus reads it.
 //
-//declscope:package // want `unused //declscope:package on userEntry: it already has package scope`
+//declscope:shared // want `unused //declscope:shared on userEntry: it already has shared scope`
 type userEntry struct {
 	key   int
-	spare int // want `field userEntry.spare takes package scope`
+	spare int // want `field userEntry.spare takes shared scope`
 }
 
 var _ = userEntry{}.spare
@@ -27,8 +27,8 @@ var _ = userEntry{}.spare
 // reaches has. Narrowing spare would make it say that one field states its
 // own scope, so the fix is withheld.
 //
-//declscope:package // want `unused //declscope:package: every declaration it reaches already has package scope`
+//declscope:shared // want `unused //declscope:shared: every declaration it reaches already has shared scope`
 type _ struct {
 	Wide  int
-	spare int // want `field _.spare takes package scope`
+	spare int // want `field _.spare takes shared scope`
 }

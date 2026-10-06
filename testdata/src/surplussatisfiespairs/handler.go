@@ -2,8 +2,8 @@ package surplussatisfiespairs
 
 // A named function type has methods although its underlying type cannot.
 //
-//declscope:package
+//declscope:shared
 type handlerFunc func() string
 
-//declscope:package
+//declscope:shared
 func (f handlerFunc) serve() string { return f() }

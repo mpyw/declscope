@@ -14,7 +14,7 @@ import (
 
 // insertBook is insert.go's half of the collection, embedded there.
 //
-//declscope:package // collection embeds it, and collection lives in the core
+//declscope:shared // collection embeds it, and collection lives in the core
 type insertBook struct {
 	// sources holds each file a directive fix has read, by name. Every fix on
 	// an indented declaration reads the file around it, and one file can hold
@@ -26,7 +26,7 @@ type insertBook struct {
 
 // directiveInsertionFix inserts an explicit scope directive above the declaration.
 //
-//declscope:package // finding.go offers it on a boundary finding
+//declscope:shared // finding.go offers it on a boundary finding
 func (c *collection) directiveInsertionFix(pass *analysis.Pass, t *target, s scope.Scope) analysis.SuggestedFix {
 	return analysis.SuggestedFix{
 		Message:   fmt.Sprintf("add %s to %s", s.Directive(), t.name()),
@@ -47,7 +47,7 @@ func (c *collection) directiveInsertionFix(pass *analysis.Pass, t *target, s sco
 // line is what keeps the two readable as separate things in the source. A doc
 // comment that already ends in a directive or in a bare // needs no separator.
 //
-//declscope:package // finding.go narrows a type's members with it, and surplus.go a declaration
+//declscope:shared // finding.go narrows a type's members with it, and surplus.go a declaration
 func (c *collection) directiveInsertion(pass *analysis.Pass, t *target, s scope.Scope, doc *ast.CommentGroup) analysis.TextEdit {
 	var text string
 	if c.insertionAtLineStart(pass, t.anchor) {
