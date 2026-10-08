@@ -223,14 +223,18 @@ Keep that type and its fields private. Expose small shared functions that return
 
 Scope decides the reach, not the case of the first letter. An exported declaration marked `//declscope:private` goes with the private ones, since its author said no other file uses it.
 
-**Order only inside a sequence the file already has.** Keep the order of kinds, and keep each type with its constructors and methods. Within each reach, keep the existing order, so helpers that sit together stay together.
+**Order only inside a sequence the file already has.** Keep the order of kinds. Within each reach, keep the existing order, so declarations that sit together stay together.
+
+**A type and the constructors and methods right after it are one unit.** Move the unit as a whole, at the type's reach. Do not move the type out alone, and do not move another declaration into the unit. Inside it, the type comes first, then its constructors, then its methods, each ordered by reach.
 
 | Sequence | Order by reach |
 | --- | --- |
 | The fields of a struct, the methods of an interface | Yes |
 | A run of adjacent declarations of one kind, such as consecutive functions or one `const` block | Yes |
-| The constructors of a type, and separately its methods | Yes. The type still comes first, then its constructors, then its methods |
+| A run of type units | Yes, each unit as a whole |
+| The constructors of a unit, and separately its methods | Yes, inside the unit |
 | Declarations of different kinds | No. Do not move a declaration past one of another kind |
+| Sections marked by a comment, such as `// ===` or `// Param Types` | No. Order inside each section |
 
 **A private helper may stay right after its users.** When the declarations that use it sit next to each other, put it directly after the last of them, or after another helper already placed there. Reading from the top then follows the calls. A helper whose users are spread through the file goes in reach order.
 
@@ -258,6 +262,14 @@ Do not reorder where the order is observable:
 | 64-bit atomics | They rely on first-word alignment on 32-bit platforms |
 | Package-level `var` initializers with side effects and no dependencies between them | They run in declaration order |
 | Several `init` functions in one file | They run in source order |
+
+**Keep an order the reader relies on.** Some orders change nothing for the compiler but still say something. Keep these as you would an observable order:
+
+- Steps listed in the order they run.
+- Values that follow an outside order, such as a page's layout or a protocol's fields.
+- A comment that introduces the declarations after it. Move it with them, or leave the group in place.
+
+When you are unsure, leave the sequence and say so in your report.
 
 Where the repository's linters fix an order, such as `decorder` or `funcorder`, follow them first. `funcorder`'s exported-before-unexported methods is the same direction, so order by reach inside it.
 
