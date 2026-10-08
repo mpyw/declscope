@@ -42,13 +42,6 @@ type renameState struct {
 	outsideDone bool
 }
 
-func (c *collection) renames() *renameState {
-	if c.rename == nil {
-		c.rename = &renameState{reserved: make(map[string]bool)}
-	}
-	return c.rename
-}
-
 // renameFix rewrites every ident naming the target. All of them are inside the
 // package, so the edits stay within the pass.
 //
@@ -160,6 +153,13 @@ func (c *collection) safeToRename(pass *analysis.Pass, t *target, newName string
 // reserveForRename records that a fix emitted in this pass renames something to name.
 func (c *collection) reserveForRename(name string) {
 	c.renames().reserved[name] = true
+}
+
+func (c *collection) renames() *renameState {
+	if c.rename == nil {
+		c.rename = &renameState{reserved: make(map[string]bool)}
+	}
+	return c.rename
 }
 
 // renameBoundByImport reports whether any file scope of the package binds name,

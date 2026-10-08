@@ -32,7 +32,6 @@ type ignoreBook struct {
 // per target, it would be reported unused whenever any sibling did not need
 // it, and a wholly unused one would be reported once per sibling.
 type ignoreSite struct {
-	ig directive.Ignore
 	// decls names the declarations the directive reaches, in source order,
 	// for the report. It is empty for a file-level directive, and for one
 	// carried only by declarations declscope does not check (init, _, an
@@ -42,7 +41,6 @@ type ignoreSite struct {
 	decls []string
 	//declscope:shared // collect.go marks it when the directive is the file's
 	fileLevel bool
-	used      bool
 	// targets are the declarations the directive reaches, decls' objects. A
 	// file the build excluded may cross into one of them by name.
 	//
@@ -53,6 +51,9 @@ type ignoreSite struct {
 	//
 	//declscope:shared // collect.go records them as it parses the group
 	siblings []directive.Ignore
+
+	ig   directive.Ignore
+	used bool
 }
 
 // siteOfIgnore returns the accounting entry for ig, keyed by where it is written.
@@ -115,30 +116,6 @@ func (c *collection) ignoreWouldSilence(t *target, r rule.Rule) bool {
 		}
 	}
 	return false
-}
-
-// ignoreSilencesFile reports whether the file stands the problem's rule down
-// for everything it holds, and marks the ignore that did it used.
-//
-// The marking is what keeps an ignore written for a directive problem from
-// being reported as unused itself: it silences a report that is not attached to
-// any declaration, so the per-target accounting never sees it work.
-//
-// An ignore never silences the report written at its own position, which is
-// the report that it is unused. One that could would never be called unused,
-// and that report exists to catch it.
-func (c *collection) ignoreSilencesFile(fi *fileInfo, p directive.Problem) bool {
-	if fi == nil {
-		return false
-	}
-	hit := false
-	for _, ig := range fi.ignores {
-		if ig.Pos != p.Pos && ig.Covers(p.Rule) {
-			c.siteOfIgnore(ig).used = true
-			hit = true
-		}
-	}
-	return hit
 }
 
 // ignored reports whether any directive silences r, marking every directive
@@ -317,4 +294,28 @@ func (c *collection) problemsLeftByIgnores(pass *analysis.Pass) []directive.Prob
 	return slices.DeleteFunc(c.problems, func(p directive.Problem) bool {
 		return c.ignoreSilencesFile(c.fileAt(pass, p.Pos), p)
 	})
+}
+
+// ignoreSilencesFile reports whether the file stands the problem's rule down
+// for everything it holds, and marks the ignore that did it used.
+//
+// The marking is what keeps an ignore written for a directive problem from
+// being reported as unused itself: it silences a report that is not attached to
+// any declaration, so the per-target accounting never sees it work.
+//
+// An ignore never silences the report written at its own position, which is
+// the report that it is unused. One that could would never be called unused,
+// and that report exists to catch it.
+func (c *collection) ignoreSilencesFile(fi *fileInfo, p directive.Problem) bool {
+	if fi == nil {
+		return false
+	}
+	hit := false
+	for _, ig := range fi.ignores {
+		if ig.Pos != p.Pos && ig.Covers(p.Rule) {
+			c.siteOfIgnore(ig).used = true
+			hit = true
+		}
+	}
+	return hit
 }

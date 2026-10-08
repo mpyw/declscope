@@ -83,6 +83,25 @@ func (b *boolSetting) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
+// File is the on-disk configuration. Every field is optional, and no setting
+// has a zero value that means anything, so a field left empty is skipped by
+// Apply: omitting a key keeps the built-in default rather than silently
+// disabling a rule.
+type File struct {
+	Defaults defaultsSection `yaml:"defaults"`
+	Rules    rulesSection    `yaml:"rules"`
+
+	// Filter narrows and subtracts. only alone keeps nothing outside it, omit
+	// alone takes files out of everything, and both together narrow first.
+	Filter filterSection `yaml:"filter"`
+
+	// Baseline is a path relative to this config file.
+	Baseline string `yaml:"baseline"`
+
+	// path is where this config was read from, used to resolve Baseline.
+	path string
+}
+
 // Each section is a named type so that go-yaml's strict-decoding error can name
 // the section a misspelled key sits in, rather than printing the anonymous
 // struct's whole type literal.
@@ -126,25 +145,6 @@ type namingSection struct {
 	// irregular few (mouse: wheel, index: indices) — a namespace needing a
 	// long list is naming something its file is not about.
 	Vocabulary map[string][]string `yaml:"vocabulary"`
-}
-
-// File is the on-disk configuration. Every field is optional, and no setting
-// has a zero value that means anything, so a field left empty is skipped by
-// Apply: omitting a key keeps the built-in default rather than silently
-// disabling a rule.
-type File struct {
-	Defaults defaultsSection `yaml:"defaults"`
-	Rules    rulesSection    `yaml:"rules"`
-
-	// Filter narrows and subtracts. only alone keeps nothing outside it, omit
-	// alone takes files out of everything, and both together narrow first.
-	Filter filterSection `yaml:"filter"`
-
-	// Baseline is a path relative to this config file.
-	Baseline string `yaml:"baseline"`
-
-	// path is where this config was read from, used to resolve Baseline.
-	path string
 }
 
 // Resolve produces the options for analyzing a package directory: built-in
@@ -280,6 +280,33 @@ func DefaultBaseline(dir, root string) (string, bool) {
 	return "", false
 }
 
+// Load reads and parses a config file.
+//
+//declscope:ignore overexported // config_test parses files through it
+func Load(path string) (*File, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	// The path is kept absolute because the exclude patterns and the baseline
+	// are resolved against the directory holding it. A -config given relative
+	// to the working directory would otherwise name a directory that no
+	// reported file path is ever taken from.
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	f := File{path: path}
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	// Unknown keys are an error rather than a silent no-op: a typo in a rule
+	// name would otherwise leave the rule at its default with no sign of it.
+	dec.KnownFields(true)
+	// An empty document is a valid config that changes nothing.
+	if err := dec.Decode(&f); err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("%s: %w", path, namedKeys(err))
+	}
+	return &f, nil
+}
+
 func findUp(dir string, names []string) string {
 	for d := range dirsUp(dir) {
 		if path := firstFile(d, names); path != "" {
@@ -333,33 +360,6 @@ func sameDir(a, b string) bool {
 	sa, errA := os.Stat(a)
 	sb, errB := os.Stat(b)
 	return errA == nil && errB == nil && os.SameFile(sa, sb)
-}
-
-// Load reads and parses a config file.
-//
-//declscope:ignore overexported // config_test parses files through it
-func Load(path string) (*File, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	// The path is kept absolute because the exclude patterns and the baseline
-	// are resolved against the directory holding it. A -config given relative
-	// to the working directory would otherwise name a directory that no
-	// reported file path is ever taken from.
-	if abs, err := filepath.Abs(path); err == nil {
-		path = abs
-	}
-	f := File{path: path}
-	dec := yaml.NewDecoder(bytes.NewReader(data))
-	// Unknown keys are an error rather than a silent no-op: a typo in a rule
-	// name would otherwise leave the rule at its default with no sign of it.
-	dec.KnownFields(true)
-	// An empty document is a valid config that changes nothing.
-	if err := dec.Decode(&f); err != nil && !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("%s: %w", path, namedKeys(err))
-	}
-	return &f, nil
 }
 
 // The sections a key can sit in, by the type name go-yaml puts in its

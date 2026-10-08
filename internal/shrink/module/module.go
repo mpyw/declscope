@@ -31,9 +31,7 @@ import (
 // Module is every package of the main modules, loaded with its tests, and
 // what the build left out of them.
 type Module struct {
-	// mains are the main modules, in the order the go command lists them.
-	mains []mainModule
-	Fset  *token.FileSet
+	Fset *token.FileSet
 	// Pkgs is every variant go/packages returned: a package, the package
 	// with its in-package tests, and its external test package, each
 	// separately. Paths lists their import paths in order.
@@ -47,6 +45,8 @@ type Module struct {
 	// Their packages are never judged.
 	Importers []Importer
 
+	// mains are the main modules, in the order the go command lists them.
+	mains  []mainModule
 	byPath map[string][]*packages.Package
 	// importedBy maps each loaded package's import path to the paths of the
 	// loaded packages importing it, and reaching caches, per package, every
@@ -58,14 +58,6 @@ type Module struct {
 	// whose path extends an internal parent may import the package. One with
 	// an unrelated path cannot, wherever it sits.
 	nested []nestedModule
-}
-
-// nestedModule is one module below a main module's root.
-type nestedModule struct {
-	path, dir string
-	// why says what keeps this run from reading every use the module makes,
-	// or is empty once it has read them.
-	why string
 }
 
 // Importer is one nested module this run loaded to read what it uses.
@@ -82,6 +74,14 @@ type Importer struct {
 	// Imported are the main modules' packages it imports, as its own load
 	// type-checked them from their source.
 	Imported []*packages.Package
+}
+
+// nestedModule is one module below a main module's root.
+type nestedModule struct {
+	path, dir string
+	// why says what keeps this run from reading every use the module makes,
+	// or is empty once it has read them.
+	why string
 }
 
 // mainModule is one main module: its import path and root directory.
