@@ -50,7 +50,6 @@ type scopesiteBook struct {
 //     has, so it is provably inert; //declscope:private narrows it, so it is
 //     not.
 type scopeSite struct {
-	dir directive.Decl
 	// decls names the declarations in its reach, in source order, for the
 	// report. Empty for a file-level directive.
 	//
@@ -58,7 +57,9 @@ type scopeSite struct {
 	decls []string
 	//declscope:shared // collect.go marks it when the directive is the file's
 	fileLevel bool
-	bound     bool
+
+	dir   directive.Decl
+	bound bool
 
 	// shadowed records that something in its reach took a nearer directive's
 	// scope instead. A block's directive that every spec overrides reaches no

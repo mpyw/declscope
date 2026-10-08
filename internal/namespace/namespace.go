@@ -34,37 +34,6 @@ import (
 	"github.com/mpyw/declscope/internal/buildtag"
 )
 
-// of returns the default namespace for a file path.
-//
-// The path is reduced to its base name and then normalized:
-//
-//	user_repository.go      -> userRepository
-//	user_repository_test.go -> userRepository  (tests share their subject's namespace)
-//	parser_linux.go         -> parser          (GOOS/GOARCH suffixes are build
-//	parser_linux_amd64.go   -> parser           constraints, not namespaces)
-//	user_id.go              -> userID          (initialisms are spelled the way Go does)
-//	foo-bar.go, foo.bar.go  -> fooBar          (any separator, not only _)
-//	Foo.go, HTTPServer.go   -> foo, httpServer (a PascalCase stem is lowered)
-//	v2_client.go            -> v2Client
-//	2fa_auth.go             -> 2faAuth
-//
-// of always returns the normalized stem when there is one, so that a file's
-// identity never depends on whether the stem also makes a usable prefix:
-// 2fa_test.go must share the namespace of 2fa.go even though no identifier can
-// start with a digit. Whether the result can serve as a prefix is a separate
-// question, answered by CanPrefix. Only a file with no stem at all yields "".
-func of(path string) string {
-	base := strings.TrimSuffix(filepath.Base(path), ".go")
-
-	// _test must be stripped before the build suffixes: the canonical shape is
-	// name_GOOS_GOARCH_test.go.
-	base = trimSegment(base, func(s string) bool { return s == "test" })
-	base = trimSegment(base, buildtag.KnownArch)
-	base = trimSegment(base, buildtag.KnownOS)
-
-	return camel(base)
-}
-
 // CanPrefix reports whether ns can be written as a prefix: prepended to an
 // unexported identifier, it has to yield another unexported identifier.
 //
@@ -148,6 +117,37 @@ func Unexported(name string) (string, bool) {
 		// OAuth: the last capital opens the next word.
 		return lower(upper - 1), true
 	}
+}
+
+// of returns the default namespace for a file path.
+//
+// The path is reduced to its base name and then normalized:
+//
+//	user_repository.go      -> userRepository
+//	user_repository_test.go -> userRepository  (tests share their subject's namespace)
+//	parser_linux.go         -> parser          (GOOS/GOARCH suffixes are build
+//	parser_linux_amd64.go   -> parser           constraints, not namespaces)
+//	user_id.go              -> userID          (initialisms are spelled the way Go does)
+//	foo-bar.go, foo.bar.go  -> fooBar          (any separator, not only _)
+//	Foo.go, HTTPServer.go   -> foo, httpServer (a PascalCase stem is lowered)
+//	v2_client.go            -> v2Client
+//	2fa_auth.go             -> 2faAuth
+//
+// of always returns the normalized stem when there is one, so that a file's
+// identity never depends on whether the stem also makes a usable prefix:
+// 2fa_test.go must share the namespace of 2fa.go even though no identifier can
+// start with a digit. Whether the result can serve as a prefix is a separate
+// question, answered by CanPrefix. Only a file with no stem at all yields "".
+func of(path string) string {
+	base := strings.TrimSuffix(filepath.Base(path), ".go")
+
+	// _test must be stripped before the build suffixes: the canonical shape is
+	// name_GOOS_GOARCH_test.go.
+	base = trimSegment(base, func(s string) bool { return s == "test" })
+	base = trimSegment(base, buildtag.KnownArch)
+	base = trimSegment(base, buildtag.KnownOS)
+
+	return camel(base)
 }
 
 // trimSegment drops the final underscore-separated segment when match accepts
@@ -315,34 +315,6 @@ func containsForm(name, form string) bool {
 	return false
 }
 
-// inflections returns the spellings of ns that English writes with a changed
-// stem, which the free right edge of Contains cannot reach:
-//
-//	store → storing    (the final e drops before -ing)
-//	apply → applies, applied    (the final y turns to i)
-//
-// Each is a complete form, never a bare stem: matching stor with a free right
-// edge would accept story and storm, and matching appli would accept appliance.
-// In a compound namespace only the final word inflects (azureAppconfigParam),
-// and the final word is where the tail letters sit, so inspecting the last two
-// runes is enough. A final e or y after a vowel does not change spelling
-// (freeing, deploys) and generates nothing.
-func inflections(ns string) []string {
-	last, lastSize := utf8.DecodeLastRuneInString(ns)
-	prev, _ := utf8.DecodeLastRuneInString(ns[:len(ns)-lastSize])
-	if prev == utf8.RuneError || !unicode.IsLetter(prev) || isVowel(prev) {
-		return nil
-	}
-	stem := ns[:len(ns)-lastSize]
-	switch unicode.ToLower(last) {
-	case 'e':
-		return []string{stem + "ing"}
-	case 'y':
-		return []string{stem + "ies", stem + "ied"}
-	}
-	return nil
-}
-
 // LooksInflected reports whether ns looks like a form that inflections
 // generates from another namespace: tracing from trace, applies from apply.
 // The naming rule uses it only to point at rules.naming.vocabulary in its
@@ -373,6 +345,34 @@ func LooksInflected(ns string) bool {
 	stem := word[:len(word)-len("ing")]
 	generates := func(base string) bool { return slices.Contains(inflections(base), word) }
 	return (generates(stem+"e") || generates(stem+"y")) && strings.ContainsFunc(stem, isVowel)
+}
+
+// inflections returns the spellings of ns that English writes with a changed
+// stem, which the free right edge of Contains cannot reach:
+//
+//	store → storing    (the final e drops before -ing)
+//	apply → applies, applied    (the final y turns to i)
+//
+// Each is a complete form, never a bare stem: matching stor with a free right
+// edge would accept story and storm, and matching appli would accept appliance.
+// In a compound namespace only the final word inflects (azureAppconfigParam),
+// and the final word is where the tail letters sit, so inspecting the last two
+// runes is enough. A final e or y after a vowel does not change spelling
+// (freeing, deploys) and generates nothing.
+func inflections(ns string) []string {
+	last, lastSize := utf8.DecodeLastRuneInString(ns)
+	prev, _ := utf8.DecodeLastRuneInString(ns[:len(ns)-lastSize])
+	if prev == utf8.RuneError || !unicode.IsLetter(prev) || isVowel(prev) {
+		return nil
+	}
+	stem := ns[:len(ns)-lastSize]
+	switch unicode.ToLower(last) {
+	case 'e':
+		return []string{stem + "ing"}
+	case 'y':
+		return []string{stem + "ies", stem + "ied"}
+	}
+	return nil
 }
 
 // isVowel reports an English vowel letter, case-folded. y is deliberately not

@@ -289,6 +289,10 @@ type collection struct {
 	// declare, which is how many boundaries there are to enforce.
 	namespaces int
 
+	// aliasNames maps a type of the package to the names of its aliases in
+	// the package scope. It is filled on first use.
+	aliasNames map[types.Object][]string
+
 	// unseenScan is what the package directory holds that this pass does not
 	// see: in-package _test.go files under the non-test variant, and files the
 	// build configuration excluded. The rename fix and the unused-ignore
@@ -296,9 +300,6 @@ type collection struct {
 	//
 	//declscope:private
 	unseenScan *unseenFiles
-	// aliasNames maps a type of the package to the names of its aliases in
-	// the package scope. It is filled on first use.
-	aliasNames map[types.Object][]string
 
 	// linknamedScan is every local name a //go:linkname or //export directive
 	// in the package binds. The surplus evidence and the rename guard both

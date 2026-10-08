@@ -142,6 +142,51 @@ func (c *collection) collectTargets(pass *analysis.Pass, opts Options) {
 	})
 }
 
+// collectRefs records every ident naming a tracked object, along with the file
+// it appears in.
+//
+// An ident can play both roles at once: an embedded field's ident defines the
+// field and uses the type, so Defs and Uses are consulted independently rather
+// than one shadowing the other. Returning after a hit in Defs would drop the
+// type use, and with it both a rename edit and a boundary diagnostic.
+//
+//declscope:shared // the pipeline's third stage, driven from analyzer.go
+func (c *collection) collectRefs(pass *analysis.Pass) {
+	in := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
+	// The inspector holds pass.Files in order, and c.files is a subsequence of
+	// them, so the files are visited in the order c.files lists them.
+	for fc := range in.Root().Children() {
+		fi := c.byFile[fc.Node().(*ast.File)]
+		if fi == nil {
+			continue
+		}
+		for cur := range fc.Preorder((*ast.CompositeLit)(nil), (*ast.Ident)(nil)) {
+			if lit, ok := cur.Node().(*ast.CompositeLit); ok {
+				c.collectUnkeyedFields(pass, fi, lit)
+				continue
+			}
+			ident := cur.Node().(*ast.Ident)
+			// Only a target's idents and refs are ever read, and byObj is
+			// complete, so nothing else is recorded. Most idents in a package
+			// name locals, parameters and imported objects.
+			if obj := pass.TypesInfo.Defs[ident]; c.byObj[obj] != nil {
+				c.idents[obj] = append(c.idents[obj], ident)
+			}
+			obj := origin(pass.TypesInfo.Uses[ident])
+			if obj == nil {
+				continue
+			}
+			if c.byObj[obj] != nil {
+				c.idents[obj] = append(c.idents[obj], ident)
+				c.refs[obj] = append(c.refs[obj], ref{node: ident, file: fi})
+			}
+			if tn := embeddedTypeName(obj); c.byObj[tn] != nil {
+				c.idents[tn] = append(c.idents[tn], ident)
+			}
+		}
+	}
+}
+
 func (c *collection) addFuncToCollection(pass *analysis.Pass, opts Options, fi *fileInfo, d *ast.FuncDecl) {
 	// Parsed before anything is skipped, so that a directive on a function
 	// declscope does not check, the blank one or init, is reported unused
@@ -425,51 +470,6 @@ func (c *collection) collectUnkeyedFields(pass *analysis.Pass, fi *fileInfo, lit
 	for i, elt := range lit.Elts {
 		if f := origin(st.Field(i)); c.byObj[f] != nil {
 			c.refs[f] = append(c.refs[f], ref{node: elt, file: fi})
-		}
-	}
-}
-
-// collectRefs records every ident naming a tracked object, along with the file
-// it appears in.
-//
-// An ident can play both roles at once: an embedded field's ident defines the
-// field and uses the type, so Defs and Uses are consulted independently rather
-// than one shadowing the other. Returning after a hit in Defs would drop the
-// type use, and with it both a rename edit and a boundary diagnostic.
-//
-//declscope:shared // the pipeline's third stage, driven from analyzer.go
-func (c *collection) collectRefs(pass *analysis.Pass) {
-	in := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
-	// The inspector holds pass.Files in order, and c.files is a subsequence of
-	// them, so the files are visited in the order c.files lists them.
-	for fc := range in.Root().Children() {
-		fi := c.byFile[fc.Node().(*ast.File)]
-		if fi == nil {
-			continue
-		}
-		for cur := range fc.Preorder((*ast.CompositeLit)(nil), (*ast.Ident)(nil)) {
-			if lit, ok := cur.Node().(*ast.CompositeLit); ok {
-				c.collectUnkeyedFields(pass, fi, lit)
-				continue
-			}
-			ident := cur.Node().(*ast.Ident)
-			// Only a target's idents and refs are ever read, and byObj is
-			// complete, so nothing else is recorded. Most idents in a package
-			// name locals, parameters and imported objects.
-			if obj := pass.TypesInfo.Defs[ident]; c.byObj[obj] != nil {
-				c.idents[obj] = append(c.idents[obj], ident)
-			}
-			obj := origin(pass.TypesInfo.Uses[ident])
-			if obj == nil {
-				continue
-			}
-			if c.byObj[obj] != nil {
-				c.idents[obj] = append(c.idents[obj], ident)
-				c.refs[obj] = append(c.refs[obj], ref{node: ident, file: fi})
-			}
-			if tn := embeddedTypeName(obj); c.byObj[tn] != nil {
-				c.idents[tn] = append(c.idents[tn], ident)
-			}
 		}
 	}
 }
