@@ -68,21 +68,6 @@ var surplusModes = rule.SurplusModeSet{rule.SurplusModeOff, rule.SurplusModeLoos
 // The values rules.unused accepts, from reporting least to most.
 var unusedModes = rule.UnusedModeSet{rule.UnusedModeOff, rule.UnusedModeLoose, rule.UnusedModeStrict}
 
-// boolSetting is a true/false key, with its own error naming the two values it
-// takes rather than the parser's "cannot unmarshal".
-type boolSetting struct {
-	set   bool
-	value bool
-}
-
-func (b *boolSetting) UnmarshalYAML(node *yaml.Node) error {
-	if err := node.Decode(&b.value); err != nil {
-		return fmt.Errorf("want true or false")
-	}
-	b.set = true
-	return nil
-}
-
 // File is the on-disk configuration. Every field is optional, and no setting
 // has a zero value that means anything, so a field left empty is skipped by
 // Apply: omitting a key keeps the built-in default rather than silently
@@ -100,6 +85,21 @@ type File struct {
 
 	// path is where this config was read from, used to resolve Baseline.
 	path string
+}
+
+// boolSetting is a true/false key, with its own error naming the two values it
+// takes rather than the parser's "cannot unmarshal".
+type boolSetting struct {
+	set   bool
+	value bool
+}
+
+func (b *boolSetting) UnmarshalYAML(node *yaml.Node) error {
+	if err := node.Decode(&b.value); err != nil {
+		return fmt.Errorf("want true or false")
+	}
+	b.set = true
+	return nil
 }
 
 // Each section is a named type so that go-yaml's strict-decoding error can name
