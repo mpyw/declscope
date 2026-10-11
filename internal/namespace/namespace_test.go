@@ -292,3 +292,90 @@ func TestUnexported(t *testing.T) {
 		}
 	}
 }
+
+func TestResolve(t *testing.T) {
+	tests := []struct {
+		name  string
+		files []Declared
+		want  []Resolved
+	}{
+		{
+			"derived",
+			[]Declared{{Path: "user.go"}, {Path: "user_repository.go"}},
+			[]Resolved{{Name: "user"}, {Name: "userRepository"}},
+		},
+		{
+			"named directive",
+			[]Declared{{Path: "user.go", Named: true, Name: "custom"}},
+			[]Resolved{{Name: "custom"}},
+		},
+		{
+			"core directive",
+			[]Declared{{Path: "user.go", Core: true}},
+			[]Resolved{{Core: true}},
+		},
+		{
+			"test file joins core subject",
+			[]Declared{{Path: "user.go", Core: true}, {Path: "user_test.go"}},
+			[]Resolved{{Core: true}, {Core: true}},
+		},
+		{
+			"test file joins non-core subject",
+			[]Declared{{Path: "user.go"}, {Path: "user_test.go"}},
+			[]Resolved{{Name: "user"}, {Name: "user"}},
+		},
+		{
+			"mixed core and named",
+			[]Declared{
+				{Path: "core.go", Core: true},
+				{Path: "core_test.go"},
+				{Path: "helper.go", Named: true, Name: "util"},
+			},
+			[]Resolved{
+				{Core: true},
+				{Core: true},
+				{Name: "util"},
+			},
+		},
+		{
+			"empty stem",
+			[]Declared{{Path: ".go"}},
+			[]Resolved{{}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Resolve(tt.files)
+			if len(got) != len(tt.want) {
+				t.Fatalf("Resolve returned %d results, want %d", len(got), len(tt.want))
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("[%d] = %+v, want %+v", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestSpell(t *testing.T) {
+	tests := []struct {
+		name string
+		r    Resolved
+		path string
+		want string
+	}{
+		{"core", Resolved{Core: true}, "user.go", "(core)"},
+		{"named", Resolved{Name: "custom"}, "user.go", "custom"},
+		{"derived", Resolved{Name: "user"}, "user.go", "user"},
+		{"no stem", Resolved{}, ".go", "(file .go)"},
+		{"empty name with path", Resolved{}, "helper.go", "(file helper.go)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Spell(tt.r, tt.path); got != tt.want {
+				t.Errorf("Spell(%+v, %q) = %q, want %q", tt.r, tt.path, got, tt.want)
+			}
+		})
+	}
+}
