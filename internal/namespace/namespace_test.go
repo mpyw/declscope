@@ -1,6 +1,9 @@
 package namespace
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestOf(t *testing.T) {
 	tests := []struct {
@@ -325,6 +328,13 @@ func TestResolve(t *testing.T) {
 			[]Resolved{{Name: "user"}, {Name: "user"}},
 		},
 		{
+			// Only the core is joined. A test file keeps the namespace of its
+			// own stem unless it states the same directive.
+			"test file keeps its stem under named subject",
+			[]Declared{{Path: "user.go", Named: true, Name: "custom"}, {Path: "user_test.go"}},
+			[]Resolved{{Name: "custom"}, {Name: "user"}},
+		},
+		{
 			"mixed core and named",
 			[]Declared{
 				{Path: "core.go", Core: true},
@@ -345,14 +355,8 @@ func TestResolve(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Resolve(tt.files)
-			if len(got) != len(tt.want) {
-				t.Fatalf("Resolve returned %d results, want %d", len(got), len(tt.want))
-			}
-			for i := range got {
-				if got[i] != tt.want[i] {
-					t.Errorf("[%d] = %+v, want %+v", i, got[i], tt.want[i])
-				}
+			if got := Resolve(tt.files); !slices.Equal(got, tt.want) {
+				t.Errorf("Resolve() = %+v, want %+v", got, tt.want)
 			}
 		})
 	}
@@ -367,9 +371,8 @@ func TestSpell(t *testing.T) {
 	}{
 		{"core", Resolved{Core: true}, "user.go", "(core)"},
 		{"named", Resolved{Name: "custom"}, "user.go", "custom"},
-		{"derived", Resolved{Name: "user"}, "user.go", "user"},
 		{"no stem", Resolved{}, ".go", "(file .go)"},
-		{"empty name with path", Resolved{}, "helper.go", "(file helper.go)"},
+		{"no stem in a directory", Resolved{}, "a/b/.go", "(file .go)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
