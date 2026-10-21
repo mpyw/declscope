@@ -8,4 +8,5 @@ var (
 	_ = orderRun
 	_ = userMake
 	_ = UserRec{7}
+	_ = append(userSlots(), []userSlotPtr{{1}}...)
 )

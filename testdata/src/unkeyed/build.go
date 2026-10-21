@@ -21,7 +21,28 @@ func buildElided() int {
 	return len(slots) + len(cells) + len(keys) + len(values) + len(deep) + len(named)
 }
 
+// The pointer may be a defined type, or a type parameter whose constraint
+// allows only pointers to one struct.
+func buildElidedNamed() int {
+	slots := []SlotPtr{{1}}
+	return len(slots)
+}
+
+func buildElidedParam[P interface{ *Snap }]() int {
+	snaps := []P{{1}}
+	return len(snaps)
+}
+
+// A constraint written with a tilde, in an interface the constraint embeds.
+func buildElidedTilde[P interface{ SnapPtrs }]() int {
+	snaps := []P{{1}}
+	return len(snaps)
+}
+
 var _ = buildMake
 var _ = buildPair
 var _ = buildExported
 var _ = buildElided
+var _ = buildElidedNamed
+var _ = buildElidedParam[*Snap]
+var _ = buildElidedTilde[*Tilde]

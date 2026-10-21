@@ -37,3 +37,17 @@ type UserRec struct {
 	//declscope:shared
 	n int
 }
+
+// userSlotPtr is a defined pointer type. A literal leaving it out in
+// order.go writes the field of userSlot, which keeps its directive.
+//
+//declscope:shared
+type userSlotPtr *userSlot
+
+type userSlot struct {
+	//declscope:shared
+	count int
+}
+
+//declscope:shared
+func userSlots() []userSlotPtr { return nil }

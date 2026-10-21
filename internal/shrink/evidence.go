@@ -13,6 +13,7 @@ import (
 	"golang.org/x/tools/refactor/satisfy"
 
 	"github.com/mpyw/declscope/internal/buildtag"
+	"github.com/mpyw/declscope/internal/pointer"
 	"github.com/mpyw/declscope/internal/shrink/module"
 	"github.com/mpyw/declscope/internal/shrink/reach"
 )
@@ -346,13 +347,14 @@ func (ev *evidence) conversion(m *module.Module, p *packages.Package, call *ast.
 }
 
 // evidenceStructOf returns the declared struct type behind t, through a
-// pointer and an instantiation, and the type name declaring it.
+// pointer in any of its forms (pointer.Elem) and an instantiation, and the
+// type name declaring it.
 func evidenceStructOf(t types.Type) (*types.Struct, *types.TypeName) {
 	if t == nil {
 		return nil, nil
 	}
-	if ptr, ok := types.Unalias(t).(*types.Pointer); ok {
-		t = ptr.Elem()
+	if elem, ok := pointer.Elem(t); ok {
+		t = elem
 	}
 	switch t := types.Unalias(t).(type) {
 	case *types.Named:
