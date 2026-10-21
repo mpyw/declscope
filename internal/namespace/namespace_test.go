@@ -78,6 +78,16 @@ func TestOf(t *testing.T) {
 		{"HTTPServer.go", "httpServer"},
 		{"ID.go", "id"},
 		{"User_Repository.go", "userRepository"},
+		// The first segment is lowered as Unexported lowers a name, so a
+		// plural initialism or one before a digit stays one word.
+		{"IDs.go", "ids"},
+		{"URLs.go", "urls"},
+		{"IPv4.go", "ipv4"},
+		{"UUIDs_test.go", "uuids"},
+		{"URLPath.go", "urlPath"},
+		{"HTTP2Client.go", "http2Client"},
+		{"OAuth.go", "oAuth"},
+		{"IDs_cache.go", "idsCache"},
 
 		// Only a file with no stem at all yields nothing.
 		{".go", ""},
@@ -303,6 +313,21 @@ func TestUnexported(t *testing.T) {
 	for _, in := range []string{"MAX_RETRIES", "Foo_bar"} {
 		if got, ok := Unexported(in); ok {
 			t.Errorf("Unexported(%q) = %q, want no spelling", in, got)
+		}
+	}
+}
+
+// TestLowerLeadingMatchesUnexported pins that a file named after an exported
+// declaration takes the namespace its unexported name would have, since both
+// are spelled by lowerLeading.
+func TestLowerLeadingMatchesUnexported(t *testing.T) {
+	for _, name := range []string{
+		"Load", "HTTPClient", "ID", "IDs", "URLs", "URLPath", "HTTPServer",
+		"HTTPSProxy", "OAuth", "HTTP2Client", "IPv4", "MAX", "X", "load", "Äpfel",
+	} {
+		want, _ := Unexported(name)
+		if got := of(name + ".go"); got != want {
+			t.Errorf("of(%q) = %q, Unexported(%q) = %q", name+".go", got, name, want)
 		}
 	}
 }
