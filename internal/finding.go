@@ -208,7 +208,9 @@ func (c *collection) qualifyFinding(pass *analysis.Pass, opts Options, t *target
 	}
 	f := finding{
 		rule: rule.Qualify,
-		decl: name,
+		// The key names a method with its receiver, as the other rules do:
+		// two types' help methods in one namespace are two findings.
+		decl: t.name(),
 		pos:  t.ident.Pos(),
 		// The rename is one answer, not the requirement. Naming only the
 		// prefixed form would restate the prefix rule that containment

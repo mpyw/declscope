@@ -40,6 +40,7 @@ func TestSurveyAgreesWithTheAnalyzer(t *testing.T) {
 		"baselined",
 		"ignorescope",
 		"qualifyrule",
+		"qualifybaselined",
 		"boundaryoff",
 		"corens",
 		// Directive problems are settled in a second pass, after every other
