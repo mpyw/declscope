@@ -78,6 +78,13 @@ func TestIgnoreUnseen(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ignoreunseen")
 }
 
+// TestIgnoreUnseenTest checks the same where the excluded file is the
+// package's only test file. No variant sees it, so the non-test variant reads
+// it for its names and still reports an ignore it gives no job.
+func TestIgnoreUnseenTest(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ignoreunseentest")
+}
+
 // TestIgnoreModuleWide checks that an ignore naming a rule only declscope
 // shrink reports is never judged unused here, and that a bare ignore does not
 // reach such a rule, so the analyzer still judges it.

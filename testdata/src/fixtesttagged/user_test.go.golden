@@ -1,0 +1,3 @@
+package fixtesttagged
+
+var _ = userFree

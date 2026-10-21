@@ -369,18 +369,20 @@ func isExported(name string) bool { return ast.IsExported(name) }
 // may declare or name the same identifiers, and this pass can neither see that
 // nor rewrite it.
 //
-// The two are not equally hopeless. The test variant sees every test file and
-// decides on its own, and its fix rewrites the non-test files too, so under
-// -test (the default) deferring wholesale costs nothing. No variant ever sees
-// a build-excluded file, so deferring wholesale there would mean no rename is
-// ever offered in a package that carries a _GOOS suffix. Those files are read
-// instead for the identifiers they write, and only a rename that disturbs one
-// of them is withheld.
+// The two are not equally hopeless. The test variant sees every test file the
+// build includes and decides on its own, and its fix rewrites the non-test
+// files too, so under -test (the default) deferring wholesale costs nothing.
+// No variant ever sees a build-excluded file, test files among them, so
+// deferring wholesale there would mean no rename is ever offered in a package
+// that carries a _GOOS suffix. Those files are read instead for the
+// identifiers they write, and only a rename that disturbs one of them is
+// withheld.
 //
 //declscope:private // only unseen hands it out, and no caller spells the type
 type unseenFiles struct {
-	// all withholds every rename: an in-package test file this pass does not
-	// see, or something in the directory that could not be read or parsed.
+	// all withholds every rename: an in-package test file the test variant
+	// sees and this pass does not, or something in the directory that could
+	// not be read or parsed.
 	//
 	//declscope:shared // rename.go, ignore.go, surplus.go and scopesite.go defer wholesale on it
 	all bool
@@ -400,15 +402,16 @@ type unseenFiles struct {
 // (rename.go), the unused-ignore report (ignore.go) and the surplus rule
 // (surplus.go) all defer to the pass that sees every file.
 //
-// A _test.go file is parsed for its package clause alone: an external test
-// package (package x_test) declares into its own scope and can only name the
-// package's exported identifiers, which are never renamed. Every other file
-// whose package clause matches is parsed in full, since its identifiers are
-// the point. Files are read from disk rather than through pass.ReadFile, whose
-// access policy admits only the files of the pass itself; the config lookup
-// already reads the filesystem, so this adds no new assumption about the
-// driver. Anything that cannot be read or parsed withholds everything, which
-// withholds rather than risks.
+// Every file is parsed for its package clause first: an external test package
+// (package x_test) declares into its own scope and can only name the package's
+// exported identifiers, which are never renamed. An in-package test file the
+// test variant sees stops the scan there. Every other file whose package
+// clause matches is parsed in full, since its identifiers are the point.
+// Files are read from disk rather than through pass.ReadFile, whose access
+// policy admits only the files of the pass itself; the config lookup already
+// reads the filesystem, so this adds no new assumption about the driver.
+// Anything that cannot be read or parsed withholds everything, which withholds
+// rather than risks.
 func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 	if c.unseenScan != nil {
 		return c.unseenScan
@@ -416,7 +419,7 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 	u := &unseenFiles{names: make(map[string]bool)}
 	c.unseenScan = u
 
-	dir, inPass := "", make(map[string]bool)
+	dir, inPass, holdsTests := "", make(map[string]bool), false
 	for _, f := range pass.Files {
 		// The file on disk, even under a //line directive above the package
 		// clause. The adjusted name would leave the file out of inPass.
@@ -425,9 +428,16 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 			continue
 		}
 		inPass[name] = true
+		holdsTests = holdsTests || strings.HasSuffix(name, "_test.go")
 		if dir == "" {
 			dir = filepath.Dir(name)
 		}
+	}
+	// The build configuration left these out, test files among them, so no
+	// variant of the package sees them.
+	ignored := make(map[string]bool, len(pass.IgnoredFiles))
+	for _, name := range pass.IgnoredFiles {
+		ignored[name] = true
 	}
 	if dir == "" {
 		return u
@@ -462,7 +472,13 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 		if f.Name.Name != pass.Pkg.Name() {
 			continue
 		}
-		if strings.HasSuffix(e.Name(), "_test.go") {
+		// An in-package test file is left to the test variant, which sees
+		// it, unless the build excluded it. Then no variant sees it, and it
+		// is read for its names like any other excluded file. A pass holding
+		// a test file is the test variant, so a test file it lacks is
+		// excluded. The non-test variant knows that only from IgnoredFiles,
+		// and that is the case where there may be no test variant at all.
+		if strings.HasSuffix(e.Name(), "_test.go") && !holdsTests && !ignored[p] {
 			u.all = true
 			return u
 		}
