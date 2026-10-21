@@ -24,9 +24,11 @@ spec RenameReach {
   //   Uncollected   — in pass.Files but not collected: generated, or named by
   //                   an exclude. Type-checked, never edited
   //   UnseenTest    — an in-package _test.go the non-test variant lacks
+  //                   and the test variant sees
   //   BuildExcluded — a _GOOS suffix or a //go:build line left it out of this
   //                   configuration, and out of every configuration any
-  //                   variant of this package runs under
+  //                   variant of this package runs under. A _test.go file
+  //                   can be one too
   enum Kind { Rewritten, Uncollected, UnseenTest, BuildExcluded }
 
   state {

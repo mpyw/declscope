@@ -2,6 +2,8 @@ package declscope_test
 
 import (
 	"fmt"
+	"go/ast"
+	"slices"
 	"strings"
 	"testing"
 
@@ -119,6 +121,44 @@ func TestSuggestedFixExcluded(t *testing.T) {
 // the rename that file would notice.
 func TestSuggestedFixTestExcluded(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixtestexcluded")
+}
+
+// TestSuggestedFixTestTagged checks the same with an in-package test file the
+// build excludes. The test variant lacks it too, so the test variant reads it
+// for its names rather than deferring to a variant that would also lack it.
+func TestSuggestedFixTestTagged(t *testing.T) {
+	results := analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixtesttagged")
+	if got := fixOffers(results, "func free "); !slices.Equal(got, []bool{true}) {
+		t.Errorf("variants offering the rename of free, by whether they hold tests: %v, want [true]", got)
+	}
+}
+
+// TestSuggestedFixTestTaggedOnly checks a package whose only test file the
+// build excludes, so there is no test variant. The non-test variant reads the
+// file for its names and still offers the rename that file does not disturb.
+func TestSuggestedFixTestTaggedOnly(t *testing.T) {
+	results := analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixtesttaggedonly")
+	if got := fixOffers(results, "func free "); !slices.Equal(got, []bool{false}) {
+		t.Errorf("variants offering the rename of free, by whether they hold tests: %v, want [false]", got)
+	}
+}
+
+// fixOffers lists, for each pass that offers a fix on a diagnostic starting
+// with prefix, whether that pass holds a _test.go file. A golden file pins
+// what a fix writes, but not that some variant offers it at all.
+func fixOffers(results []*analysistest.Result, prefix string) []bool {
+	var offers []bool
+	for _, r := range results {
+		for _, d := range r.Diagnostics {
+			if !strings.HasPrefix(d.Message, prefix) || len(d.SuggestedFixes) == 0 {
+				continue
+			}
+			offers = append(offers, slices.ContainsFunc(r.Pass.Files, func(f *ast.File) bool {
+				return strings.HasSuffix(r.Pass.Fset.File(f.Pos()).Name(), "_test.go")
+			}))
+		}
+	}
+	return offers
 }
 
 // TestSuggestedFixMembers checks that two directive insertions in one pass
