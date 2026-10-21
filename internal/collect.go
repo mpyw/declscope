@@ -244,16 +244,22 @@ func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, f
 	// A parenthesized block can carry a trailing directive on its own lines,
 	// after "(" or ")"; an unparenthesized declaration's lines are its single
 	// spec's, and are read below.
+	//
+	// Each binding is parsed in one call, so that its ignores are siblings and
+	// answer one another, as a func's doc and trailing comments do: the doc and
+	// the lines of a block, or the doc and the lines of an unparenthesized
+	// declaration's single spec.
 	grouped := d.Lparen.IsValid()
-	outer := c.parseCollectedDecl(d.Doc)
-	if grouped && len(d.Specs) > 0 {
-		outer = outer.Merge(c.parseCollectedDecl(fi.binder.Block(d)...))
+	var outer directive.Decl
+	lead := []*ast.CommentGroup{d.Doc}
+	if grouped {
+		outer, lead = c.parseCollectedDecl(slices.Concat(lead, fi.binder.Block(d))...), nil
 	}
 
 	for _, spec := range d.Specs {
 		switch spec := spec.(type) {
 		case *ast.TypeSpec:
-			own := c.parseCollectedDecl(fi.binder.Spec(spec)...)
+			own := c.parseCollectedDecl(slices.Concat(lead, fi.binder.Spec(spec))...)
 			dir := outer.Merge(own)
 			c.shadowedAtScopeSite(outer, dir)
 			anchor, doc, fromBlock := d.Pos(), d.Doc, false
@@ -274,7 +280,7 @@ func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, f
 			c.addMembersToCollection(pass, opts, fi, spec, pass.TypesInfo.Defs[spec.Name], dir)
 
 		case *ast.ValueSpec:
-			own := c.parseCollectedDecl(fi.binder.Spec(spec)...)
+			own := c.parseCollectedDecl(slices.Concat(lead, fi.binder.Spec(spec))...)
 			dir := outer.Merge(own)
 			c.shadowedAtScopeSite(outer, dir)
 			anchor, doc, fromBlock := d.Pos(), d.Doc, false

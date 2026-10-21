@@ -7,3 +7,5 @@ var _ = i.Ignored() + i.Mixed() + i.F() + i.Answered() + i.FileAnswered() + i.Us
 var _ = i.Hand()
 
 var _ = i.Mode{}.Plain
+
+var _ = i.Typed(i.Valued + i.Blocked)

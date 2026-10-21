@@ -62,6 +62,22 @@ func Answered() int { return Used() }
 //declscope:ignore overexported
 func Twice() {} //declscope:ignore overexported
 
+// The doc and the trailing comment of an ungrouped type or var are one
+// binding too, so the ignore naming unused answers the doc's report.
+//
+//declscope:ignore overexported
+type Typed int //declscope:ignore unused
+
+//declscope:ignore overexported
+var Valued = 1 //declscope:ignore unused
+
+// A block's doc and the comment after its "(" are one binding.
+//
+//declscope:ignore overexported
+var ( //declscope:ignore unused
+	Blocked = 1
+)
+
 // A silenced declaration claims no name, so FOO's fix is offered.
 //
 //declscope:ignore overexported

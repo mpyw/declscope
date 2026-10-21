@@ -42,4 +42,21 @@ func DeclNamed() int { return 6 }
 //declscope:ignore
 func DeclBare() int { return 7 }
 
-var _ = declQuiet() + declLoud() + declBare() + declSelf() + declBoth() + DeclNamed() + DeclBare()
+// The doc comment and the trailing comment of an ungrouped type or var are one
+// binding, as a func's are, so the ignore trailing it answers the doc's
+// directive.
+//
+//declscope:private
+type declTrailingType int //declscope:ignore unused
+
+//declscope:private
+var declTrailingVar declTrailingType = 8 //declscope:ignore unused
+
+// So are a block's doc comment and the comment after its "(".
+//
+//declscope:private
+var ( //declscope:ignore unused
+	declBlockVar = 9
+)
+
+var _ = int(declTrailingVar) + declBlockVar + declQuiet() + declLoud() + declBare() + declSelf() + declBoth() + DeclNamed() + DeclBare()

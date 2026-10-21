@@ -70,10 +70,16 @@ func candidatesOf(p *packages.Package) (_ []*candidate, siblings map[token.Pos][
 				}
 				candidateFunc(p, d, slices.Concat(parse(b.Func(d)...), fileIgnores), add)
 			case *ast.GenDecl:
-				block := slices.Concat(parse(d.Doc), parse(b.Block(d)...))
+				// The doc is a block's binding with parentheses and its single
+				// spec's without, as in the analyzer.
+				var block []directive.Ignore
+				lead := []*ast.CommentGroup{d.Doc}
+				if d.Lparen.IsValid() {
+					block, lead = parse(slices.Concat(lead, b.Block(d))...), nil
+				}
 				first := len(out)
 				for _, spec := range d.Specs {
-					candidateSpec(p, d, spec, slices.Concat(parse(b.Spec(spec)...), block), fileIgnores, parse, add)
+					candidateSpec(p, d, spec, slices.Concat(parse(slices.Concat(lead, b.Spec(spec))...), block), fileIgnores, parse, add)
 				}
 				if set := candidateConstSet(p, d); set != nil {
 					for _, c := range out[first:] {

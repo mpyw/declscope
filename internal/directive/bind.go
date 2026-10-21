@@ -41,8 +41,9 @@ func (b *Binder) Func(d *ast.FuncDecl) []*ast.CommentGroup {
 
 // Block returns the groups trailing the lines of a parenthesized block's `(`
 // and `)`, which reach every spec in it. The block's doc comment is not among
-// them: the caller parses it on its own. Without parentheses the lines are
-// the one spec's, and Spec returns them.
+// them, but the caller parses it with them, as one binding. Without
+// parentheses the lines are the one spec's, and Spec returns them; the
+// declaration's doc is then that spec's binding too.
 func (b *Binder) Block(d *ast.GenDecl) []*ast.CommentGroup {
 	if !d.Lparen.IsValid() || len(d.Specs) == 0 {
 		return nil
