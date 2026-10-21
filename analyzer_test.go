@@ -165,6 +165,13 @@ func TestBaseline(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "baselined")
 }
 
+// TestQualifyBaselineKeysTheReceiver checks that a qualify baseline entry
+// names a method with its receiver type, so baselining orderA.help does not
+// absorb a new orderB.help in the same namespace.
+func TestQualifyBaselineKeysTheReceiver(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "qualifybaselined")
+}
+
 // TestExplicitScopeConflict checks that a declaration whose scope was stated
 // by a directive is reported without a fix, since -fix must not overwrite a
 // decision the author made deliberately.

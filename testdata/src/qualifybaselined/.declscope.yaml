@@ -1,0 +1,5 @@
+# The naming rule is off by default, and this package asserts how a baseline
+# absorbs what it reports.
+rules:
+  naming:
+    qualify: always

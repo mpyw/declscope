@@ -1573,6 +1573,7 @@ packages:
 | --- | --- |
 | A package-level declaration | `normalizeEmail`, under its file's namespace |
 | A [member](#members) | `Type.member`, under the namespace of its **type**'s file |
+| A method | `Type.method`, under the namespace of the file it is written in |
 | The [core namespace](#the-core-namespace) | `(core)` |
 
 An entry is keyed by package, rule, namespace and declaration, never by position. It survives code moving within its file. It does **not** survive a declaration moving to another namespace, since the same use then crosses a different boundary.
