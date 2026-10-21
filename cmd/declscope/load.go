@@ -27,6 +27,11 @@ import (
 // inspector and exports no facts, so driving it over go/packages directly is a
 // few lines and avoids parsing the analyzer's own messages back out of strings.
 //
+// Dependencies come from export data, as they do under singlechecker and go
+// vet: with no facts, a driver type-checks only the packages it analyzes.
+// Nothing here reads a dependency's syntax, and asking for NeedDeps had
+// go/packages parse and type-check the standard library from source for it.
+//
 // Tests are loaded by default, matching the analyzer's own -test: a test
 // variant sees references the ordinary variant does not, and both the baseline
 // and the survey would otherwise report a declaration as unreached when a test
@@ -43,7 +48,7 @@ import (
 func loadPackages(command string, patterns []string, tests bool) ([]*packages.Package, error) {
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles |
-			packages.NeedImports | packages.NeedDeps | packages.NeedTypes |
+			packages.NeedImports | packages.NeedTypes |
 			packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedForTest,
 		Tests: tests,
 	}
