@@ -318,7 +318,13 @@ func (r *run) excludedNearOf(p *packages.Package) *excludedNear {
 		}
 		r.excludedNear = map[string]*excludedNear{}
 		r.loadedAt = map[excludedPlace]string{}
-		for _, q := range r.mod.Pkgs {
+		// A nested module's excluded files are among them, so its packages
+		// are siblings too.
+		loaded := r.mod.Pkgs
+		for _, imp := range r.mod.Importers {
+			loaded = slices.Concat(loaded, imp.Pkgs)
+		}
+		for _, q := range loaded {
 			r.loadedAt[placeOf(q)] = q.PkgPath
 		}
 	}

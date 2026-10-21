@@ -37,8 +37,8 @@ type Module struct {
 	// separately. Paths lists their import paths in order.
 	Pkgs  []*packages.Package
 	Paths []string
-	// Excluded is every Go file of the main modules the build did not
-	// compile.
+	// Excluded is every Go file of the main modules and the loaded nested
+	// ones that the build did not compile.
 	Excluded []*excluded.File
 
 	// Importers are the nested modules this run loaded to read what they use.
