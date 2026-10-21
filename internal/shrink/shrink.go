@@ -281,23 +281,78 @@ type constSet struct {
 	typ *types.TypeName
 }
 
-// inOwnPackage reports whether a build-excluded file belongs to the
-// candidate's own package: its directory and its package name.
-func (c *candidate) inOwnPackage(x *excluded.File) bool {
-	var dir string
-	for _, f := range slices.Concat(c.pkg.GoFiles, c.pkg.CompiledGoFiles) {
-		dir = filepath.Dir(f)
-		break
+// excludedNear is what the build-excluded files say about one package,
+// gathered once rather than once per candidate: every candidate of a package
+// asks the same files the same questions.
+type excludedNear struct {
+	// own is every file of the package itself, and linknamed every name they
+	// bind with //go:linkname or //export.
+	own       []*excluded.File
+	linknamed map[string]bool
+	// importing is every file of another package that imports the package,
+	// and dotImporting every one that imports it into its own scope.
+	importing, dotImporting []*excluded.File
+	// reached says whether a file of another package imports a path that
+	// reaches the package (module.Reaches).
+	reached bool
+}
+
+// excludedPlace is where a build-excluded file belongs: its directory and its
+// package name. A file of a loaded package shares both with it.
+type excludedPlace struct {
+	dir, pkg string
+}
+
+// excludedNearOf returns what the build-excluded files say about the package
+// p, built on first use.
+func (r *run) excludedNearOf(p *packages.Package) *excludedNear {
+	if near, ok := r.excludedNear[p.PkgPath]; ok {
+		return near
 	}
-	return x.Dir == dir && x.Package == c.pkg.Types.Name()
+	if r.excludedPlaces == nil {
+		r.excludedPlaces = map[excludedPlace][]*excluded.File{}
+		for _, x := range r.mod.Excluded {
+			at := excludedPlace{x.Dir, x.Package}
+			r.excludedPlaces[at] = append(r.excludedPlaces[at], x)
+		}
+		r.excludedNear = map[string]*excludedNear{}
+	}
+	var dir string
+	if files := slices.Concat(p.GoFiles, p.CompiledGoFiles); len(files) > 0 {
+		dir = filepath.Dir(files[0])
+	}
+	own := excludedPlace{dir, p.Types.Name()}
+	near := &excludedNear{own: r.excludedPlaces[own]}
+	syntax := make([]*ast.File, 0, len(near.own))
+	for _, x := range near.own {
+		syntax = append(syntax, x.Syntax)
+	}
+	near.linknamed = directive.Linknamed(syntax)
+	for _, x := range r.mod.Excluded {
+		if (excludedPlace{x.Dir, x.Package}) == own {
+			continue
+		}
+		paths := x.ImportPaths()
+		if slices.Contains(paths, p.PkgPath) {
+			near.importing = append(near.importing, x)
+		}
+		if x.DotImports(p.PkgPath) {
+			near.dotImporting = append(near.dotImporting, x)
+		}
+		if !near.reached {
+			near.reached = slices.ContainsFunc(paths, func(path string) bool { return r.mod.Reaches(path, p.PkgPath) })
+		}
+	}
+	r.excludedNear[p.PkgPath] = near
+	return near
 }
 
 // qualifiedIn reports whether a build-excluded file of another package
 // imports the candidate's package and writes pkg.Name: a use, in a
 // configuration this run does not build.
-func (c *candidate) qualifiedIn(xs []*excluded.File) bool {
-	return slices.ContainsFunc(xs, func(x *excluded.File) bool {
-		return !c.inOwnPackage(x) && x.Qualifies(c.pkg.PkgPath, c.pkg.Types.Name(), c.obj.Name())
+func (r *run) qualifiedIn(c *candidate) bool {
+	return slices.ContainsFunc(r.excludedNearOf(c.pkg).importing, func(x *excluded.File) bool {
+		return x.Qualifies(c.pkg.PkgPath, c.pkg.Types.Name(), c.obj.Name())
 	})
 }
 
@@ -316,18 +371,15 @@ func (c *candidate) qualifiedIn(xs []*excluded.File) bool {
 // use, and counts only where it is written: under a dot import, or pkg.Name,
 // which usedOutside reads.
 func (r *run) maybeUsedIn(c *candidate) bool {
-	implicit := r.usedImplicitly(c)
-	return slices.ContainsFunc(r.mod.Excluded, func(x *excluded.File) bool {
-		if c.inOwnPackage(x) {
-			return false
-		}
-		reaches := slices.ContainsFunc(x.ImportPaths(), func(path string) bool { return r.mod.Reaches(path, c.pkg.PkgPath) })
-		return implicit && reaches || x.DotImports(c.pkg.PkgPath) && x.Writes(c.obj.Name())
-	})
+	near := r.excludedNearOf(c.pkg)
+	if near.reached && r.usedImplicitly(c) {
+		return true
+	}
+	return slices.ContainsFunc(near.dotImporting, func(x *excluded.File) bool { return x.Writes(c.obj.Name()) })
 }
 
 func (r *run) maybeUsedInOwn(c *candidate) bool {
-	return r.usedImplicitly(c) && slices.ContainsFunc(r.mod.Excluded, c.inOwnPackage)
+	return len(r.excludedNearOf(c.pkg).own) > 0 && r.usedImplicitly(c)
 }
 
 // usedImplicitly reports whether Go can use the candidate without spelling
@@ -352,8 +404,8 @@ func (r *run) usedImplicitly(c *candidate) bool {
 // the old name or declare the new one twice.
 //
 //declscope:shared // rename.go asks it about the new name
-func (c *candidate) writtenInOwn(xs []*excluded.File, name string) bool {
-	return slices.ContainsFunc(xs, func(x *excluded.File) bool { return c.inOwnPackage(x) && x.Writes(name) })
+func (r *run) writtenInOwn(c *candidate, name string) bool {
+	return slices.ContainsFunc(r.excludedNearOf(c.pkg).own, func(x *excluded.File) bool { return x.Writes(name) })
 }
 
 // linknamedInOwn reports whether a build-excluded file of the candidate's
@@ -362,10 +414,8 @@ func (c *candidate) writtenInOwn(xs []*excluded.File, name string) bool {
 // directive would name a declaration that is gone.
 //
 //declscope:shared // rename.go asks it beside the package's own linknames
-func (c *candidate) linknamedInOwn(xs []*excluded.File) bool {
-	return slices.ContainsFunc(xs, func(x *excluded.File) bool {
-		return c.inOwnPackage(x) && directive.Linknamed([]*ast.File{x.Syntax})[c.obj.Name()]
-	})
+func (r *run) linknamedInOwn(c *candidate) bool {
+	return r.excludedNearOf(c.pkg).linknamed[c.obj.Name()]
 }
 
 // linkerSet reports whether the candidate is a package-level string
@@ -403,6 +453,14 @@ type run struct {
 	//
 	//declscope:private
 	embedded map[string]bool
+	// excludedNear caches, per package path, what the build-excluded files
+	// say about the package, and excludedPlaces holds those files by where
+	// they belong. Both are built on first use.
+	//
+	//declscope:private
+	excludedNear map[string]*excludedNear
+	//declscope:private
+	excludedPlaces map[excludedPlace][]*excluded.File
 	// baselined is how Run was asked what the baseline records, and
 	// namespaces caches each package's spelled namespace per file.
 	//
@@ -550,7 +608,7 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 		claims := &renameClaims{pkg: map[string]bool{}}
 		clashed := false
 		for _, v := range slices.Concat(verdictsFirst(vs, first, true), verdictsFirst(vs, first, false)) {
-			if v.fixable() && !r.renameClaimIn(claims, v.c, v.plan) {
+			if v.fixable() && !claims.take(v.plan) {
 				v.lost, v.f.Withheld, clashed = true, v.plan.taken, true
 			}
 		}
@@ -560,7 +618,7 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 		// One at a time: two losers that clash with each other would both be
 		// free, and the later one would lose again.
 		i := slices.IndexFunc(vs, func(v *verdict) bool {
-			return v.lost && !first[v] && r.renameClaimFree(claims, v.c, v.plan)
+			return v.lost && !first[v] && claims.free(v.plan)
 		})
 		if i >= 0 {
 			vs[i].lost, first[vs[i]] = false, true
@@ -569,7 +627,7 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 		// A kept declaration whose name a fix takes reads as taken, the way
 		// the next run, with the fix applied, reads it.
 		for _, v := range vs {
-			if v.kept && !r.renameClaimFree(claims, v.c, v.plan) {
+			if v.kept && !claims.free(v.plan) {
 				v.f.Withheld = v.plan.taken
 			}
 		}
@@ -776,7 +834,7 @@ func (r *run) usedOutside(c *candidate) bool {
 		func() bool { return ev.escaped[key] },
 		func() bool { return c.kind == kindMethod && ev.escaped[keyOf(r.mod.Fset, c.owner)] },
 		// A build-excluded file of another package writes pkg.Name.
-		func() bool { return !c.kind.member() && c.qualifiedIn(r.mod.Excluded) },
+		func() bool { return !c.kind.member() && r.qualifiedIn(c) },
 	}
 	return slices.ContainsFunc(uses, func(used func() bool) bool { return used() })
 }
@@ -818,13 +876,12 @@ func (r *run) neededWithoutConstrained(c *candidate) bool {
 // rename itself, or "". Each entry is a use that may exist but cannot be
 // proved, or a reference the rename cannot rewrite.
 func (r *run) withheld(c *candidate) string {
-	xs := r.mod.Excluded
 	reasons := []struct {
 		why     string
 		applies func() bool
 	}{
 		{"a build-excluded file of another package may use it", func() bool { return r.maybeUsedIn(c) }},
-		{"a build-excluded file of its package names it", func() bool { return c.writtenInOwn(xs, c.obj.Name()) }},
+		{"a build-excluded file of its package names it", func() bool { return r.writtenInOwn(c, c.obj.Name()) }},
 		{"a build-excluded file of its package may use it", func() bool { return r.maybeUsedInOwn(c) }},
 		{"a generated file names it", func() bool { return r.ev.generated[c.key] }},
 		{"an example function names it", func() bool { return r.ev.example[c.key] }},

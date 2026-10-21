@@ -55,7 +55,7 @@ type renamePlanned struct {
 // on its type and on every type that promotes it.
 //
 // What other fixes of the run claim is not asked here. Which declarations are
-// fixed is settled first, and renameClaimIn claims the names afterwards.
+// fixed is settled first, and renameClaims.take claims the names afterwards.
 //
 //declscope:shared // the core plans every fix before settling which stand
 func (r *run) renamePlan(c *candidate) (*renamePlanned, string) {
@@ -71,13 +71,15 @@ func (r *run) renamePlan(c *candidate) (*renamePlanned, string) {
 		return nil, "the unexported name is predeclared"
 	case !c.kind.member() && (newName == "init" || newName == "main"):
 		return nil, "the unexported name means something to the toolchain"
-	case c.writtenInOwn(r.mod.Excluded, newName):
+	case r.writtenInOwn(c, newName):
 		return nil, "a build-excluded file of its package writes the unexported name"
 	}
 	plan := &renamePlanned{newName: newName}
+	// The guards and the claim ask of the same types, found once.
+	held := renameReach(r.mod, facts, c)
 	if c.kind.member() {
 		plan.taken = "the unexported name is taken on its type"
-		if !renameMemberFree(r.mod, facts, c, newName) {
+		if !renameMemberFree(r.mod, facts, c, held, newName) {
 			return nil, plan.taken
 		}
 	} else {
@@ -85,10 +87,10 @@ func (r *run) renamePlan(c *candidate) (*renamePlanned, string) {
 		if !renamePackageFree(variants, r.ev.sites[c.key], newName) {
 			return nil, plan.taken
 		}
-		if c.kind == kindType && !renameEmbeddingFree(r.mod, facts, c, newName) {
+		if c.kind == kindType && !renameEmbeddingFree(held, newName) {
 			return nil, plan.taken
 		}
-		if facts.linknamed[c.obj.Name()] || c.linknamedInOwn(r.mod.Excluded) {
+		if facts.linknamed[c.obj.Name()] || r.linknamedInOwn(c) {
 			return nil, "a //go:linkname or //export names it"
 		}
 		plan.pkgKey = newName
@@ -99,7 +101,7 @@ func (r *run) renamePlan(c *candidate) (*renamePlanned, string) {
 	// package would withhold unrelated fixes, and the next run, with nothing
 	// claimed, would offer them.
 	if c.kind.member() || c.kind == kindType {
-		plan.member = &renameClaim{name: newName, reach: renameReach(r.mod, c)}
+		plan.member = &renameClaim{name: newName, holds: held}
 	}
 	// Evidence is read from one variant per import path, so each identifier
 	// is a site once.
@@ -121,33 +123,43 @@ type renameClaims struct {
 	// member is every member name claimed, with the types that hold it.
 	//
 	//declscope:private // only the claim reads it
-	member []renameClaim
+	member map[string]map[renameTyped]bool
 }
 
-// renameClaimIn claims plan's name among what claims holds, and reports
+// take claims plan's name among what claims holds, and reports
 // whether it was free. Two exported names can lower to one (Foo and FOO both
 // become foo), and the fixes cannot see each other.
 //
 //declscope:shared // the core claims each fix that stands
-func (r *run) renameClaimIn(claims *renameClaims, c *candidate, plan *renamePlanned) bool {
-	if !r.renameClaimFree(claims, c, plan) {
+func (claims *renameClaims) take(plan *renamePlanned) bool {
+	if !claims.free(plan) {
 		return false
 	}
 	if plan.pkgKey != "" {
 		claims.pkg[plan.pkgKey] = true
 	}
 	if plan.member != nil {
-		claims.member = append(claims.member, *plan.member)
+		if claims.member == nil {
+			claims.member = map[string]map[renameTyped]bool{}
+		}
+		at := claims.member[plan.member.name]
+		if at == nil {
+			at = map[renameTyped]bool{}
+			claims.member[plan.member.name] = at
+		}
+		for _, t := range plan.member.holds {
+			at[t] = true
+		}
 	}
 	return true
 }
 
-// renameClaimFree reports whether plan's name is free among what claims
+// free reports whether plan's name is free among what claims
 // holds, claiming nothing. A nil plan was never made, so nothing claims its
 // name.
 //
 //declscope:shared // the core asks it of the fixes it withheld
-func (r *run) renameClaimFree(claims *renameClaims, c *candidate, plan *renamePlanned) bool {
+func (claims *renameClaims) free(plan *renamePlanned) bool {
 	if plan == nil {
 		return true
 	}
@@ -155,15 +167,9 @@ func (r *run) renameClaimFree(claims *renameClaims, c *candidate, plan *renamePl
 		return false
 	}
 	if plan.member != nil {
-		for _, t := range r.renameFactsOf(c.pkg.PkgPath).typed {
-			if !plan.member.reach(t) {
-				continue
-			}
-			for _, other := range claims.member {
-				if other.name == plan.newName && other.reach(t) {
-					return false
-				}
-			}
+		at := claims.member[plan.member.name]
+		if slices.ContainsFunc(plan.member.holds, func(t renameTyped) bool { return at[t] }) {
+			return false
 		}
 	}
 	return true
@@ -205,48 +211,63 @@ func renameDoc(fset *token.FileSet, doc *ast.CommentGroup, oldName, newName stri
 	return Edit{Filename: p.Filename, Start: p.Offset + offset, End: p.Offset + offset + len(oldName), NewText: newName}, true
 }
 
-// renameClaim is a member name a fix gives, with the test for whether a type
-// holds it: the member's own type and every type promoting it, or every
-// struct embedding the type being renamed.
+// renameClaim is a member name a fix gives, with every type that holds it:
+// the member's own type and every type promoting it, or every struct
+// embedding the type being renamed.
 type renameClaim struct {
 	name  string
-	reach func(renameTyped) bool
+	holds []renameTyped
 }
 
-// renameReach returns whether a type holds c, under its current name or
-// not: for a method or field, the type is c's owner or embeds it at any
-// depth, and for a type, it embeds c at any depth. A selection the name
-// makes today does not decide it: a shallower member of that name hides c,
-// and an ambiguous one finds nothing, yet c takes its new name in that type
+// renameReach returns every type of facts.typed that holds c, under its
+// current name or not: for a method or field, the type is c's owner or embeds
+// it at any depth, and for a type, it embeds c at any depth. A selection the
+// name makes today does not decide it: a shallower member of that name hides
+// c, and an ambiguous one finds nothing, yet c takes its new name in that type
 // all the same, where it can hide another member or make a selector
-// ambiguous. The guards and the claims ask this one test, so a name the
+// ambiguous. The guards and the claims ask this one answer, so a name the
 // claims call taken is one the guards of the next run find taken too.
-func renameReach(m *module.Module, c *candidate) func(renameTyped) bool {
-	match := func(tn *types.TypeName) bool { return tn != nil && keyOf(m.Fset, tn) == c.key }
-	if c.kind.member() {
-		owner := keyOf(m.Fset, c.owner)
-		match = func(tn *types.TypeName) bool {
-			if tn == nil {
-				return false
-			}
+func renameReach(m *module.Module, facts *renameFacts, c *candidate) []renameTyped {
+	switch {
+	case c.kind.member():
+		return facts.promoting[keyOf(m.Fset, c.owner)]
+	case c.kind == kindType:
+		return facts.embedding[c.key]
+	}
+	return nil
+}
+
+// renameHolders indexes facts.typed by what each type holds, so that
+// renameReach looks a candidate up rather than walks every type for each.
+// A field of an embedded type is spelled with the type's name, alias or not,
+// and indexes embedding. A member is promoted from the named type behind it,
+// and indexes promoting, as does a named type itself.
+func renameHolders(fset *token.FileSet, facts *renameFacts) {
+	facts.embedding, facts.promoting = map[string][]renameTyped{}, map[string][]renameTyped{}
+	for _, t := range facts.typed {
+		spelled, promoted := map[string]bool{}, map[string]bool{}
+		if named, ok := types.Unalias(t.typ).(*types.Named); ok {
+			promoted[keyOf(fset, named.Origin().Obj())] = true
+		}
+		renameEmbeds(t.typ, map[types.Type]bool{}, func(tn *types.TypeName) {
+			spelled[keyOf(fset, tn)] = true
 			if named, ok := types.Unalias(tn.Type()).(*types.Named); ok {
 				tn = named.Origin().Obj()
 			}
-			return keyOf(m.Fset, tn) == owner
+			promoted[keyOf(fset, tn)] = true
+		})
+		for key := range spelled {
+			facts.embedding[key] = append(facts.embedding[key], t)
 		}
-		return func(t renameTyped) bool {
-			if named, ok := types.Unalias(t.typ).(*types.Named); ok && match(named.Origin().Obj()) {
-				return true
-			}
-			return renameEmbeds(t.typ, match, map[types.Type]bool{})
+		for key := range promoted {
+			facts.promoting[key] = append(facts.promoting[key], t)
 		}
 	}
-	return func(t renameTyped) bool { return renameEmbeds(t.typ, match, map[types.Type]bool{}) }
 }
 
-// renameEmbeds reports whether t embeds, at any depth, a field whose type
-// name match accepts: the name the field is spelled with, an alias or not.
-func renameEmbeds(t types.Type, match func(*types.TypeName) bool, seen map[types.Type]bool) bool {
+// renameEmbeds calls embed with the type name of every field t embeds, at any
+// depth: the name the field is spelled with, an alias or not.
+func renameEmbeds(t types.Type, seen map[types.Type]bool, embed func(*types.TypeName)) {
 	if ptr, ok := types.Unalias(t).(*types.Pointer); ok {
 		t = ptr.Elem()
 	}
@@ -255,23 +276,23 @@ func renameEmbeds(t types.Type, match func(*types.TypeName) bool, seen map[types
 		t = named.Origin()
 	}
 	if seen[t] {
-		return false
+		return
 	}
 	seen[t] = true
 	st, ok := t.Underlying().(*types.Struct)
 	if !ok {
-		return false
+		return
 	}
 	for i := range st.NumFields() {
 		f := st.Field(i)
 		if !f.Embedded() {
 			continue
 		}
-		if match(embeddedTypeName(f)) || renameEmbeds(f.Type(), match, seen) {
-			return true
+		if tn := embeddedTypeName(f); tn != nil {
+			embed(tn)
 		}
+		renameEmbeds(f.Type(), seen, embed)
 	}
-	return false
 }
 
 // renameNameIn reports whether newName selects anything on t, ambiguously
@@ -301,6 +322,12 @@ type renameFacts struct {
 	//
 	//declscope:private // the core holds the cache, not what is in it
 	typed []renameTyped
+	// embedding maps a type, by keyOf, to every type in typed that embeds it
+	// at any depth, and promoting maps one to every type in typed that is it
+	// or embeds it, so holds its members (renameHolders).
+	//
+	//declscope:private // the core holds the cache, not what is in it
+	embedding, promoting map[string][]renameTyped
 }
 
 // renameTyped is a type in the variant whose scopes resolve it.
@@ -347,6 +374,7 @@ func (r *run) renameFactsOf(path string) *renameFacts {
 			}
 		}
 	}
+	renameHolders(r.mod.Fset, f)
 	r.facts[path] = f
 	return f
 }
@@ -388,9 +416,8 @@ func renamePackageFree(variants []*packages.Package, sites []evidenceSite, newNa
 // package that embeds the type at any depth, named or not. The embedded field
 // takes the type's new name, and would collide with a field or method already
 // called that, or make a selector of it ambiguous.
-func renameEmbeddingFree(m *module.Module, facts *renameFacts, c *candidate, newName string) bool {
-	holds := renameReach(m, c)
-	return !slices.ContainsFunc(facts.typed, func(t renameTyped) bool { return holds(t) && renameNameIn(t, newName) })
+func renameEmbeddingFree(held []renameTyped, newName string) bool {
+	return !slices.ContainsFunc(held, func(t renameTyped) bool { return renameNameIn(t, newName) })
 }
 
 // renameMemberFree reports whether newName can replace a method or field
@@ -398,7 +425,7 @@ func renameEmbeddingFree(m *module.Module, facts *renameFacts, c *candidate, new
 // package that promotes the member, and no interface of the package asking
 // for it. The last is a behavior change rather than a compile error: a type
 // that gains method m starts satisfying interface{ m() } in an assertion.
-func renameMemberFree(m *module.Module, facts *renameFacts, c *candidate, newName string) bool {
+func renameMemberFree(m *module.Module, facts *renameFacts, c *candidate, held []renameTyped, newName string) bool {
 	if facts.asked[newName] {
 		return false
 	}
@@ -410,6 +437,5 @@ func renameMemberFree(m *module.Module, facts *renameFacts, c *candidate, newNam
 	// Every type holding the member takes the new name, including one where
 	// the old name is hidden or ambiguous. An unnamed struct promotes members
 	// too: struct{ Named; size int }.
-	holds := renameReach(m, c)
-	return !slices.ContainsFunc(facts.typed, func(t renameTyped) bool { return holds(t) && renameNameIn(t, newName) })
+	return !slices.ContainsFunc(held, func(t renameTyped) bool { return renameNameIn(t, newName) })
 }
