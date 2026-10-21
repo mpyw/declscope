@@ -17,19 +17,17 @@ import (
 // Binder finds the comment groups of the declarations of one file.
 type Binder struct {
 	fset *token.FileSet
-	// lines holds the first comment group starting on each line.
-	lines map[int]*ast.CommentGroup
+	// lines holds the comment groups starting on each line, in file order.
+	lines map[int][]*ast.CommentGroup
 }
 
 // NewBinder indexes the comments of file. Lines are counted in the file as
 // written, not as a //line directive renames them.
 func NewBinder(fset *token.FileSet, file *ast.File) *Binder {
-	b := &Binder{fset: fset, lines: map[int]*ast.CommentGroup{}}
+	b := &Binder{fset: fset, lines: map[int][]*ast.CommentGroup{}}
 	for _, g := range file.Comments {
 		line := fset.PositionFor(g.Pos(), false).Line
-		if _, seen := b.lines[line]; !seen {
-			b.lines[line] = g
-		}
+		b.lines[line] = append(b.lines[line], g)
 	}
 	return b
 }
@@ -71,15 +69,18 @@ func (b *Binder) Spec(spec ast.Spec) []*ast.CommentGroup {
 }
 
 // loose returns the groups starting on node's first or last line, after the
-// position they trail, that are not among attached.
+// position they trail, that are not among attached. Every such group counts,
+// not only the first on the line: a comment inside a signature, such as the
+// one in `f(a int /* units */)`, may come before the directive after `{`.
 func (b *Binder) loose(node ast.Node, attached ...*ast.CommentGroup) []*ast.CommentGroup {
 	var out []*ast.CommentGroup
 	for _, pos := range []token.Pos{node.Pos(), node.End()} {
-		g, ok := b.lines[b.fset.PositionFor(pos, false).Line]
-		if !ok || g.Pos() < pos || slices.Contains(attached, g) || slices.Contains(out, g) {
-			continue
+		for _, g := range b.lines[b.fset.PositionFor(pos, false).Line] {
+			if g.Pos() < pos || slices.Contains(attached, g) || slices.Contains(out, g) {
+				continue
+			}
+			out = append(out, g)
 		}
-		out = append(out, g)
 	}
 	return out
 }

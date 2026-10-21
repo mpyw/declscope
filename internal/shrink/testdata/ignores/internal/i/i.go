@@ -29,6 +29,11 @@ func Trailing() {} //declscope:ignore overexported
 func Multi() {
 } //declscope:ignore overexported
 
+// An earlier comment on the line does not stop it binding.
+func Commented(n int /* units */) int { //declscope:ignore overexported
+	return n
+}
+
 // So does one after `struct {` or `var (`.
 type Braced struct { //declscope:ignore overexported
 	n int
