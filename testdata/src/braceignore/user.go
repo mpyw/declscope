@@ -67,3 +67,14 @@ func userNamed() int {
 }
 
 var _ = userNamed
+
+// So is core, also a property of the file. A directive no declaration would
+// accept either is reported as it is on a declaration: an unknown keyword is
+// unknown wherever it is written.
+func userCored() int {
+	//declscope:core // want `declscope:core must appear before the package clause`
+	//declscope:bogus // want `unknown directive declscope:bogus`
+	return 8
+}
+
+var _ = userCored

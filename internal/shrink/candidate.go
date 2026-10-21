@@ -25,15 +25,26 @@ import (
 // Ignores are bound where the analyzer binds them, through the one
 // directive.Binder both use. The ignores of one binding are siblings, as the
 // analyzer's ignoreSite.siblings are, so that an ignore naming unused answers
-// the same reports in both tools.
+// the same reports in both tools. repeated holds every ignore a binding
+// dropped as a duplicate of another of its own, which the analyzer reports
+// and which is no site for this run to judge.
 //
 //declscope:shared // the core judges each of them
-func candidatesOf(p *packages.Package) ([]*candidate, map[token.Pos][]directive.Ignore) {
-	siblings := map[token.Pos][]directive.Ignore{}
+func candidatesOf(p *packages.Package) (_ []*candidate, siblings map[token.Pos][]directive.Ignore, repeated map[token.Pos]bool) {
+	siblings, repeated = map[token.Pos][]directive.Ignore{}, map[token.Pos]bool{}
 	parse := func(groups ...*ast.CommentGroup) []directive.Ignore {
 		ignores := directive.ParseDecl(groups...).Ignores
 		for _, ig := range ignores {
 			siblings[ig.Pos] = ignores
+		}
+		// A repeat in a group of its own is still the binding's: a doc
+		// comment and a trailing one are read together.
+		for _, g := range groups {
+			for _, ig := range directive.ParseDecl(g).Ignores {
+				if !slices.ContainsFunc(ignores, func(kept directive.Ignore) bool { return kept.Pos == ig.Pos }) {
+					repeated[ig.Pos] = true
+				}
+			}
 		}
 		return ignores
 	}
@@ -72,7 +83,7 @@ func candidatesOf(p *packages.Package) ([]*candidate, map[token.Pos][]directive.
 			}
 		}
 	}
-	return out, siblings
+	return out, siblings, repeated
 }
 
 // candidateAdd records one candidate with the ignores covering it and its

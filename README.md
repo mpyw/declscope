@@ -623,8 +623,10 @@ The rule is always on, and has no configuration key. `//declscope:ignore directi
 | `//declscope:core` and `//declscope:namespace` together | `conflicting namespace directives: a core file's namespace is the core` |
 | `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, surplus, unused, directive, filter, overexported)` |
 | `//declscope:ignore ,` or `//declscope:ignore boundary,` | `empty rule name in declscope:ignore` |
-| `//declscope:namespace` after the package clause | `declscope:namespace must appear before the package clause` |
-| A directive attached to no declaration, such as one inside a function body | `misplaced declscope:shared: no declaration here for it to bind to; ...` |
+| `//declscope:shared` twice on one declaration or file, or two ignores naming the same rules | `duplicate declscope:shared directive`, at the second |
+| `//declscope:namespace` or `//declscope:core` twice | `duplicate declscope:namespace directive`, at the second |
+| `//declscope:namespace` or `//declscope:core` after the package clause | `declscope:namespace must appear before the package clause` |
+| A valid `shared`, `private` or `ignore` directive attached to no declaration, such as one inside a function body | `misplaced declscope:shared: no declaration here for it to bind to; ...` |
 
 </details>
 
