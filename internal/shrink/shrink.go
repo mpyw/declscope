@@ -293,7 +293,8 @@ type excludedNear struct {
 	// and dotImporting every one that imports it into its own scope.
 	importing, dotImporting []*excluded.File
 	// reached says whether a file of another package imports a path that
-	// reaches the package (module.Reaches).
+	// reaches the package (module.Reaches), or belongs to a loaded package
+	// that does.
 	reached bool
 }
 
@@ -316,12 +317,12 @@ func (r *run) excludedNearOf(p *packages.Package) *excludedNear {
 			r.excludedPlaces[at] = append(r.excludedPlaces[at], x)
 		}
 		r.excludedNear = map[string]*excludedNear{}
+		r.loadedAt = map[excludedPlace]string{}
+		for _, q := range r.mod.Pkgs {
+			r.loadedAt[placeOf(q)] = q.PkgPath
+		}
 	}
-	var dir string
-	if files := slices.Concat(p.GoFiles, p.CompiledGoFiles); len(files) > 0 {
-		dir = filepath.Dir(files[0])
-	}
-	own := excludedPlace{dir, p.Types.Name()}
+	own := placeOf(p)
 	near := &excludedNear{own: r.excludedPlaces[own]}
 	syntax := make([]*ast.File, 0, len(near.own))
 	for _, x := range near.own {
@@ -340,11 +341,25 @@ func (r *run) excludedNearOf(p *packages.Package) *excludedNear {
 			near.dotImporting = append(near.dotImporting, x)
 		}
 		if !near.reached {
-			near.reached = slices.ContainsFunc(paths, func(path string) bool { return r.mod.Reaches(path, p.PkgPath) })
+			// The file's compiled siblings count as much as its imports: a
+			// package-level variable of theirs may hold a value of the
+			// package's types.
+			sibling, loaded := r.loadedAt[excludedPlace{x.Dir, x.Package}]
+			near.reached = loaded && r.mod.Reaches(sibling, p.PkgPath) ||
+				slices.ContainsFunc(paths, func(path string) bool { return r.mod.Reaches(path, p.PkgPath) })
 		}
 	}
 	r.excludedNear[p.PkgPath] = near
 	return near
+}
+
+// placeOf returns where the files of the loaded package p are.
+func placeOf(p *packages.Package) excludedPlace {
+	var dir string
+	if files := slices.Concat(p.GoFiles, p.CompiledGoFiles); len(files) > 0 {
+		dir = filepath.Dir(files[0])
+	}
+	return excludedPlace{dir, p.Types.Name()}
 }
 
 // qualifiedIn reports whether a build-excluded file of another package
@@ -366,10 +381,11 @@ func (r *run) qualifiedIn(c *candidate) bool {
 // by name in a conversion or an assignment between identical struct types,
 // a literal fills fields by position through an alias, and a selector names
 // an embedded type as a field. So any file that may hold a value of a type
-// of the candidate's package counts: its own package's, and one importing a
-// package that reaches it (module.Reaches). A package-level name has no such
-// use, and counts only where it is written: under a dot import, or pkg.Name,
-// which usedOutside reads.
+// of the candidate's package counts: its own package's, one importing a
+// package that reaches it (module.Reaches), and one whose own package does,
+// through a package-level variable of a compiled file beside it. A
+// package-level name has no such use, and counts only where it is written:
+// under a dot import, or pkg.Name, which usedOutside reads.
 func (r *run) maybeUsedIn(c *candidate) bool {
 	near := r.excludedNearOf(c.pkg)
 	if near.reached && r.usedImplicitly(c) {
@@ -444,7 +460,7 @@ type run struct {
 	// usedIgnores is every ignore naming overexported that silenced a report.
 	usedIgnores map[token.Pos]bool
 	// constrainedNear caches, per package path, whether a file behind a
-	// build constraint is in the package or reaches it.
+	// build constraint is in a package that reaches it, or imports one.
 	//
 	//declscope:private
 	constrainedNear map[string]bool
@@ -454,13 +470,16 @@ type run struct {
 	//declscope:private
 	embedded map[string]bool
 	// excludedNear caches, per package path, what the build-excluded files
-	// say about the package, and excludedPlaces holds those files by where
-	// they belong. Both are built on first use.
+	// say about the package, excludedPlaces holds those files by where they
+	// belong, and loadedAt holds the path of the loaded package at each
+	// place. All are built on first use.
 	//
 	//declscope:private
 	excludedNear map[string]*excludedNear
 	//declscope:private
 	excludedPlaces map[excludedPlace][]*excluded.File
+	//declscope:private
+	loadedAt map[excludedPlace]string
 	// baselined is how Run was asked what the baseline records, and
 	// namespaces caches each package's spelled namespace per file.
 	//
@@ -844,7 +863,7 @@ func (r *run) usedOutside(c *candidate) bool {
 // an ignore answering the report is needed there. Such a configuration
 // reads them for names only, and for a field, a method, or a type some
 // struct embeds, a name is not enough: it reports the candidate with its fix
-// withheld wherever one of those files is in its package or imports a path
+// withheld wherever one of those files is in a package or imports a path
 // that reaches it (maybeUsedIn, maybeUsedInOwn). Here, that is asked of the
 // files this run reads.
 //
@@ -862,7 +881,7 @@ func (r *run) neededWithoutConstrained(c *candidate) bool {
 	near, ok := r.constrainedNear[path]
 	if !ok {
 		near = slices.ContainsFunc(r.ev.constrained, func(f evidenceConstrained) bool {
-			return f.pkg == path || slices.ContainsFunc(f.imports, func(imp string) bool { return r.mod.Reaches(imp, path) })
+			return r.mod.Reaches(f.pkg, path) || slices.ContainsFunc(f.imports, func(imp string) bool { return r.mod.Reaches(imp, path) })
 		})
 		if r.constrainedNear == nil {
 			r.constrainedNear = map[string]bool{}
