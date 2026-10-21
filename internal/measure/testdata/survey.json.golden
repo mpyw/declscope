@@ -1,8 +1,10 @@
 {
   "checks": {
     "typeCheck": {
-      "packages": 2,
-      "failed": []
+      "packages": 3,
+      "failed": [
+        "example.com/x/internal/broken: /src/x/internal/broken/broken.go:3:28: undefined: undefinedThing"
+      ]
     },
     "configs": [
       {
