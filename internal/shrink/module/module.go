@@ -123,7 +123,7 @@ func Load(dir string) (*Module, error) {
 	m := &Module{mains: mains, byPath: map[string][]*packages.Package{}}
 	var failed []string
 	for _, p := range pkgs {
-		if isTestMain(p) {
+		if IsTestMain(p) {
 			continue
 		}
 		if len(p.Errors) > 0 {
@@ -218,7 +218,7 @@ func (m *Module) loadImporter(n *nestedModule, mode packages.LoadMode) {
 		widest := map[string]*packages.Package{}
 		for _, p := range pkgs {
 			switch {
-			case isTestMain(p):
+			case IsTestMain(p):
 				continue
 			case m.byPath[p.PkgPath] != nil || m.byPath[p.ForTest] != nil:
 				// The main modules' test variants are not what the module
@@ -514,11 +514,34 @@ func mainModules(dir string) ([]mainModule, error) {
 	return mains, nil
 }
 
-// isTestMain identifies the synthesized main package of a test binary, which
-// has nothing of its own to judge.
-func isTestMain(p *packages.Package) bool {
-	return p.Name == "main" && strings.HasSuffix(p.PkgPath, ".test") &&
-		!slices.ContainsFunc(p.GoFiles, func(f string) bool { return strings.HasSuffix(f, ".go") && filepath.Base(f) != "_testmain.go" })
+// IsTestMain identifies the synthetic executable built to run a package's
+// tests, which has nothing of its own to judge. Depending on the go command's
+// response, its file is either the generated _testmain.go or a build-cache
+// archive; a real package is loaded from .go files even when its import path
+// happens to end in ".test". A package with no file at all is not called one:
+// nothing shows it, and it has nothing to judge either way.
+//
+// shrink and the CLI's other subcommands both skip it, so one rule serves
+// both.
+func IsTestMain(pkg *packages.Package) bool {
+	if pkg.Name != "main" || !strings.HasSuffix(pkg.PkgPath, ".test") {
+		return false
+	}
+	paths := append(slices.Clone(pkg.GoFiles), pkg.CompiledGoFiles...)
+	for _, path := range paths {
+		if filepath.Base(path) == "_testmain.go" {
+			return true
+		}
+	}
+	for _, path := range paths {
+		// A real package is loaded from Go source. With the go command's
+		// driver, the synthetic executable instead points at its build-cache
+		// archive (a path ending in -d), even when NeedSyntax is requested.
+		if filepath.Ext(path) == ".go" {
+			return false
+		}
+	}
+	return len(paths) > 0
 }
 
 // walk reads every Go file no loaded package holds, and every nested module,
