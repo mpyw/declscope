@@ -92,6 +92,20 @@ func TestShrinkUses(t *testing.T) { shrinkCheck(t, "testdata/uses") }
 // TestShrinkEscapes pins that a value escaping into an interface is a use.
 func TestShrinkEscapes(t *testing.T) { shrinkCheck(t, "testdata/escapes") }
 
+// TestShrinkGenericVariant pins that a value escapes through a generic of the
+// module called through a variant SSA has no body for: the package without
+// its tests, when the variant read is the one with them.
+func TestShrinkGenericVariant(t *testing.T) { shrinkCheck(t, "testdata/generic-variant") }
+
+// TestShrinkNestedModuleGeneric pins the same for a nested module calling a
+// generic of the main module, which its load has only as an import.
+func TestShrinkNestedModuleGeneric(t *testing.T) {
+	res := shrinkRun(t, "testdata/nested-module-generic")
+	if len(res.Skipped) != 0 {
+		t.Errorf("skipped = %+v, want none", res.Skipped)
+	}
+}
+
 // TestShrinkConstSets pins that a const block of one exported type of the
 // package is judged as a whole, with its type.
 func TestShrinkConstSets(t *testing.T) { shrinkCheck(t, "testdata/const-sets") }

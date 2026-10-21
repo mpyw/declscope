@@ -19,15 +19,25 @@ import (
 // including the ones into any.
 //
 // Generic functions of pkgs are instantiated, so a conversion inside one is
-// seen with the concrete type. A generic declared elsewhere has no body here,
-// and the caller must treat what it is given as converted. A conversion that
-// makes no value at run time, such as var _ io.Writer = T{}, is not here
-// either, and needs not be: nothing escapes through it.
+// seen with the concrete type. An instance with no body is here too, as its
+// type arguments: what it does with them is unknown, so they are taken to
+// be converted. SSA has syntax only for pkgs. A package of pkgs imports the
+// variant of another without its tests, a nested module imports the main
+// modules' packages, and neither is one of pkgs, so the instances of their
+// generics have no body either, as a generic outside the module has none.
+// This also covers such an instance called from inside another, with a type
+// argument that is only a type parameter where the call is written.
+//
+// A conversion that makes no value at run time, such as var _ io.Writer =
+// T{}, is not here, and needs not be: nothing escapes through it.
 func Conversions(pkgs []*packages.Package) []types.Type {
 	prog, _ := ssautil.Packages(pkgs, ssa.InstantiateGenerics)
 	prog.Build()
 	var out []types.Type
 	for fn := range ssautil.AllFunctions(prog) {
+		if fn.Blocks == nil {
+			out = append(out, fn.TypeArgs()...)
+		}
 		for _, b := range fn.Blocks {
 			for _, instr := range b.Instrs {
 				if mi, ok := instr.(*ssa.MakeInterface); ok {
