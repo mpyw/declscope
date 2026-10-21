@@ -4,3 +4,6 @@ package rx
 
 // The unexported name is written by the build-excluded file.
 func Clash() {} // want: func Clash is exported.*no fix: a build-excluded file of its package writes the unexported name
+
+// The build-excluded file binds the name with //go:linkname.
+func Linked() {} // want: func Linked is exported.*no fix: a //go:linkname or //export names it

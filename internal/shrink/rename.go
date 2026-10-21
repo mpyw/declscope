@@ -88,7 +88,7 @@ func (r *run) renamePlan(c *candidate) (*renamePlanned, string) {
 		if c.kind == kindType && !renameEmbeddingFree(r.mod, facts, c, newName) {
 			return nil, plan.taken
 		}
-		if facts.linknamed[c.obj.Name()] {
+		if facts.linknamed[c.obj.Name()] || c.linknamedInOwn(r.mod.Excluded) {
 			return nil, "a //go:linkname or //export names it"
 		}
 		plan.pkgKey = newName
