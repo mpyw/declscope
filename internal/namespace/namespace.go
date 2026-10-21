@@ -419,7 +419,9 @@ type Resolved struct {
 // name. //declscope:core comes from a directive rather than from the stem, so
 // the joining has to be done here: without it client_test.go could not reach
 // what client.go declares, and the mechanical repair would be to widen the
-// whole core.
+// whole core. Only a file with no namespace directive joins: one that names
+// its own namespace has decided where it belongs, and the core must not
+// override that decision unseen.
 func Resolve(files []Declared) []Resolved {
 	out := make([]Resolved, len(files))
 	cores := map[string]bool{}
@@ -437,7 +439,7 @@ func Resolve(files []Declared) []Resolved {
 		}
 	}
 	for i, f := range files {
-		if !out[i].Core && cores[of(f.Path)] {
+		if !out[i].Core && !f.Named && cores[of(f.Path)] {
 			out[i] = Resolved{Core: true}
 		}
 	}

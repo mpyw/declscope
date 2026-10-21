@@ -281,6 +281,14 @@ func TestCoreNamespace(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "corens")
 }
 
+// TestCoreNamedTest checks that a test file naming its own namespace keeps it,
+// though its stem is a core file's. Only a file with no namespace directive
+// joins the core. Joining anyway dropped the directive without a report, so a
+// core test file could reach what the named one declares.
+func TestCoreNamedTest(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "corenamedtest")
+}
+
 // TestFileScope checks a file-level scope directive: a default for what the file
 // declares, which a declaration may still narrow back. Under the ignore this
 // replaces, the narrowing would have meant nothing.
