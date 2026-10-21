@@ -204,6 +204,21 @@ type Inner struct{} // want: type Inner is exported, but nothing.*uses it$
 
 type outer struct{ Inner }
 
+// Shared is embedded twice in diamond, through left and right, and its
+// field Val with it. Both are found through either path, and both are fixed.
+type Shared struct { // want: type Shared is exported, but nothing.*uses it$
+	Val int // want: field Val is exported, but nothing.*uses it$
+}
+
+type left struct{ Shared }
+
+type right struct{ Shared }
+
+type diamond struct {
+	left
+	right
+}
+
 // Pointed and AliasOfAliased are embedded through a pointer and an alias.
 type Pointed struct{} // want: type Pointed is exported, but nothing.*uses it$
 
