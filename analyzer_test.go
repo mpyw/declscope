@@ -473,6 +473,21 @@ func TestSurplusOpaqueSource(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusopaque")
 }
 
+// TestSurplusExcludedGenerator checks that a build-excluded file of another
+// package, the //go:build ignore generator declaring package main, does not
+// switch the rule off: it can name nothing of this package
+// (https://github.com/mpyw/declscope/issues/253).
+func TestSurplusExcludedGenerator(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusgenerator")
+}
+
+// TestSurplusExcludedOwnFile checks that a build-excluded file of the package
+// itself still switches the rule off. It is read for names only, and a
+// name is not enough to rule out a use. The silence is the assertion.
+func TestSurplusExcludedOwnFile(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusexcluded")
+}
+
 // TestSurplusSeesAllFiles checks that only a pass reading every file may
 // report: the ordinary variant of a package with in-package tests switches the
 // rule off, and the test variant sees the use. The silence in both variants is

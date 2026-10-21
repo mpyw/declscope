@@ -210,19 +210,24 @@ func surplusMessage(rep *target, group []*target) string {
 // absence read from an incomplete view is not evidence.
 //
 //   - An in-package _test.go this pass does not collect, or a build-excluded
-//     file, may hold the one use (unseen — the same scan the rename guard and
-//     the unused-ignore report defer on).
+//     .go file of this package, may hold the one use (unseen — the same scan
+//     the rename guard and the unused-ignore report defer on). Such a file is
+//     read for its names only, and a name it writes may or may not be a use,
+//     so any file read at all switches the rule off. A build-excluded file of
+//     another package, the //go:build ignore generator declaring package main,
+//     names nothing of this package, and unseen skips it.
 //   - A generated or exclude'd file is in pass.Files but is deliberately not
 //     read as a reference site.
 //   - cgo and assembly reach declarations from sources the analysis never
-//     parses at all.
+//     parses at all. A non-Go file, in this build or another, is assembly or
+//     C (nonGoBlocksRename).
 //
 //declscope:shared // the survey reports whether the rule was asked at all
 func (c *collection) surplusSeesEveryFile(pass *analysis.Pass) bool {
 	if u := c.unseen(pass); u.all || len(u.names) > 0 {
 		return false
 	}
-	if len(pass.OtherFiles) > 0 || len(pass.IgnoredFiles) > 0 {
+	if nonGoBlocksRename(pass) {
 		return false
 	}
 	for _, f := range pass.Files {

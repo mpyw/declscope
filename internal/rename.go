@@ -187,6 +187,8 @@ func (c *collection) renames() *renameState {
 // Go, in this build or in another. Assembly for another GOARCH is in
 // IgnoredFiles, and names the package's symbols in the build that holds it.
 // declscope shrink makes the same test before judging a package.
+//
+//declscope:shared // surplus.go stands down on the same files, which it cannot read either
 func nonGoBlocksRename(pass *analysis.Pass) bool {
 	return len(pass.OtherFiles) > 0 || slices.ContainsFunc(pass.IgnoredFiles, func(f string) bool { return !strings.HasSuffix(f, ".go") })
 }

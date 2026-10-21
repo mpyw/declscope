@@ -168,7 +168,7 @@ It reports what was in force before anything else:
 - whether each rule was on;
 - how many entries a baseline holds.
 
-A rule that was not asked prints `-`, never `0`. That includes a rule that stood itself down. `surplus` does so for a package holding a generated, assembly, cgo or build-excluded file. It does so too under `-test=false` when the package has in-package tests.
+A rule that was not asked prints `-`, never `0`. That includes a rule that stood itself down. `surplus` does so for a package holding a generated, assembly or cgo file, or a build-excluded file of its own package. It does so too under `-test=false` when the package has in-package tests.
 
 `-allow-errors` continues past a package that does not compile. The `type check` row counts it, a list under the Checks table names it with its first error, and it is given no row, so nothing in the tables reads as a clean result for it.
 
