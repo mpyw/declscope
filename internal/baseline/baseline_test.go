@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -278,6 +279,75 @@ func TestLoadRereadsAChangedFile(t *testing.T) {
 	}
 	if set, err := baseline.Load(path); err != nil || set.Len() != 2 {
 		t.Errorf("after a rewrite of another size, Load = %v, %v; want both keys", set, err)
+	}
+}
+
+// TestLoadRetriesAReadError checks that a failed read is not kept. A chmod
+// changes neither the modification time nor the size, so a kept error would
+// outlive the cause under a long-lived process.
+func TestLoadRetriesAReadError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file modes do not deny reads on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file whatever its mode")
+	}
+	path := filepath.Join(t.TempDir(), ".declscope-baseline.yaml")
+	k := baseline.Key{Package: "p", Rule: "boundary", Namespace: "user", Decl: "a"}
+	if _, err := baseline.Save(path, []baseline.Key{k}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := baseline.Load(path); err == nil {
+		t.Fatal("loading an unreadable file succeeded, want an error")
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if set, err := baseline.Load(path); err != nil || !set.Has(k) {
+		t.Errorf("after chmod 644, Load = %v, %v; want the key", set, err)
+	}
+}
+
+// TestLoadForgetsARemovedFile checks that a removed file drops its kept parse.
+// Otherwise a file written again with the old size and modification time would
+// be answered with the old content.
+func TestLoadForgetsARemovedFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".declscope-baseline.yaml")
+	first := baseline.Key{Package: "p", Rule: "boundary", Namespace: "user", Decl: "a"}
+	if _, err := baseline.Save(path, []baseline.Key{first}); err != nil {
+		t.Fatal(err)
+	}
+	if set, err := baseline.Load(path); err != nil || !set.Has(first) {
+		t.Fatalf("Load = %v, %v; want the first key", set, err)
+	}
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if set, err := baseline.Load(path); err != nil || set.Len() != 0 {
+		t.Fatalf("after removal, Load = %v, %v; want an empty set", set, err)
+	}
+
+	// The same size and modification time as the removed file.
+	second := baseline.Key{Package: "p", Rule: "boundary", Namespace: "user", Decl: "b"}
+	if _, err := baseline.Save(path, []baseline.Key{second}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, st.ModTime(), st.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	set, err := baseline.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.Has(first) || !set.Has(second) {
+		t.Errorf("after a removal and a rewrite, Has(a) = %v and Has(b) = %v, want false and true", set.Has(first), set.Has(second))
 	}
 }
 
