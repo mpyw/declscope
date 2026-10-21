@@ -153,6 +153,15 @@ func baselineCollect(patterns []string, configPath, out, cwd string, shrinkToo b
 		}
 		targets[r.path] = append(targets[r.path], r.keys...)
 	}
+	// The refusal is known before shrink runs. Shrink loads the whole module,
+	// so checking first saves that load and keeps a shrink failure from
+	// hiding the more useful error.
+	if len(unplaceable) > 0 {
+		slices.Sort(unplaceable)
+		unplaceable = slices.Compact(unplaceable)
+		return nil, fmt.Errorf("%s in %s would not be found from these packages, because the lookup from them never reaches the working directory:\n%s\nrun from a directory their lookup passes through, name a baseline in a config file near them, or pass -o",
+			baselineDefaultName, cwd, strings.Join(unplaceable, "\n"))
+	}
 	if shrinkToo {
 		res, err := shrink.Run(cwd, patterns, nil)
 		if err != nil {
@@ -165,20 +174,14 @@ func baselineCollect(patterns []string, configPath, out, cwd string, shrinkToo b
 				continue
 			}
 			// The analyzer's pass above resolved this directory already: a
-			// config error there has returned, and a package no lookup would
-			// find is among the unplaceable ones.
+			// config error there has returned, and so has a package no lookup
+			// would find.
 			dir := filepath.Dir(f.Pos.Filename)
 			_, _, named, _ := config.ResolveForBaseline(dir, configPath)
 			if path := baselineTarget(named, dir, out, cwd); path != "" {
 				targets[path] = append(targets[path], f.Key())
 			}
 		}
-	}
-	if len(unplaceable) > 0 {
-		slices.Sort(unplaceable)
-		unplaceable = slices.Compact(unplaceable)
-		return nil, fmt.Errorf("%s in %s would not be found from these packages, because the lookup from them never reaches the working directory:\n%s\nrun from a directory their lookup passes through, name a baseline in a config file near them, or pass -o",
-			baselineDefaultName, cwd, strings.Join(unplaceable, "\n"))
 	}
 	return targets, nil
 }
