@@ -187,6 +187,12 @@ func TestShrinkNestedModuleUses(t *testing.T) {
 	}
 }
 
+// TestShrinkNestedModuleExcluded pins that a build-excluded file of a nested
+// module is reached through its compiled sibling, as one of the main module
+// is: a package-level variable beside it may hold a value of the package's
+// types.
+func TestShrinkNestedModuleExcluded(t *testing.T) { shrinkCheck(t, "testdata/nested-module-excluded") }
+
 // TestShrinkNestedModuleElsewhere pins that a nested module reading the
 // module from another directory leaves the range unjudged, and says where
 // it reads it from.
@@ -278,7 +284,7 @@ func TestShrinkRenamesDoc(t *testing.T) {
 // which also compiles the tests; every report that offered a fix is gone; and
 // no report appears that was not there before.
 func TestShrinkConverges(t *testing.T) {
-	for _, name := range []string{"uses", "escapes", "fix-withheld", "rename-guards", "ignores", "module-under-internal", "nested-module-uses", "const-sets"} {
+	for _, name := range []string{"uses", "escapes", "fix-withheld", "rename-guards", "ignores", "module-under-internal", "nested-module-uses", "nested-module-excluded", "const-sets"} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			if err := os.CopyFS(dir, os.DirFS(filepath.Join("testdata", name))); err != nil {
