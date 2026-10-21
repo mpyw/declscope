@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bytes"
 	"go/token"
 	"go/types"
 	"slices"
@@ -529,12 +530,12 @@ func (c *collection) scopesiteRemoval(pass *analysis.Pass, pos token.Pos) (analy
 	if off >= len(content) {
 		return analysis.TextEdit{}, false
 	}
-	lineStart := strings.LastIndexByte(string(content[:off]), '\n') + 1
+	lineStart := bytes.LastIndexByte(content[:off], '\n') + 1
 	lineEnd := len(content)
-	if i := strings.IndexByte(string(content[off:]), '\n'); i >= 0 {
+	if i := bytes.IndexByte(content[off:], '\n'); i >= 0 {
 		lineEnd = off + i
 	}
-	if lead := strings.TrimRight(string(content[lineStart:off]), " \t"); lead != "" {
+	if lead := bytes.TrimRight(content[lineStart:off], " \t"); len(lead) > 0 {
 		// Trailing a declaration: the comment goes, the code and the line
 		// ending stay, a CRLF one included.
 		end := lineEnd
@@ -551,7 +552,7 @@ func (c *collection) scopesiteRemoval(pass *analysis.Pass, pos token.Pos) (analy
 		start = prevStart
 	case prev == "" && next == "" && end < len(content):
 		// Between blank lines, or at the top of the file above one.
-		if nl := strings.IndexByte(string(content[end:]), '\n'); nl >= 0 {
+		if nl := bytes.IndexByte(content[end:], '\n'); nl >= 0 {
 			end += nl + 1
 		}
 	}
@@ -566,12 +567,12 @@ func scopesiteLine(content []byte, off, dir int) (int, string) {
 		if off == 0 {
 			return 0, ""
 		}
-		start := strings.LastIndexByte(string(content[:off-1]), '\n') + 1
-		return start, strings.TrimSpace(string(content[start : off-1]))
+		start := bytes.LastIndexByte(content[:off-1], '\n') + 1
+		return start, string(bytes.TrimSpace(content[start : off-1]))
 	}
 	end := len(content)
-	if i := strings.IndexByte(string(content[off:]), '\n'); i >= 0 {
+	if i := bytes.IndexByte(content[off:], '\n'); i >= 0 {
 		end = off + i
 	}
-	return off, strings.TrimSpace(string(content[off:end]))
+	return off, string(bytes.TrimSpace(content[off:end]))
 }

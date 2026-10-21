@@ -2,6 +2,7 @@ package internal
 
 import (
 	"errors"
+	"fmt"
 	"go/token"
 	"strings"
 	"testing"
@@ -14,7 +15,7 @@ import (
 // scopesiteRemovalPass is a pass over one file holding content, and the
 // position of the directive written at the first "//declscope:" in it. The
 // deletion is only a text edit, so nothing needs to parse.
-func scopesiteRemovalPass(t *testing.T, content string) (*analysis.Pass, token.Pos) {
+func scopesiteRemovalPass(t testing.TB, content string) (*analysis.Pass, token.Pos) {
 	t.Helper()
 	off := strings.Index(content, "//declscope:")
 	if off < 0 {
@@ -169,5 +170,29 @@ func TestScopesiteRemovalReadsOnce(t *testing.T) {
 	}
 	if reads != 1 {
 		t.Errorf("read the file %d times, want 1", reads)
+	}
+}
+
+// BenchmarkScopesiteRemoval removes every directive from one file holding
+// 5,000 of them, as a strict pass over such a file does. The cost of one
+// removal must not grow with the file.
+func BenchmarkScopesiteRemoval(b *testing.B) {
+	var sb strings.Builder
+	sb.WriteString("package x\n\n")
+	var offs []int
+	for i := range 5000 {
+		offs = append(offs, sb.Len())
+		fmt.Fprintf(&sb, "//declscope:private\nfunc f%d() {}\n\n", i)
+	}
+	content := sb.String()
+	pass, first := scopesiteRemovalPass(b, content)
+	b.ReportAllocs()
+	for b.Loop() {
+		c := &collection{}
+		for _, off := range offs {
+			if _, ok := c.scopesiteRemoval(pass, first+token.Pos(off-offs[0])); !ok {
+				b.Fatalf("no edit at %d", off)
+			}
+		}
 	}
 }
