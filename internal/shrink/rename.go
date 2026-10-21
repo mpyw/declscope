@@ -46,7 +46,7 @@ type renamePlanned struct {
 //
 // Nothing outside the package names c by the time this is asked, so every
 // identifier to rewrite is in its own package. The guards are the analyzer's
-// renameSafe, asked of every variant of the package, since a test variant
+// safeToRename, asked of every variant of the package, since a test variant
 // declares and resolves names the ordinary one does not: the new name must be
 // free in package scope, in every file scope and at every identifier, and
 // must be no keyword or predeclared name. A type's name is also the name of
