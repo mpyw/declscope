@@ -80,6 +80,7 @@ func Qualify(name, ns string) string {
 //	Load        -> load
 //	HTTPClient  -> httpClient   (an initialism opens the name)
 //	ID, IDs     -> id, ids      (an initialism, singular or plural)
+//	UIDs        -> uids         (the whole run, not UI and Ds)
 //	HTTP2Client -> http2Client  (an initialism before a digit)
 //	IPv4        -> ipv4
 //	MAX         -> max
@@ -105,6 +106,7 @@ func Unexported(name string) (string, bool) {
 //	parser_linux.pb.go      -> parserPb        (go/build reads a suffix only
 //	parser.x_linux.go       -> parserXLinux     before the first dot)
 //	user_id.go              -> userID          (initialisms are spelled the way Go does)
+//	user_ids.go             -> userIDs         (and so are their plurals)
 //	foo-bar.go, foo.bar.go  -> fooBar          (any separator, not only _)
 //	Foo.go, HTTPServer.go   -> foo, httpServer (a PascalCase stem is lowered
 //	IDs.go, IPv4.go         -> ids, ipv4        the way Unexported lowers a name)
@@ -165,13 +167,15 @@ func camel(base string) string {
 
 // capitalize upper-cases the first word of a lowerCamelCase segment the way
 // Go would: a word that is a common initialism is upper-cased whole (id ->
-// ID, idCache -> IDCache, Id -> ID), any other has its first letter raised.
+// ID, idCache -> IDCache, Id -> ID), and so is one that is its plural, but
+// for the s (ids -> IDs, idsCache -> IDsCache). Any other word has its first
+// letter raised.
 func capitalize(word string) string {
 	if word == "" {
 		return ""
 	}
-	if isInitialism(word) {
-		return strings.ToUpper(word)
+	if w, ok := upperInitialism(word); ok {
+		return w
 	}
 	i := 0
 	for i < len(word) {
@@ -181,11 +185,24 @@ func capitalize(word string) string {
 		}
 		i += size
 	}
-	if i > 0 && isInitialism(word[:i]) {
-		return strings.ToUpper(word[:i]) + word[i:]
+	if w, ok := upperInitialism(word[:i]); i > 0 && ok {
+		return w + word[i:]
 	}
 	r, size := utf8.DecodeRuneInString(word)
 	return string(unicode.ToUpper(r)) + word[size:]
+}
+
+// upperInitialism spells word in capitals if it is a common initialism, or
+// its plural with the s kept lower-case (ids -> IDs), and reports whether it
+// is either.
+func upperInitialism(word string) (string, bool) {
+	if isInitialism(word) {
+		return strings.ToUpper(word), true
+	}
+	if s, ok := strings.CutSuffix(word, "s"); ok && isInitialism(s) {
+		return strings.ToUpper(s) + "s", true
+	}
+	return "", false
 }
 
 // lowerLeading lowers the run of capitals s starts with, the way Go spells
@@ -210,6 +227,12 @@ func lowerLeading(s string) string {
 		return lower(upper)
 	case upper == 1:
 		return lower(1)
+	case runes[upper] == 's' && (upper+1 == len(runes) || !unicode.IsLower(runes[upper+1])) &&
+		isInitialism(string(runes[:upper])):
+		// IDs, UIDs, URLsCache: the whole run is an initialism and its plural
+		// s ends the word. This is asked before the shorter prefix, or UIDs
+		// would be read as UI and a word Ds.
+		return lower(upper)
 	case isInitialism(string(runes[:upper-1])):
 		// HTTPServer, URLPath: an initialism, then a word opened by the last
 		// capital. HTTPS is an initialism too, which is why this is asked

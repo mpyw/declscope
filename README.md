@@ -643,7 +643,7 @@ A **namespace** is the unit within which a `private` declaration may be used. By
 | `parser_linux.go` | `parser`. A GOOS or GOARCH suffix is a build constraint, not a namespace |
 | `parser_test_linux.go` | `parserTest`. As in go/build, only a name ending in `_test.go` is a test |
 | `parser_linux.pb.go`, `parser.x_linux.go` | `parserPb`, `parserXLinux`. As in go/build, a suffix counts only before the first dot |
-| `user_id.go`, `parse_json.go` | `userID`, `parseJSON`. An initialism is spelled the way Go spells it |
+| `user_id.go`, `user_ids.go`, `parse_json.go` | `userID`, `userIDs`, `parseJSON`. An initialism, or its plural, is spelled the way Go spells it |
 | `foo-bar.go`, `Foo.go` | `fooBar`, `foo`. Any separator, and a PascalCase stem, become lowerCamelCase |
 | `HTTPServer.go`, `URLs.go`, `IPv4.go` | `httpServer`, `urls`, `ipv4`. A leading initialism is lowered the way Go lowers one |
 | `2fa_auth.go` | `2faAuth`. A valid namespace, but never a prefix |
