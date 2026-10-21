@@ -124,6 +124,37 @@ func loadIsAnalyzable(pkg *packages.Package) bool {
 	return !loadIsTestMain(pkg)
 }
 
+// loadedTestOnlyPaths names every package that has only test files, loaded
+// without its tests.
+//
+// The go command lists such a directory as a package with no files and no
+// error, so nothing marks it: it is not analyzable, and it is not a failure.
+// A command that measures only what is analyzable would leave it out of the
+// report without a word, so the caller has to name it. A directory of other
+// files that cannot build, such as one of assembly alone or one excluded by
+// build constraints, comes with an error, and the error is reported instead.
+//
+//declscope:shared // inspect refuses on it, and survey names what it skipped
+func loadedTestOnlyPaths(pkgs []*packages.Package) []string {
+	analyzable := map[string]bool{}
+	for _, pkg := range pkgs {
+		if loadIsAnalyzable(pkg) {
+			analyzable[pkg.PkgPath] = true
+		}
+	}
+	seen := map[string]bool{}
+	var paths []string
+	for _, pkg := range pkgs {
+		if loadIsTestMain(pkg) || len(pkg.Errors) > 0 || len(pkg.GoFiles) > 0 || analyzable[pkg.PkgPath] || seen[pkg.PkgPath] {
+			continue
+		}
+		seen[pkg.PkgPath] = true
+		paths = append(paths, pkg.PkgPath)
+	}
+	slices.Sort(paths)
+	return paths
+}
+
 // loadIsExternalTest identifies package foo_test as loaded for package foo.
 // ForTest is the build system's answer; trimming an import-path suffix would
 // also discard an ordinary package that is genuinely named foo_test.

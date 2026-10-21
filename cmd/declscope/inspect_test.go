@@ -255,3 +255,21 @@ func TestInspectRefusesAMissingConfig(t *testing.T) {
 		t.Errorf("exited %d, want 1 naming the file:\n%s", code, out)
 	}
 }
+
+// TestInspectRefusesAPackageOfTestFilesAloneWithoutTests checks the one
+// pattern that leaves nothing to measure without an error: a directory of
+// test files under -test=false. The go command lists it with no files and no
+// error, and the refusal must say why, not count zero packages as many.
+func TestInspectRefusesAPackageOfTestFilesAloneWithoutTests(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, "q/q_test.go", "package q\n\nimport \"testing\"\n\nfunc TestQ(t *testing.T) {}\n")
+
+	out, code := runIn(t, bin, dir, "inspect", "-test=false", "./q")
+	if code != 1 || !strings.Contains(out, "declscope inspect: example.com/declscopetest/q has only test files") {
+		t.Errorf("exited %d, want 1 naming the package of test files:\n%s", code, out)
+	}
+	if strings.Contains(out, "packages") {
+		t.Errorf("the refusal speaks of many packages:\n%s", out)
+	}
+}

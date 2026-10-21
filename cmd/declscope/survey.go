@@ -64,6 +64,13 @@ func surveyRun(args []string) {
 			strings.Join(failed, "\n  ")))
 	}
 
+	// A package of test files alone has nothing left to measure under
+	// -test=false, and the go command reports no error for it. Without a word
+	// here it would vanish from both the rows and the type-check count.
+	for _, path := range loadedTestOnlyPaths(pkgs) {
+		fmt.Fprintf(os.Stderr, "declscope survey: warning: %s has only test files, so -test=false leaves nothing to measure\n", path)
+	}
+
 	summary, err := surveyPackages(loadWidestVariants(pkgs), *configPath, failed)
 	if err != nil {
 		surveyFail(err)
