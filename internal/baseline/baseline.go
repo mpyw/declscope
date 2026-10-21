@@ -164,7 +164,7 @@ func Load(path string) (*Set, error) {
 // it, and then the spelling given still names a file.
 func absBaselinePath(path string) string {
 	if a, err := filepath.Abs(path); err == nil {
-		return a
+		path = a
 	}
 	return path
 }
