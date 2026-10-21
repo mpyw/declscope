@@ -65,10 +65,13 @@ func candidatesOf(p *packages.Package) (_ []*candidate, siblings map[token.Pos][
 		for _, decl := range file.Decls {
 			switch d := decl.(type) {
 			case *ast.FuncDecl:
+				// A test function is no candidate, but its ignores are still
+				// one binding, as they are for the analyzer.
+				ignores := parse(b.Func(d)...)
 				if testFile && d.Recv == nil && candidateTestEntry(d.Name.Name) {
 					continue
 				}
-				candidateFunc(p, d, slices.Concat(parse(b.Func(d)...), fileIgnores), add)
+				candidateFunc(p, d, slices.Concat(ignores, fileIgnores), add)
 			case *ast.GenDecl:
 				// The doc is a block's binding with parentheses and its single
 				// spec's without, as in the analyzer.
