@@ -70,6 +70,11 @@ func TestOf(t *testing.T) {
 		{"api_url.go", "apiURL"},
 		{"parse_json.go", "parseJSON"},
 		{"user_Id.go", "userID"},
+		// So is a plural initialism, the s kept lower-case.
+		{"user_ids.go", "userIDs"},
+		{"user_urls.go", "userURLs"},
+		{"user_Ids.go", "userIDs"},
+		{"user_idents.go", "userIdents"},
 		// The first segment is a word of its own and stays as written.
 		{"http_client.go", "httpClient"},
 		{"id_cache.go", "idCache"},
@@ -153,7 +158,8 @@ func TestQualify(t *testing.T) {
 		{"urlPath", "user", "userURLPath"},
 		{"lookup", "userID", "userIDLookup"},
 		{"identity", "user", "userIdentity"}, // not an initialism
-		{"ids", "user", "userIds"},           // nor its plural
+		{"ids", "user", "userIDs"},           // but its plural is
+		{"idsCache", "user", "userIDsCache"},
 
 		// A name that already carries the prefix in another spelling is left
 		// alone rather than doubled up.
@@ -305,6 +311,9 @@ func TestUnexported(t *testing.T) {
 		"APIKey":      "apiKey",
 		"IDToken":     "idToken",
 		"UUIDs":       "uuids",
+		"UIDs":        "uids",
+		"UIDsCache":   "uidsCache",
+		"UIs":         "uis",
 		"OAuth":       "oAuth",
 		"HTTP2Client": "http2Client",
 		"IPv4":        "ipv4",
@@ -333,6 +342,7 @@ func TestLowerLeadingMatchesUnexported(t *testing.T) {
 	for _, name := range []string{
 		"Load", "HTTPClient", "ID", "IDs", "URLs", "URLPath", "HTTPServer",
 		"HTTPSProxy", "OAuth", "HTTP2Client", "IPv4", "MAX", "X", "load", "Äpfel",
+		"UIDs", "UIDsCache",
 	} {
 		want, _ := Unexported(name)
 		if got := of(name + ".go"); got != want {
