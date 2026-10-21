@@ -55,6 +55,13 @@ func F() int { return 1 } //declscope:ignore overexported
 //declscope:ignore unused
 func Answered() int { return Used() }
 
+// An ignore repeated on one binding is the analyzer's to report, as a
+// duplicate, and it drops it. It is not also unused here: the first one
+// silences Twice, and the repeat is no second site to judge.
+//
+//declscope:ignore overexported
+func Twice() {} //declscope:ignore overexported
+
 // A silenced declaration claims no name, so FOO's fix is offered.
 //
 //declscope:ignore overexported

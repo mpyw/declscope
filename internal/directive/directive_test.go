@@ -385,15 +385,62 @@ func TestParseFileProblems(t *testing.T) {
 	}
 }
 
-// TestParseFileScopeSurvivesRepetition checks that the same scope written
-// twice is not a conflict. Only a second scope that disagrees is.
-func TestParseFileScopeSurvivesRepetition(t *testing.T) {
-	f := directive.ParseFile(parse(t, "//declscope:shared\n//declscope:shared\n\npackage repo\n"))
-	if len(f.Problems) != 0 {
-		t.Errorf("want no problem, got %v", f.Problems)
+// TestParseFileScopeRepeated checks that the same scope written twice on one
+// file is reported as a duplicate at the second, and that the first still
+// decides the scope. Only a second scope that disagrees is a conflict.
+func TestParseFileScopeRepeated(t *testing.T) {
+	file := parse(t, "//declscope:shared\n//declscope:shared\n\npackage repo\n")
+	f := directive.ParseFile(file)
+	second := file.Comments[0].List[1].Pos()
+	if len(f.Problems) != 1 || f.Problems[0].Msg != "duplicate declscope:shared directive" || f.Problems[0].Pos != second {
+		t.Errorf("want one duplicate report at the second directive, got %v", f.Problems)
 	}
-	if !f.Scope.HasScope || f.Scope.Scope != scope.Shared {
-		t.Errorf("Scope = %+v, want shared", f.Scope)
+	if !f.Scope.HasScope || f.Scope.Scope != scope.Shared || f.Scope.ScopePos != file.Comments[0].List[0].Pos() {
+		t.Errorf("Scope = %+v, want shared from the first directive", f.Scope)
+	}
+}
+
+// TestDuplicate checks which repeated directives are duplicates, at either
+// level. A repeated ignore is one naming the same set of rules, however it is
+// ordered; it is dropped, so that it is not a second site the unused report
+// could judge. One naming a rule the other leaves out is no duplicate.
+func TestDuplicate(t *testing.T) {
+	tests := []struct {
+		name     string
+		comments string
+		want     string
+		ignores  int
+	}{
+		{"shared twice", "//declscope:shared\n//declscope:shared", "duplicate declscope:shared directive", 0},
+		{"private twice", "//declscope:private\n//declscope:private", "duplicate declscope:private directive", 0},
+		{"bare ignore twice", "//declscope:ignore\n//declscope:ignore", "duplicate declscope:ignore directive", 1},
+		{"named ignore twice", "//declscope:ignore boundary\n//declscope:ignore boundary // again", "duplicate declscope:ignore directive", 1},
+		{"same rules reordered", "//declscope:ignore boundary,qualify\n//declscope:ignore qualify,boundary", "duplicate declscope:ignore directive", 1},
+		{"a rule added", "//declscope:ignore boundary\n//declscope:ignore boundary,qualify", "", 2},
+		{"bare and named", "//declscope:ignore\n//declscope:ignore boundary", "", 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			check := func(level string, g *ast.CommentGroup, problems []directive.Problem, ignores int) {
+				t.Helper()
+				switch {
+				case tt.want == "" && len(problems) != 0:
+					t.Errorf("%s: want no problem, got %v", level, problems)
+				case tt.want != "" && (len(problems) != 1 || problems[0].Msg != tt.want ||
+					problems[0].Rule != rule.Directive || problems[0].Pos != g.List[1].Pos()):
+					t.Errorf("%s: want one %q at the second directive, got %v", level, tt.want, problems)
+				}
+				if ignores != tt.ignores {
+					t.Errorf("%s: got %d ignores, want %d", level, ignores, tt.ignores)
+				}
+			}
+			doc := firstFunc(t, "package p\n\n"+tt.comments+"\nfunc f() {}\n").Doc
+			d := directive.ParseDecl(doc)
+			check("declaration", doc, d.Problems, len(d.Ignores))
+			file := parse(t, tt.comments+"\n\npackage repo\n")
+			f := directive.ParseFile(file)
+			check("file", file.Comments[0], f.Problems, len(f.Ignores))
+		})
 	}
 }
 
@@ -523,6 +570,32 @@ func TestStray(t *testing.T) {
 				if !strings.HasPrefix(p.Msg, "misplaced declscope:ignore") {
 					t.Errorf("message is %q, want a misplaced report", p.Msg)
 				}
+			}
+		})
+	}
+}
+
+// TestStrayMessage checks that a stray directive a declaration would refuse
+// gets the report a declaration gives it, and only one a declaration would
+// accept is reported as misplaced.
+func TestStrayMessage(t *testing.T) {
+	tests := []struct {
+		comment string
+		want    string
+	}{
+		{"//declscope:core", "declscope:core must appear before the package clause"},
+		{"//declscope:namespace user", "declscope:namespace must appear before the package clause"},
+		{"//declscope:bogus", "unknown directive declscope:bogus"},
+		{"//declscope:shared x", "//declscope:shared takes no argument"},
+		{"//declscope:ignore why", `unknown rule "why" in declscope:ignore`},
+		{"//declscope:private", "misplaced declscope:private: no declaration here for it to bind to"},
+		{"//declscope:ignore boundary", "misplaced declscope:ignore: no declaration here for it to bind to"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.comment, func(t *testing.T) {
+			got := directive.Stray(&ast.CommentGroup{List: []*ast.Comment{{Text: tt.comment}}})
+			if len(got) != 1 || !strings.HasPrefix(got[0].Msg, tt.want) || got[0].Rule != rule.Directive {
+				t.Errorf("got %v, want one report starting %q", got, tt.want)
 			}
 		})
 	}

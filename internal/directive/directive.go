@@ -208,6 +208,10 @@ func (d *Decl) consume(pos token.Pos, keyword, arg string) {
 			d.Problems = append(d.Problems, *problem)
 			return
 		}
+		if repeatsIgnore(d.Ignores, ignore) {
+			d.problem(pos, "duplicate declscope:ignore directive")
+			return
+		}
 		d.Ignores = append(d.Ignores, ignore)
 
 	case "namespace":
@@ -226,11 +230,14 @@ func (d *Decl) consume(pos token.Pos, keyword, arg string) {
 			d.problem(pos, fmt.Sprintf("%s takes no argument", s.Directive()))
 			return
 		}
-		if d.HasScope && d.Scope != s {
+		switch {
+		case d.HasScope && d.Scope != s:
 			d.problem(pos, fmt.Sprintf("conflicting scope directives: %s and %s", d.Scope.Directive(), s.Directive()))
-			return
+		case d.HasScope:
+			d.problem(pos, fmt.Sprintf("duplicate declscope:%s directive", keyword))
+		default:
+			d.Scope, d.HasScope, d.ScopePos = s, true, pos
 		}
-		d.Scope, d.HasScope, d.ScopePos = s, true, pos
 	}
 }
 
@@ -243,10 +250,14 @@ func (d *Decl) problem(pos token.Pos, msg string) {
 // one inside a function body, one on an import. Such a directive would
 // otherwise be dropped without a word, and for a suppression that is the worst
 // outcome, since the author believes something is silenced.
+//
+// Each directive is read on its own as a declaration would read it, so a
+// directive that is wrong wherever it is written gets the report it gets on a
+// declaration. Only one a declaration would accept is reported as misplaced.
 func Stray(g *ast.CommentGroup) []Problem {
 	var out []Problem
 	for _, c := range g.List {
-		keyword, _, malformed, ok := split(c.Text)
+		keyword, arg, malformed, ok := split(c.Text)
 		if !ok {
 			continue
 		}
@@ -254,12 +265,15 @@ func Stray(g *ast.CommentGroup) []Problem {
 			out = append(out, Problem{Pos: c.Pos(), Msg: malformedMessage, Rule: rule.Directive})
 			continue
 		}
-		msg := fmt.Sprintf("misplaced declscope:%s: no declaration here for it to bind to; "+
-			"write it in a declaration's doc comment or trailing its first or last line", keyword)
-		if keyword == "namespace" {
-			msg = "declscope:namespace must appear before the package clause"
+		var d Decl
+		d.consume(c.Pos(), keyword, arg)
+		if len(d.Problems) > 0 {
+			out = append(out, d.Problems...)
+			continue
 		}
-		out = append(out, Problem{Pos: c.Pos(), Msg: msg, Rule: rule.Directive})
+		out = append(out, Problem{Pos: c.Pos(), Rule: rule.Directive, Msg: fmt.Sprintf(
+			"misplaced declscope:%s: no declaration here for it to bind to; "+
+				"write it in a declaration's doc comment or trailing its first or last line", keyword)})
 	}
 	return out
 }
@@ -367,6 +381,8 @@ func (f *File) scope(pos token.Pos, sc scope.Scope, keyword, arg string) {
 	case f.Scope.HasScope && f.Scope.Scope != sc:
 		f.problem(pos, fmt.Sprintf("conflicting scope directives: %s and //declscope:%s on one file",
 			f.Scope.Scope.Directive(), keyword))
+	case f.Scope.HasScope:
+		f.problem(pos, fmt.Sprintf("duplicate declscope:%s directive", keyword))
 	default:
 		f.Scope.Scope, f.Scope.HasScope, f.Scope.ScopePos = sc, true, pos
 	}
@@ -378,7 +394,38 @@ func (f *File) ignore(pos token.Pos, arg string) {
 		f.Problems = append(f.Problems, *problem)
 		return
 	}
+	if repeatsIgnore(f.Ignores, ignore) {
+		f.problem(pos, "duplicate declscope:ignore directive")
+		return
+	}
 	f.Ignores = append(f.Ignores, ignore)
+}
+
+// repeatsIgnore reports whether an ignore already read silences exactly the
+// rules ig does, in whatever order it names them. Such a second ignore
+// adds nothing, so it is reported as a duplicate and dropped: kept, it would
+// be one more site for the unused report to call unused, a second report for
+// one mistake. An ignore naming a rule the other leaves out is no duplicate,
+// even though one of the two may then turn out unused.
+func repeatsIgnore(read []Ignore, ig Ignore) bool {
+	return slices.ContainsFunc(read, func(other Ignore) bool {
+		return sameRules(other.Rules, ig.Rules)
+	})
+}
+
+// sameRules reports whether a and b name the same set of rules.
+func sameRules(a, b []rule.Rule) bool {
+	for _, r := range a {
+		if !slices.Contains(b, r) {
+			return false
+		}
+	}
+	for _, r := range b {
+		if !slices.Contains(a, r) {
+			return false
+		}
+	}
+	return true
 }
 
 // parseIgnore reads an ignore directive's rule list. Both levels share it, so

@@ -96,6 +96,13 @@ func TestDirectives(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "directives")
 }
 
+// TestDuplicateDirective checks that a scope directive or an ignore repeated
+// on one declaration or one file is reported at the second, and that a
+// repeated ignore is not also reported unused.
+func TestDuplicateDirective(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "duplicatedirective")
+}
+
 // TestTestFilesShareNamespace checks that a _test.go file may use the
 // private declarations of its subject.
 func TestTestFilesShareNamespace(t *testing.T) {

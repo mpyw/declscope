@@ -45,9 +45,14 @@ func (r *run) ignoreSilenced(c *candidate) {
 // unused, since it cannot see the report it answers. siblings maps each
 // ignore bound to a declaration to the ignores bound beside it.
 //
+// An ignore repeating another of its declaration or of its file is skipped:
+// the analyzer reports it as a duplicate and drops it, so the one mistake
+// gets one report. repeated holds those of declarations.
+//
 //declscope:shared // the core drains it after judging the package
-func (r *run) unusedIgnores(p *packages.Package, siblings map[token.Pos][]directive.Ignore) []Finding {
+func (r *run) unusedIgnores(p *packages.Package, siblings map[token.Pos][]directive.Ignore, repeated map[token.Pos]bool) []Finding {
 	var findings []Finding
+	fileKept := map[token.Pos]bool{}
 	for _, file := range p.Syntax {
 		// A generated file declares no candidate, so an ignore there could
 		// never silence one. The analyzer does not read it either.
@@ -55,10 +60,14 @@ func (r *run) unusedIgnores(p *packages.Package, siblings map[token.Pos][]direct
 			continue
 		}
 		fileIgnores := directive.ParseFile(file).Ignores
+		for _, ig := range fileIgnores {
+			fileKept[ig.Pos] = true
+		}
 		for _, g := range file.Comments {
+			fileLevel := g.Pos() < file.Package
 			group := directive.ParseDecl(g).Ignores
 			for _, ig := range group {
-				if r.usedIgnores[ig.Pos] || !ignoreJudged(ig) {
+				if r.usedIgnores[ig.Pos] || !ignoreJudged(ig) || repeated[ig.Pos] || fileLevel && !fileKept[ig.Pos] {
 					continue
 				}
 				// An ignore bound to no declaration has only its own group.
