@@ -346,6 +346,8 @@ sub/a.go:1:1: filter.only stated in /repo/sub matches 1 file(s) here, but an onl
 
 The report is that narrow on purpose. A package that reads nothing is usually the point, as with a root `only` naming one subtree, or an `omit` naming a directory.
 
+The cause is in the config files, so fix it there: change the nested `only`, or the `only` above it, so that the files are read. No directive silences this report, since nothing in the package is read. `filter` is still a valid rule name for `//declscope:ignore`, but such an ignore silences nothing, so the [`unused`](#unused-directives) rule reports it.
+
 ## Directives
 
 A **directive** is a line comment `//declscope:name`, with a lowercase name, no spaces, and any argument after a space. Any other comment starting with `declscope:` is [malformed](#malformed-directives). A trailing `// reason` is ignored.
@@ -358,7 +360,7 @@ A **directive** is a line comment `//declscope:name`, with a lowercase name, no 
 | --- | --- | --- |
 | `//declscope:shared`, `//declscope:private` | Declaration or file | States the [scope](#scope-resolution). On a type it also reaches the type's [fields](#members), but not its methods |
 | `//declscope:ignore` | Declaration or file | Silences every rule the analyzer reports. [`overexported`](#silencing-it) must be named |
-| `//declscope:ignore <rules>` | Declaration or file | Silences the named [rules](#rules), comma-separated |
+| `//declscope:ignore <rules>` | Declaration or file | Silences the named [rules](#rules), comma-separated. Naming [`filter`](#the-filter-rule) silences nothing |
 | `//declscope:core` | File | Joins the file to the [core namespace](#the-core-namespace) |
 | `//declscope:namespace <name>` | File | Joins the file to an [explicitly named namespace](#namespaces) |
 

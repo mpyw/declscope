@@ -102,6 +102,8 @@ Config files **compose**, and each key composes on its own. `FindChain` returns 
 
 `rules.naming.vocabulary` merges per namespace rather than the nearer map replacing it, since adding one word should not cost restating the rest. `filter` is the one place the composition is not "nearest wins": `only` intersects and `omit` unions, which is `spec/filter_chain.fsl`'s subject. **The property that buys is that a config file can only ever shrink what is read**, so an `omit` at the root holds everywhere below it. Do not add a key that lets a nested file widen — `inherit: false` was considered and rejected for exactly that, because a single escape hatch turns the guarantee into "unless somebody used it". `MonotoneDown` is what a change in that direction breaks.
 
+**The `filter` report is resolved in the config, not with a directive.** It fires when a nested `only` matches files that an `only` above it removes, so the package is read as empty (`collect.go`, reported in `report.go`). Nothing in the package was read, so no directive there is parsed, and a `//declscope:ignore filter` cannot silence it. Teaching the report to read the first file's ignores was considered ([#210](https://github.com/mpyw/declscope/issues/210)) and rejected: the cause is in the chain of config files, so fixing `filter.only` there is the answer. `filter` stays a valid ignore rule name, since rule names are shared between diagnostics, config, ignores and baselines. Such an ignore silences nothing, so the `unused` rule reports it, and `testdata/src/ignorefilter` pins that.
+
 Because the chain holds patterns from several depths, a pattern travels with the directory it was written in (`internal.FilterPattern`), and `Only` is a slice of groups rather than a flat list. Flattening would lose which base each pattern anchors to, and intersecting would become impossible.
 
 `rules.naming.vocabulary` maps a namespace to extra words that carry it (`mouse: [wheel]`, `index: [indices]`). A listed word goes through `namespace.Contains` exactly as the namespace does — word boundary on the left, free right edge — so it is a spelling, never a scope, and never a semantic "related words" guess: explicit enumeration was chosen over any automatic relatedness, which cannot be audited. A namespace needing a long list is a design smell, and the README says so.
@@ -307,7 +309,7 @@ The renames went to natural word order rather than a prefix: `addFuncToCollectio
 | `//declscope:shared` | Declaration or file | State the scope instead of deriving it from the defaults. On a type it also reaches the type's fields, not its methods; before the package clause it is the file's default, still overridable per declaration |
 | `//declscope:private` | Declaration or file | Same |
 | `//declscope:ignore` | Declaration or file | Silence every rule for the declaration, or for the whole file |
-| `//declscope:ignore <rules>` | Declaration or file | Silence only the named rules (`boundary`, `qualify`, `surplus`, `unused`, `directive`, `filter`) |
+| `//declscope:ignore <rules>` | Declaration or file | Silence only the named rules (`boundary`, `qualify`, `surplus`, `unused`, `directive`). `filter` is accepted but silences nothing |
 | `//declscope:core` | File, before the package clause | Join the package's core namespace; conflicts with `//declscope:namespace` |
 | `//declscope:namespace <name>` | File, before the package clause | Override the namespace derived from the file name |
 
