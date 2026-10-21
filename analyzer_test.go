@@ -342,6 +342,14 @@ func TestNamespaceInitialism(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nsinitialism")
 }
 
+// TestNamespaceTestSuffix checks that a file with a build suffix after _test,
+// such as foo_test_linux.go, is not a test of foo.go and has a namespace of its
+// own. GOOS is set so that the file is compiled on every host.
+func TestNamespaceTestSuffix(t *testing.T) {
+	t.Setenv("GOOS", "linux")
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "nstestsuffix")
+}
+
 // TestBlockIgnore checks that an ignore directive is judged once per comment,
 // not once per declaration it reaches: one on a block, or shared by the names
 // of one spec, is used as soon as any of them needed it, and is reported once
