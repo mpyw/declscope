@@ -32,6 +32,17 @@ func TestOf(t *testing.T) {
 		// Only the documented order is stripped: GOARCH never precedes GOOS.
 		{"parser_amd64_linux.go", "parserAmd64"},
 
+		// go/build reads a suffix only before the first dot. What follows the
+		// dot stays in the namespace.
+		{"foo_linux.pb.go", "fooPb"},
+		{"foo.bar_linux.go", "fooBarLinux"},
+		{"x.linux_amd64.go", "xLinuxAmd64"},
+		{"foo_linux_test.pb.go", "fooTestPb"},
+		{"foo.bar_test.go", "fooBar"},
+
+		// mips8 is not a GOARCH go/build knows.
+		{"foo_mips8.go", "fooMips8"},
+
 		{"http2.go", "http2"},
 		{"v2_client.go", "v2Client"},
 		{"doc.go", "doc"},

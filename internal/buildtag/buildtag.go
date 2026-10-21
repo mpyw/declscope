@@ -14,34 +14,42 @@ import (
 // build constraint, so that some configuration leaves it out. The name is
 // read the way go/build reads it: name_GOOS.go, name_GOARCH.go and
 // name_GOOS_GOARCH.go are constrained, each with an optional _test, and
-// linux.go is not.
+// linux.go is not. Only the part before the first dot is read, so
+// foo_linux.pb.go is constrained and foo.bar_linux.go is not.
 func Constrained(name string, f *ast.File) bool {
-	return suffixed(filepath.Base(name)) || constrainedByLine(f)
+	stem, _, _ := strings.Cut(filepath.Base(name), ".")
+	_, suffixed := TrimOSArch(stem)
+	return suffixed || constrainedByLine(f)
 }
 
-// KnownOS reports whether s is a GOOS go/build recognizes in a file name.
-func KnownOS(s string) bool { return knownOS[s] }
-
-// KnownArch reports whether s is a GOARCH go/build recognizes in a file name.
-func KnownArch(s string) bool { return knownArch[s] }
-
-// suffixed mirrors go/build's goodOSArchFile: only the part after the first
-// underscore is read, so a name that is all suffix constrains nothing.
-func suffixed(base string) bool {
-	base = strings.TrimSuffix(base, ".go")
-	i := strings.Index(base, "_")
+// TrimOSArch removes from stem the _GOOS_GOARCH, _GOOS or _GOARCH suffix that
+// go/build reads as a build constraint, and reports whether there was one.
+// stem is a file name cut at its first dot. It mirrors go/build's
+// goodOSArchFile: a trailing _test is looked past and kept, and only the part
+// after the first underscore is read, so a name that is all suffix constrains
+// nothing.
+func TrimOSArch(stem string) (string, bool) {
+	i := strings.Index(stem, "_")
 	if i < 0 {
-		return false
+		return stem, false
 	}
-	l := strings.Split(base[i:], "_")
-	if n := len(l); n > 0 && l[n-1] == "test" {
-		l = l[:n-1]
-	}
+	rest, test := strings.CutSuffix(stem[i:], "_test")
+	l := strings.Split(rest, "_")
 	n := len(l)
-	if n >= 2 && KnownOS(l[n-2]) && KnownArch(l[n-1]) {
-		return true
+	var drop int
+	switch {
+	case n >= 2 && knownOS[l[n-2]] && knownArch[l[n-1]]:
+		drop = len("_"+l[n-2]) + len("_"+l[n-1])
+	case knownOS[l[n-1]] || knownArch[l[n-1]]:
+		drop = len("_" + l[n-1])
+	default:
+		return stem, false
 	}
-	return n >= 1 && (KnownOS(l[n-1]) || KnownArch(l[n-1]))
+	trimmed := stem[:i+len(rest)-drop]
+	if test {
+		trimmed += "_test"
+	}
+	return trimmed, true
 }
 
 // constrainedByLine reports whether a //go:build or // +build line comes
@@ -60,7 +68,8 @@ func constrainedByLine(f *ast.File) bool {
 	return false
 }
 
-// Mirrors the lists in go/internal/syslist, which is not importable.
+// Mirror KnownOS and KnownArch in internal/syslist, which is not importable.
+// TestKnownLists checks them against the Go that runs the tests.
 var knownOS = map[string]bool{
 	"aix": true, "android": true, "darwin": true, "dragonfly": true,
 	"freebsd": true, "hurd": true, "illumos": true, "ios": true, "js": true,
@@ -72,7 +81,7 @@ var knownArch = map[string]bool{
 	"386": true, "amd64": true, "amd64p32": true, "arm": true, "armbe": true,
 	"arm64": true, "arm64be": true, "loong64": true, "mips": true,
 	"mipsle": true, "mips64": true, "mips64le": true, "mips64p32": true,
-	"mips64p32le": true, "mips8": true, "ppc": true, "ppc64": true,
-	"ppc64le": true, "riscv": true, "riscv64": true, "s390": true,
-	"s390x": true, "sparc": true, "sparc64": true, "wasm": true,
+	"mips64p32le": true, "ppc": true, "ppc64": true, "ppc64le": true,
+	"riscv": true, "riscv64": true, "s390": true, "s390x": true, "sparc": true,
+	"sparc64": true, "wasm": true,
 }
