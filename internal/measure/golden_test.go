@@ -133,8 +133,8 @@ func TestMostReachedHonoursItsLimit(t *testing.T) {
 	if got := len(pkg.mostReached(2)); got != 2 {
 		t.Errorf("MostReached(2) returned %d rows", got)
 	}
-	if all, none := len(pkg.mostReached(0)), len(pkg.mostReached(99)); all != none || all < 3 {
-		t.Errorf("MostReached(0) returned %d rows and MostReached(99) returned %d", all, none)
+	if got := len(pkg.mostReached(99)); got < 3 {
+		t.Errorf("MostReached(99) returned %d rows, want every row", got)
 	}
 }
 

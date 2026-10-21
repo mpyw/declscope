@@ -53,15 +53,20 @@ func (m QualifyMode) Applies(namespaces int) bool {
 	}
 }
 
-// QualifyModeSet is the values one setting accepts, in the order an error
-// message names them. Each setting declares its own, so that a rejected value
-// is answered with what that setting accepts rather than with everything
-// QualifyMode can hold.
-type QualifyModeSet []QualifyMode
+// ModeSet is the values one setting accepts, in the order an error message
+// names them. Each setting declares its own, so that a rejected value is
+// answered with what that setting accepts rather than with everything its mode
+// type can hold.
+//
+// It is generic over the mode types, which stay separate: parsing by spelling
+// and listing the spellings is all they share.
+type ModeSet[M interface {
+	~int
+	String() string
+}] []M
 
-// Parse reads a setting's value: always, never or ondemand, and of those only
-// the members of the set.
-func (s QualifyModeSet) Parse(value string) (QualifyMode, bool) {
+// Parse reads a setting's value, of the members of the set only.
+func (s ModeSet[M]) Parse(value string) (M, bool) {
 	for _, m := range s {
 		if value == m.String() {
 			return m, true
@@ -72,17 +77,11 @@ func (s QualifyModeSet) Parse(value string) (QualifyMode, bool) {
 
 // String lists the accepted spellings the way an error message names them:
 // "always, never or ondemand".
-func (s QualifyModeSet) String() string {
+func (s ModeSet[M]) String() string {
 	names := make([]string, len(s))
 	for i, m := range s {
 		names[i] = m.String()
 	}
-	return modeJoin(names)
-}
-
-// modeJoin spells a list of accepted values the way an error message names
-// them: "a, b or c".
-func modeJoin(names []string) string {
 	if len(names) < 2 {
 		return strings.Join(names, "")
 	}
@@ -96,8 +95,9 @@ func modeJoin(names []string) string {
 // It is QualifyMode's sibling rather than three more QualifyMode values.
 // QualifyMode carries a predicate, Applies, that asks how many namespaces a
 // package has, and that question means nothing here; a QualifyMode that could
-// hold loose would need an answer for it anyway. What the two share — parse by spelling, and list the
-// spellings in an error — is small, and modeJoin is where it is shared.
+// hold loose would need an answer for it anyway. What the two share — parse by
+// spelling, and list the spellings in an error — is small, and ModeSet is where
+// it is shared.
 type SurplusMode int
 
 const (
@@ -136,29 +136,6 @@ func (m SurplusMode) Reports() bool { return m == SurplusModeLoose || m == Surpl
 // directive in use widens, not only the directive as a whole.
 func (m SurplusMode) ReportsDeclarations() bool { return m == SurplusModeStrict }
 
-// SurplusModeSet is the values rules.surplus accepts, in the order an error
-// message names them.
-type SurplusModeSet []SurplusMode
-
-// Parse reads a setting's value, of the members of the set only.
-func (s SurplusModeSet) Parse(value string) (SurplusMode, bool) {
-	for _, m := range s {
-		if value == m.String() {
-			return m, true
-		}
-	}
-	return 0, false
-}
-
-// String lists the accepted spellings: "off, loose or strict".
-func (s SurplusModeSet) String() string {
-	names := make([]string, len(s))
-	for i, m := range s {
-		names[i] = m.String()
-	}
-	return modeJoin(names)
-}
-
 // BoundaryMode says whether the boundary rule reports: on or off. Only
 // rules.boundary reads one.
 //
@@ -192,29 +169,6 @@ func (m BoundaryMode) String() string {
 
 // Reports reports whether the rule says anything at all.
 func (m BoundaryMode) Reports() bool { return m == BoundaryModeOn }
-
-// BoundaryModeSet is the values rules.boundary accepts, in the order an error
-// message names them.
-type BoundaryModeSet []BoundaryMode
-
-// Parse reads a setting's value, of the members of the set only.
-func (s BoundaryModeSet) Parse(value string) (BoundaryMode, bool) {
-	for _, m := range s {
-		if value == m.String() {
-			return m, true
-		}
-	}
-	return 0, false
-}
-
-// String lists the accepted spellings: "off or on".
-func (s BoundaryModeSet) String() string {
-	names := make([]string, len(s))
-	for i, m := range s {
-		names[i] = m.String()
-	}
-	return modeJoin(names)
-}
 
 // UnusedMode says when the unused rule reports a directive: never, only when
 // no configuration could make a scope directive bind, or also when it names
@@ -261,26 +215,3 @@ func (m UnusedMode) Reports() bool { return m == UnusedModeLoose || m == UnusedM
 // ReportsRedundant reports whether a directive restating the scope the
 // configuration already gives is reported.
 func (m UnusedMode) ReportsRedundant() bool { return m == UnusedModeStrict }
-
-// UnusedModeSet is the values rules.unused accepts, in the order an error
-// message names them.
-type UnusedModeSet []UnusedMode
-
-// Parse reads a setting's value, of the members of the set only.
-func (s UnusedModeSet) Parse(value string) (UnusedMode, bool) {
-	for _, m := range s {
-		if value == m.String() {
-			return m, true
-		}
-	}
-	return 0, false
-}
-
-// String lists the accepted spellings: "off, loose or strict".
-func (s UnusedModeSet) String() string {
-	names := make([]string, len(s))
-	for i, m := range s {
-		names[i] = m.String()
-	}
-	return modeJoin(names)
-}

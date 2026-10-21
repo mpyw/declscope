@@ -31,7 +31,7 @@ type Reach struct {
 }
 
 // mostReached returns the declarations reached from the most namespaces, at
-// most limit of them. A limit of zero returns all of them.
+// most limit of them.
 //
 //declscope:shared // markdown.go renders the rows
 func (p Package) mostReached(limit int) []Reach {
@@ -71,7 +71,7 @@ func (p Package) mostReached(limit int) []Reach {
 			cmp.Compare(a.Declaration, b.Declaration),
 		)
 	})
-	if limit > 0 && len(out) > limit {
+	if len(out) > limit {
 		out = out[:limit]
 	}
 	return out

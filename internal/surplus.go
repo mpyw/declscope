@@ -590,16 +590,10 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 	}
 
 	inheriting := make(map[types.Object][]*target)
-	entries := make(map[token.Pos][]*target)
-	var anchors []token.Pos
 	for _, t := range c.targets {
 		if t.contained && t.boundAt != boundAtDecl {
 			inheriting[t.ownerObj] = append(inheriting[t.ownerObj], t)
 		}
-		if _, seen := entries[t.anchor]; !seen {
-			anchors = append(anchors, t.anchor)
-		}
-		entries[t.anchor] = append(entries[t.anchor], t)
 	}
 	carriesOnlyQuiet := func(t *target) bool {
 		return t.kind != kindType || !slices.ContainsFunc(inheriting[t.obj], func(m *target) bool {
@@ -609,8 +603,7 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 
 	reported := make(map[*target]bool)
 	var groups [][]*target
-	for _, a := range anchors {
-		names := entries[a]
+	for _, names := range surplusEntries(c.targets) {
 		if slices.ContainsFunc(names, func(t *target) bool { return !wide(t) || !carriesOnlyQuiet(t) }) {
 			continue
 		}
@@ -732,24 +725,33 @@ func (c *collection) surplusNarrowedByTypeFix(pass *analysis.Pass, opts Options,
 			}
 		}
 	}
-	entries := make(map[token.Pos][]*target)
-	var anchors []token.Pos
-	for _, t := range c.surplusMembers[typ.obj] {
-		if _, seen := entries[t.anchor]; !seen {
-			anchors = append(anchors, t.anchor)
-		}
-		entries[t.anchor] = append(entries[t.anchor], t)
-	}
 	wide := func(t *target) bool {
 		return !isExported(t.obj.Name()) && t.boundAt == boundAtDefault &&
 			!s.reachesOutside(c, t) && !c.ignoreWouldSilence(t, rule.Surplus)
 	}
 	var out []*target
-	for _, a := range anchors {
-		names := entries[a]
+	for _, names := range surplusEntries(c.surplusMembers[typ.obj]) {
 		if !slices.ContainsFunc(names, func(t *target) bool { return !wide(t) }) {
 			out = append(out, names[0])
 		}
 	}
 	return out
+}
+
+// surplusEntries groups targets by anchor, in the order each anchor is first
+// seen. An entry is what one directive written above it would reach: var a, b
+// is one entry, and so is a, b int.
+func surplusEntries(targets []*target) [][]*target {
+	var entries [][]*target
+	at := make(map[token.Pos]int)
+	for _, t := range targets {
+		i, seen := at[t.anchor]
+		if !seen {
+			i = len(entries)
+			at[t.anchor] = i
+			entries = append(entries, nil)
+		}
+		entries[i] = append(entries[i], t)
+	}
+	return entries
 }
