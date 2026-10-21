@@ -344,6 +344,13 @@ func TestBraceIgnore(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "braceignore")
 }
 
+// TestLineAfterComment checks that a directive trailing a declaration's first
+// or last line binds even when an earlier comment, one that is not a
+// directive, starts on that line too.
+func TestLineAfterComment(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "lineaftercomment")
+}
+
 // TestAliases checks what a directive on a type alias reaches. The alias name
 // is an ordinary declaration, so //declscope:shared on it widens the name and
 // use.go may take an al — the silence on alias.go is the assertion. It does not
