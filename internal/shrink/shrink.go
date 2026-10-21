@@ -356,6 +356,18 @@ func (c *candidate) writtenInOwn(xs []*excluded.File, name string) bool {
 	return slices.ContainsFunc(xs, func(x *excluded.File) bool { return c.inOwnPackage(x) && x.Writes(name) })
 }
 
+// linknamedInOwn reports whether a build-excluded file of the candidate's
+// own package binds its name with //go:linkname or //export. The rename
+// cannot rewrite that file, and the build that keeps it would fail: the
+// directive would name a declaration that is gone.
+//
+//declscope:shared // rename.go asks it beside the package's own linknames
+func (c *candidate) linknamedInOwn(xs []*excluded.File) bool {
+	return slices.ContainsFunc(xs, func(x *excluded.File) bool {
+		return c.inOwnPackage(x) && directive.Linknamed([]*ast.File{x.Syntax})[c.obj.Name()]
+	})
+}
+
 // linkerSet reports whether the candidate is a package-level string
 // variable, which `go build -ldflags "-X path.Name=value"` sets by name. A
 // build file passes the flag, where go/types never looks, and the linker
