@@ -50,7 +50,7 @@ the binary.
 | `unused_ignore_unseen.fsl` | Over a run that reads a constrained file and one that leaves it out (#168, #172), one ignore on a declaration passes both wherever either needs it, and an ignore neither needs is reported by one of them. The run that leaves the file out keeps only a `boundary` ignore whose declaration that file names, or, for a field, whose type or an alias of it that file names, since an unkeyed literal crosses into the field by position. The run that reads it keeps nothing it does not silence, and an ignore of a rule judged on the declaration is judged alike in both | Every combination of the rule the ignore names, a crossing every run sees, a crossing only the constrained file makes by name or by position, whether that file names the declaration or a field's type, and whether the other rule's finding fires |
 | `knobs.fsl` | A boundary is reported only for a private scope and only across a namespace, and on an exported declaration only where a directive narrowed it — each guard witnessed by an invariant its removal breaks | As above |
 | `naming_rules.fsl` | A fix is eventually applied wherever one is offered, which is what the `fair` on the fix actions claims | As above, plus whether a rename is offered at all |
-| `rename_guarded.fsl` | The guard `renameSafe` applies — every scope Go resolves through — makes the rename sound, and dropping any one of the four checks breaks it | Every binding environment at the reference site |
+| `rename_guarded.fsl` | The guard `safeToRename` applies — every scope Go resolves through — makes the rename sound, and dropping any one of the four checks breaks it | Every binding environment at the reference site |
 | `rename_reach.fsl` | Nothing the fix leaves unedited still writes the old name, and the new name is never left declared twice — over every reason a file of the package can sit outside what the fix edits | Generated and `exclude`d files, unseen in-package tests, and build-excluded files, against both names |
 | `rename_reach.fsl` | The build-excluded guard is no broader than it needs to be: a rename beside an excluded file that writes neither name is still offered | As above |
 | `surplus.fsl` | `surplus` never reports a declaration reachable by any path: a spelled use, an interface satisfaction, an exported carrier, a linkname, or an opaque source | Every combination of the rule switch, the directive, the five reach paths, and whether the pass read every file |
@@ -213,7 +213,7 @@ is a semantics that contradicts the documented one; each was run:
 | `boundary_fix.fsl` stops reading `blockDir`, or stops discriminating exportedness | `reachable_failed` |
 | `fair` is dropped from `fixBoundary` | `violated` (`leadsTo`); under induction, `unknown_cti` (`progress_action_not_fair`) |
 | A scope directive ignores a nearer directive that shadows it | `violated` |
-| Any one of the four scope checks in `renameSafe` is dropped | `violated` |
+| Any one of the four scope checks in `safeToRename` is dropped | `violated` |
 | The build-excluded file is not consulted, so a rename disturbs a name only another configuration writes | `violated` |
 | An unseen in-package test file does not withhold the rename | `violated` |
 | Both directive insertions fire, so a member is fixed under a type fixed in the same run | `violated` (`InsertedMemberDirectiveBinds`) |
@@ -273,7 +273,7 @@ Three habits keep those controls sharp. **Record the report.** A spec whose only
 action assigns the whole state at once cannot carry an invariant that any state
 could break: every property over the resulting `def`s is a tautology, and
 `--engine induction` buys nothing over `check`. Recording what the code *does* —
-`reported`, `bound`, `fixed`, `lastFix` — puts the guards that produce it under
+`reported`, `bound`, `fixed` — puts the guards that produce it under
 the invariant, which is where a guard has to be for its deletion to be noticed.
 **Pin every other reason.** A reachable
 named for one distinction must fix the variables that could satisfy it for

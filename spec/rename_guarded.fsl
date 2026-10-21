@@ -3,11 +3,11 @@
 // rename_sound.fsl is the negative control: it models a guard checking package
 // scope only and enumerates what a sound one must check beyond it. A control
 // with no positive counterpart proves nothing about the code that exists —
-// internal/rename.go renameSafe could lose fileScopesBind and no spec here
+// internal/rename.go safeToRename could lose renameBoundByImport and no spec here
 // would change verdict.
 //
-// This is that counterpart. It models all four scope checks renameSafe applies
-// (Pkg.Scope().Lookup, types.Universe.Lookup, fileScopesBind, and
+// This is that counterpart. It models all four scope checks safeToRename applies
+// (Pkg.Scope().Lookup, types.Universe.Lookup, renameBoundByImport, and
 // LookupParent at the reference site) and proves the rename sound under them.
 // Dropping any one of the four turns this spec violated.
 //
@@ -63,7 +63,7 @@ spec RenameGuarded {
   // The guard as implemented: every scope Go resolves through.
   def guardAsImplemented() =
     otherPkg != BindsNew      // Pkg.Scope().Lookup
-    and fileAt != BindsNew    // fileScopesBind
+    and fileAt != BindsNew    // renameBoundByImport
     and localAt != BindsNew   // LookupParent at the reference site
     and not universeNew       // types.Universe.Lookup
 

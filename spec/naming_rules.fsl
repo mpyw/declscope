@@ -45,7 +45,7 @@ spec NamingRules {
     kind: Kind = Pkg, exported: Bool = false,
     canPrefix: Bool = true, isCore: Bool = false,
     carry: Carry = Absent, fixed: Bool = false,
-    // renameOffered stands for everything internal/rename.go renameSafe
+    // renameOffered stands for everything internal/rename.go safeToRename
     // withholds beyond exportedness: a collision in any scope, a //go:linkname,
     // an unseen test variant, a name that cannot be spelled. The violation is
     // reported either way; only the fix is withheld.
