@@ -219,7 +219,8 @@ func TestDefaultsReachMembers(t *testing.T) {
 
 // TestUnkeyedLiteral checks that a composite literal without keys uses every
 // field it writes, though it names none of them, and that a literal of a
-// generic struct's instantiation uses the declared fields.
+// generic struct's instantiation uses the declared fields. A literal that
+// leaves out a pointer type, as in []*T{{1}}, writes the fields of T.
 func TestUnkeyedLiteral(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "unkeyed")
 }
@@ -469,9 +470,10 @@ func TestSurplusStrict(t *testing.T) {
 }
 
 // TestSurplusStrictReach checks every way a field is reached without its name
-// being spelled from outside: a composite literal without keys, a selection
-// promoted through an embedding, a selection on an instantiated generic type,
-// a struct conversion, and a method written in another namespace. Each keeps
+// being spelled from outside: a composite literal without keys, also one
+// behind an elided pointer type, a selection promoted through an embedding, a
+// selection on an instantiated generic type, a struct conversion, also one
+// between pointers, and a method written in another namespace. Each keeps
 // the type's scope, and a field reached by none of them is still reported.
 func TestSurplusStrictReach(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusstrictreach")

@@ -459,7 +459,13 @@ func (c *collection) collectUnkeyedFields(pass *analysis.Pass, fi *fileInfo, lit
 	if _, keyed := lit.Elts[0].(*ast.KeyValueExpr); keyed {
 		return
 	}
-	st, ok := types.Unalias(pass.TypesInfo.TypeOf(lit)).Underlying().(*types.Struct)
+	// A literal inside another may leave out a pointer type: in []*T{{1}} the
+	// inner literal's type is *T, and it writes the fields of T.
+	t := types.Unalias(pass.TypesInfo.TypeOf(lit))
+	if ptr, ok := t.(*types.Pointer); ok {
+		t = types.Unalias(ptr.Elem())
+	}
+	st, ok := t.Underlying().(*types.Struct)
 	if !ok || st.NumFields() != len(lit.Elts) {
 		return
 	}
