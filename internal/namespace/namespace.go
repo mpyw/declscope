@@ -90,33 +90,7 @@ func Unexported(name string) (string, bool) {
 	if strings.Contains(name, "_") {
 		return "", false
 	}
-	runes := []rune(name)
-	upper := 0
-	for upper < len(runes) && unicode.IsUpper(runes[upper]) {
-		upper++
-	}
-	lower := func(n int) string { return strings.ToLower(string(runes[:n])) + string(runes[n:]) }
-	switch {
-	case upper == 0:
-		return name, true
-	case upper == len(runes) || !unicode.IsLower(runes[upper]):
-		// ID, MAX, HTTP2Client: nothing lower-case follows the run, so it is
-		// one word.
-		return lower(upper), true
-	case upper == 1:
-		return lower(1), true
-	case isInitialism(string(runes[:upper-1])):
-		// HTTPServer, URLPath: an initialism, then a word opened by the last
-		// capital. HTTPS is an initialism too, which is why this is asked
-		// first.
-		return lower(upper - 1), true
-	case isInitialism(string(runes[:upper])):
-		// IDs, URLs, IPv4: the whole run is the initialism.
-		return lower(upper), true
-	default:
-		// OAuth: the last capital opens the next word.
-		return lower(upper - 1), true
-	}
+	return lowerLeading(name), true
 }
 
 // of returns the default namespace for a file path.
@@ -131,7 +105,8 @@ func Unexported(name string) (string, bool) {
 //	parser.x_linux.go       -> parserXLinux     before the first dot)
 //	user_id.go              -> userID          (initialisms are spelled the way Go does)
 //	foo-bar.go, foo.bar.go  -> fooBar          (any separator, not only _)
-//	Foo.go, HTTPServer.go   -> foo, httpServer (a PascalCase stem is lowered)
+//	Foo.go, HTTPServer.go   -> foo, httpServer (a PascalCase stem is lowered
+//	IDs.go, IPv4.go         -> ids, ipv4        the way Unexported lowers a name)
 //	v2_client.go            -> v2Client
 //	2fa_auth.go             -> 2faAuth
 //
@@ -209,29 +184,39 @@ func capitalize(word string) string {
 	return string(unicode.ToUpper(r)) + word[size:]
 }
 
-// lowerLeading lowers the run of capitals a segment starts with, the way Go
-// spells an identifier that begins with an initialism: ID yields id, URLPath
-// yields urlPath rather than uRLPath, and Foo yields foo. A segment that does
-// not start with a capital is returned unchanged.
+// lowerLeading lowers the run of capitals s starts with, the way Go spells
+// an identifier that begins with it. Unexported spells whole names with it and
+// camel spells the first segment of a file stem, so a file named after a
+// declaration gets the namespace that declaration's unexported name would
+// have: IDs.go is ids, as Unexported(IDs) is. A string that does not start
+// with a capital is returned unchanged.
 func lowerLeading(s string) string {
 	runes := []rune(s)
 	upper := 0
 	for upper < len(runes) && unicode.IsUpper(runes[upper]) {
 		upper++
 	}
+	lower := func(n int) string { return strings.ToLower(string(runes[:n])) + string(runes[n:]) }
 	switch {
 	case upper == 0:
 		return s
-	case upper == len(runes):
-		// The whole segment is one initialism: ID -> id.
-		return strings.ToLower(s)
+	case upper == len(runes) || !unicode.IsLower(runes[upper]):
+		// ID, MAX, HTTP2Client: nothing lower-case follows the run, so it is
+		// one word.
+		return lower(upper)
+	case upper == 1:
+		return lower(1)
+	case isInitialism(string(runes[:upper-1])):
+		// HTTPServer, URLPath: an initialism, then a word opened by the last
+		// capital. HTTPS is an initialism too, which is why this is asked
+		// first.
+		return lower(upper - 1)
+	case isInitialism(string(runes[:upper])):
+		// IDs, URLs, IPv4: the whole run is the initialism.
+		return lower(upper)
 	default:
-		// An initialism followed by a word keeps the capital that starts that
-		// word: URLPath -> urlPath.
-		if upper > 1 {
-			upper--
-		}
-		return strings.ToLower(string(runes[:upper])) + string(runes[upper:])
+		// OAuth: the last capital opens the next word.
+		return lower(upper - 1)
 	}
 }
 
