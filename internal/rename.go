@@ -238,14 +238,10 @@ func (rs *renameState) selectionsFree(pass *analysis.Pass, t *target, newName st
 			return true
 		}
 		rs.gatherTyped(pass)
-		if rs.asked[obj.Name()] || rs.asked[newName] {
-			return false
-		}
+		// An interface method is asked for by its own interface, so a
+		// receiver that names no type is never reached in practice.
 		owner := renameNamedOf(recv.Type())
-		if owner == nil {
-			return false
-		}
-		if renameSelects(owner, pass.Pkg, newName) {
+		if rs.asked[obj.Name()] || rs.asked[newName] || owner == nil || renameSelects(owner, pass.Pkg, newName) {
 			return false
 		}
 		// An embedding promotes the method whatever name the field is
