@@ -111,9 +111,10 @@ var (
 )
 
 // Made is returned by Make, which package b calls. b holds a Made without
-// naming it, and must still be able to name it.
+// naming it, and must still be able to name it. V is not fixed: b/b_never.go
+// may read it through a Made that b.go holds.
 type Made struct {
-	V int // want: field V is exported, but nothing.*uses it$
+	V int // want: field V is exported.*no fix: a build-excluded file of another package may use it
 }
 
 func Make() Made { return Made{} }
@@ -126,13 +127,14 @@ type generic[T any] struct{ v T }
 
 func MakeHandle() *Handle { return &Handle{} }
 
-// Spelled2 is named by package b, but its method Build is not, so Build is
-// fixed, and Product, which only Build returns, goes in the same run.
+// Spelled2 is named by package b, but its method Build is not. Build is
+// reported, but not fixed, for the same reason as Made.V, so Product, which
+// Build returns, stays carried by it and is not reported.
 type Spelled2 struct{}
 
-func (Spelled2) Build() *Product { return nil } // want: method Build is exported, but nothing.*uses it$
+func (Spelled2) Build() *Product { return nil } // want: method Build is exported.*no fix: a build-excluded file of another package may use it
 
-type Product struct{} // want: type Product is exported, but nothing.*uses it$
+type Product struct{}
 
 var _ = Spelled2{}.Build
 
