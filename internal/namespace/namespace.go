@@ -101,6 +101,7 @@ func Unexported(name string) (string, bool) {
 //	user_repository_test.go -> userRepository  (tests share their subject's namespace)
 //	parser_linux.go         -> parser          (GOOS/GOARCH suffixes are build
 //	parser_linux_amd64.go   -> parser           constraints, not namespaces)
+//	parser_test_linux.go    -> parserTest      (but only a name ending in _test.go is a test)
 //	parser_linux.pb.go      -> parserPb        (go/build reads a suffix only
 //	parser.x_linux.go       -> parserXLinux     before the first dot)
 //	user_id.go              -> userID          (initialisms are spelled the way Go does)
@@ -118,6 +119,15 @@ func Unexported(name string) (string, bool) {
 func of(path string) string {
 	base := strings.TrimSuffix(filepath.Base(path), ".go")
 
+	// A test file, as go/build tells one, shares its subject's namespace. It
+	// is told by the name as written, which must end in _test.go, so this
+	// comes before the build suffix is trimmed: foo_test_linux.go is an
+	// ordinary linux file, not a test of foo.go. The _test is only dropped
+	// when something would remain.
+	if s, ok := strings.CutSuffix(base, "_test"); ok && s != "" {
+		base = s
+	}
+
 	// go/build reads a build suffix only before the first dot, and looks past
 	// a _test there: name_GOOS_GOARCH_test.go.
 	stem, rest, dotted := strings.Cut(base, ".")
@@ -125,12 +135,6 @@ func of(path string) string {
 	base = stem
 	if dotted {
 		base += "." + rest
-	}
-
-	// A test file, as go/build tells one, shares its subject's namespace. The
-	// _test is only dropped when something would remain.
-	if s, ok := strings.CutSuffix(base, "_test"); ok && s != "" {
-		base = s
 	}
 
 	return camel(base)

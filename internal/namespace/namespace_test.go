@@ -39,6 +39,15 @@ func TestOf(t *testing.T) {
 		{"x.linux_amd64.go", "xLinuxAmd64"},
 		{"foo_linux_test.pb.go", "fooTestPb"},
 		{"foo.bar_test.go", "fooBar"},
+		{"foo_test.pb.go", "fooTestPb"},
+
+		// Only a name ending in _test.go is a test file, as go/build tells
+		// one, so a build suffix after _test leaves an ordinary file.
+		{"foo_test_linux.go", "fooTest"},
+		{"foo_test_amd64.go", "fooTest"},
+		{"foo_test_linux_amd64.go", "fooTest"},
+		{"foo_linux_test.go", "foo"},
+		{"foo_test_linux_test.go", "fooTest"},
 
 		// mips8 is not a GOARCH go/build knows.
 		{"foo_mips8.go", "fooMips8"},
