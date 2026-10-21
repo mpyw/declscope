@@ -371,6 +371,13 @@ func TestResolve(t *testing.T) {
 			[]Resolved{{Name: "custom"}, {Name: "user"}},
 		},
 		{
+			// A file that names its namespace keeps it: the directive is the
+			// author's decision, and joining the core would drop it silently.
+			"test file naming its namespace does not join core subject",
+			[]Declared{{Path: "user.go", Core: true}, {Path: "user_test.go", Named: true, Name: "other"}},
+			[]Resolved{{Core: true}, {Name: "other"}},
+		},
+		{
 			"mixed core and named",
 			[]Declared{
 				{Path: "core.go", Core: true},
