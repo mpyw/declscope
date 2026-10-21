@@ -151,11 +151,12 @@ type namingSection struct {
 // defaults, with the nearest config file layered on top, and the baseline
 // loaded — the one the config names, else the nearest default-named file
 // found by FindBaseline. explicit overrides the config lookup. It returns the
-// config path that was used, or "" when there was none.
-func Resolve(dir, explicit string) (internal.Options, string, error) {
-	opts, path, err := resolve(dir, explicit)
+// config files that were applied, outermost first as FindChain gives them, so
+// a caller that reports them does not walk the directories again.
+func Resolve(dir, explicit string) (internal.Options, []string, error) {
+	opts, chain, err := resolve(dir, explicit)
 	if err != nil {
-		return opts, path, err
+		return opts, chain, err
 	}
 	if opts.BaselinePath == "" {
 		opts.BaselinePath = FindBaseline(dir)
@@ -163,11 +164,11 @@ func Resolve(dir, explicit string) (internal.Options, string, error) {
 	if opts.BaselinePath != "" {
 		set, err := baseline.Load(opts.BaselinePath)
 		if err != nil {
-			return opts, path, err
+			return opts, chain, err
 		}
 		opts.Baseline = set
 	}
-	return opts, path, nil
+	return opts, chain, nil
 }
 
 // ResolveForBaseline produces the options for regenerating the baseline of a
@@ -180,12 +181,15 @@ func Resolve(dir, explicit string) (internal.Options, string, error) {
 // the config file, or "" when it names none. Where a package's entries belong
 // in that case is the caller's decision — see DefaultBaseline.
 func ResolveForBaseline(dir, explicit string) (opts internal.Options, configPath, named string, err error) {
-	opts, configPath, err = resolve(dir, explicit)
+	opts, chain, err := resolve(dir, explicit)
+	if len(chain) > 0 {
+		configPath = chain[len(chain)-1]
+	}
 	named, opts.BaselinePath = opts.BaselinePath, ""
 	return opts, configPath, named, err
 }
 
-func resolve(dir, explicit string) (internal.Options, string, error) {
+func resolve(dir, explicit string) (internal.Options, []string, error) {
 	opts := internal.DefaultOptions()
 
 	// An explicit -config names one file and asks for it, so no chain is
@@ -194,25 +198,21 @@ func resolve(dir, explicit string) (internal.Options, string, error) {
 	if explicit == "" {
 		chain = FindChain(dir)
 	}
-	path := ""
-	if len(chain) > 0 {
-		path = chain[len(chain)-1]
-	}
 	// Outermost first, so a nearer file overrides the keys it states and
 	// leaves the rest as the file above set them.
 	for _, p := range chain {
 		f, err := Load(p)
 		if err != nil {
-			return opts, p, err
+			return opts, chain, err
 		}
 		if err := f.Apply(&opts); err != nil {
-			return opts, p, fmt.Errorf("%s: %w", p, err)
+			return opts, chain, fmt.Errorf("%s: %w", p, err)
 		}
 	}
 	if err := opts.Compile(); err != nil {
-		return opts, path, err
+		return opts, chain, err
 	}
-	return opts, path, nil
+	return opts, chain, nil
 }
 
 // FindChain walks up from dir and returns every config file it passes,
@@ -222,6 +222,8 @@ func resolve(dir, explicit string) (internal.Options, string, error) {
 // The search stops at a module root, exactly as Find does. Config files do
 // compose, so a file above the module would reach into it, which is the one
 // thing the module boundary is there to prevent.
+//
+//declscope:ignore overexported // config_test drives the lookup through it
 func FindChain(dir string) []string {
 	var found []string
 	for d := range dirsUp(dir) {

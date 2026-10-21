@@ -89,17 +89,18 @@ func surveyPackages(pkgs []*packages.Package, configPath string, failed []string
 	// the fold below sees more than one, and it runs in package order.
 	type measuredPackage struct {
 		opts     internal.Options
+		chain    []string
 		measured measure.Package
 		err      error
 	}
 	results := make([]measuredPackage, len(pkgs))
 	loadInParallel(len(pkgs), func(i int) {
-		opts, _, err := config.Resolve(loadedPackageDir(pkgs[i]), configPath)
+		opts, chain, err := config.Resolve(loadedPackageDir(pkgs[i]), configPath)
 		if err != nil {
 			results[i].err = err
 			return
 		}
-		results[i] = measuredPackage{opts: opts, measured: internal.Survey(loadedPass(pkgs[i]), opts)}
+		results[i] = measuredPackage{opts: opts, chain: chain, measured: internal.Survey(loadedPass(pkgs[i]), opts)}
 	})
 
 	var measured []measure.Package
@@ -108,19 +109,16 @@ func surveyPackages(pkgs []*packages.Package, configPath string, failed []string
 	baselines := map[string]measure.BaselineUse{}
 	analyzed := 0
 
-	for i, pkg := range pkgs {
-		r := results[i]
+	for _, r := range results {
 		if r.err != nil {
 			return measure.Summary{}, r.err
 		}
 		opts := r.opts
 		analyzed++
 
-		chain := config.FindChain(loadedPackageDir(pkg))
-		if configPath != "" {
-			// An explicit -config builds no chain: the caller named the rules.
-			chain = []string{configPath}
-		}
+		// The chain Resolve applied, which is the explicit -config alone when
+		// one is given.
+		chain := r.chain
 		key := strings.Join(chain, "\x00")
 		use, ok := configs[key]
 		if !ok {

@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 
@@ -100,14 +101,75 @@ const header = `# declscope baseline
 
 // Load reads a baseline file. A missing file is not an error: it yields an
 // empty set, so a configured but not yet generated baseline behaves as none.
+//
+// Every package of a run resolves its own options, and most of them reach the
+// same file, so a parsed file is kept and handed out again while the file
+// keeps its modification time and size. The key is the file's state, not the
+// run, because the analyzer may live in a process that outlasts a regeneration
+// (gopls, golangci-lint's cache server). A Set is never changed after it is
+// built, so the concurrent passes of one run can share it.
 func Load(path string) (*Set, error) {
-	data, err := os.ReadFile(path)
+	// A stat rather than an open: a hit then costs one system call, where an
+	// open and a close cost several times more. A file rewritten between the
+	// stat and the read is cached under the older state, which the next stat
+	// no longer matches, so the newer content is read again rather than kept.
+	st, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &Set{keys: map[Key]bool{}}, nil
 		}
 		return nil, err
 	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	stamp := loadedStamp{modTime: st.ModTime().UnixNano(), size: st.Size()}
+
+	loadedMu.Lock()
+	l := loadedFiles[abs]
+	if l == nil || l.stamp != stamp {
+		l = &loadedFile{stamp: stamp}
+		loadedFiles[abs] = l
+	}
+	loadedMu.Unlock()
+
+	// Once per state, so passes that miss together parse the file once
+	// between them rather than once each.
+	l.once.Do(func() {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			l.err = err
+			return
+		}
+		l.set, l.err = parse(path, data)
+	})
+	return l.set, l.err
+}
+
+// loadedStamp is what tells a file unchanged since it was parsed. A rewrite
+// that keeps both within the file system's timestamp resolution is missed,
+// which a regeneration, writing the whole file anew, does not do in practice.
+type loadedStamp struct {
+	modTime int64 // in nanoseconds, so that == compares the instant alone
+	size    int64
+}
+
+// loadedFile is one parse of one state of a file. An error is kept too: the
+// same bytes fail the same way.
+type loadedFile struct {
+	stamp loadedStamp
+	once  sync.Once
+	set   *Set
+	err   error
+}
+
+var (
+	loadedMu    sync.Mutex
+	loadedFiles = map[string]*loadedFile{}
+)
+
+func parse(path string, data []byte) (*Set, error) {
 	var f file
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)

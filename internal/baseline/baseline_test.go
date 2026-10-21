@@ -1,9 +1,12 @@
 package baseline_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/mpyw/declscope/internal/baseline"
 )
@@ -224,6 +227,92 @@ func TestSaveReportsWhereItCannotWrite(t *testing.T) {
 	} {
 		if _, err := baseline.Save(path, keys); err == nil {
 			t.Errorf("%s: Save succeeded, want an error", name)
+		}
+	}
+}
+
+// TestLoadRereadsAChangedFile checks that a kept parse is not handed out once
+// the file changes, as it does under a long-lived process when the baseline is
+// regenerated: by its size, and by its modification time alone.
+func TestLoadRereadsAChangedFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".declscope-baseline.yaml")
+	first := baseline.Key{Package: "p", Rule: "boundary", Namespace: "user", Decl: "a"}
+	if _, err := baseline.Save(path, []baseline.Key{first}); err != nil {
+		t.Fatal(err)
+	}
+	if set, err := baseline.Load(path); err != nil || !set.Has(first) {
+		t.Fatalf("Load = %v, %v; want the first key", set, err)
+	}
+
+	// The same size, so only the modification time tells the two apart.
+	second := baseline.Key{Package: "p", Rule: "boundary", Namespace: "user", Decl: "b"}
+	if _, err := baseline.Save(path, []baseline.Key{second}); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
+	set, err := baseline.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.Has(first) || !set.Has(second) {
+		t.Errorf("after a rewrite of the same size, Has(a) = %v and Has(b) = %v, want false and true", set.Has(first), set.Has(second))
+	}
+
+	// A different size, with the modification time put back.
+	if _, err := baseline.Save(path, []baseline.Key{first, second}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, later, later); err != nil {
+		t.Fatal(err)
+	}
+	if set, err := baseline.Load(path); err != nil || set.Len() != 2 {
+		t.Errorf("after a rewrite of another size, Load = %v, %v; want both keys", set, err)
+	}
+}
+
+// TestLoadConcurrently loads one file from many goroutines at once, as the
+// analysis driver's parallel passes do. Run under -race, it checks the kept
+// parse is shared safely.
+func TestLoadConcurrently(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".declscope-baseline.yaml")
+	k := baseline.Key{Package: "p", Rule: "boundary", Namespace: "user", Decl: "a"}
+	if _, err := baseline.Save(path, []baseline.Key{k}); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Go(func() {
+			if set, err := baseline.Load(path); err != nil || !set.Has(k) {
+				t.Errorf("Load = %v, %v; want the key", set, err)
+			}
+		})
+	}
+	wg.Wait()
+}
+
+// BenchmarkLoad loads one 5,000-entry baseline repeatedly, as a run does once
+// per package.
+func BenchmarkLoad(b *testing.B) {
+	path := filepath.Join(b.TempDir(), ".declscope-baseline.yaml")
+	keys := make([]baseline.Key, 0, 5000)
+	for i := range 5000 {
+		keys = append(keys, baseline.Key{
+			Package:   fmt.Sprintf("example.com/p%d", i/50),
+			Rule:      "boundary",
+			Namespace: fmt.Sprintf("ns%d", i%10),
+			Decl:      fmt.Sprintf("decl%d", i),
+		})
+	}
+	if _, err := baseline.Save(path, keys); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := baseline.Load(path); err != nil {
+			b.Fatal(err)
 		}
 	}
 }

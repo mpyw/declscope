@@ -72,7 +72,7 @@ func inspectRun(args []string) {
 	}
 
 	dir := loadedPackageDir(pkg)
-	opts, _, err := config.Resolve(dir, *configPath)
+	opts, chain, err := config.Resolve(dir, *configPath)
 	if err != nil {
 		inspectFail(err)
 	}
@@ -80,11 +80,9 @@ func inspectRun(args []string) {
 	// The chain, not the nearest file. Config files compose key by key, so
 	// the file next to the package can leave qualify at never while the one
 	// above it turned the rule on, and naming only the nearer one
-	// misattributes every rule that ran.
-	surveyed.Config = config.FindChain(dir)
-	if *configPath != "" {
-		surveyed.Config = []string{*configPath}
-	}
+	// misattributes every rule that ran. An explicit -config is the chain
+	// alone, as Resolve applied it.
+	surveyed.Config = chain
 	if err := surveyed.WriteFormat(os.Stdout, chosen); err != nil {
 		inspectFail(err)
 	}

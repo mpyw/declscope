@@ -158,6 +158,9 @@ func baselineCollect(patterns []string, configPath, out, cwd string, shrinkToo b
 		if err != nil {
 			return nil, fmt.Errorf("declscope shrink: %w (pass -shrink=false to record the analyzer's findings alone)", err)
 		}
+		// One lookup per directory, not per finding: a package with many
+		// findings would otherwise walk and parse its config chain for each.
+		placed := map[string]string{}
 		for _, f := range res.Findings {
 			// An unused ignore is a mistake in new code, not a finding the
 			// codebase already has.
@@ -168,8 +171,13 @@ func baselineCollect(patterns []string, configPath, out, cwd string, shrinkToo b
 			// config error there has returned, and a package no lookup would
 			// find is among the unplaceable ones.
 			dir := filepath.Dir(f.Pos.Filename)
-			_, _, named, _ := config.ResolveForBaseline(dir, configPath)
-			if path := baselineTarget(named, dir, out, cwd); path != "" {
+			path, ok := placed[dir]
+			if !ok {
+				_, _, named, _ := config.ResolveForBaseline(dir, configPath)
+				path = baselineTarget(named, dir, out, cwd)
+				placed[dir] = path
+			}
+			if path != "" {
 				targets[path] = append(targets[path], f.Key())
 			}
 		}
