@@ -69,7 +69,11 @@ func cellPlural(n int, one, many string) string {
 // A column is right-aligned when every value in it is one — a count, a ratio,
 // or a dash — and left-aligned otherwise, so figures line up under each other
 // while names and file lists start where the eye looks for them.
+//
+// A "|" in a cell is escaped. GitHub splits a cell at one even inside
+// backticks, and Go accepts it in a file name.
 func cellTable(rows [][]string) []string {
+	rows = cellEscape(rows)
 	var widths []int
 	for _, row := range rows {
 		for i, cell := range row {
@@ -104,11 +108,29 @@ func cellTable(rows [][]string) []string {
 	return out
 }
 
+// cellEscape returns the rows with every "|" escaped, leaving the caller's
+// rows as they were.
+//
+//declscope:private // cellTable's own step; the renderers call cellTable
+func cellEscape(rows [][]string) [][]string {
+	out := make([][]string, len(rows))
+	for n, row := range rows {
+		out[n] = make([]string, len(row))
+		for i, cell := range row {
+			out[n][i] = strings.ReplaceAll(cell, "|", `\|`)
+		}
+	}
+	return out
+}
+
 // cellColumnIsNumeric reports whether every value in a column is a figure: a
 // count, a "3 of 7" ratio, or the dash that stands for a question not asked.
+// A column with no figure at all, only dashes and empty cells, is not numeric,
+// so its alignment does not depend on whether a rule was asked.
 //
 //declscope:private // cellTable's own step; the renderers call cellTable
 func cellColumnIsNumeric(rows [][]string, i int) bool {
+	figures := 0
 	for _, row := range rows {
 		if i >= len(row) {
 			continue
@@ -117,13 +139,32 @@ func cellColumnIsNumeric(rows [][]string, i int) bool {
 		if cell == "" || cell == "-" {
 			continue
 		}
-		for word := range strings.FieldsSeq(strings.ReplaceAll(cell, "of", " ")) {
-			if strings.TrimLeft(word, "0123456789") != "" {
-				return false
-			}
+		if !cellIsFigure(cell) {
+			return false
 		}
+		figures++
 	}
-	return true
+	return figures > 0
+}
+
+// cellIsFigure reports whether a cell is a count or a "3 of 7" ratio.
+//
+//declscope:private // cellTable's own step; the renderers call cellTable
+func cellIsFigure(cell string) bool {
+	words := strings.Fields(cell)
+	switch {
+	case len(words) == 1:
+		return cellIsCount(words[0])
+	case len(words) == 3 && words[1] == "of":
+		return cellIsCount(words[0]) && cellIsCount(words[2])
+	default:
+		return false
+	}
+}
+
+//declscope:private // cellTable's own step; the renderers call cellTable
+func cellIsCount(word string) bool {
+	return word != "" && strings.TrimLeft(word, "0123456789") == ""
 }
 
 // cellRule is the alignment row, widened like the cells above it and carrying

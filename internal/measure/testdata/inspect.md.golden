@@ -23,7 +23,6 @@ Config: `.declscope.yaml`
 
 Declarations crossed: 1 reported, 2 baselined, 1 declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.
 
-
 ```mermaid
 graph LR
   n0["completion"]
@@ -34,6 +33,7 @@ graph LR
   n2 -->|1| n0
   n1 -.->|1| n0
 ```
+
 ## Most-reached declarations
 
 | declaration    | namespace  | reached from | state     |

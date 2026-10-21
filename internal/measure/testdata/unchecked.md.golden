@@ -3,17 +3,15 @@
 ## Namespaces
 
 | namespace | files      | declarations | qualify targets |
-| --------- | ---------- | -----------: | --------------: |
-| api       | `api.go`   |            3 |               - |
-| store     | `store.go` |            2 |               - |
+| --------- | ---------- | -----------: | --------------- |
+| api       | `api.go`   |            3 | -               |
+| store     | `store.go` |            2 | -               |
 
 ## Crossings
 
 | crossing    | mutual | declared | baselined | reported | clears | reached | uses |
-| ----------- | -----: | -------: | --------: | -------: | -----: | ------: | ---: |
-| api → store |        |        - |         - |        - |      - |  1 of 2 |    5 |
-
-
+| ----------- | ------ | -------- | --------- | -------- | ------ | ------: | ---: |
+| api → store |        | -        | -         | -        | -      |  1 of 2 |    5 |
 
 ```mermaid
 graph LR
@@ -21,6 +19,7 @@ graph LR
   n1["store"]
   n0 -.->|1| n1
 ```
+
 ## Most-reached declarations
 
 | declaration | namespace | reached from | state     |

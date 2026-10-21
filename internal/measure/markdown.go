@@ -67,10 +67,9 @@ func writeMarkdownCrossings(out *sink, p Package, asked bool) {
 	}
 	writeMarkdownTable(out, "Crossings", rows)
 	if open := p.declarationsCrossing(EdgeOpen); open > 0 {
-		out.printf("%s further: open, shared by default rather than by decision, so left out of the table and of the diagram.\n",
+		out.printf("%s further: open, shared by default rather than by decision, so left out of the table and of the diagram.\n\n",
 			cellPlural(open, "declaration is", "declarations are"))
 	}
-	out.print("\n")
 	if asked {
 		out.printf("Declarations crossed: %d reported, %d baselined, %d declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.\n\n",
 			p.declarationsCrossing(EdgeReported),
@@ -97,7 +96,7 @@ func writeMarkdownMermaid(out *sink, crossings []Crossing) {
 		}
 	}
 
-	out.print("\n```mermaid\ngraph LR\n")
+	out.print("```mermaid\ngraph LR\n")
 	// Nodes are declared in the order the sorted crossings first name them,
 	// which is stable for the same package.
 	declared := map[string]bool{}
@@ -112,7 +111,7 @@ func writeMarkdownMermaid(out *sink, crossings []Crossing) {
 	for _, c := range crossings {
 		out.printf("  %s %s|%d| %s\n", ids[c.From], markdownArrow(c), c.Reached, ids[c.To])
 	}
-	out.print("```\n")
+	out.print("```\n\n")
 }
 
 // markdownArrow is the line style for one crossing: thick where something is

@@ -1506,7 +1506,7 @@ $ declscope inspect -config .declscope-strict.yaml ./internal/measure
 ## Crossings
 
 | crossing          | mutual | declared | baselined | reported | clears |  reached | uses |
-| ----------------- | -----: | -------: | --------: | -------: | -----: | -------: | ---: |
+| ----------------- | ------ | -------: | --------: | -------: | -----: | -------: | ---: |
 | markdown → cell   |        |        7 |         0 |        0 |      0 |  7 of 10 |   15 |
 | markdown → sink   |        |        5 |         0 |        0 |      0 |  5 of 17 |   28 |
 | golden → (core)   |        |        4 |         0 |        0 |      0 |  4 of 78 |    9 |
