@@ -28,8 +28,8 @@ type ignoreBook struct {
 // ignoreSite is one physical ignore directive, however many declarations it
 // reaches. A directive on a block is copied into every spec by Decl.Merge and
 // one on `var a, b` is shared by both names, but it is still one comment, so it
-// is judged once: unused only if it silencedByIgnore nothing for any of them. Judged
-// per target, it would be reported unused whenever any sibling did not need
+// is judged once: unused only if it silenced nothing for any of them. Judged per
+// target, it would be reported unused whenever any sibling did not need
 // it, and a wholly unused one would be reported once per sibling.
 type ignoreSite struct {
 	// decls names the declarations the directive reaches, in source order,

@@ -65,7 +65,7 @@ type scopeSite struct {
 	// scope instead. A block's directive that every spec overrides reaches no
 	// declaration, exactly as one written on an init function does, and the
 	// report has to separate the two: one line is redundant, the other is
-	// written somewhere it can never bindAtScopeSite.
+	// written somewhere it can never bind.
 	shadowed bool
 
 	// taken records that something in its reach took this directive's scope,
@@ -173,7 +173,7 @@ func outerScopeOfScopeSite(opts Options, name string, rest []directive.Decl) (sc
 //
 // Asking only "is the name exported" would be wrong in both directions. It
 // would call //declscope:shared inert on an exported field whose type says
-// private — where it is the only thing surplus the field back, so a codebase
+// private — where it is the only thing that makes the field shared again, so a codebase
 // could narrow an exported declaration and never widen it again without a
 // permanent false report. And it would miss a directive that restates an
 // enclosing one, which decides nothing for the same reason a redundant default

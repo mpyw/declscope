@@ -74,8 +74,12 @@ func printVersion() {
 //   - the stamp a release build writes, which is what a GitHub Release or a
 //     mise install carries;
 //   - the module version the go command records for `go install <pkg>@<v>`,
-//     which no linker flag reaches;
-//   - "devel", for a build from a checkout, where there is no release to name.
+//     which no linker flag reaches, and also records for a build from a
+//     checkout as a VCS pseudo-version, such as
+//     0.20.5-0.20261018002554-7139cf06e543 (with +dirty when the tree has
+//     uncommitted changes);
+//   - "devel", where the go command records no version either, as for a
+//     build with -buildvcs=false.
 //
 // The leading v is dropped so that the two sources read alike: goreleaser
 // spells a tag without it, and the module system keeps it.

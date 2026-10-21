@@ -41,7 +41,7 @@ type fileInfo struct {
 	binder *directive.Binder
 
 	// ignores stands the whole file outside a naming rule. They apply on top
-	// of whatever each declaration says for itself. Whether each silencedByIgnore
+	// of whatever each declaration says for itself. Whether each one silenced
 	// anything is accounted for in collection.ignores.
 	ignores []directive.Ignore
 
@@ -150,7 +150,7 @@ type target struct {
 	decided bool
 	// dir holds the directives reaching the declaration. Its Ignores may be
 	// shared with sibling targets — a block's directive reaches every spec —
-	// so whether one silencedByIgnore anything is tracked per physical directive in
+	// so whether one silenced anything is tracked per physical directive in
 	// collection.ignores, never per target.
 	dir directive.Decl
 
@@ -181,7 +181,7 @@ func (t *target) foreignMethod() bool {
 }
 
 // fileAt finds the file a position falls in. A directive problem is not
-// attached to any declaration — a collectStrayIgnores comment belongs to nothing — so the
+// attached to any declaration — a stray comment belongs to nothing — so the
 // file is the only level that can answer for it.
 func (c *collection) fileAt(pass *analysis.Pass, pos token.Pos) *fileInfo {
 	if !pos.IsValid() {
@@ -349,8 +349,10 @@ func embeddedTypeName(obj types.Object) types.Object {
 }
 
 // comparePos orders positions by file name, then by offset within the file.
+// The name is the one on disk, as everywhere else: a //line directive does not
+// move a declaration to the file it names.
 func comparePos(fset *token.FileSet, a, b token.Pos) int {
-	pa, pb := fset.Position(a), fset.Position(b)
+	pa, pb := fset.PositionFor(a, false), fset.PositionFor(b, false)
 	return cmp.Or(strings.Compare(pa.Filename, pb.Filename), cmp.Compare(pa.Offset, pb.Offset))
 }
 

@@ -131,7 +131,7 @@ func (c *collection) collectTargets(pass *analysis.Pass, opts Options) {
 			}
 		}
 	}
-	c.collectStrayIgnores()
+	c.collectStrayDirectives()
 	// Every stage reads the targets in source order, sorted once here. The
 	// order decides which of two fixes claiming one new name gets it, and a
 	// baseline must name the declaration the report names. token.Pos alone
@@ -391,7 +391,7 @@ func (c *collection) addToCollection(t *target) {
 // registers every ignore, so that one attached to no checked declaration is
 // still reported unused; records every problem, so that a block's bogus
 // directive is reported once and not once per spec; and remembers the group as
-// consumed, so that collectStrayIgnores can tell which directives reached nothing.
+// consumed, so that collectStrayDirectives can tell which directives reached nothing.
 //
 // A group already consumed is skipped rather than parsed twice, so a comment
 // that is reachable along two paths (a single-line spec's Comment is also the
@@ -428,11 +428,11 @@ func (c *collection) parseCollectedDecl(groups ...*ast.CommentGroup) directive.D
 	return d
 }
 
-// collectStrayIgnores reports every directive written after the package clause that no
+// collectStrayDirectives reports every directive written after the package clause that no
 // declaration consumed. Anything parseCollectedDecl saw is accounted for, whether or
 // not it produced a target; what is left is a directive the author believes
 // is in force and is not.
-func (c *collection) collectStrayIgnores() {
+func (c *collection) collectStrayDirectives() {
 	for _, fi := range c.files {
 		for _, g := range fi.file.Comments {
 			// Comments before the package clause are the file's, and
