@@ -49,6 +49,21 @@ type userGenModel[T any] struct {
 	gen T
 }
 
+// A literal inside another may leave out its pointer type: in
+// []*userPtrRec{{1}} it writes the fields of the struct the pointer points to.
+//
+//declscope:shared
+type userPtrRec struct {
+	a int
+}
+
+// A conversion between pointers to struct types pairs the fields as well.
+//
+//declscope:shared
+type userPtrModel struct {
+	rev int
+}
+
 // A method written in order.go reads the field from there.
 //
 //declscope:shared

@@ -10,6 +10,18 @@ func buildExported() Entry { return Entry{ID: 3} }
 // The same for an instantiation of a generic struct.
 func buildPair() Pair[string] { return Pair[string]{4, "y"} }
 
+// Each literal below leaves out a pointer type, and still writes the fields.
+func buildElided() int {
+	slots := []*Slot{{1}}
+	cells := [...]*Cell{{1}}
+	keys := map[*Key]int{{1}: 0}
+	values := map[int]*Value{0: {1}}
+	deep := [][]*Deep{{{1}}}
+	named := []*Named{{count: 1}}
+	return len(slots) + len(cells) + len(keys) + len(values) + len(deep) + len(named)
+}
+
 var _ = buildMake
 var _ = buildPair
 var _ = buildExported
+var _ = buildElided

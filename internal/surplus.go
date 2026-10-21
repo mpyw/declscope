@@ -460,7 +460,13 @@ func surplusCarried(pass *analysis.Pass, reached map[types.Object]bool) {
 // back to the declared ones byObj is keyed by.
 func (c *collection) surplusConversions(pass *analysis.Pass, reached map[types.Object]bool) {
 	mark := func(t types.Type, fi *fileInfo) {
-		st, ok := types.Unalias(t).Underlying().(*types.Struct)
+		// (*snapshot)(&user) converts between pointers to the two struct
+		// types, and pairs their fields the same way.
+		t = types.Unalias(t)
+		if ptr, ok := t.(*types.Pointer); ok {
+			t = types.Unalias(ptr.Elem())
+		}
+		st, ok := t.Underlying().(*types.Struct)
 		if !ok {
 			return
 		}

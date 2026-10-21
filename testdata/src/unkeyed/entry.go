@@ -21,3 +21,31 @@ type Pair[T any] struct {
 	ID  int
 	val T // want `field Pair.val is private to namespace "entry", but is used from namespace "build"`
 }
+
+// A literal inside another may leave out its type, a pointer one too. In
+// []*Slot{{1}} the inner literal has the type *Slot, and writes the fields of
+// the struct it points to. Each type below is written in one form only.
+type Slot struct {
+	count int // want `field Slot.count is private to namespace "entry", but is used from namespace "build"`
+}
+
+type Cell struct {
+	count int // want `field Cell.count is private to namespace "entry", but is used from namespace "build"`
+}
+
+type Key struct {
+	count int // want `field Key.count is private to namespace "entry", but is used from namespace "build"`
+}
+
+type Value struct {
+	count int // want `field Value.count is private to namespace "entry", but is used from namespace "build"`
+}
+
+type Deep struct {
+	count int // want `field Deep.count is private to namespace "entry", but is used from namespace "build"`
+}
+
+// A keyed literal names its fields, so its type does not matter.
+type Named struct {
+	count int // want `field Named.count is private to namespace "entry", but is used from namespace "build"`
+}
