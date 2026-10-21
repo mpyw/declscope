@@ -60,6 +60,9 @@ func filterBases(dir string) []string {
 //	**/gen/**     floats: that directory at any depth
 //	gen/**        anchors: the one beside this config file
 //	/gen/**       anchors: the same, spelled the way .gitignore anchors
+//	./gen/**      anchors: ./ is another spelling of the leading /
+//	gen/          floats: a trailing / names a directory, so **/gen/**
+//	/gen/, ./gen/ anchors: gen/**
 //
 // Anchoring at load time, by joining the pattern onto the config directory as
 // text, would look equivalent and is not: a config named through a symlink,
@@ -70,11 +73,14 @@ func filterBases(dir string) []string {
 //declscope:shared
 func compileFilter(pattern string, bases []string) (filterMatcher, error) {
 	p := filepath.ToSlash(pattern)
+	dotted := false
 	for strings.HasPrefix(p, "./") {
-		// "./vendor" is one of the ways a person writes "the vendor beside
-		// this file". It anchors like "vendor/**" rather than naming a
-		// directory called ".".
+		// "./vendor/**" is one of the ways a person writes "the vendor beside
+		// this file". It anchors like "/vendor/**" rather than naming a
+		// directory called ".". That has to be recorded before the prefix
+		// goes, or "./gen.go" would float like "gen.go".
 		p = p[2:]
+		dotted = true
 	}
 	for seg := range strings.SplitSeq(p, "/") {
 		if seg == ".." {
@@ -85,13 +91,20 @@ func compileFilter(pattern string, bases []string) (filterMatcher, error) {
 		}
 	}
 	floats := strings.HasPrefix(p, "**/") || !strings.Contains(strings.TrimSuffix(p, "/"), "/")
-	if strings.HasPrefix(p, "/") {
+	if dotted || strings.HasPrefix(p, "/") {
 		// A leading separator is .gitignore's way of saying "here, not at any
 		// depth". Reading it as a filesystem-absolute path instead would make
 		// the same config mean different things on different machines, and on
 		// Windows filepath.IsAbs would not even agree that it was one.
 		p = strings.TrimLeft(p, "/")
 		floats = false
+	}
+	if dir := strings.TrimRight(p, "/"); dir != p && dir != "" {
+		// A trailing separator names a directory, as in .gitignore. A path
+		// handed to a matcher is always a file, so the pattern means that
+		// directory's contents. Left as written it would match nothing, with
+		// no error to say so.
+		p = dir + "/**"
 	}
 	if len(bases) == 0 {
 		// No config file said where "here" is, so there is nothing to anchor
