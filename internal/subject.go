@@ -431,7 +431,12 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 		}
 		inPass[name] = true
 		holdsTests = holdsTests || strings.HasSuffix(name, "_test.go")
-		if dir == "" {
+		// The directory is taken from a source file. A file the go command
+		// produced lives in the build cache, named without the .go
+		// extension: cgo's output, which go list puts after the plain
+		// files, and the whole of a synthesized test main. That folder
+		// holds thousands of cache entries and none of the package's files.
+		if dir == "" && filepath.Ext(name) == ".go" {
 			dir = filepath.Dir(name)
 		}
 	}
@@ -441,6 +446,9 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 	for _, name := range pass.IgnoredFiles {
 		ignored[name] = true
 	}
+	// No source file: a test main, or a package whose every file uses cgo.
+	// Each file is then generated and collects nothing, so no rename,
+	// directive or ignore of this pass waits on the answer.
 	if dir == "" {
 		return u
 	}
