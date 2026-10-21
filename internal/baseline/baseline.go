@@ -116,17 +116,17 @@ func Load(path string) (*Set, error) {
 	st, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// The parse of a removed file is dropped, or a file written
+			// again with its old size and modification time would be
+			// answered with its old content.
+			loadedMu.Lock()
+			delete(loadedFiles, absBaselinePath(path))
+			loadedMu.Unlock()
 			return &Set{keys: map[Key]bool{}}, nil
 		}
 		return nil, err
 	}
-	// Absolute, so that one file reached by two spellings is kept once. Only a
-	// lost working directory fails it, and then the spelling given still
-	// names a file.
-	abs := path
-	if a, err := filepath.Abs(path); err == nil {
-		abs = a
-	}
+	abs := absBaselinePath(path)
 	stamp := loadedStamp{modTime: st.ModTime().UnixNano(), size: st.Size()}
 
 	loadedMu.Lock()
@@ -142,12 +142,31 @@ func Load(path string) (*Set, error) {
 	l.once.Do(func() {
 		data, err := os.ReadFile(path)
 		if err != nil {
+			// A read error is not kept: a chmod or a passing shortage of
+			// file descriptors changes neither the time nor the size, so the
+			// next call has to read again. The passes already waiting on
+			// this state share the error. A newer state is left alone.
 			l.err = err
+			loadedMu.Lock()
+			if loadedFiles[abs] == l {
+				delete(loadedFiles, abs)
+			}
+			loadedMu.Unlock()
 			return
 		}
 		l.set, l.err = parse(path, data)
 	})
 	return l.set, l.err
+}
+
+// absBaselinePath is the key a file is kept under. Absolute, so that one file
+// reached by two spellings is kept once. Only a lost working directory fails
+// it, and then the spelling given still names a file.
+func absBaselinePath(path string) string {
+	if a, err := filepath.Abs(path); err == nil {
+		return a
+	}
+	return path
 }
 
 // loadedStamp is what tells a file unchanged since it was parsed. A rewrite
@@ -158,8 +177,9 @@ type loadedStamp struct {
 	size    int64
 }
 
-// loadedFile is one parse of one state of a file. An error is kept too: the
-// same bytes fail the same way.
+// loadedFile is one parse of one state of a file. A parse error is kept too:
+// the same bytes fail the same way. A read error is not, since it may pass
+// while the state stays the same.
 type loadedFile struct {
 	stamp loadedStamp
 	once  sync.Once
