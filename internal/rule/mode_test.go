@@ -32,7 +32,7 @@ func TestQualifyModeApplies(t *testing.T) {
 // TestModeString pins the spelling a diagnostic or an error would use to the
 // one the settings take, and that it parses back.
 func TestQualifyModeString(t *testing.T) {
-	all := QualifyModeSet{QualifyModeAlways, QualifyModeNever, QualifyModeOnDemand}
+	all := ModeSet[QualifyMode]{QualifyModeAlways, QualifyModeNever, QualifyModeOnDemand}
 	for m, want := range map[QualifyMode]string{
 		QualifyModeAlways:   "always",
 		QualifyModeNever:    "never",
@@ -49,11 +49,11 @@ func TestQualifyModeString(t *testing.T) {
 
 // TestModeSetParse checks that a set accepts its members and nothing else: a
 // mode outside the set is refused the same way as a word that is no mode.
-func TestQualifyModeSetParse(t *testing.T) {
-	all := QualifyModeSet{QualifyModeAlways, QualifyModeNever, QualifyModeOnDemand}
-	binary := QualifyModeSet{QualifyModeAlways, QualifyModeNever}
+func TestModeSetParse(t *testing.T) {
+	all := ModeSet[QualifyMode]{QualifyModeAlways, QualifyModeNever, QualifyModeOnDemand}
+	binary := ModeSet[QualifyMode]{QualifyModeAlways, QualifyModeNever}
 	tests := []struct {
-		set   QualifyModeSet
+		set   ModeSet[QualifyMode]
 		value string
 		want  QualifyMode
 		ok    bool
@@ -68,7 +68,7 @@ func TestQualifyModeSetParse(t *testing.T) {
 		{binary, "always", QualifyModeAlways, true},
 		{binary, "never", QualifyModeNever, true},
 		{binary, "ondemand", 0, false},
-		{QualifyModeSet{QualifyModeNever}, "always", 0, false},
+		{ModeSet[QualifyMode]{QualifyModeNever}, "always", 0, false},
 	}
 	for _, tt := range tests {
 		got, ok := tt.set.Parse(tt.value)
@@ -79,15 +79,15 @@ func TestQualifyModeSetParse(t *testing.T) {
 }
 
 // TestModeSetString pins how a set names its members in an error message.
-func TestQualifyModeSetString(t *testing.T) {
+func TestModeSetString(t *testing.T) {
 	tests := []struct {
-		set  QualifyModeSet
+		set  ModeSet[QualifyMode]
 		want string
 	}{
-		{QualifyModeSet{QualifyModeAlways, QualifyModeNever, QualifyModeOnDemand}, "always, never or ondemand"},
-		{QualifyModeSet{QualifyModeAlways, QualifyModeNever}, "always or never"},
-		{QualifyModeSet{QualifyModeNever}, "never"},
-		{QualifyModeSet{}, ""},
+		{ModeSet[QualifyMode]{QualifyModeAlways, QualifyModeNever, QualifyModeOnDemand}, "always, never or ondemand"},
+		{ModeSet[QualifyMode]{QualifyModeAlways, QualifyModeNever}, "always or never"},
+		{ModeSet[QualifyMode]{QualifyModeNever}, "never"},
+		{ModeSet[QualifyMode]{}, ""},
 	}
 	for _, tt := range tests {
 		if got := tt.set.String(); got != tt.want {
@@ -110,7 +110,7 @@ func TestModeStringUnknown(t *testing.T) {
 // back, that off alone reports nothing, and that only strict reports a
 // redundant directive.
 func TestUnusedMode(t *testing.T) {
-	all := UnusedModeSet{UnusedModeOff, UnusedModeLoose, UnusedModeStrict}
+	all := ModeSet[UnusedMode]{UnusedModeOff, UnusedModeLoose, UnusedModeStrict}
 	for m, want := range map[UnusedMode]string{
 		UnusedModeOff:    "off",
 		UnusedModeLoose:  "loose",

@@ -57,16 +57,16 @@ var names = []string{".declscope.yaml", ".declscope.yml"}
 var baselineNames = []string{".declscope-baseline.yaml", ".declscope-baseline.yml"}
 
 // The values rules.naming.qualify accepts.
-var qualifyModes = rule.QualifyModeSet{rule.QualifyModeAlways, rule.QualifyModeNever, rule.QualifyModeOnDemand}
+var qualifyModes = rule.ModeSet[rule.QualifyMode]{rule.QualifyModeAlways, rule.QualifyModeNever, rule.QualifyModeOnDemand}
 
 // The values rules.boundary accepts, from reporting least to most.
-var boundaryModes = rule.BoundaryModeSet{rule.BoundaryModeOff, rule.BoundaryModeOn}
+var boundaryModes = rule.ModeSet[rule.BoundaryMode]{rule.BoundaryModeOff, rule.BoundaryModeOn}
 
 // The values rules.surplus accepts, from reporting least to most.
-var surplusModes = rule.SurplusModeSet{rule.SurplusModeOff, rule.SurplusModeLoose, rule.SurplusModeStrict}
+var surplusModes = rule.ModeSet[rule.SurplusMode]{rule.SurplusModeOff, rule.SurplusModeLoose, rule.SurplusModeStrict}
 
 // The values rules.unused accepts, from reporting least to most.
-var unusedModes = rule.UnusedModeSet{rule.UnusedModeOff, rule.UnusedModeLoose, rule.UnusedModeStrict}
+var unusedModes = rule.ModeSet[rule.UnusedMode]{rule.UnusedModeOff, rule.UnusedModeLoose, rule.UnusedModeStrict}
 
 // File is the on-disk configuration. Every field is optional, and no setting
 // has a zero value that means anything, so a field left empty is skipped by

@@ -202,14 +202,9 @@ func (c *collection) addFuncToCollection(pass *analysis.Pass, opts Options, fi *
 		if d.Name.Name == "init" {
 			return
 		}
-		sc, boundBy, boundAt, decided := c.bindAtScopeSite(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
-		c.addToCollection(&target{
+		c.addToCollection(opts, &target{
 			obj: obj, ident: d.Name, kind: kindFunc, file: fi, dir: dir, anchor: d.Pos(), doc: d.Doc,
-			scope:   sc,
-			decided: decided,
-			boundBy: boundBy,
-			boundAt: boundAt,
-		})
+		}, directive.Decl{})
 		return
 	}
 
@@ -224,15 +219,10 @@ func (c *collection) addFuncToCollection(pass *analysis.Pass, opts Options, fi *
 		owner = ownerObj.Name()
 		ownerFile = c.fileAt(pass, ownerObj.Pos())
 	}
-	sc, boundBy, boundAt, decided := c.bindAtScopeSite(opts, d.Name.Name, dir, directive.Decl{}, fi.scope)
-	c.addToCollection(&target{
+	c.addToCollection(opts, &target{
 		obj: obj, ident: d.Name, kind: kindMethod, file: fi,
 		owner: owner, ownerObj: ownerObj, ownerFile: ownerFile, dir: dir, anchor: d.Pos(), doc: d.Doc,
-		scope:   sc,
-		decided: decided,
-		boundBy: boundBy,
-		boundAt: boundAt,
-	})
+	}, directive.Decl{})
 }
 
 func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, fi *fileInfo, d *ast.GenDecl) {
@@ -255,38 +245,32 @@ func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, f
 	if grouped {
 		outer, lead = c.parseCollectedDecl(slices.Concat(lead, fi.binder.Block(d))...), nil
 	}
+	// specTarget reads a spec's own directives and returns what every name it
+	// declares shares: the merged directives, and where a scope directive for
+	// them would be inserted. In a block that is above the spec, under its doc
+	// comment; otherwise it is above the declaration.
+	specTarget := func(spec ast.Spec, specDoc *ast.CommentGroup) target {
+		own := c.parseCollectedDecl(slices.Concat(lead, fi.binder.Spec(spec))...)
+		t := target{file: fi, dir: outer.Merge(own), anchor: d.Pos(), doc: d.Doc}
+		c.shadowedAtScopeSite(outer, t.dir)
+		if grouped {
+			t.anchor, t.doc, t.fromBlock = spec.Pos(), specDoc, outer.HasScope && !own.HasScope
+		}
+		return t
+	}
 
 	for _, spec := range d.Specs {
 		switch spec := spec.(type) {
 		case *ast.TypeSpec:
-			own := c.parseCollectedDecl(slices.Concat(lead, fi.binder.Spec(spec))...)
-			dir := outer.Merge(own)
-			c.shadowedAtScopeSite(outer, dir)
-			anchor, doc, fromBlock := d.Pos(), d.Doc, false
-			if grouped {
-				anchor, doc, fromBlock = spec.Pos(), spec.Doc, outer.HasScope && !own.HasScope
-			}
+			t := specTarget(spec, spec.Doc)
 			if obj, ok := pass.TypesInfo.Defs[spec.Name]; ok && spec.Name.Name != "_" {
-				sc, boundBy, boundAt, decided := c.bindAtScopeSite(opts, spec.Name.Name, dir, directive.Decl{}, fi.scope)
-				c.addToCollection(&target{
-					obj: obj, ident: spec.Name, kind: kindType, file: fi, dir: dir, anchor: anchor,
-					doc: doc, fromBlock: fromBlock,
-					scope:   sc,
-					decided: decided,
-					boundBy: boundBy,
-					boundAt: boundAt,
-				})
+				t.obj, t.ident, t.kind = obj, spec.Name, kindType
+				c.addToCollection(opts, &t, directive.Decl{})
 			}
-			c.addMembersToCollection(pass, opts, fi, spec, pass.TypesInfo.Defs[spec.Name], dir)
+			c.addMembersToCollection(pass, opts, fi, spec, pass.TypesInfo.Defs[spec.Name], t.dir)
 
 		case *ast.ValueSpec:
-			own := c.parseCollectedDecl(slices.Concat(lead, fi.binder.Spec(spec))...)
-			dir := outer.Merge(own)
-			c.shadowedAtScopeSite(outer, dir)
-			anchor, doc, fromBlock := d.Pos(), d.Doc, false
-			if grouped {
-				anchor, doc, fromBlock = spec.Pos(), spec.Doc, outer.HasScope && !own.HasScope
-			}
+			t := specTarget(spec, spec.Doc)
 			k := kindVar
 			if d.Tok == token.CONST {
 				k = kindConst
@@ -296,15 +280,9 @@ func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, f
 				if !ok || name.Name == "_" {
 					continue
 				}
-				sc, boundBy, boundAt, decided := c.bindAtScopeSite(opts, name.Name, dir, directive.Decl{}, fi.scope)
-				c.addToCollection(&target{
-					obj: obj, ident: name, kind: k, file: fi, dir: dir, anchor: anchor,
-					doc: doc, fromBlock: fromBlock,
-					scope:   sc,
-					decided: decided,
-					boundBy: boundBy,
-					boundAt: boundAt,
-				})
+				v := t
+				v.obj, v.ident, v.kind = obj, name, k
+				c.addToCollection(opts, &v, directive.Decl{})
 			}
 		}
 	}
@@ -357,28 +335,24 @@ func (c *collection) addMembersToCollection(pass *analysis.Pass, opts Options, f
 			if !ok || name.Name == "_" {
 				continue
 			}
-			sc, boundBy, boundAt, decided := c.bindAtScopeSite(opts, name.Name, dir, container, fi.scope)
-			c.addToCollection(&target{
+			c.addToCollection(opts, &target{
 				obj: obj, ident: name, kind: k, file: fi,
 				contained: true,
 				owner:     spec.Name.Name, ownerObj: ownerObj, dir: dir,
-				anchor:  m.Pos(),
-				doc:     m.Doc,
-				scope:   sc,
-				decided: decided,
-				boundBy: boundBy,
-				boundAt: boundAt,
-			})
+				anchor: m.Pos(),
+				doc:    m.Doc,
+			}, container)
 		}
 	}
 }
 
-// addToCollection registers a target and names it on every ignore directive
-// reaching it,
-// so that an unused one can be reported with the declarations it was written
-// for. Problems were recorded when the directives were parsed, once per
-// comment rather than once per target sharing it.
-func (c *collection) addToCollection(t *target) {
+// addToCollection binds a target's scope, from its own directives, then
+// container's, then its file's, registers it, and names it on every ignore
+// directive reaching it, so that an unused one can be reported with the
+// declarations it was written for. Problems were recorded when the directives
+// were parsed, once per comment rather than once per target sharing it.
+func (c *collection) addToCollection(opts Options, t *target, container directive.Decl) {
+	t.scope, t.boundBy, t.boundAt, t.decided = c.bindAtScopeSite(opts, t.ident.Name, t.dir, container, t.file.scope)
 	c.targets = append(c.targets, t)
 	c.byObj[t.obj] = t
 	for _, ig := range t.dir.Ignores {
