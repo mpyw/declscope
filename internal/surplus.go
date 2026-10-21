@@ -70,6 +70,13 @@ type surplusBook struct {
 	//
 	//declscope:private // the type is widened only so the core can embed it
 	surplusDeclarations map[*target]surplusDeclaration
+
+	// surplusMembers is every contained declaration, by the type that holds
+	// it, in the order c.targets holds them. A boundary fix on each crossing type asks for its
+	// members, so the index is built once, on the first such fix.
+	//
+	//declscope:private // the type is widened only so the core can embed it
+	surplusMembers map[types.Object][]*target
 }
 
 // surplusDeclaration is one strict finding.
@@ -711,12 +718,17 @@ func (c *collection) surplusNarrowedByTypeFix(pass *analysis.Pass, opts Options,
 	if s.blind {
 		return nil
 	}
+	if c.surplusMembers == nil {
+		c.surplusMembers = make(map[types.Object][]*target)
+		for _, t := range c.targets {
+			if t.contained {
+				c.surplusMembers[t.ownerObj] = append(c.surplusMembers[t.ownerObj], t)
+			}
+		}
+	}
 	entries := make(map[token.Pos][]*target)
 	var anchors []token.Pos
-	for _, t := range c.targets {
-		if !t.contained || t.ownerObj != typ.obj {
-			continue
-		}
+	for _, t := range c.surplusMembers[typ.obj] {
 		if _, seen := entries[t.anchor]; !seen {
 			anchors = append(anchors, t.anchor)
 		}

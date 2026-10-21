@@ -101,7 +101,7 @@ func TestScopesiteRemoval(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pass, pos := scopesiteRemovalPass(t, tc.in)
-			edit, ok := scopesiteRemoval(pass, pos)
+			edit, ok := (&collection{}).scopesiteRemoval(pass, pos)
 			if !ok {
 				t.Fatal("no edit")
 			}
@@ -142,9 +142,32 @@ func TestScopesiteRemovalFailsSafe(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pass, pos := scopesiteRemovalPass(t, content)
-			if edit, ok := scopesiteRemoval(pass, tc.setup(pass, pos)); ok {
+			if edit, ok := (&collection{}).scopesiteRemoval(pass, tc.setup(pass, pos)); ok {
 				t.Errorf("got an edit %+v, want none", edit)
 			}
 		})
+	}
+}
+
+// TestScopesiteRemovalReadsOnce pins that the removal reads a file once per
+// pass, through the cache the insertion fix fills, however many directives the
+// file holds.
+func TestScopesiteRemovalReadsOnce(t *testing.T) {
+	const content = "package x\n\n//declscope:private\nfunc f() {}\n\n//declscope:private\nfunc g() {}\n"
+	pass, first := scopesiteRemovalPass(t, content)
+	reads := 0
+	pass.ReadFile = func(string) ([]byte, error) {
+		reads++
+		return []byte(content), nil
+	}
+	second := first + token.Pos(strings.LastIndex(content, "//declscope:")-strings.Index(content, "//declscope:"))
+	c := &collection{}
+	for _, pos := range []token.Pos{first, second} {
+		if _, ok := c.scopesiteRemoval(pass, pos); !ok {
+			t.Fatalf("no edit at %d", pos)
+		}
+	}
+	if reads != 1 {
+		t.Errorf("read the file %d times, want 1", reads)
 	}
 }

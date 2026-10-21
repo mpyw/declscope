@@ -95,7 +95,10 @@ func (c *collection) insertionAtLineStart(pass *analysis.Pass, pos token.Pos) bo
 
 // insertionSource reads a file once per pass. A read error is held as nil. Only
 // a position past the start of its line reads the content, and every such
-// position overruns nil, so the error still fails safe.
+// position overruns nil, so the error still fails safe. scopesite.go's
+// directive removal reads through it too, and fails safe the same way.
+//
+//declscope:shared // scopesite.go's removal fix reads the same files
 func (c *collection) insertionSource(pass *analysis.Pass, name string) []byte {
 	if content, ok := c.sources[name]; ok {
 		return content

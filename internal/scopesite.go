@@ -422,7 +422,7 @@ func (r *scopesiteRemovals) fix(s *scopeSite) (analysis.SuggestedFix, bool) {
 	if !r.fixable(s) {
 		return analysis.SuggestedFix{}, false
 	}
-	edit, ok := scopesiteRemoval(r.pass, s.dir.ScopePos)
+	edit, ok := r.c.scopesiteRemoval(r.pass, s.dir.ScopePos)
 	if !ok {
 		return analysis.SuggestedFix{}, false
 	}
@@ -510,8 +510,13 @@ func (r *scopesiteRemovals) crosses(t *target) bool {
 // standing between blank lines, as a file-level one often does, takes one of
 // them along, so that no double blank line is left.
 //
-// It fails safe: an unreadable file yields no fix.
-func scopesiteRemoval(pass *analysis.Pass, pos token.Pos) (analysis.TextEdit, bool) {
+// The file is read through insertionSource, once per pass however many
+// directives it holds.
+//
+// It fails safe: an unreadable file is held as nil and yields no fix. The
+// directive starts at pos, so a file read as it was parsed always extends past
+// pos.
+func (c *collection) scopesiteRemoval(pass *analysis.Pass, pos token.Pos) (analysis.TextEdit, bool) {
 	if pass.ReadFile == nil {
 		return analysis.TextEdit{}, false
 	}
@@ -519,12 +524,9 @@ func scopesiteRemoval(pass *analysis.Pass, pos token.Pos) (analysis.TextEdit, bo
 	if tf == nil {
 		return analysis.TextEdit{}, false
 	}
-	content, err := pass.ReadFile(tf.Name())
-	if err != nil {
-		return analysis.TextEdit{}, false
-	}
+	content := c.insertionSource(pass, tf.Name())
 	off := tf.Offset(pos)
-	if off > len(content) {
+	if off >= len(content) {
 		return analysis.TextEdit{}, false
 	}
 	lineStart := strings.LastIndexByte(string(content[:off]), '\n') + 1
