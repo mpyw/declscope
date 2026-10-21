@@ -41,6 +41,13 @@ func TestFilterCancelled(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "filtercancelled/sub")
 }
 
+// TestIgnoreFilter checks that an ignore naming the filter rule silences
+// nothing. Fixing filter.only in the config chain is what resolves that
+// report, so the ignore is reported as unused.
+func TestIgnoreFilter(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ignorefilter")
+}
+
 // TestEmptyFile checks that a file holding only a package clause and comments
 // does not add to the namespace count. A doc.go is the usual one.
 func TestEmptyFile(t *testing.T) {

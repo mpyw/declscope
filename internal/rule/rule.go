@@ -48,7 +48,8 @@ const (
 	// Filter: a filter.only that cannot take effect, because an only above it
 	// in the chain of config files removes everything it matches. It is about
 	// the configuration rather than a declaration, so it carries no fix and no
-	// baseline entry, and a file-level ignore is what silences it.
+	// baseline entry. Fixing filter.only in the config chain resolves it. An
+	// ignore may name it, but silences nothing, so the unused rule reports one.
 	Filter Rule = "filter"
 	// Overexported: an exported declaration of an internal package that
 	// nothing outside its package uses. Only declscope shrink reports it,
