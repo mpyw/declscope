@@ -47,6 +47,25 @@ var fixCases = []fixCase{
 		},
 	},
 	{
+		// Renamed to userHelp, the method would no longer satisfy the
+		// interface, and would collide with the field (#196).
+		name:   "foreign method an interface asks for",
+		config: "rules:\n  naming:\n    qualify: ondemand\n",
+		files: map[string]string{
+			"order.go": "package x\n\ntype orderT struct{ userHelp int }\n\ntype orderHelper interface{ help() int }\n\nvar _ orderHelper = orderT{}\n\nvar _ = orderT{}.userHelp\n",
+			"user.go":  "package x\n\nfunc (o orderT) help() int { return 1 }\n",
+		},
+	},
+	{
+		// Renamed to userItem, the embedded field would be redeclared (#197).
+		name:   "embedded type beside a field of its new name",
+		config: "rules:\n  naming:\n    qualify: ondemand\n",
+		files: map[string]string{
+			"user.go":  "package x\n\ntype item struct{ n int }\n\ntype userHolder struct {\n\titem\n\tuserItem int\n}\n\nvar _ = userHolder{}.item.n\n",
+			"order.go": "package x\n\nfunc orderRun() int { return 1 }\n\nvar _ = orderRun\n",
+		},
+	},
+	{
 		name: "field of a single-line struct",
 		files: map[string]string{
 			"user.go":  "package x\n\ntype User struct{ name string }\n",

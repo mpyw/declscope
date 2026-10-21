@@ -1,0 +1,55 @@
+package fixembedder
+
+import "fmt"
+
+// item is embedded in userHolder, which already has a field userItem.
+// Renamed, the embedded field would be redeclared.
+type item struct{ n int } // want `type item does not carry namespace "user" anywhere in its name; rename it to userItem, or to another name that carries "user"`
+
+type userHolder struct {
+	item
+	userItem int
+}
+
+// part is embedded beside userOther, which has a field userPart. Renamed, the
+// embedded field would be shallower than userOther.userPart, so h.userPart
+// would select it instead: the program would still compile, and read part.
+type part struct{ n int } // want `type part does not carry namespace "user" anywhere in its name; rename it to userPart, or to another name that carries "user"`
+
+type userOther struct{ userPart int }
+
+type userShallow struct {
+	part
+	userOther
+}
+
+func userRead(h userShallow) int { return h.userPart + h.part.n }
+
+// deep is embedded two levels down, beside a field the rename would collide
+// with at the same depth, which would make h.userDeep ambiguous.
+type deep struct{ n int } // want `type deep does not carry namespace "user" anywhere in its name; rename it to userDeep, or to another name that carries "user"`
+
+type userMiddle struct{ deep }
+
+type userSide struct{ userDeep int }
+
+type userTop struct {
+	userMiddle
+	userSide
+}
+
+func userReadTop(h userTop) int { return h.userDeep + h.deep.n }
+
+// spare is embedded where nothing else is called userSpare, so it is renamed.
+type spare struct{ n int } // want `type spare does not carry namespace "user" anywhere in its name; rename it to userSpare, or to another name that carries "user"`
+
+type userFree struct{ spare }
+
+func userReadFree(h userFree) int { return h.spare.n }
+
+// userNode embeds itself through a pointer, and an interface, which holds no
+// field. The search through it ends either way.
+type userNode struct {
+	*userNode
+	fmt.Stringer
+}

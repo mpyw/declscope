@@ -59,6 +59,25 @@ func TestSuggestedFixCapture(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixcapture")
 }
 
+// TestSuggestedFixForeignMethod checks that a method renamed in another
+// file's namespace keeps the type's method set as it was. A new name already
+// selected on the type or on a type promoting the method, or an old or new
+// name an interface of the package asks for, withholds the rename: the first
+// would not compile, and the second can, while changing what an assertion
+// answers.
+func TestSuggestedFixForeignMethod(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixforeignmethod")
+}
+
+// TestSuggestedFixEmbedder checks that a type is not renamed when the field
+// embedding it would take a name already selected on the embedding struct.
+// The struct could then not compile, or compile with a selector now reaching
+// the embedded field instead of the one it reached before, or reaching
+// neither.
+func TestSuggestedFixEmbedder(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixembedder")
+}
+
 // TestSuggestedFixSiblings checks that two fixes in one pass cannot rename
 // two declarations to the same name: the first claims it, the second is
 // reported without a fix.
