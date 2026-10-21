@@ -127,6 +127,8 @@ func Unexported(name string) (string, bool) {
 //	user_repository_test.go -> userRepository  (tests share their subject's namespace)
 //	parser_linux.go         -> parser          (GOOS/GOARCH suffixes are build
 //	parser_linux_amd64.go   -> parser           constraints, not namespaces)
+//	parser_linux.pb.go      -> parserPb        (go/build reads a suffix only
+//	parser.x_linux.go       -> parserXLinux     before the first dot)
 //	user_id.go              -> userID          (initialisms are spelled the way Go does)
 //	foo-bar.go, foo.bar.go  -> fooBar          (any separator, not only _)
 //	Foo.go, HTTPServer.go   -> foo, httpServer (a PascalCase stem is lowered)
@@ -141,27 +143,22 @@ func Unexported(name string) (string, bool) {
 func of(path string) string {
 	base := strings.TrimSuffix(filepath.Base(path), ".go")
 
-	// _test must be stripped before the build suffixes: the canonical shape is
-	// name_GOOS_GOARCH_test.go.
-	base = trimSegment(base, func(s string) bool { return s == "test" })
-	base = trimSegment(base, buildtag.KnownArch)
-	base = trimSegment(base, buildtag.KnownOS)
+	// go/build reads a build suffix only before the first dot, and looks past
+	// a _test there: name_GOOS_GOARCH_test.go.
+	stem, rest, dotted := strings.Cut(base, ".")
+	stem, _ = buildtag.TrimOSArch(stem)
+	base = stem
+	if dotted {
+		base += "." + rest
+	}
+
+	// A test file, as go/build tells one, shares its subject's namespace. The
+	// _test is only dropped when something would remain.
+	if s, ok := strings.CutSuffix(base, "_test"); ok && s != "" {
+		base = s
+	}
 
 	return camel(base)
-}
-
-// trimSegment drops the final underscore-separated segment when match accepts
-// it. The segment is only dropped when something would remain, mirroring
-// go/build: linux.go is an ordinary file, foo_linux.go is constrained.
-func trimSegment(base string, match func(string) bool) string {
-	i := strings.LastIndex(base, "_")
-	if i <= 0 {
-		return base
-	}
-	if !match(base[i+1:]) {
-		return base
-	}
-	return base[:i]
 }
 
 // camel converts a file stem to lowerCamelCase.

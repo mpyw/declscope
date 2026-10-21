@@ -633,6 +633,7 @@ A **namespace** is the unit within which a `private` declaration may be used. By
 | `user_repository.go` | `userRepository` |
 | `user_repository_test.go` | `userRepository`. A test shares the namespace of its subject |
 | `parser_linux.go` | `parser`. A GOOS or GOARCH suffix is a build constraint, not a namespace |
+| `parser_linux.pb.go`, `parser.x_linux.go` | `parserPb`, `parserXLinux`. As in go/build, a suffix counts only before the first dot |
 | `user_id.go`, `parse_json.go` | `userID`, `parseJSON`. An initialism is spelled the way Go spells it |
 | `foo-bar.go`, `Foo.go` | `fooBar`, `foo`. Any separator, and a PascalCase stem, become lowerCamelCase |
 | `2fa_auth.go` | `2faAuth`. A valid namespace, but never a prefix |
