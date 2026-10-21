@@ -49,3 +49,21 @@ type Deep struct {
 type Named struct {
 	count int // want `field Named.count is private to namespace "entry", but is used from namespace "build"`
 }
+
+// A defined pointer type is a pointer through its underlying type.
+type SlotPtr *NamedSlot
+
+type NamedSlot struct {
+	count int // want `field NamedSlot.count is private to namespace "entry", but is used from namespace "build"`
+}
+
+// A type parameter allowing only *Snap points to Snap.
+type Snap struct {
+	count int // want `field Snap.count is private to namespace "entry", but is used from namespace "build"`
+}
+
+type SnapPtrs interface{ ~*Tilde }
+
+type Tilde struct {
+	count int // want `field Tilde.count is private to namespace "entry", but is used from namespace "build"`
+}

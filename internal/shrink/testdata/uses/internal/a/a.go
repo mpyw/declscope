@@ -40,6 +40,30 @@ var (
 	_ = struct{ X int }(Solo{})
 )
 
+// NamedPoint and ParamPoint are written unkeyed by package b, through a
+// defined pointer type and through a type parameter allowing only a pointer.
+// The pointer is left out of the literal both times.
+type NamedPoint struct{ X, Y int }
+
+type NamedPointPtr *NamedPoint
+
+type ParamPoint struct{ X, Y int }
+
+// ParamLeft is converted to a type parameter allowing only *ParamRight, which
+// pairs W by name as (*ParamRight)(l) does. No unnamed struct here has a
+// field W, so nothing else pairs it.
+type ParamLeft struct { // want: type ParamLeft is exported, but nothing.*uses it$
+	W int
+}
+
+type ParamRight struct { // want: type ParamRight is exported, but nothing.*uses it$
+	W int
+}
+
+func toParam[P ~*ParamRight](l *ParamLeft) P { return P(l) }
+
+var _ = toParam[*ParamRight]
+
 // Linked is pulled by a //go:linkname in package b.
 func Linked() int { return 1 }
 

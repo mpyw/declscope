@@ -24,3 +24,15 @@ var _ = snapshotOfGen
 func snapshotLedger(l Ledger) Ledger { return Ledger(l) }
 
 var _ = snapshotLedger
+
+// A conversion to a type parameter allowing only *ParamModel pairs its fields
+// with paramRow's, as (*ParamModel)(r) does. The source side alone was read
+// before, which is why the directive in model.go sits on the target side.
+type paramRow struct {
+	ID  int
+	rev int
+}
+
+func snapshotOfParam[P ~*ParamModel](r *paramRow) P { return P(r) }
+
+var _ = snapshotOfParam[*ParamModel]

@@ -28,3 +28,13 @@ type Ledger struct {
 }
 
 var _ = Ledger{seq: 1}
+
+// ParamModel is exported only so snapshot.go may spell it. Its field takes
+// private scope, which its own directive widens.
+type ParamModel struct {
+	ID int
+	//declscope:shared
+	rev int
+}
+
+var _ = ParamModel{ID: 1, rev: 2}

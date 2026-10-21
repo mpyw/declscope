@@ -24,9 +24,13 @@ func missing()
 var (
 	_, _, _, _, _ = linked, byValue, byPointer, nodot, missing
 	_             = &a.Point{1, 2}
+	_             = []a.NamedPointPtr{{1, 2}}
+	_             = bParamPoints[*a.ParamPoint]
 	_             = a.Make()
 	_             = a.MakeHandle()
 	_             a.Spelled2
 )
+
+func bParamPoints[P interface{ *a.ParamPoint }]() []P { return []P{{1, 2}} }
 
 func init() { a.Spelled() }

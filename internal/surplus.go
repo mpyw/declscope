@@ -49,6 +49,7 @@ import (
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
 
+	"github.com/mpyw/declscope/internal/pointer"
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
@@ -466,10 +467,10 @@ func surplusCarried(pass *analysis.Pass, reached map[types.Object]bool) {
 func (c *collection) surplusConversions(pass *analysis.Pass, reached map[types.Object]bool) {
 	mark := func(t types.Type, fi *fileInfo) {
 		// (*snapshot)(&user) converts between pointers to the two struct
-		// types, and pairs their fields the same way.
-		t = types.Unalias(t)
-		if ptr, ok := t.(*types.Pointer); ok {
-			t = types.Unalias(ptr.Elem())
+		// types, and pairs their fields the same way. So does P(&user) with
+		// P ~*snapshot (pointer.Elem).
+		if elem, ok := pointer.Elem(t); ok {
+			t = elem
 		}
 		st, ok := t.Underlying().(*types.Struct)
 		if !ok {

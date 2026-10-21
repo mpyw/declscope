@@ -14,6 +14,7 @@ import (
 
 	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/namespace"
+	"github.com/mpyw/declscope/internal/pointer"
 	"github.com/mpyw/declscope/internal/rule"
 )
 
@@ -440,10 +441,11 @@ func (c *collection) collectUnkeyedFields(pass *analysis.Pass, fi *fileInfo, lit
 		return
 	}
 	// A literal inside another may leave out a pointer type: in []*T{{1}} the
-	// inner literal's type is *T, and it writes the fields of T.
-	t := types.Unalias(pass.TypesInfo.TypeOf(lit))
-	if ptr, ok := t.(*types.Pointer); ok {
-		t = types.Unalias(ptr.Elem())
+	// inner literal's type is *T, and it writes the fields of T. The pointer
+	// may also be a defined type or a type parameter (pointer.Elem).
+	t := pass.TypesInfo.TypeOf(lit)
+	if elem, ok := pointer.Elem(t); ok {
+		t = elem
 	}
 	st, ok := t.Underlying().(*types.Struct)
 	if !ok || st.NumFields() != len(lit.Elts) {
