@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strings"
 	"sync"
 
 	"golang.org/x/tools/go/analysis"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/mpyw/declscope"
 	"github.com/mpyw/declscope/internal/pattern"
+	"github.com/mpyw/declscope/internal/shrink/module"
 )
 
 // loadPackages type-checks the patterns and hands back what the subcommands
@@ -80,7 +80,7 @@ func loadErrors(pkgs []*packages.Package) []string {
 	seen := map[string]bool{}
 	var failed []string
 	for _, pkg := range pkgs {
-		if loadIsTestMain(pkg) || len(pkg.Errors) == 0 || seen[pkg.PkgPath] {
+		if module.IsTestMain(pkg) || len(pkg.Errors) == 0 || seen[pkg.PkgPath] {
 			continue
 		}
 		seen[pkg.PkgPath] = true
@@ -121,7 +121,7 @@ func loadIsAnalyzable(pkg *packages.Package) bool {
 	if len(pkg.Syntax) == 0 || pkg.TypesInfo == nil || pkg.Types == nil {
 		return false
 	}
-	return !loadIsTestMain(pkg)
+	return !module.IsTestMain(pkg)
 }
 
 // loadedTestOnlyPaths names every package that has only test files, loaded
@@ -145,7 +145,7 @@ func loadedTestOnlyPaths(pkgs []*packages.Package) []string {
 	seen := map[string]bool{}
 	var paths []string
 	for _, pkg := range pkgs {
-		if loadIsTestMain(pkg) || len(pkg.Errors) > 0 || len(pkg.GoFiles) > 0 || analyzable[pkg.PkgPath] || seen[pkg.PkgPath] {
+		if module.IsTestMain(pkg) || len(pkg.Errors) > 0 || len(pkg.GoFiles) > 0 || analyzable[pkg.PkgPath] || seen[pkg.PkgPath] {
 			continue
 		}
 		seen[pkg.PkgPath] = true
@@ -161,7 +161,7 @@ func loadedTestOnlyPaths(pkgs []*packages.Package) []string {
 //
 //declscope:shared // inspect excludes this separate scope when its subject is present
 func loadIsExternalTest(pkg *packages.Package) bool {
-	return pkg.ForTest != "" && pkg.PkgPath != pkg.ForTest && !loadIsTestMain(pkg)
+	return pkg.ForTest != "" && pkg.PkgPath != pkg.ForTest && !module.IsTestMain(pkg)
 }
 
 // loadWidestVariants keeps one package per import path: the variant that sees
@@ -265,29 +265,4 @@ func loadedPackageDir(pkg *packages.Package) string {
 	// A package with no file at all. go list reports one only with an error,
 	// and every caller drops those first.
 	return ""
-}
-
-// loadIsTestMain identifies the synthetic executable built to run a package's
-// tests. Depending on the go command's response, its file is either the
-// generated _testmain.go or a build-cache archive; a real package is loaded
-// from .go files even when its import path happens to end in ".test".
-func loadIsTestMain(pkg *packages.Package) bool {
-	if pkg.Name != "main" || !strings.HasSuffix(pkg.PkgPath, ".test") {
-		return false
-	}
-	paths := append(slices.Clone(pkg.GoFiles), pkg.CompiledGoFiles...)
-	for _, path := range paths {
-		if filepath.Base(path) == "_testmain.go" {
-			return true
-		}
-	}
-	for _, path := range paths {
-		// A real package is loaded from Go source. With the go command's
-		// driver, the synthetic executable instead points at its build-cache
-		// archive (a path ending in -d), even when NeedSyntax is requested.
-		if filepath.Ext(path) == ".go" {
-			return false
-		}
-	}
-	return len(paths) > 0
 }

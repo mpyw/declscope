@@ -254,3 +254,28 @@ func TestReaches(t *testing.T) {
 		}
 	}
 }
+
+// TestIsTestMain pins what marks the synthetic executable of a test binary.
+// The go command hands it back either as its generated _testmain.go or as a
+// build-cache archive. A real main package whose path ends in ".test" is
+// loaded from Go source and is kept. A package with no file shows nothing, so
+// it is not called one.
+func TestIsTestMain(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		pkg  *packages.Package
+		want bool
+	}{
+		{"generated _testmain.go", &packages.Package{Name: "main", PkgPath: "example.com/m/a.test", GoFiles: []string{"/cache/b001/_testmain.go"}}, true},
+		{"_testmain.go only among compiled files", &packages.Package{Name: "main", PkgPath: "example.com/m/a.test", CompiledGoFiles: []string{"/cache/b001/_testmain.go"}}, true},
+		{"build-cache archive", &packages.Package{Name: "main", PkgPath: "example.com/m/a.test", GoFiles: []string{"/cache/0a/0a1b2c-d"}}, true},
+		{"real package ending in .test", &packages.Package{Name: "main", PkgPath: "example.com/m/cmd.test", GoFiles: []string{"/src/cmd.test/main.go"}}, false},
+		{"no files", &packages.Package{Name: "main", PkgPath: "example.com/m/a.test"}, false},
+		{"not named main", &packages.Package{Name: "a", PkgPath: "example.com/m/a.test", GoFiles: []string{"/cache/b001/_testmain.go"}}, false},
+		{"path not ending in .test", &packages.Package{Name: "main", PkgPath: "example.com/m/cmd", GoFiles: []string{"/cache/b001/_testmain.go"}}, false},
+	} {
+		if got := IsTestMain(tc.pkg); got != tc.want {
+			t.Errorf("%s: IsTestMain = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
