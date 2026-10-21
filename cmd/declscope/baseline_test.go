@@ -164,6 +164,32 @@ func TestBaselineRefusesUnreachableDefault(t *testing.T) {
 	}
 }
 
+// TestBaselineRefusesUnreachableDefaultBeforeShrink pins that the refusal is
+// known from the analyzer's pass alone, so shrink never runs: a package
+// outside the patterns that does not compile would fail shrink's
+// module-wide load, and that error must not hide the refusal.
+func TestBaselineRefusesUnreachableDefaultBeforeShrink(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
+	writeTree(t, root, "go.work", "go 1.25\n\nuse (\n\t.\n\t./nested\n)\n")
+	writeTree(t, root, "nested/go.mod", "module example.com/nested\n\ngo 1.25\n")
+	for name, body := range twoFiles {
+		writeTree(t, root, filepath.Join("nested", name), body)
+	}
+	writeTree(t, root, "broken/broken.go", "package broken\n\nvar _ int = \"\"\n")
+
+	out, code := runIn(t, bin, root, "baseline", "./nested/...")
+	if code == 0 {
+		t.Fatalf("a baseline nobody would find must not be written silently:\n%s", out)
+	}
+	if !strings.Contains(out, "would not be found") || !strings.Contains(out, "example.com/nested") {
+		t.Errorf("the refusal should name the package:\n%s", out)
+	}
+	if strings.Contains(out, "declscope shrink") {
+		t.Errorf("shrink should not have run:\n%s", out)
+	}
+}
+
 func TestBaselineRegeneratesCorruptFile(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
