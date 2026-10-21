@@ -66,7 +66,7 @@ func inspectRun(args []string) {
 			strings.Join(failed, "\n  ")))
 	}
 
-	pkg, err := inspectOnePackage(loadWidestVariants(pkgs))
+	pkg, err := inspectOnePackage(pkgs)
 	if err != nil {
 		inspectFail(err)
 	}
@@ -91,15 +91,15 @@ func inspectRun(args []string) {
 // inspectOnePackage picks the package to report, and refuses where the answer
 // would be ambiguous.
 //
-// Its input is already one package per import path, the widest variant of
-// each, so the ambiguity left is between distinct packages. An external test
-// package is one of those: foo_test declares into its own scope with its own
-// namespaces, and reporting it in answer to a request for foo would hand back
-// a different package under the asked-for name. It is skipped when its
+// It keeps one package per import path, the widest variant of each, so the
+// ambiguity left is between distinct packages. An external test package is
+// one of those: foo_test declares into its own scope with its own namespaces,
+// and reporting it in answer to a request for foo would hand back a different
+// package under the asked-for name. It is skipped when its
 // subject is present, and refused alongside anything else.
-func inspectOnePackage(pkgs []*packages.Package) (*packages.Package, error) {
+func inspectOnePackage(loaded []*packages.Package) (*packages.Package, error) {
 	byPath := map[string]*packages.Package{}
-	for _, pkg := range pkgs {
+	for _, pkg := range loadWidestVariants(loaded) {
 		byPath[pkg.PkgPath] = pkg
 	}
 
@@ -115,10 +115,14 @@ func inspectOnePackage(pkgs []*packages.Package) (*packages.Package, error) {
 	}
 	slices.Sort(paths)
 
-	// No pattern can leave paths empty: loadPackages refuses one that names
-	// no package, and a package that does not type-check is refused before
-	// this.
+	// loadPackages refuses a pattern that names no package, and a package
+	// that does not type-check is refused before this. What can still leave
+	// paths empty is a package of test files alone under -test=false: the go
+	// command lists it with no files and no error.
 	switch len(paths) {
+	case 0:
+		return nil, fmt.Errorf("%s has only test files, so -test=false leaves nothing to measure; drop -test=false",
+			strings.Join(loadedTestOnlyPaths(loaded), ", "))
 	case 1:
 		return byPath[paths[0]], nil
 	default:

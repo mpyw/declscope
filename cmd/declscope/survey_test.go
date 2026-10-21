@@ -95,6 +95,31 @@ func TestSurveyKeepsARealMainPackageEndingInDotTest(t *testing.T) {
 	}
 }
 
+// TestSurveyNamesAPackageOfTestFilesAloneWithoutTests checks that a package
+// with nothing left to measure under -test=false is named, not dropped. The go
+// command reports no error for it, so neither the rows nor the type-check count
+// would show that it was matched at all.
+func TestSurveyNamesAPackageOfTestFilesAloneWithoutTests(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, "p/p.go", "package p\n\nfunc Run() int { return 1 }\n")
+	writeTree(t, dir, "q/q_test.go", "package q\n\nimport \"testing\"\n\nfunc TestQ(t *testing.T) {}\n")
+
+	out, code := runIn(t, bin, dir, "survey", "-test=false", "./...")
+	if code != 0 {
+		t.Fatalf("survey exited %d\n%s", code, out)
+	}
+	if !strings.Contains(out, "declscope survey: warning: example.com/declscopetest/q has only test files") {
+		t.Errorf("survey dropped the package of test files without a word:\n%s", out)
+	}
+
+	// With tests, the same package is measured, and nothing is said.
+	out, code = runIn(t, bin, dir, "survey", "./...")
+	if code != 0 || strings.Contains(out, "warning") {
+		t.Errorf("exited %d, want 0 with no warning:\n%s", code, out)
+	}
+}
+
 // TestSurveyRefusesAPatternItCannotLoad checks that a pattern naming nothing
 // is refused rather than answered with zeros. A package that could not be
 // loaded has no syntax at all, so measuring only what is analyzable would drop
