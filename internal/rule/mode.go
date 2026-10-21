@@ -102,7 +102,7 @@ type SurplusMode int
 
 const (
 	// SurplusModeLoose reports a //declscope:shared when nothing that takes
-	// its scope from it is reached from another namespace. It is the default.
+	// its scope from it is reached from another namespace.
 	SurplusModeLoose SurplusMode = iota
 
 	// SurplusModeOff reports nothing.
@@ -110,7 +110,8 @@ const (
 
 	// SurplusModeStrict reports what loose does, and also each declaration
 	// that takes shared scope from an enclosing directive which is otherwise
-	// in use, when nothing reaches that declaration from another namespace.
+	// in use, when nothing reaches that declaration from another namespace. It
+	// is the default.
 	SurplusModeStrict
 )
 
@@ -227,7 +228,7 @@ type UnusedMode int
 const (
 	// UnusedModeLoose reports an ignore that silenced nothing, and a scope
 	// directive only when the scope it names is one every declaration it
-	// reaches would have under every configuration. It is the default.
+	// reaches would have under every configuration.
 	UnusedModeLoose UnusedMode = iota
 
 	// UnusedModeOff reports nothing.
@@ -235,7 +236,8 @@ const (
 
 	// UnusedModeStrict also reports a scope directive that names, for
 	// everything it reaches, the scope that declaration would have without it
-	// under the configuration in force, and offers to delete it.
+	// under the configuration in force, and offers to delete it. It is the
+	// default.
 	UnusedModeStrict
 )
 
