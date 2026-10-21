@@ -99,6 +99,18 @@ func TestSuggestedFixLinkname(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixlinkname")
 }
 
+// TestSuggestedFixAssembly checks that a package holding assembly offers no
+// rename, since an .s file names Go symbols the rename cannot follow. That
+// holds for assembly in this build and for assembly the build excludes.
+func TestSuggestedFixAssembly(t *testing.T) {
+	for _, pkg := range []string{"fixasm", "fixasmignored"} {
+		results := analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, pkg)
+		if got := fixOffers(results, "func "); len(got) != 0 {
+			t.Errorf("%s: %d renames offered, want none", pkg, len(got))
+		}
+	}
+}
+
 // TestSuggestedFixTestVariant checks that the non-test variant of a package
 // with in-package tests offers no rename, since it cannot see what the test
 // files declare, and that the test variant, which can, still does.
