@@ -5,8 +5,8 @@
 ## Namespaces
 
 | namespace | files          | declarations | qualify targets |
-| --------- | -------------- | -----------: | --------------: |
-| (core)    | `a.go`, `b.go` |            9 |               - |
+| --------- | -------------- | -----------: | --------------- |
+| (core)    | `a.go`, `b.go` |            9 | -               |
 
 ## Crossings
 

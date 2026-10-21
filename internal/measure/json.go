@@ -19,7 +19,7 @@ import (
 
 type jsonPackage struct {
 	Package string   `json:"package"`
-	Config  []string `json:"config,omitempty"`
+	Config  []string `json:"config"`
 	AllCore bool     `json:"allCore"`
 
 	// Findings carries the same asked flag the tables print a dash for.
@@ -91,7 +91,7 @@ type jsonName struct {
 func (p Package) writeJSON(w io.Writer) error {
 	out := jsonPackage{
 		Package:  p.Path,
-		Config:   p.Config,
+		Config:   jsonStrings(p.Config),
 		AllCore:  p.AllCore,
 		Findings: jsonCounts(p.Findings),
 		// Never nil: an empty array says "none", where null says "this
