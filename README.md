@@ -1030,6 +1030,8 @@ A rename is offered only when it provably changes nothing but the spelling. The 
 > func Add(fooCount int) int { return fooCount + fooCount } // Add(1) == 2
 > ```
 
+A method, or a type that is embedded, is renamed only when the new name is free on every type that holds it. A method is also not renamed when an interface of the package asks for its old or new name, since a type assertion would change its answer.
+
 ### `surplus`
 
 `surplus` is the converse of `boundary`. It reports shared scope that no visible use from another namespace needs.

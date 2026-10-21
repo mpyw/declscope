@@ -40,6 +40,14 @@ type renameState struct {
 	// there cannot be rewritten, so a rename would leave it dangling.
 	outside     map[types.Object]bool
 	outsideDone bool
+
+	// asked is every method name an interface of the package asks for, and
+	// typed is every type of the package that can hold a member: each
+	// non-interface type it defines and each struct type it writes, named or
+	// not. Both are gathered on the first method or type a rename checks.
+	asked     map[string]bool
+	typed     []types.Type
+	typedDone bool
 }
 
 // renameFix rewrites every ident naming the target. All of them are inside the
@@ -125,6 +133,11 @@ func (c *collection) safeToRename(pass *analysis.Pass, t *target, newName string
 			return false
 		}
 	}
+	// A method's name and an embedded field's are selected through types, not
+	// scopes, so nothing above sees them.
+	if !rs.selectionsFree(pass, t, newName) {
+		return false
+	}
 	// A reference in a file the pass did not collect cannot be rewritten.
 	if rs.usedOutside(pass, c)[t.obj] {
 		return false
@@ -199,4 +212,141 @@ func (rs *renameState) usedOutside(pass *analysis.Pass, c *collection) map[types
 		}
 	}
 	return rs.outside
+}
+
+// selectionsFree reports whether renaming t to newName leaves every selector
+// of the package selecting what it does now. The rename of a method or of an
+// embedded type renames a member of every type that holds it, so the new name
+// must be free there: a field or method already called that would not
+// compile, hide the renamed member, or be hidden by it, and the last can
+// compile while computing something else. A method also renames an entry of
+// its type's method set, so no interface of the package may ask for either
+// name: the type would stop satisfying one, or start satisfying another, and
+// a type assertion would change its answer without any error.
+//
+// This ports declscope shrink's renameMemberFree and renameEmbeddingFree.
+// Only the package's own interfaces are asked, and that is complete here
+// where it is not for shrink's exported names: the rename is of an unexported
+// name, and an unexported method name is qualified by its package, so no
+// interface written in another package can ask for it.
+func (rs *renameState) selectionsFree(pass *analysis.Pass, t *target, newName string) bool {
+	var holds func(types.Type) bool
+	switch obj := t.obj.(type) {
+	case *types.Func:
+		recv := obj.Signature().Recv()
+		if recv == nil {
+			return true
+		}
+		rs.gatherTyped(pass)
+		// An interface method is asked for by its own interface, so a
+		// receiver that names no type is never reached in practice.
+		owner := renameNamedOf(recv.Type())
+		if rs.asked[obj.Name()] || rs.asked[newName] || owner == nil || renameSelects(owner, pass.Pkg, newName) {
+			return false
+		}
+		// An embedding promotes the method whatever name the field is
+		// spelled with, so an alias is resolved.
+		holds = func(typ types.Type) bool {
+			return renameEmbeds(typ, func(f *types.Var) bool { return renameNamedOf(f.Type()) == owner }, map[types.Type]bool{})
+		}
+	case *types.TypeName:
+		rs.gatherTyped(pass)
+		// The field takes the new name only where it is spelled with this
+		// one, so an alias is not resolved.
+		holds = func(typ types.Type) bool {
+			return renameEmbeds(typ, func(f *types.Var) bool { return embeddedTypeName(f) == obj }, map[types.Type]bool{})
+		}
+	default:
+		return true
+	}
+	// Every type holding the member takes the new name, including one where
+	// the old name is hidden or ambiguous today.
+	for _, typ := range rs.typed {
+		if holds(typ) && renameSelects(typ, pass.Pkg, newName) {
+			return false
+		}
+	}
+	return true
+}
+
+// gatherTyped fills asked and typed, once per pass.
+func (rs *renameState) gatherTyped(pass *analysis.Pass) {
+	if rs.typedDone {
+		return
+	}
+	rs.typedDone = true
+	rs.asked = make(map[string]bool)
+	ask := func(iface *types.Interface) {
+		for fn := range iface.Methods() {
+			rs.asked[fn.Name()] = true
+		}
+	}
+	for _, obj := range pass.TypesInfo.Defs {
+		tn, ok := obj.(*types.TypeName)
+		if !ok {
+			continue
+		}
+		if iface, ok := tn.Type().Underlying().(*types.Interface); ok {
+			ask(iface)
+			continue
+		}
+		rs.typed = append(rs.typed, tn.Type())
+	}
+	// A struct type is recorded once per expression of it, so each is kept
+	// once.
+	seen := make(map[types.Type]bool)
+	for _, tv := range pass.TypesInfo.Types {
+		switch typ := types.Unalias(tv.Type).(type) {
+		case *types.Interface:
+			ask(typ)
+		case *types.Struct:
+			if !seen[typ] {
+				seen[typ] = true
+				rs.typed = append(rs.typed, typ)
+			}
+		}
+	}
+}
+
+// renameNamedOf returns the generic origin of the named type t denotes, or
+// that a pointer to it does, and nil for any other type.
+func renameNamedOf(t types.Type) *types.Named {
+	if ptr, ok := types.Unalias(t).(*types.Pointer); ok {
+		t = ptr.Elem()
+	}
+	if named, ok := types.Unalias(t).(*types.Named); ok {
+		return named.Origin()
+	}
+	return nil
+}
+
+// renameEmbeds reports whether t embeds, at any depth, a field match accepts.
+func renameEmbeds(t types.Type, match func(*types.Var) bool, seen map[types.Type]bool) bool {
+	// An embedded field is a named type or a pointer to one, and a type
+	// gathered for the guard is a named type or a struct.
+	if named := renameNamedOf(t); named != nil {
+		t = named
+	}
+	if seen[t] {
+		return false
+	}
+	seen[t] = true
+	st, ok := t.Underlying().(*types.Struct)
+	if !ok {
+		return false
+	}
+	for i := range st.NumFields() {
+		f := st.Field(i)
+		if f.Embedded() && (match(f) || renameEmbeds(f.Type(), match, seen)) {
+			return true
+		}
+	}
+	return false
+}
+
+// renameSelects reports whether name selects anything on t, ambiguously or
+// not.
+func renameSelects(t types.Type, pkg *types.Package, name string) bool {
+	found, index, _ := types.LookupFieldOrMethod(t, true, pkg, name)
+	return found != nil || index != nil
 }
