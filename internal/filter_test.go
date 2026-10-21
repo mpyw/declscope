@@ -81,6 +81,80 @@ func TestFilterAnchoring(t *testing.T) {
 	}
 }
 
+// TestFilterDotSlashAndTrailingSlash pins the two spellings .gitignore readers
+// carry over. A leading ./ anchors exactly as a leading / does, so "./vendor"
+// names a file beside the config rather than a directory. A trailing / names a
+// directory and everything under it: on its own it floats like a bare name, and
+// with a leading / or ./ it anchors.
+func TestFilterDotSlashAndTrailingSlash(t *testing.T) {
+	tests := []struct {
+		pattern string
+		path    string
+		want    bool
+	}{
+		// ./x is /x: a file beside the config and no other.
+		{"./gen.go", "/repo/gen.go", true},
+		{"./gen.go", "/repo/sub/gen.go", false},
+		{"./vendor", "/repo/vendor", true},
+		{"./vendor", "/repo/vendor/foo.go", false},
+		{"./vendor/**", "/repo/vendor/foo.go", true},
+		{"./vendor/**", "/repo/sub/vendor/foo.go", false},
+
+		// gen/ is **/gen/**: that directory at any depth.
+		{"gen/", "/repo/gen/a.go", true},
+		{"gen/", "/repo/sub/gen/deep/a.go", true},
+		{"gen/", "/elsewhere/gen/a.go", true},
+		{"gen/", "/repo/gen", false},
+		{"gen/", "/repo/regen/a.go", false},
+
+		// /gen/ and ./gen/ are gen/**: the one beside the config.
+		{"/gen/", "/repo/gen/a.go", true},
+		{"/gen/", "/repo/gen/deep/a.go", true},
+		{"/gen/", "/repo/sub/gen/a.go", false},
+		{"./gen/", "/repo/gen/a.go", true},
+		{"./gen/", "/repo/sub/gen/a.go", false},
+
+		// A separator before the trailing one anchors, as without it.
+		{"a/gen/", "/repo/a/gen/x.go", true},
+		{"a/gen/", "/repo/sub/a/gen/x.go", false},
+	}
+	for _, tt := range tests {
+		opts := DefaultOptions()
+		opts.Omit = filterPatternsAt("/repo", tt.pattern)
+		if err := opts.Compile(); err != nil {
+			t.Fatal(err)
+		}
+		if got := opts.Skips(tt.path); got != tt.want {
+			t.Errorf("%q: Skips(%q) = %v, want %v", tt.pattern, tt.path, got, tt.want)
+		}
+	}
+}
+
+// TestFilterCancelledByDirectoryPattern checks that a directory pattern in the
+// nearest only still lets the cancelled-only warning tell its files apart. The
+// nearest config names gen/ and the root admits only keep/, so the file is
+// skipped but the nearest only admits it on its own.
+func TestFilterCancelledByDirectoryPattern(t *testing.T) {
+	opts := DefaultOptions()
+	opts.Only = [][]FilterPattern{
+		filterPatternsAt("/repo", "/keep/"),
+		filterPatternsAt("/repo/sub", "gen/"),
+	}
+	if err := opts.Compile(); err != nil {
+		t.Fatal(err)
+	}
+	path := "/repo/sub/gen/a.go"
+	if !opts.Skips(path) {
+		t.Errorf("Skips(%q) = false, want true", path)
+	}
+	if !opts.NearestOnlyAdmits(path) {
+		t.Errorf("NearestOnlyAdmits(%q) = false, want true", path)
+	}
+	if opts.NearestOnlyAdmits("/repo/sub/a.go") {
+		t.Error("the nearest only admitted a file outside its directory")
+	}
+}
+
 // TestFilterWithoutBase checks the fallback for options that no config file
 // produced: with no directory to call "here", an anchored pattern would match
 // nothing at all, so every pattern floats instead.

@@ -329,10 +329,14 @@ A pattern is read against the directory of **the config file that states it**. A
 | Pattern | Matches |
 | --- | --- |
 | `gen.go` | A file of that name at any depth |
-| `/gen.go` | The one beside this config file |
+| `/gen.go`, `./gen.go` | The one beside this config file |
 | `gen/**` | That directory beside this config file, and no other |
 | `**/gen/**` | That directory at any depth |
+| `gen/` | That directory at any depth, the same as `**/gen/**` |
+| `/gen/`, `./gen/` | That directory beside this config file, the same as `gen/**` |
 | `*`, `?` | Within one path segment |
+
+A leading `./` anchors the same way as a leading `/`. A trailing `/` names a directory and everything in it. Without one, a pattern names a file, so `./vendor` matches only a file called `vendor`. Write `./vendor/` or `./vendor/**` for the directory.
 
 One report comes from the configuration rather than from the code. It fires when a file's `only` matches files, but an `only` above it removes them all, so the package is read as empty.
 
