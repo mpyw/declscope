@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"go/ast"
 	"go/types"
+	"slices"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
@@ -146,6 +148,12 @@ func (c *collection) safeToRename(pass *analysis.Pass, t *target, newName string
 	if c.linknamed(pass)[t.obj.Name()] {
 		return false
 	}
+	// Assembly and cgo name Go symbols from files go/types never reads, so
+	// a function an .s file defines or calls would lose its link. Reading
+	// them for symbols is rejected: a missed spelling is a broken build.
+	if nonGoBlocksRename(pass) {
+		return false
+	}
 	// Another fix in this pass has already taken the name.
 	if rs.reserved[newName] {
 		return false
@@ -173,6 +181,14 @@ func (c *collection) renames() *renameState {
 		c.rename = &renameState{reserved: make(map[string]bool)}
 	}
 	return c.rename
+}
+
+// nonGoBlocksRename reports whether the package holds a source file that is not
+// Go, in this build or in another. Assembly for another GOARCH is in
+// IgnoredFiles, and names the package's symbols in the build that holds it.
+// declscope shrink makes the same test before judging a package.
+func nonGoBlocksRename(pass *analysis.Pass) bool {
+	return len(pass.OtherFiles) > 0 || slices.ContainsFunc(pass.IgnoredFiles, func(f string) bool { return !strings.HasSuffix(f, ".go") })
 }
 
 // renameBoundByImport reports whether any file scope of the package binds name,

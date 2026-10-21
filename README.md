@@ -1043,6 +1043,8 @@ A rename is offered only when it provably changes nothing but the spelling. The 
 
 A method, or a type that is embedded, is renamed only when the new name is free on every type that holds it. A method is also not renamed when an interface of the package asks for its old or new name, since a type assertion would change its answer.
 
+A package that holds a non-Go source file, such as assembly (`.s`) for any architecture, gets no rename fix. Assembly names Go functions by text, which the rename cannot follow, and the build would fail at link time. Rename by hand, or add `//declscope:ignore qualify`.
+
 ### `surplus`
 
 `surplus` is the converse of `boundary`. It reports shared scope that no visible use from another namespace needs.
