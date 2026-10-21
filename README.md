@@ -112,7 +112,7 @@ The two scan helpers are named apart by hand, since only one could be called `sc
 ```console
 $ declscope ./...
 user_repository.go:28:6: func normalizeEmail is private to namespace "userRepository", but is used from namespace "orderRepository"
-order_repository.go:17:17:      used here, in namespace "orderRepository"
+order_repository.go:17:17: 	used here, in namespace "orderRepository"
 ```
 
 A crossing has two answers.
@@ -224,7 +224,7 @@ tar xzf "declscope_${VERSION}_darwin_arm64.tar.gz"
 | `-test` | `true` | Analyze `*_test.go` files as well |
 | `-fix` | `false` | Apply suggested fixes |
 | `-diff` | `false` | With `-fix`, print a diff instead of writing files |
-| `-V=full` | | Print the version and exit. A build from a checkout answers `devel` |
+| `-V=full` | | Print the version and exit. `go run`, or a build with `-buildvcs=false`, answers `devel` |
 
 `-test`, `-fix` and `-diff` come from `go/analysis`. `declscope -help` lists the rest.
 
@@ -531,10 +531,10 @@ var _ = normalize
 
 ```console
 $ declscope ./...    # with rules.unused: strict
-user.go:5:6: func normalize is declared private by //declscope:private, but is used from namespace "order"
-order.go:4:9: 	used here, in namespace "order"
-user.go:4:1: unused //declscope:private on normalize: it already has private scope
-user.go:7:1: unused //declscope:private on trim: it already has private scope
+user.go:4:6: func normalize is declared private by //declscope:private, but is used from namespace "order"
+order.go:3:9: 	used here, in namespace "order"
+user.go:3:1: unused //declscope:private on normalize: it already has private scope
+user.go:6:1: unused //declscope:private on trim: it already has private scope
 ```
 
 `-fix` changes `user.go`. The `boundary` report names `normalize`'s directive, so that one stays.
@@ -590,8 +590,8 @@ func D() {}
 
 ```console
 $ declscope ./...
-user.go:7:1: unused //declscope:shared on B: nothing it reaches takes a scope
-user.go:13:2: unused //declscope:shared on T.F: nothing it reaches takes a scope
+user.go:7:1: unused //declscope:shared on B: it already has shared scope
+user.go:13:2: unused //declscope:shared on T.F: it already has shared scope
 user.go:8:1: unused //declscope:ignore directive on B
 user.go:11:1: unused //declscope:ignore unused on T
 user.go:21:1: unused //declscope:ignore unused on D
@@ -616,19 +616,23 @@ Only `//declscope:name` is a directive. Any other comment starting with `declsco
 
 The rule is always on, and has no configuration key. `//declscope:ignore directive` silences it, on the declaration or above the package clause.
 
+`<name>` stands for the directive's own name, such as `shared` or `core`.
+
 | Directive | Report |
 | --- | --- |
-| `//declscope:foo` | `unknown directive declscope:foo` |
+| `//declscope:foo` on a declaration | `unknown directive declscope:foo` |
+| `//declscope:foo` above the package clause | `declscope:foo is not a file-level directive` |
 | `// declscope:shared`, `/*declscope:shared*/`, or any other comment starting with `declscope:` that is not `//declscope:name` | `malformed declscope directive: write it as //declscope:name` |
-| `//declscope:shared x` | `//declscope:shared takes no argument` |
+| `//declscope:shared x`, or an argument to another directive that takes none | `//declscope:<name> takes no argument` |
+| `//declscope:namespace` with no name | `declscope:namespace requires a name` |
+| `//declscope:namespace Billing` | `namespace "Billing" is not a valid lowerCamelCase identifier` |
 | `//declscope:private` and `//declscope:shared` together | `conflicting scope directives: ...` |
 | `//declscope:core` and `//declscope:namespace` together | `conflicting namespace directives: a core file's namespace is the core` |
 | `//declscope:ignore foo` | `unknown rule "foo" in declscope:ignore (want one of boundary, qualify, surplus, unused, directive, filter, overexported)` |
 | `//declscope:ignore ,` or `//declscope:ignore boundary,` | `empty rule name in declscope:ignore` |
-| `//declscope:shared` twice on one declaration or file, or two ignores naming the same rules | `duplicate declscope:shared directive`, at the second |
-| `//declscope:namespace` or `//declscope:core` twice | `duplicate declscope:namespace directive`, at the second |
-| `//declscope:namespace` or `//declscope:core` after the package clause | `declscope:namespace must appear before the package clause` |
-| A valid `shared`, `private` or `ignore` directive attached to no declaration, such as one inside a function body | `misplaced declscope:shared: no declaration here for it to bind to; ...` |
+| The same directive twice on one declaration or file. Two ignores naming the same rules, in any order, count as the same directive | `duplicate declscope:<name> directive`, at the second |
+| `//declscope:namespace` or `//declscope:core` after the package clause | `declscope:<name> must appear before the package clause` |
+| A valid `shared`, `private` or `ignore` directive attached to no declaration, such as one inside a function body | `misplaced declscope:<name>: no declaration here for it to bind to; ...` |
 
 </details>
 
@@ -769,8 +773,8 @@ Writing `Where` in `query.go` is not itself a crossing. The field it reaches is 
 ```console
 $ declscope ./...
 statement.go:5:2: field Statement.wheres is private to namespace "statement", but is used from namespace "query"
-query.go:4:4:   used here, in namespace "query"
-query.go:4:22:  used here, in namespace "query"
+query.go:4:4: 	used here, in namespace "query"
+query.go:4:22: 	used here, in namespace "query"
 ```
 
 The naming rule asks the method to carry `query`. A method is read through its receiver, and `s.Where` points the reader at `Statement`'s unit, which does not hold it.
@@ -1100,7 +1104,7 @@ func ledgerKey(a account) int { return a.id }
 
 ```console
 $ declscope ./...
-account.go:7:2: field account.balance takes shared scope from //declscope:shared on account, but no use from another namespace is visible to declscope
+account.go:6:2: field account.balance takes shared scope from //declscope:shared on account, but no use from another namespace is visible to declscope
 ```
 
 `-fix` changes `account.go`:
@@ -1337,7 +1341,7 @@ Deleting unused code is out of scope. Once a declaration is unexported, staticch
 <details>
 <summary>Which packages it does not judge</summary>
 
-`shrink` stands down wherever an importer could be unseen. Each `internal/` package it skips is named on stderr with the reason, and the exit status ignores it.
+`shrink` stands down wherever an importer could be unseen. Each `internal/` package it skips is named on stderr with the reason, and the exit status ignores it. Each such line starts with `declscope shrink: `, which the table leaves out.
 
 <table>
 <thead>
@@ -1497,7 +1501,13 @@ $ declscope survey -config .declscope-strict.yaml ./internal/measure/...
 
 | package                                      | reported | baselined | declared | largest crossing                 |
 | -------------------------------------------- | -------: | --------: | -------: | -------------------------------- |
-| `github.com/mpyw/declscope/internal/measure` |        0 |         0 |       20 | markdown → cell (7 declarations) |
+| `github.com/mpyw/declscope/internal/measure` |        0 |         0 |       29 | markdown → cell (7 declarations) |
+
+## Packages — qualify
+
+| package                                      | reported | baselined | exempt | worst namespace |
+| -------------------------------------------- | -------: | --------: | -----: | --------------- |
+| `github.com/mpyw/declscope/internal/measure` |        0 |         0 |      0 | -               |
 ```
 
 That is one package of this repository. A codebase adopting declscope has numbers in the first two columns, and a row per package.
@@ -1511,20 +1521,45 @@ That is one package of this repository. A codebase adopting declscope has number
 > [!TIP]
 > Look for the row with nothing reported, much baselined and nothing declared. Nothing was decided there, everything was deferred, and the analyzer alone calls it clean.
 
+`inspect` prints several sections. The excerpt below is its Crossings section, in full. The other sections list the namespaces, draw the crossings as a Mermaid diagram, rank the most-reached declarations, and give the naming rule per namespace.
+
 ```console
 $ declscope inspect -config .declscope-strict.yaml ./internal/measure
 ## Crossings
 
-| crossing          | mutual | declared | baselined | reported | clears |  reached | uses |
-| ----------------- | ------ | -------: | --------: | -------: | -----: | -------: | ---: |
-| markdown → cell   |        |        7 |         0 |        0 |      0 |  7 of 10 |   15 |
-| markdown → sink   |        |        5 |         0 |        0 |      0 |  5 of 17 |   28 |
-| golden → (core)   |        |        4 |         0 |        0 |      0 |  4 of 78 |    9 |
-| format → json     |        |        2 |         0 |        0 |      0 | 2 of 105 |    2 |
+| crossing            | mutual | declared | baselined | reported | clears |  reached | uses |
+| ------------------- | ------ | -------: | --------: | -------: | -----: | -------: | ---: |
+| markdown → cell     | yes    |        7 |         0 |        0 |      0 |  7 of 18 |   15 |
+| markdown → sink     |        |        5 |         0 |        0 |      0 |  5 of 18 |   29 |
+| golden → (core)     |        |        4 |         0 |        0 |      0 |  4 of 79 |    9 |
+| json → summary      | yes    |        3 |         0 |        0 |      0 |  3 of 27 |    9 |
+| markdown → summary  | yes    |        3 |         0 |        0 |      0 |  3 of 27 |    7 |
+| markdown → crossing |        |        2 |         0 |        0 |      0 |  2 of 20 |    6 |
+| cell → markdown     | yes    |        2 |         0 |        0 |      0 |   2 of 9 |    3 |
+| format → json       |        |        2 |         0 |        0 |      0 | 2 of 107 |    2 |
+| format → markdown   |        |        2 |         0 |        0 |      0 |   2 of 9 |    2 |
+| summary → crossing  |        |        2 |         0 |        0 |      0 |  2 of 20 |    2 |
+| crossing → (core)   |        |        1 |         0 |        0 |      0 |  1 of 79 |    3 |
+| cell → summary      |        |        1 |         0 |        0 |      0 |  1 of 27 |    2 |
+| golden → crossing   |        |        1 |         0 |        0 |      0 |  1 of 20 |    2 |
+| golden → format     |        |        1 |         0 |        0 |      0 |   1 of 9 |    2 |
+| golden → markdown   |        |        1 |         0 |        0 |      0 |   1 of 9 |    2 |
+| golden → reach      |        |        1 |         0 |        0 |      0 |   1 of 7 |    2 |
+| cell → (core)       |        |        1 |         0 |        0 |      0 |  1 of 79 |    1 |
+| cell → json         |        |        1 |         0 |        0 |      0 | 1 of 107 |    1 |
+| format → (core)     |        |        1 |         0 |        0 |      0 |  1 of 79 |    1 |
+| golden → json       |        |        1 |         0 |        0 |      0 | 1 of 107 |    1 |
+| json → crossing     |        |        1 |         0 |        0 |      0 |  1 of 20 |    1 |
+| markdown → qualify  |        |        1 |         0 |        0 |      0 |  1 of 15 |    1 |
+| markdown → reach    |        |        1 |         0 |        0 |      0 |   1 of 7 |    1 |
+| qualify → (core)    |        |        1 |         0 |        0 |      0 |  1 of 79 |    1 |
+| summary → json      | yes    |        1 |         0 |        0 |      0 | 1 of 107 |    1 |
+| summary → markdown  | yes    |        1 |         0 |        0 |      0 |   1 of 9 |    1 |
+| summary → qualify   |        |        1 |         0 |        0 |      0 |  1 of 15 |    1 |
 
-114 declarations are further: open, shared by default rather than by decision, so left out of the table and of the diagram.
+109 declarations are further: open, shared by default rather than by decision, so left out of the table and of the diagram.
 
-Declarations crossed: 0 reported, 0 baselined, 20 declared.
+Declarations crossed: 0 reported, 0 baselined, 29 declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.
 ```
 
 One row per directed edge, so a mutual pair is two rows. **`clears` is the number the decision turns on**: how many findings would go away if the two namespaces became one.
