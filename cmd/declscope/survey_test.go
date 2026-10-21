@@ -200,6 +200,9 @@ func TestSurveyRefusesAPackageThatDoesNotCompile(t *testing.T) {
 	if !strings.Contains(out, "1 failed") {
 		t.Errorf("the type check line does not report the failure:\n%s", out)
 	}
+	if !strings.Contains(out, "- `example.com/declscopetest/p: ") {
+		t.Errorf("the Markdown does not name the package that failed:\n%s", out)
+	}
 	if strings.Contains(out, "`example.com/declscopetest/p` |") {
 		t.Errorf("a package that did not compile was given a clean row:\n%s", out)
 	}

@@ -192,6 +192,7 @@ func (s Summary) writeMarkdown(w io.Writer) error {
 	}
 	rows = append(rows, []string{"type check", cellTypeCheck(s.checks.TypeCheck), ""})
 	writeMarkdownTable(out, "Checks in force", rows)
+	writeMarkdownFailed(out, s.checks.TypeCheck.Failed)
 
 	findings := [][]string{{"rule", "found", "ignored", "baselined", "reported"}}
 	for _, r := range rule.All {
@@ -252,6 +253,23 @@ func (s Summary) writeMarkdown(w io.Writer) error {
 	}
 	writeMarkdownTable(out, "Packages — qualify", qualify)
 	return out.flush()
+}
+
+// writeMarkdownFailed names the packages that did not type-check. The type
+// check row only counts them, and Markdown is the default format, so without
+// this list a reader would have to rerun with -format=json to learn which.
+//
+// Each entry is a code span on one line: an error message can carry Markdown
+// syntax, and a newline in one would end the list item.
+func writeMarkdownFailed(out *sink, failed []string) {
+	if len(failed) == 0 {
+		return
+	}
+	out.print("Did not type-check, so given no row:\n\n")
+	for _, f := range failed {
+		out.print("- `" + strings.ReplaceAll(f, "\n", " ") + "`\n")
+	}
+	out.print("\n")
 }
 
 // writeMarkdownTable prints one padded table under its heading. Every table in

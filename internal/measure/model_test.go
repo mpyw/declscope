@@ -77,7 +77,11 @@ func fixtureSummary() Summary {
 			Boundary: true, Surplus: "loose", Unused: "strict", Qualify: "ondemand", Exported: true,
 		}},
 		Baselines: []BaselineUse{{Path: ".declscope-baseline.yaml", Entries: 12}},
-		TypeCheck: TypeCheck{Packages: 2},
+		// One package did not compile. Markdown has to name it, not only
+		// count it, since the JSON is not the default.
+		TypeCheck: TypeCheck{Packages: 3, Failed: []string{
+			"example.com/x/internal/broken: /src/x/internal/broken/broken.go:3:28: undefined: undefinedThing",
+		}},
 	})
 }
 
