@@ -1690,6 +1690,7 @@ declscope reads one package at a time, and counts a use only where a name is wri
 | Whole-value operations on a struct | Copying, comparing or zeroing a value names no field |
 | A composite literal of a type parameter | `T{1}` fills the fields of whatever `T` is instantiated with, without naming them |
 | Reflection, `//go:linkname`, generated files | These reach a declaration without spelling it |
+| A file that imports `"C"` | cgo rewrites it into a generated file in the build cache. Like other generated files, it is not read: nothing in it is reported, and its uses do not count |
 | A declaration nobody uses | `boundary` needs a use to find, so unused code produces no diagnostic |
 
 For the last row, use an unused-code linter: [`deadcode`](https://pkg.go.dev/golang.org/x/tools/cmd/deadcode), or staticcheck's `unused` for a library with no `main` to root from.
