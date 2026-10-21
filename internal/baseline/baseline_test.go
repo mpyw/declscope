@@ -209,6 +209,14 @@ func TestLoadReportsAnUnreadableFile(t *testing.T) {
 	if _, err := baseline.Load(t.TempDir()); err == nil {
 		t.Error("loading a directory as a baseline succeeded, want an error")
 	}
+	// A file where a directory should be fails the stat, not the read.
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := baseline.Load(filepath.Join(blocker, ".declscope-baseline.yaml")); err == nil {
+		t.Error("loading a path under a file succeeded, want an error")
+	}
 }
 
 // TestSaveReportsWhereItCannotWrite checks both ways a write can fail: the

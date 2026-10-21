@@ -120,9 +120,12 @@ func Load(path string) (*Set, error) {
 		}
 		return nil, err
 	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return nil, err
+	// Absolute, so that one file reached by two spellings is kept once. Only a
+	// lost working directory fails it, and then the spelling given still
+	// names a file.
+	abs := path
+	if a, err := filepath.Abs(path); err == nil {
+		abs = a
 	}
 	stamp := loadedStamp{modTime: st.ModTime().UnixNano(), size: st.Size()}
 
