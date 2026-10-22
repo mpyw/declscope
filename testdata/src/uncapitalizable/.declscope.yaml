@@ -1,0 +1,4 @@
+rules:
+  naming:
+    qualify: always
+    exported: true

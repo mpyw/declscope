@@ -35,18 +35,27 @@ import (
 )
 
 // CanPrefix reports whether ns can be written as a prefix: prepended to an
-// unexported identifier, it has to yield another unexported identifier.
+// unexported identifier, it has to yield another unexported identifier, and
+// raised for an exported one, an exported identifier.
 //
 // A namespace that cannot (2faAuth, since no identifier may start with a
 // digit) is still a perfectly good identity for the privacy rules, but the
 // naming rules have nothing they could ask for and stay silent. Any string
 // that starts an identifier and does not export it qualifies, so a keyword
 // stem such as struct.go still prefixes its declarations (structHelper).
+//
+// Its first letter must also have a capital form, or Qualify could not keep an
+// exported name exported: 用户.go and //declscope:namespace _foo would offer
+// 用户Load and _fooSave for Load and Save. Such a namespace is no better off
+// than 2faAuth. An exported name can never carry it either, since wordStart
+// opens a word inside a name only at a capital or a digit.
 func CanPrefix(ns string) bool {
-	if ns == "" || ast.IsExported(ns) {
+	if !token.IsIdentifier(ns) && !token.IsKeyword(ns) {
 		return false
 	}
-	return token.IsIdentifier(ns) || token.IsKeyword(ns)
+	first, _ := utf8.DecodeRuneInString(ns)
+	upper := unicode.ToUpper(first)
+	return upper != first && unicode.IsUpper(upper)
 }
 
 // Qualify returns name rewritten to carry ns as a prefix, which is the rename
