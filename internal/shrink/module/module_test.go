@@ -260,13 +260,16 @@ func TestLoadLeavesUnreadableNestedModulesUnjudged(t *testing.T) {
 // module's own go.work uses from outside the tree withholds the fixes in the
 // range. It is a main module of that build, not of this run. A copy whose
 // files, under any build constraint, import an internal package of the range
-// does. One that imports none cannot break the build, and one that cannot be
-// read counts as if it did. The range is judged either way.
+// does. One that imports none cannot break the build, nor can a file that
+// does not parse. One that cannot be read counts as if it did. The range is
+// judged either way.
 func TestLoadReadsNestedWorkspace(t *testing.T) {
 	const prefix = "the build of the nested module example.com/m/tools uses example.com/m/ext from "
 	for name, tc := range map[string]struct {
 		files map[string]string
-		want  func(ext string) string
+		// locked is a directory of the copy made unreadable.
+		locked string
+		want   func(ext string) string
 	}{
 		"imports an internal package under a tag": {
 			files: map[string]string{"e.go": "//go:build never\n\npackage ext\n\nimport \"example.com/m/internal/a\"\n\nfunc Run() { a.F() }\n"},
@@ -275,23 +278,45 @@ func TestLoadReadsNestedWorkspace(t *testing.T) {
 		"imports none": {
 			files: map[string]string{
 				"e.go":                "package ext\n\nimport \"example.com/m/pub\"\n\nvar _ = pub.X\n",
-				"testdata/t.go":       "package t\n\nimport \"example.com/m/internal/a\"\n",
 				"sub/go.mod":          "module example.com/m/ext/sub\n",
 				"sub/s.go":            "package sub\n\nimport \"example.com/m/internal/a\"\n",
-				"_skipped/s.go":       "package s\n\nimport \"example.com/m/internal/a\"\n",
 				"vendor/v/v.go":       "package v\n\nimport \"example.com/m/internal/a\"\n",
-				".hidden/h.go":        "package h\n\nimport \"example.com/m/internal/a\"\n",
 				"README.md":           "not Go\n",
 				"internal/own/own.go": "package own\n",
 			},
 			want: func(string) string { return "" },
 		},
+		// A package of the copy may import any of these, though ./... skips
+		// them.
+		"imports from testdata": {
+			files: map[string]string{"testdata/t/t.go": "package t\n\nimport \"example.com/m/internal/a\"\n"},
+			want:  func(ext string) string { return prefix + ext + ", which imports example.com/m/internal/a" },
+		},
+		"imports from a directory starting with _": {
+			files: map[string]string{"_impl/i.go": "package impl\n\nimport \"example.com/m/internal/a\"\n"},
+			want:  func(ext string) string { return prefix + ext + ", which imports example.com/m/internal/a" },
+		},
+		"imports from a directory starting with .": {
+			files: map[string]string{".gen/g.go": "package gen\n\nimport \"example.com/m/internal/a\"\n"},
+			want:  func(ext string) string { return prefix + ext + ", which imports example.com/m/internal/a" },
+		},
+		"holds a file that does not parse": {
+			files: map[string]string{
+				"e.go":            "this is not Go\n",
+				"testdata/bad.go": "package bad\n\nimport \"example.com/m/internal/a\n",
+			},
+			want: func(string) string { return "" },
+		},
 		"cannot be read": {
-			files: map[string]string{"e.go": "this is not Go\n"},
-			want:  func(ext string) string { return prefix + ext },
+			files:  map[string]string{"e.go": "package ext\n", "locked/l.go": "package locked\n"},
+			locked: "locked",
+			want:   func(ext string) string { return prefix + ext },
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
+			if tc.locked != "" && os.Getuid() == 0 {
+				t.Skip("root reads every directory")
+			}
 			ext, err := filepath.EvalSymlinks(t.TempDir())
 			if err != nil {
 				t.Fatal(err)
@@ -305,6 +330,13 @@ func TestLoadReadsNestedWorkspace(t *testing.T) {
 				if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 					t.Fatal(err)
 				}
+			}
+			if tc.locked != "" {
+				locked := filepath.Join(ext, tc.locked)
+				if err := os.Chmod(locked, 0); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
 			}
 			m, err := Load(nestedTree(t, map[string]string{
 				"tools/go.mod":  "module example.com/m/tools\n\ngo 1.25\n",
@@ -388,6 +420,43 @@ func TestListUncovered(t *testing.T) {
 			t.Errorf("unbuilt = %q, want the go command's failure", l.unbuilt)
 		}
 	})
+}
+
+// TestUntidyNestedGoMod pins that a nested go.mod that lacks what its build
+// needs withholds every fix. Here d raises t to v1.1.0, which k's go.mod does
+// not say. go list -m -e all then quietly lists t v1.1.0, a clean copy, while
+// the build compiles v1.0.0, which uses foo.Hello.
+func TestUntidyNestedGoMod(t *testing.T) {
+	root := t.TempDir()
+	for name, body := range map[string]string{
+		"m/go.mod":            "module example.com/m\n\ngo 1.22\n",
+		"m/internal/foo/f.go": "package foo\n\nfunc Hello() string { return \"hi\" }\n",
+		"t1/go.mod":           "module example.com/m/t\n\ngo 1.22\n",
+		"t1/t.go":             "package t\n\nimport \"example.com/m/internal/foo\"\n\nvar V = foo.Hello()\n",
+		"t2/go.mod":           "module example.com/m/t\n\ngo 1.22\n",
+		"t2/t.go":             "package t\n\nvar V = \"clean\"\n",
+		"d/go.mod":            "module other.local/d\n\ngo 1.22\n\nrequire example.com/m/t v1.1.0\n",
+		"d/d.go":              "package d\n",
+		"m/k/go.mod": "module other.local/k\n\ngo 1.22\n\nrequire (\n\texample.com/m v0.0.0\n\texample.com/m/t v1.0.0\n\tother.local/d v1.0.0\n)\n\n" +
+			"replace (\n\texample.com/m => ../\n\texample.com/m/t v1.0.0 => ../../t1\n\texample.com/m/t v1.1.0 => ../../t2\n\tother.local/d v1.0.0 => ../../d\n)\n",
+		"m/k/main.go": "package main\n\nimport \"example.com/m/t\"\n\nfunc main() { println(t.V) }\n",
+	} {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m, err := Load(filepath.Join(root, "m"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "the build list of the nested module other.local/k cannot be read, and a module it names may use it: its go.mod needs updates"
+	if why := m.Doubt("example.com/m/internal/foo"); !strings.HasPrefix(why, want) {
+		t.Errorf("doubt = %q, want it to start with %q", why, want)
+	}
 }
 
 // TestCopiesOutsideTheRange pins that a copy only reaches the ranges it may
