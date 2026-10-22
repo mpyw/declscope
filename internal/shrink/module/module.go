@@ -287,11 +287,29 @@ func (m *Module) listUncovered(n nestedModule) loaded {
 		return loaded{unbuilt: err.Error()}
 	}
 	pruned := f.Go != nil && semver.Compare("v"+f.Go.Version, "v1.17") >= 0
-	built, unbuilt := buildList(n.dir, n.dir, append(env, "GOPROXY=off"), m.mains, pruned)
+	env = append(env, "GOPROXY=off")
+	if why := untidy(n.dir, env); why != "" {
+		return loaded{unbuilt: why}
+	}
+	built, unbuilt := buildList(n.dir, n.dir, env, m.mains, pruned)
 	for i := range built {
 		built[i].by = n.path
 	}
 	return loaded{built: built, unbuilt: unbuilt}
+}
+
+// untidy says why a nested module's build list cannot be read from its
+// go.mod, or "". When the go.mod lacks what the build needs, such as a
+// requirement a dependency raises, go list -m -e all quietly lists the graph
+// a tidy go.mod would hold: a higher version of a copy, whose files say
+// nothing about the version the build compiles. Without -e, go list says
+// so. Its other errors are left to buildList, which reads past the ones
+// that do not matter.
+func untidy(dir string, env []string) string {
+	if _, err := goIn(dir, env, "list", "-m", "all"); err != nil && strings.Contains(err.Error(), "updates to go.mod needed") {
+		return "its go.mod needs updates, so go list -m all names other versions than the build compiles"
+	}
+	return ""
 }
 
 // nestedEnv returns the environment a nested module's go commands run with:
@@ -350,7 +368,9 @@ func (m *Module) loadImporter(n nestedModule, mode packages.LoadMode) loaded {
 		return loaded{why: err.Error(), unbuilt: err.Error()}
 	}
 	var l loaded
-	l.built, l.unbuilt = buildList(n.dir, n.dir, env, m.mains, false)
+	if l.unbuilt = untidy(n.dir, env); l.unbuilt == "" {
+		l.built, l.unbuilt = buildList(n.dir, n.dir, env, m.mains, false)
+	}
 	for i := range l.built {
 		l.built[i].by = n.path
 	}
@@ -665,8 +685,11 @@ func (m *Module) scanCopies() {
 
 // importsUnder returns every path any Go file of the module rooted at dir
 // imports, under any build constraint and in tests too, sorted. It reads
-// what a module zip holds: no directory named testdata or vendor, or holding
-// a go.mod of its own, below the root.
+// every directory but one named vendor, which the build reads only in the
+// main module, and one holding a go.mod of its own, which is another module.
+// A directory named testdata, or starting with . or _, is no package to
+// ./..., but a package of the copy may still import one, and a module zip
+// holds it.
 func importsUnder(dir string) ([]string, error) {
 	fset := token.NewFileSet()
 	seen := map[string]bool{}
@@ -678,7 +701,7 @@ func importsUnder(dir string) ([]string, error) {
 			if path == dir {
 				return nil
 			}
-			if name := d.Name(); name == "testdata" || name == "vendor" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") {
+			if d.Name() == "vendor" {
 				return filepath.SkipDir
 			}
 			if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
@@ -689,9 +712,12 @@ func importsUnder(dir string) ([]string, error) {
 		if !strings.HasSuffix(path, ".go") {
 			return nil
 		}
+		// A file that does not parse cannot be compiled either, so what it
+		// imports cannot break a build. testdata holds such files on
+		// purpose: golang.org/x/tools/go/packages/packagestest does.
 		f, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
 		if err != nil {
-			return err
+			return nil
 		}
 		for _, spec := range f.Imports {
 			if p, err := strconv.Unquote(spec.Path.Value); err == nil {
