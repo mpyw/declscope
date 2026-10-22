@@ -49,7 +49,10 @@ type Module struct {
 	Importers []Importer
 
 	// mains are the main modules, in the order the go command lists them.
+	// work is the go.work they come from, as go env GOWORK prints it: empty
+	// or off outside a workspace.
 	mains  []mainModule
+	work   string
 	byPath map[string][]*packages.Package
 	// importedBy maps each loaded package's import path to the paths of the
 	// loaded packages importing it, and reaching caches, per package, every
@@ -135,7 +138,11 @@ func Load(dir string) (*Module, error) {
 	if err != nil {
 		return nil, err
 	}
-	m := &Module{mains: mains, byPath: map[string][]*packages.Package{}}
+	work, err := goIn(dir, "env", "GOWORK")
+	if err != nil {
+		return nil, fmt.Errorf("finding the go.work: %w", err)
+	}
+	m := &Module{mains: mains, byPath: map[string][]*packages.Package{}, work: strings.TrimSpace(string(work))}
 	m.built, m.unbuilt = buildList(dir, mains)
 	var failed []string
 	for _, p := range pkgs {
@@ -241,14 +248,23 @@ func (m *Module) loadImporters(mode packages.LoadMode) {
 // anywhere but that module's directory, such as a published version. Uses of
 // other source say nothing about this one.
 //
-// Both loads run with GOWORK=off. A nested module is never one the go.work
-// uses, or it would be a main module, so the workspace has nothing to say
-// about how it builds: inheriting it failed the load outright, since ./...
-// names no module the go.work lists. Its own go.mod is what go build in its
-// directory reads with GOWORK=off, and the check that each main module's
+// Both loads read what go build in its directory reads. When that is the
+// main run's go.work, they run with GOWORK=off. A nested module is never one
+// that go.work uses, or it would be a main module, so the workspace has
+// nothing to say about how it builds: inheriting it failed the load
+// outright, since ./... names no module the go.work lists. A go.work of its
+// own, or none at all, is inherited: it may use a main module that its
+// go.mod does not require. Either way, the check that each main module's
 // package is read from that module's directory still holds it to this tree.
 func (m *Module) loadImporter(n nestedModule, mode packages.LoadMode) loaded {
-	env := append(os.Environ(), "GOWORK=off")
+	work, err := goIn(n.dir, "env", "GOWORK")
+	if err != nil {
+		return loaded{why: fmt.Sprintf("finding its go.work failed: %v", err)}
+	}
+	var env []string
+	if sameDir(strings.TrimSpace(string(work)), m.work) {
+		env = append(os.Environ(), "GOWORK=off")
+	}
 	deps, err := packages.Load(&packages.Config{
 		Dir:   n.dir,
 		Env:   env,

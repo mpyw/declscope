@@ -2,6 +2,7 @@ package module
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -61,6 +62,36 @@ func TestLoadFailures(t *testing.T) {
 		t.Setenv("GOFLAGS", "-no-such-flag")
 		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "finding the module:") {
 			t.Errorf("err = %v, want the go command's failure", err)
+		}
+	})
+	realGo, err := exec.LookPath("go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// failGOWORK fails go env GOWORK when the test cond holds, and runs the
+	// real go command otherwise.
+	failGOWORK := func(t *testing.T, cond string) {
+		fakeGo(t, `if [ "$#" = 2 ] && [ "$1" = env ] && [ "$2" = GOWORK ] && `+cond+`; then echo refused >&2; exit 1; fi; exec `+realGo+` "$@"`)
+	}
+	t.Run("go env GOWORK fails", func(t *testing.T) {
+		failGOWORK(t, "true")
+		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "finding the go.work: ") {
+			t.Errorf("err = %v, want the go command's failure", err)
+		}
+	})
+	t.Run("go env GOWORK fails in a nested module", func(t *testing.T) {
+		nested := nestedTree(t, map[string]string{"tools/go.mod": "module example.com/m/tools\n\ngo 1.25\n"})
+		tools, err := filepath.EvalSymlinks(filepath.Join(nested, "tools"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		failGOWORK(t, `[ "$(pwd -P)" = "`+tools+`" ]`)
+		m, err := Load(nested)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, why := m.Range("example.com/m/internal/a"); !strings.Contains(why, "the nested module example.com/m/tools may import it, and finding its go.work failed: ") {
+			t.Errorf("why = %q, want the go command's failure", why)
 		}
 	})
 }
