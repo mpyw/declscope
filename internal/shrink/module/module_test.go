@@ -224,6 +224,96 @@ func TestLoadLeavesUnreadableNestedModulesUnjudged(t *testing.T) {
 	}
 }
 
+// TestBuildListFailures pins that a build list this run cannot read in full
+// leaves every range unjudged with the reason, rather than reading as one
+// that names no module in the range.
+func TestBuildListFailures(t *testing.T) {
+	root := nestedTree(t, map[string]string{
+		"go.mod": "module example.com/m\n\ngo 1.25\n\nrequire example.com/m/gone v1.0.0\n",
+	})
+	mains := []mainModule{{path: "example.com/m", dir: root}}
+	t.Run("a module the go command cannot read", func(t *testing.T) {
+		t.Setenv("GOPROXY", "off")
+		t.Setenv("GOFLAGS", "-mod=mod")
+		if _, why := buildList(root, mains); !strings.Contains(why, "reading the build list failed: ") || !strings.Contains(why, "example.com/m/gone") {
+			t.Errorf("why = %q, want the module that failed named", why)
+		}
+	})
+	missing := filepath.Join(root, "missing")
+	t.Run("go list -m all fails", func(t *testing.T) {
+		if _, why := buildList(missing, mains); !strings.HasPrefix(why, "reading the build list failed: ") {
+			t.Errorf("why = %q, want the go command's failure", why)
+		}
+	})
+	inAny := func(string) bool { return true }
+	t.Run("go env fails in vendor mode", func(t *testing.T) {
+		if _, why := vendored(missing, mains, inAny, inAny); !strings.HasPrefix(why, "reading the build list failed: ") {
+			t.Errorf("why = %q, want the go command's failure", why)
+		}
+	})
+	t.Run("modules.txt cannot be read", func(t *testing.T) {
+		if err := os.MkdirAll(filepath.Join(root, "vendor", "modules.txt"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if _, why := vendored(root, mains, inAny, inAny); !strings.HasPrefix(why, "reading the build list failed: ") {
+			t.Errorf("why = %q, want the read error", why)
+		}
+	})
+	t.Run("go list -m prints what is not JSON", func(t *testing.T) {
+		fakeGo(t, "echo '{'")
+		if _, why := buildList(root, mains); !strings.HasPrefix(why, "reading the build list failed: ") {
+			t.Errorf("why = %q, want the decode error", why)
+		}
+	})
+	t.Run("Range names it", func(t *testing.T) {
+		m := &Module{mains: mains, unbuilt: "reading the build list failed: x"}
+		if _, why := m.Range("example.com/m/internal/a"); why != m.unbuilt {
+			t.Errorf("why = %q, want %q", why, m.unbuilt)
+		}
+	})
+}
+
+// TestBuildListVendored pins where vendor mode reads the modules from:
+// vendor/modules.txt of the workspace when there is one, else of the main
+// module, and nothing when there is none.
+func TestBuildListVendored(t *testing.T) {
+	work := t.TempDir()
+	main := filepath.Join(work, "m")
+	mains := []mainModule{{path: "example.com/m", dir: main}}
+	vendorErr := `if [ "$1" = list ]; then echo "go: can't compute 'all' using the vendor directory" >&2; exit 1; fi; `
+	t.Run("no modules.txt", func(t *testing.T) {
+		fakeGo(t, vendorErr+"echo")
+		if built, why := buildList(work, mains); built != nil || why != "" {
+			t.Errorf("built = %+v, why = %q, want nothing", built, why)
+		}
+	})
+	t.Run("the workspace's modules.txt", func(t *testing.T) {
+		fakeGo(t, vendorErr+"echo "+filepath.Join(work, "go.work"))
+		txt := "## workspace\n# example.com/m\n# example.com/m/x v1.0.0\n## explicit; go 1.25\nexample.com/m/x\n# example.com/other v1.0.0\n"
+		if err := os.MkdirAll(filepath.Join(work, "vendor"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(work, "vendor", "modules.txt"), []byte(txt), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		built, why := buildList(work, mains)
+		want := []builtModule{{path: "example.com/m/x", dir: filepath.Join(work, "vendor", "example.com", "m", "x")}}
+		if !slices.Equal(built, want) || why != "" {
+			t.Errorf("built = %+v, why = %q, want %+v", built, why, want)
+		}
+	})
+}
+
+// fakeGo puts a go command first on PATH that runs script under sh.
+func fakeGo(t *testing.T, script string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go"), []byte("#!/bin/sh\n"+script+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(filepath.ListSeparator)+os.Getenv("PATH"))
+}
+
 // TestReaches pins which import of a build-excluded file may bring a value of
 // a package's types into it. A package outside the modules this run reads
 // cannot import an internal package of theirs. A package of those modules

@@ -1,6 +1,7 @@
 package shrink_test
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"golang.org/x/mod/module"
+	modzip "golang.org/x/mod/zip"
 
 	"github.com/mpyw/declscope/internal/shrink"
 )
@@ -220,6 +224,88 @@ func TestShrinkNestedModuleBroken(t *testing.T) {
 		!strings.Contains(res.Skipped[0].Reason, "does not type-check") {
 		t.Errorf("skipped = %+v, want internal/a, naming the type error", res.Skipped)
 	}
+}
+
+// TestShrinkBuildListReplace pins that a module of the build list whose path
+// lies in the range, replaced by a directory outside the tree, leaves the
+// range unjudged: the build compiles that copy, not the nested module ext,
+// and only the copy uses a.Used.
+func TestShrinkBuildListReplace(t *testing.T) {
+	res := shrinkRun(t, "testdata/build-list-replace")
+	if len(res.Skipped) != 1 || res.Skipped[0].Package != "example.com/blr/internal/a" ||
+		!strings.Contains(res.Skipped[0].Reason, "the build uses example.com/blr/ext from ") ||
+		!strings.Contains(res.Skipped[0].Reason, "build-list-replace-ext") {
+		t.Errorf("skipped = %+v, want internal/a, naming the copy the build reads", res.Skipped)
+	}
+}
+
+// TestShrinkBuildListPublished pins the same for a published version of the
+// nested module, served from a local proxy: the build compiles ext v1.0.0,
+// which uses a.Old, and not the nested directory.
+func TestShrinkBuildListPublished(t *testing.T) {
+	proxy := shrinkPublish(t, "testdata/build-list-published-v1", module.Version{Path: "example.com/blp/ext", Version: "v1.0.0"})
+	t.Setenv("GOPROXY", proxy)
+	t.Setenv("GOSUMDB", "off")
+	t.Setenv("GOMODCACHE", t.TempDir())
+	t.Setenv("GOFLAGS", "-modcacherw")
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS("testdata/build-list-published")); err != nil {
+		t.Fatal(err)
+	}
+	dir, _ = filepath.EvalSymlinks(dir)
+	tidy := exec.Command("go", "mod", "tidy")
+	tidy.Dir = dir
+	if out, err := tidy.CombinedOutput(); err != nil {
+		t.Fatalf("go mod tidy: %v\n%s", err, out)
+	}
+	res := shrinkRun(t, dir)
+	if len(res.Skipped) != 1 || res.Skipped[0].Package != "example.com/blp/internal/a" ||
+		!strings.Contains(res.Skipped[0].Reason, "the build uses example.com/blp/ext from ") ||
+		!strings.Contains(res.Skipped[0].Reason, "example.com/blp/ext@v1.0.0") {
+		t.Errorf("skipped = %+v, want internal/a, naming the published version", res.Skipped)
+	}
+}
+
+// TestShrinkBuildListVendored pins the same in vendor mode, where the go
+// command computes no build list: vendor/modules.txt names ext, and the
+// build reads its vendored copy, which uses a.Old.
+func TestShrinkBuildListVendored(t *testing.T) {
+	res := shrinkRun(t, "testdata/build-list-vendored")
+	if len(res.Skipped) != 1 || res.Skipped[0].Package != "example.com/blv/internal/a" ||
+		!strings.Contains(res.Skipped[0].Reason, "the build uses example.com/blv/ext from ") ||
+		!strings.Contains(res.Skipped[0].Reason, filepath.Join("vendor", "example.com", "blv", "ext")) {
+		t.Errorf("skipped = %+v, want internal/a, naming the vendored copy", res.Skipped)
+	}
+}
+
+// shrinkPublish serves the module in src as version v from a new file
+// proxy, and returns the GOPROXY value that reads it.
+func shrinkPublish(t *testing.T, src string, v module.Version) string {
+	t.Helper()
+	proxy := t.TempDir()
+	at := filepath.Join(proxy, filepath.FromSlash(v.Path), "@v")
+	if err := os.MkdirAll(at, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var zipped bytes.Buffer
+	if err := modzip.CreateFromDir(&zipped, v, src); err != nil {
+		t.Fatal(err)
+	}
+	mod, err := os.ReadFile(filepath.Join(src, "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string][]byte{
+		"list":              []byte(v.Version + "\n"),
+		v.Version + ".info": []byte(`{"Version":"` + v.Version + `"}`),
+		v.Version + ".mod":  mod,
+		v.Version + ".zip":  zipped.Bytes(),
+	} {
+		if err := os.WriteFile(filepath.Join(at, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return "file://" + filepath.ToSlash(proxy)
 }
 
 // shrinkRun checks a module's wants, as shrinkCheck does, and returns the
