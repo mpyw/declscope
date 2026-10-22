@@ -89,8 +89,10 @@ func surveyRun(args []string) {
 func surveyPackages(pkgs []*packages.Package, configPath string, failed []string) (measure.Summary, error) {
 	// A package that did not type-check has nothing to measure. Its row would
 	// be a clean one, which is the reading -allow-errors must not buy:
-	// checks.typeCheck names it instead.
-	pkgs = slices.DeleteFunc(slices.Clone(pkgs), func(pkg *packages.Package) bool { return len(pkg.Errors) > 0 })
+	// checks.typeCheck names it instead. So does a package that compiles
+	// against a dependency that does not.
+	causes := loadFailedCauses(pkgs)
+	pkgs = slices.DeleteFunc(slices.Clone(pkgs), func(pkg *packages.Package) bool { return causes[pkg] != nil })
 
 	// Each package is resolved and measured on its own, in parallel. Only
 	// the fold below sees more than one, and it runs in package order.

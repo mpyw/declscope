@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 
 	"golang.org/x/tools/go/analysis"
@@ -80,27 +82,79 @@ func loadPackages(command string, patterns []string, tests bool) ([]*packages.Pa
 // nothing could be measured for. One entry per import path, since the two
 // variants of a package report the same error twice.
 //
-// Each entry names the package's first error that is not the go command's.
-// Dependencies come from export data, so go list compiles the package too, and
-// its build output comes first: a "-" position, a "# path" header and the
-// compiler's message on a second line, relative to the working directory. The
-// type checker reports the same error after it, on one line at an absolute
-// position. A package the go command alone rejects, such as a directory that
-// does not exist, has only the go command's error, and that one is named.
+// A package that compiles but imports one that does not is named too, along
+// with the package that failed. loadFailedCauses says why it counts.
+//
+// Each entry names the failing package's first error that is not the go
+// command's. Dependencies come from export data, so go list compiles the
+// package too, and its build output comes first: a "-" position, a "# path"
+// header and the compiler's message on a second line, relative to the working
+// directory. The type checker reports the same error after it, on one line at
+// an absolute position. A package the go command alone rejects, such as a
+// directory that does not exist, has only the go command's error, and that one
+// is named, on one line by loadErrorLine.
 //
 //declscope:shared // survey refuses on it, and says which packages failed
 func loadErrors(pkgs []*packages.Package) []string {
+	causes := loadFailedCauses(pkgs)
+	// The go command reports positions relative to its working directory,
+	// which is this process's: the config sets no Dir.
+	cwd, _ := os.Getwd()
 	seen := map[string]bool{}
 	var failed []string
 	for _, pkg := range pkgs {
-		if module.IsTestMain(pkg) || len(pkg.Errors) == 0 || seen[pkg.PkgPath] {
+		cause := causes[pkg]
+		if module.IsTestMain(pkg) || cause == nil || seen[pkg.PkgPath] {
 			continue
 		}
 		seen[pkg.PkgPath] = true
-		failed = append(failed, fmt.Sprintf("%s: %s", pkg.PkgPath, loadFirstError(pkg)))
+		entry := pkg.PkgPath + ": "
+		if cause != pkg {
+			entry += "imports " + cause.PkgPath + ": "
+		}
+		failed = append(failed, entry+loadErrorLine(loadFirstError(cause), cwd))
 	}
 	slices.Sort(failed)
 	return failed
+}
+
+// loadFailedCauses maps each package that cannot be measured to the package
+// whose errors are why: itself, or the first package it imports, directly or
+// not, that has errors.
+//
+// A package whose dependency does not compile still type-checks against the
+// declarations the dependency claims, so its own clean result is not one. The
+// analyzer's driver skips such a package, and baseline refuses it through
+// packages.PrintErrors, which walks the imports the same way. Imports are
+// visited in import-path order, so the dependency named does not depend on map
+// order.
+//
+//declscope:shared // survey drops the packages it maps, and loadErrors names them
+func loadFailedCauses(pkgs []*packages.Package) map[*packages.Package]*packages.Package {
+	causes := map[*packages.Package]*packages.Package{}
+	visited := map[*packages.Package]bool{}
+	var visit func(pkg *packages.Package) *packages.Package
+	visit = func(pkg *packages.Package) *packages.Package {
+		if visited[pkg] {
+			return causes[pkg]
+		}
+		visited[pkg] = true
+		if len(pkg.Errors) > 0 {
+			causes[pkg] = pkg
+			return pkg
+		}
+		for _, path := range slices.Sorted(maps.Keys(pkg.Imports)) {
+			if cause := visit(pkg.Imports[path]); cause != nil {
+				causes[pkg] = cause
+				return cause
+			}
+		}
+		return nil
+	}
+	for _, pkg := range pkgs {
+		visit(pkg)
+	}
+	return causes
 }
 
 // loadFirstError picks the error loadErrors names a package by: the first one
@@ -110,6 +164,29 @@ func loadFirstError(pkg *packages.Package) packages.Error {
 		return pkg.Errors[i]
 	}
 	return pkg.Errors[0]
+}
+
+// loadErrorLine prints an error on one line, as the type checker would.
+//
+// For a package outside the patterns, the go command's build output can be the
+// only error: go/packages type-checks no function body there, so an error
+// inside one is never found again. The output is a "# path" header over one
+// line per compiler message, at positions relative to cwd. The first message
+// is kept, with its file made absolute. Any other error has its newlines
+// flattened, since an entry is one line of a refusal or a list.
+func loadErrorLine(e packages.Error, cwd string) string {
+	if e.Kind != packages.ListError {
+		return e.Error()
+	}
+	header, rest, ok := strings.Cut(e.Msg, "\n")
+	if !ok || !strings.HasPrefix(header, "# ") {
+		return strings.ReplaceAll(e.Error(), "\n", " ")
+	}
+	line, _, _ := strings.Cut(rest, "\n")
+	if file, pos, ok := strings.Cut(line, ":"); ok && cwd != "" && strings.HasSuffix(file, ".go") && !filepath.IsAbs(file) {
+		line = filepath.Join(cwd, file) + ":" + pos
+	}
+	return line
 }
 
 // loadErrorsForInspect leaves out an external test package when the package it

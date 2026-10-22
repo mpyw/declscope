@@ -268,6 +268,84 @@ func TestFailedPackageEntryNamesTheTypeError(t *testing.T) {
 	}
 }
 
+// TestPackageWithAFailingDependencyIsCountedAsFailed checks that a package is
+// not measured when a package it imports, directly or not, does not compile.
+// Its own syntax type-checks against what the dependency's declarations claim,
+// which is no clean result, and the analyzer itself skips such a package. So
+// does baseline, and survey and inspect have to agree with both.
+//
+// The dependency is not a root, so the go command's build output is all there
+// is to name it by: go/packages type-checks no function body outside the
+// packages it was asked for.
+func TestPackageWithAFailingDependencyIsCountedAsFailed(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, "b/b.go", "package b\n\nfunc Broken() int { return undefinedThing }\n")
+	writeTree(t, dir, "c/c.go", "package c\n\nimport \"example.com/declscopetest/b\"\n\nfunc Middle() int { return b.Broken() }\n")
+	writeTree(t, dir, "a/a.go", "package a\n\nimport \"example.com/declscopetest/c\"\n\nfunc Top() int { return c.Middle() }\n")
+
+	const prefix = "example.com/declscopetest/a: imports example.com/declscopetest/b: "
+	const suffix = "b.go:3:28: undefined: undefinedThing"
+	checkEntry := func(how, entry string) {
+		t.Helper()
+		pos, ok := strings.CutPrefix(entry, prefix)
+		if !ok || !strings.HasSuffix(entry, suffix) || strings.Contains(entry, "\n") || !filepath.IsAbs(pos) {
+			t.Errorf("%s: the entry does not name the failing dependency's error on one line:\n%q", how, entry)
+		}
+	}
+
+	out, code := runIn(t, bin, dir, "survey", "-allow-errors", "-format=json", "./a")
+	if code != 0 {
+		t.Fatalf("-allow-errors exited %d\n%s", code, out)
+	}
+	var got struct {
+		Checks struct {
+			TypeCheck struct {
+				Packages int      `json:"packages"`
+				Failed   []string `json:"failed"`
+			} `json:"typeCheck"`
+		} `json:"checks"`
+		Packages []struct {
+			Path string `json:"path"`
+		} `json:"packages"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if got.Checks.TypeCheck.Packages != 1 || len(got.Checks.TypeCheck.Failed) != 1 {
+		t.Fatalf("want one package, failed; got %+v", got.Checks.TypeCheck)
+	}
+	checkEntry("survey -format=json", got.Checks.TypeCheck.Failed[0])
+	if len(got.Packages) != 0 {
+		t.Errorf("a package that did not type-check was given a row: %+v", got.Packages)
+	}
+
+	for _, command := range []string{"survey", "inspect"} {
+		out, code := runIn(t, bin, dir, command, "./a")
+		if code == 0 {
+			t.Fatalf("%s measured a package whose dependency does not compile\n%s", command, out)
+		}
+		_, entry, _ := strings.Cut(out, "\n  ")
+		entry, _, _ = strings.Cut(entry, "\n")
+		checkEntry(command+" refusal", entry)
+	}
+	if out, code := runIn(t, bin, dir, "baseline", "./a"); code == 0 {
+		t.Errorf("baseline wrote entries for a package whose dependency does not compile\n%s", out)
+	}
+
+	// Asked for together, each package is named for its own reason: c by the
+	// package it imports, and b by its own type error.
+	out, _ = runIn(t, bin, dir, "survey", "-allow-errors", "-format=json", "./...")
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if f := got.Checks.TypeCheck.Failed; len(f) != 3 ||
+		!strings.HasPrefix(f[1], "example.com/declscopetest/b: /") ||
+		!strings.HasPrefix(f[2], "example.com/declscopetest/c: imports example.com/declscopetest/b: /") {
+		t.Errorf("the entries do not name each package's own reason:\n%q", f)
+	}
+}
+
 // TestFormatNamesWhatItAccepts checks the flag answers a bad value with the
 // values it takes, the way a rejected rules.naming.qualify does.
 func TestFormatNamesWhatItAccepts(t *testing.T) {
