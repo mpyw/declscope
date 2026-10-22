@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -76,6 +77,15 @@ func (s *Set) Len() int {
 		return 0
 	}
 	return len(s.keys)
+}
+
+// Keys returns every recorded violation, in no particular order. Save sorts
+// what it writes, so a set saved again reads the same.
+func (s *Set) Keys() []Key {
+	if s == nil {
+		return nil
+	}
+	return slices.Collect(maps.Keys(s.keys))
 }
 
 // file is the on-disk shape: package path -> rule -> namespace -> declarations.

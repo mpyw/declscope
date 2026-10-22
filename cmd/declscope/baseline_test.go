@@ -705,3 +705,226 @@ func TestBaselinePlacesShrinkPerPackage(t *testing.T) {
 		t.Errorf("-o holds %d entries, want %d", set.Len(), len(pkgs))
 	}
 }
+
+// extTest is an external test package beside twoFiles, with a boundary
+// violation of its own. Its import path ends in _test, so -merge has to count
+// it as loaded with the package it tests.
+var extTest = map[string]string{
+	"ext_user_test.go":  "package x_test\n\nfunc extHelper() int { return 1 }\n",
+	"ext_order_test.go": "package x_test\n\nimport \"testing\"\n\nfunc TestExt(t *testing.T) { _ = extHelper() }\n",
+}
+
+// mergeModule lays out a/, with twoFiles and extTest, and internal/b/, with
+// twoFiles and an exported declaration nothing uses, which shrink reports.
+func mergeModule(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
+	writeTree(t, root, ".declscope.yaml", qualifyOn)
+	for name, body := range twoFiles {
+		writeTree(t, root, filepath.Join("a", name), body)
+		writeTree(t, root, filepath.Join("internal/b", name), body)
+	}
+	for name, body := range extTest {
+		writeTree(t, root, filepath.Join("a", name), body)
+	}
+	writeTree(t, root, "internal/b/lonely.go", "package x\n\nfunc Lonely() {}\n")
+	return root
+}
+
+// readFile returns the file's content, failing the test if it cannot be read.
+func readFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
+// TestBaselineNarrowPatternWithoutMerge pins the default: the file is
+// regenerated from the loaded packages alone, so a narrower pattern drops the
+// entries of every other package, and the analyzer reports them again.
+func TestBaselineNarrowPatternWithoutMerge(t *testing.T) {
+	root := mergeModule(t)
+	if out, code := runIn(t, bin, root, "baseline", "./..."); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	if out, code := runIn(t, bin, root, "baseline", "./a"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	for _, k := range load(t, filepath.Join(root, ".declscope-baseline.yaml")).Keys() {
+		if k.Package != "example.com/m/a" && k.Package != "example.com/m/a_test" {
+			t.Errorf("without -merge, ./a kept the entry %+v", k)
+		}
+	}
+	if out, code := runIn(t, bin, root, "./..."); code == 0 || !strings.Contains(out, filepath.Join("internal", "b")) {
+		t.Errorf("want internal/b reported again: exit %d\n%s", code, out)
+	}
+}
+
+// TestBaselineMergeKeepsUnloadedPackages checks that -merge regenerates the
+// entries of the packages the patterns load, test variants and the external
+// test package included, and keeps the rest byte for byte: the analyzer's and
+// shrink's alike, and shrink's under -shrink=false too, since that run
+// regenerates none of them.
+func TestBaselineMergeKeepsUnloadedPackages(t *testing.T) {
+	root := mergeModule(t)
+	path := filepath.Join(root, ".declscope-baseline.yaml")
+	out, code := runIn(t, bin, root, "baseline", "./...")
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	full := readFile(t, path)
+	for _, k := range []baseline.Key{
+		{Package: "example.com/m/a_test", Rule: "boundary", Namespace: "extUser", Decl: "extHelper"},
+		{Package: "example.com/m/internal/b", Rule: "overexported", Namespace: "lonely", Decl: "Lonely"},
+	} {
+		if !load(t, path).Has(k) {
+			t.Fatalf("the full run does not record %+v:\n%s", k, full)
+		}
+	}
+
+	for _, args := range [][]string{
+		{"baseline", "-merge", "./a"},
+		{"baseline", "-merge", "./internal/b"},
+		{"baseline", "-merge", "-shrink=false", "./internal/b"},
+		{"baseline", "-merge", "./..."},
+	} {
+		got, code := runIn(t, bin, root, args...)
+		if code != 0 {
+			t.Fatalf("%v: exit %d:\n%s", args, code, got)
+		}
+		if got != out {
+			t.Errorf("%v reported\n%s\nwant the full run's\n%s", args, got, out)
+		}
+		if after := readFile(t, path); after != full {
+			t.Errorf("%v changed an unchanged baseline:\n--- before ---\n%s\n--- after ---\n%s", args, full, after)
+		}
+	}
+
+	// The external test package's violation is fixed. A run over ./a drops
+	// its entry, and keeps internal/b's.
+	if err := os.Remove(filepath.Join(root, "a", "ext_order_test.go")); err != nil {
+		t.Fatal(err)
+	}
+	if out, code := runIn(t, bin, root, "baseline", "-merge", "./a"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	set := load(t, path)
+	for _, k := range set.Keys() {
+		if k.Package == "example.com/m/a_test" {
+			t.Errorf("the fixed entry %+v survived", k)
+		}
+	}
+	for _, k := range []baseline.Key{
+		{Package: "example.com/m/a", Rule: "boundary", Namespace: "user", Decl: "helper"},
+		{Package: "example.com/m/internal/b", Rule: "boundary", Namespace: "user", Decl: "helper"},
+		{Package: "example.com/m/internal/b", Rule: "overexported", Namespace: "lonely", Decl: "Lonely"},
+	} {
+		if !set.Has(k) {
+			t.Errorf("-merge ./a lost %+v", k)
+		}
+	}
+	assertSuppressed(t, bin, root)
+	if out, code := runIn(t, bin, root, "shrink"); code != 0 || out != "" {
+		t.Errorf("shrink with the baseline: exit %d, want silence:\n%s", code, out)
+	}
+}
+
+// TestBaselineMergeRefusesAnUnparsableFile checks that -merge stops on a file
+// it cannot parse rather than replacing it, since keeping what is there is
+// what it was asked for. Every target is read before any is written, so the
+// nested target the run also resolves to is not created either. Without
+// -merge the same file is replaced, as before.
+func TestBaselineMergeRefusesAnUnparsableFile(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
+	writeTree(t, root, ".declscope.yaml", qualifyOn)
+	writeTree(t, root, "sub/.declscope.yaml", "baseline: sub-baseline.yaml\n"+qualifyOn)
+	for _, pkg := range []string{"a", "sub/inner"} {
+		for name, body := range twoFiles {
+			writeTree(t, root, filepath.Join(pkg, name), body)
+		}
+	}
+	const corrupt = "packages:\n  x:\n    boundary:\n      user: [helper]\nbogus: 1\n"
+	writeTree(t, root, ".declscope-baseline.yaml", corrupt)
+
+	out, code := runIn(t, bin, root, "baseline", "-merge", "./...")
+	if code != 1 || !strings.Contains(out, "-merge") || !strings.Contains(out, "bogus") {
+		t.Errorf("exited %d, want 1 naming -merge and the parse error:\n%s", code, out)
+	}
+	if got := readFile(t, filepath.Join(root, ".declscope-baseline.yaml")); got != corrupt {
+		t.Errorf("-merge rewrote a file it could not parse:\n%s", got)
+	}
+	if _, err := os.Stat(filepath.Join(root, "sub", "sub-baseline.yaml")); err == nil {
+		t.Error("a refused -merge wrote the nested baseline")
+	}
+
+	if out, code := runIn(t, bin, root, "baseline", "./..."); code != 0 {
+		t.Fatalf("without -merge the corrupt file should be replaced: exit %d\n%s", code, out)
+	}
+	assertSuppressed(t, bin, root)
+}
+
+// TestBaselineMergeWithO checks that -merge reads the file -o names, which
+// every loaded package resolves to.
+func TestBaselineMergeWithO(t *testing.T) {
+	root := mergeModule(t)
+	one := filepath.Join(t.TempDir(), "one.yaml")
+	if out, code := runIn(t, bin, root, "baseline", "-o", one, "./..."); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	full := readFile(t, one)
+	if out, code := runIn(t, bin, root, "baseline", "-o", one, "-merge", "./a"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	if got := readFile(t, one); got != full {
+		t.Errorf("-o with -merge changed an unchanged baseline:\n--- before ---\n%s\n--- after ---\n%s", full, got)
+	}
+	if out, code := runIn(t, bin, root, "baseline", "-o", one, "./a"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	if load(t, one).Has(baseline.Key{Package: "example.com/m/internal/b", Rule: "boundary", Namespace: "user", Decl: "helper"}) {
+		t.Error("-o without -merge kept the entries of a package ./a does not load")
+	}
+}
+
+// TestBaselineMergeWithNestedTargets checks -merge against a subtree with its
+// own baseline: each file keeps its own unloaded packages, and a file no
+// loaded package resolves to is not written at all.
+func TestBaselineMergeWithNestedTargets(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
+	writeTree(t, root, ".declscope.yaml", qualifyOn)
+	writeTree(t, root, "sub/.declscope.yaml", "baseline: sub-baseline.yaml\n"+qualifyOn)
+	for _, pkg := range []string{"a", "c", "sub/inner", "sub/other"} {
+		for name, body := range twoFiles {
+			writeTree(t, root, filepath.Join(pkg, name), body)
+		}
+	}
+	if out, code := runIn(t, bin, root, "baseline", "./..."); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	top := filepath.Join(root, ".declscope-baseline.yaml")
+	sub := filepath.Join(root, "sub", "sub-baseline.yaml")
+	wantTop, wantSub := readFile(t, top), readFile(t, sub)
+
+	for _, patterns := range [][]string{{"./sub/inner"}, {"./a"}, {"./a", "./sub/other"}} {
+		args := append([]string{"baseline", "-merge"}, patterns...)
+		out, code := runIn(t, bin, root, args...)
+		if code != 0 {
+			t.Fatalf("%v: exit %d:\n%s", args, code, out)
+		}
+		if got := readFile(t, top); got != wantTop {
+			t.Errorf("%v changed the root baseline:\n%s", args, got)
+		}
+		if got := readFile(t, sub); got != wantSub {
+			t.Errorf("%v changed the nested baseline:\n%s", args, got)
+		}
+		if patterns[0] == "./sub/inner" && strings.Contains(out, "in "+top) {
+			t.Errorf("%v wrote the root baseline, which no loaded package resolves to:\n%s", args, out)
+		}
+	}
+	assertSuppressed(t, bin, root)
+}

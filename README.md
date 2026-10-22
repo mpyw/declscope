@@ -234,7 +234,7 @@ tar xzf "declscope_${VERSION}_darwin_arm64.tar.gz"
 | --- | --- | --- |
 | `declscope survey [packages]` | [Report what was checked and what it found](#measuring-what-is-there), one row per package | `-format`, `-test`, `-config`, `-allow-errors` |
 | `declscope inspect <package>` | [Report the shape of one package](#measuring-what-is-there): its namespaces and the crossings between them | `-format`, `-test`, `-config` |
-| `declscope baseline [packages]` | [Record the violations a codebase already has](#adopting-on-an-existing-codebase), `shrink`'s included | `-config`, `-o`, `-shrink` |
+| `declscope baseline [packages]` | [Record the violations a codebase already has](#adopting-on-an-existing-codebase), `shrink`'s included | `-config`, `-o`, `-shrink`, `-merge` |
 | `declscope shrink [packages]` | [Unexport what no importer uses](#unexporting-what-no-importer-uses), inside `internal/` | `-fix`, `-config` |
 | `declscope skill install` | Install the authoring and adoption skills for an AI agent | `--agent`, `--scope` |
 
@@ -1641,7 +1641,7 @@ git diff .declscope-baseline.yaml   # the record of what was cleaned up
 <summary>Where the baseline is written</summary>
 
 ```console
-declscope baseline [-o path] [-config path] [packages]   # packages default to ./...
+declscope baseline [-o path] [-config path] [-merge] [packages]   # packages default to ./...
 ```
 
 Each package's entries go to the file the analyzer will consult for that package.
@@ -1680,7 +1680,18 @@ Recording `shrink`'s reports loads the whole module once more. `-shrink=false` s
 
 If no pattern matches a package, the run stops and writes nothing, `-o` included. A pattern that matches nothing beside others that do gets a warning, as it does from `go vet`.
 
-Every file written is regenerated **wholesale**. The existing one is never read, so a baseline that fails to parse is replaced like any other.
+Every file written is regenerated **wholesale**. The existing one is never read, so a baseline that fails to parse is replaced like any other. A narrower pattern therefore **drops the entries of every package it does not load** from the files it writes:
+
+```console
+$ declscope baseline ./...           # records a and b
+$ declscope baseline ./a             # the file now holds only a
+$ declscope baseline -merge ./a      # a is regenerated, b is kept
+```
+
+`-merge` reads each file it writes first. It replaces the entries of the packages this run loaded, their test variants included, and keeps every other entry. Under `-shrink=false` it keeps `shrink`'s entries too, since the run recorded none. A file that `-merge` cannot parse stops the run, and nothing is written.
+
+> [!NOTE]
+> `-merge` also keeps the entries of a package that was deleted or renamed, since no pattern loads it any more. A run over `./...` without `-merge` prunes them.
 
 > [!WARNING]
 > Some packages cannot reach the working directory by that lookup, such as one in another module. The run then **refuses** and names them, rather than recording entries nothing would find.

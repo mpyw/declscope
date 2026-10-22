@@ -31,6 +31,11 @@ default-named baseline at or below the working directory, else
 ` + baselineDefaultName + ` in the working directory. Every file written is
 regenerated wholesale; baselines above the working directory are left alone.
 
+Wholesale means a narrower pattern drops the entries of every package it does
+not load from the files it writes. -merge keeps them: it reads each file first,
+replaces the entries of the packages this run loaded and keeps the rest. A file
+-merge cannot parse stops the run.
+
 What declscope shrink reports is recorded too, into the same files, so that
 shrink passes on what the baseline already holds. That loads the whole module
 once more. -shrink=false skips it, for a module that does not run shrink.
@@ -57,6 +62,7 @@ func baselineRun(args []string) {
 	out := fs.String("o", "", "write every entry to this one file instead")
 	configPath := fs.String("config", "", "path to a declscope YAML config file")
 	withShrink := fs.Bool("shrink", true, "also record what declscope shrink reports (-shrink=false skips it)")
+	merge := fs.Bool("merge", false, "keep the entries of packages these patterns do not load")
 	fs.Usage = func() {
 		_, _ = io.WriteString(fs.Output(), baselineUsage)
 		fs.PrintDefaults()
@@ -73,9 +79,16 @@ func baselineRun(args []string) {
 	if err != nil {
 		baselineFail(err)
 	}
-	targets, err := baselineCollect(patterns, *configPath, *out, cwd, *withShrink)
+	targets, loaded, err := baselineCollect(patterns, *configPath, *out, cwd, *withShrink)
 	if err != nil {
 		baselineFail(err)
+	}
+	if *merge {
+		// Every file is read before any is written, so a file that cannot be
+		// parsed leaves all of them as they were.
+		if err := baselineMerge(targets, loaded, *withShrink); err != nil {
+			baselineFail(err)
+		}
 	}
 	for _, path := range slices.Sorted(maps.Keys(targets)) {
 		n, err := baseline.Save(path, targets[path])
@@ -88,7 +101,9 @@ func baselineRun(args []string) {
 
 // baselineCollect returns the current violations, grouped by the baseline file
 // each belongs to. A file appears as a key as soon as one analyzed package resolves
-// to it, even with no entries, so that regeneration prunes it.
+// to it, even with no entries, so that regeneration prunes it. It also returns
+// the import paths of the analyzed packages, every variant counted: the
+// packages whose entries this run regenerates.
 //
 // Resolving the target per package, rather than once for the run, is what
 // makes "its presence is all it takes" true: the analyzer looks a baseline up
@@ -99,13 +114,13 @@ func baselineRun(args []string) {
 //
 // With shrink, the reports of declscope shrink over the same patterns are
 // placed the same way, by the package that declares each.
-func baselineCollect(patterns []string, configPath, out, cwd string, shrinkToo bool) (map[string][]baseline.Key, error) {
+func baselineCollect(patterns []string, configPath, out, cwd string, shrinkToo bool) (map[string][]baseline.Key, map[string]bool, error) {
 	pkgs, err := loadPackages("baseline", patterns, true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if packages.PrintErrors(pkgs) > 0 {
-		return nil, fmt.Errorf("packages contain errors")
+		return nil, nil, fmt.Errorf("packages contain errors")
 	}
 
 	targets := map[string][]baseline.Key{}
@@ -117,6 +132,10 @@ func baselineCollect(patterns []string, configPath, out, cwd string, shrinkToo b
 	// the first error and the order of every entry are the ones a sequential
 	// run would give.
 	pkgs = slices.DeleteFunc(slices.Clone(pkgs), func(pkg *packages.Package) bool { return !loadIsAnalyzable(pkg) })
+	loaded := map[string]bool{}
+	for _, pkg := range pkgs {
+		loaded[pkg.PkgPath] = true
+	}
 	type collectedPackage struct {
 		path string // empty when no baseline is found from the package
 		keys []baseline.Key
@@ -145,7 +164,7 @@ func baselineCollect(patterns []string, configPath, out, cwd string, shrinkToo b
 	for i, pkg := range pkgs {
 		r := results[i]
 		if r.err != nil {
-			return nil, r.err
+			return nil, nil, r.err
 		}
 		if r.path == "" {
 			unplaceable = append(unplaceable, fmt.Sprintf("  %s (%s)", pkg.PkgPath, loadedPackageDir(pkg)))
@@ -159,13 +178,13 @@ func baselineCollect(patterns []string, configPath, out, cwd string, shrinkToo b
 	if len(unplaceable) > 0 {
 		slices.Sort(unplaceable)
 		unplaceable = slices.Compact(unplaceable)
-		return nil, fmt.Errorf("%s in %s would not be found from these packages, because the lookup from them never reaches the working directory:\n%s\nrun from a directory their lookup passes through, name a baseline in a config file near them, or pass -o",
+		return nil, nil, fmt.Errorf("%s in %s would not be found from these packages, because the lookup from them never reaches the working directory:\n%s\nrun from a directory their lookup passes through, name a baseline in a config file near them, or pass -o",
 			baselineDefaultName, cwd, strings.Join(unplaceable, "\n"))
 	}
 	if shrinkToo {
 		res, err := shrink.Run(cwd, patterns, nil)
 		if err != nil {
-			return nil, fmt.Errorf("declscope shrink: %w (pass -shrink=false to record the analyzer's findings alone)", err)
+			return nil, nil, fmt.Errorf("declscope shrink: %w (pass -shrink=false to record the analyzer's findings alone)", err)
 		}
 		// One lookup per directory, not per finding: a package with many
 		// findings would otherwise walk and parse its config chain for each.
@@ -191,7 +210,35 @@ func baselineCollect(patterns []string, configPath, out, cwd string, shrinkToo b
 			}
 		}
 	}
-	return targets, nil
+	return targets, loaded, nil
+}
+
+// baselineMerge adds to each target the entries its file already holds that
+// this run did not regenerate, for -merge.
+//
+// An entry is regenerated when this run loaded its package, whichever file
+// that package now resolves to: an entry left behind in a file its package no
+// longer resolves to is never consulted. An overexported entry is regenerated
+// only when shrink ran too, since -shrink=false records none of them. Every
+// variant of a package shares its import path, so loading a package with its
+// tests regenerates the entries all of them gave, and its external test
+// package has an import path of its own, loaded with it.
+//
+// A file that cannot be parsed is an error rather than a file to replace:
+// -merge is asked for to keep what is there.
+func baselineMerge(targets map[string][]baseline.Key, loaded map[string]bool, shrinkToo bool) error {
+	for _, path := range slices.Sorted(maps.Keys(targets)) {
+		set, err := baseline.Load(path)
+		if err != nil {
+			return fmt.Errorf("-merge cannot keep the entries of %w; run without -merge to replace the file", err)
+		}
+		for _, k := range set.Keys() {
+			if !loaded[k.Package] || (k.Rule == rule.Overexported && !shrinkToo) {
+				targets[path] = append(targets[path], k)
+			}
+		}
+	}
+	return nil
 }
 
 // baselineTarget is the file a package in dir records its entries in: out
