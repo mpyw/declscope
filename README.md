@@ -1744,7 +1744,7 @@ declscope reads one package at a time, and counts a use only where a name is wri
 | --- | --- |
 | Uses outside the package | A scope beyond `shared` could not be checked, so none exists. [`declscope shrink`](#unexporting-what-no-importer-uses) loads the module to judge exportedness inside `internal/` |
 | Whole-value operations on a struct | Copying, comparing or zeroing a value names no field |
-| A composite literal of a type parameter | `T{1}` fills the fields of whatever `T` is instantiated with, without naming them |
+| A composite literal of a type parameter with a `~struct` term | `P{1}` with `P interface{ ~struct{ n int } }` fills the fields of whatever `P` is instantiated with, without naming them. A struct the constraint names, as in `P interface{ Slot }` or `P interface{ ~*Slot }`, is read |
 | Reflection, `//go:linkname`, generated files | These reach a declaration without spelling it |
 | A file that imports `"C"` | cgo rewrites it into a generated file in the build cache. Like other generated files, it is not read: nothing in it is reported, and its uses do not count |
 | A declaration nobody uses | `boundary` needs a use to find, so unused code produces no diagnostic |

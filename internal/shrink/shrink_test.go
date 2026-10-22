@@ -110,6 +110,12 @@ func TestShrinkNestedModuleGeneric(t *testing.T) {
 // package is judged as a whole, with its type.
 func TestShrinkConstSets(t *testing.T) { shrinkCheck(t, "testdata/const-sets") }
 
+// TestShrinkTypeParamSets pins the literals and conversions that write a
+// struct's fields through the type set of a type parameter: a named struct as
+// the constraint, an intersection, an interface term inside a union, and two
+// structs sharing one underlying type.
+func TestShrinkTypeParamSets(t *testing.T) { shrinkCheck(t, "testdata/typeparam-sets") }
+
 // TestShrinkFixWithheld pins the reports whose fix is withheld for a reason
 // other than the rename: build-excluded and generated files, example
 // functions, and -ldflags -X.
@@ -284,7 +290,7 @@ func TestShrinkRenamesDoc(t *testing.T) {
 // which also compiles the tests; every report that offered a fix is gone; and
 // no report appears that was not there before.
 func TestShrinkConverges(t *testing.T) {
-	for _, name := range []string{"uses", "escapes", "fix-withheld", "rename-guards", "ignores", "module-under-internal", "nested-module-uses", "nested-module-excluded", "const-sets"} {
+	for _, name := range []string{"uses", "escapes", "fix-withheld", "rename-guards", "ignores", "module-under-internal", "nested-module-uses", "nested-module-excluded", "const-sets", "typeparam-sets"} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			if err := os.CopyFS(dir, os.DirFS(filepath.Join("testdata", name))); err != nil {

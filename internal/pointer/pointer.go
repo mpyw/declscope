@@ -1,79 +1,203 @@
-// Package pointer finds what a pointer type points to, in every form Go
-// writes one. The analyzer and declscope shrink both ask it, where a
-// composite literal leaves out a pointer type and where a conversion pairs
-// the fields of two structs behind pointers.
+// Package pointer finds the structs whose fields a composite literal or a
+// conversion writes without naming them, through a pointer in every form Go
+// writes one and through the type set of a type parameter. The analyzer and
+// declscope shrink both ask it, where an unkeyed literal fills fields by
+// position and where a conversion pairs the fields of two structs by name.
 package pointer
 
-import "go/types"
+import (
+	"go/types"
+	"slices"
 
-// Elem returns the type t points to, and whether t is a pointer at all.
-//
-// A pointer is not only *T. A defined type such as type PSlot *Slot is one
-// through its underlying type, and so is a type parameter whose constraint
-// allows only pointers to one type, such as P interface{ ~*Slot }: every
-// type in its type set has the same underlying pointer, which is what Go
-// calls its core type. []PSlot{{1}} and []P{{1}} write the fields of Slot,
-// and P(u) converts u to a pointer to Slot. Reading *types.Pointer alone
-// missed all three.
-func Elem(t types.Type) (types.Type, bool) {
-	var u types.Type
-	if tp, ok := types.Unalias(t).(*types.TypeParam); ok {
-		u = core(tp)
-	} else {
-		u = t.Underlying()
-	}
-	if ptr, ok := u.(*types.Pointer); ok {
-		return ptr.Elem(), true
-	}
-	return nil, false
+	"github.com/mpyw/declscope/internal/typeparams"
+)
+
+// Sets holds the type set of each type parameter asked about, for one pass.
+// A constraint is a tree of interfaces, and every literal and conversion of a
+// type parameter would otherwise walk it again. The zero value is ready.
+type Sets struct {
+	byParam map[*types.TypeParam]paramSet
 }
 
-// core returns the underlying type every type in the type set of tp shares,
-// or nil when the types differ or the set is not limited by its terms.
+// paramSet is the type set of one type parameter. When it could not be
+// computed, terms holds every term the constraint writes instead: a superset
+// of the type set, since normalizing only joins and intersects terms.
+type paramSet struct {
+	terms []*types.Term
+	known bool
+}
+
+// Literal returns the types whose fields an unkeyed composite literal of type
+// t writes, by position, and whether that is exact. Each has a struct as its
+// underlying type.
 //
-// Terms are collected from every embedded element of the constraint,
-// through the interfaces it embeds. Several elements intersect, so their
-// terms agreeing on one underlying type is enough. Terms that disagree may
-// still intersect in one type, as in interface{ ~*A | ~*B; ~*A }. That is
-// read as no core type, which only misses a use.
-func core(tp *types.TypeParam) types.Type {
-	var found types.Type
-	agree := true
-	add := func(u types.Type) {
-		switch {
-		case found == nil:
-			found = u
-		case !types.Identical(found, u):
-			agree = false
+// The literal's type is not only a struct type. A literal inside another may
+// leave out a pointer type, so the inner literal of []*Slot{{1}} has the type
+// *Slot. The pointer may be a defined type, type PSlot *Slot. And the type may
+// be a type parameter: P{1} and []P{{1}} need its type set to have one
+// underlying type, its core type, which is a struct or a pointer to one. The
+// set may hold several types with that struct as their underlying type, as in
+// P interface{ Left | Right }, and the literal writes the fields of each:
+// renaming one breaks it.
+//
+// When the set of a type parameter cannot be computed (an error, or the term
+// limit go/types also enforces), the types are every struct the constraint
+// writes, through one pointer, and the result is not exact. A caller must then
+// read each as a possible use, never the lack of one as no use.
+func (s *Sets) Literal(t types.Type) ([]types.Type, bool) {
+	tp, isParam := types.Unalias(t).(*types.TypeParam)
+	if !isParam {
+		u := t.Underlying()
+		if ptr, ok := u.(*types.Pointer); ok {
+			return s.structCore(ptr.Elem())
+		}
+		if _, ok := u.(*types.Struct); ok {
+			return []types.Type{t}, true
+		}
+		return nil, true
+	}
+	set := s.of(tp)
+	if !set.known {
+		return s.Conversion(t)
+	}
+	if ptr, ok := typeparams.CoreType(set.terms).(*types.Pointer); ok {
+		return s.structCore(ptr.Elem())
+	}
+	return s.structCore(t)
+}
+
+// structCore returns the types of t's type set when their core type is a
+// struct, the way Literal reads the type a pointer points to: a literal leaves
+// out one pointer, never two.
+func (s *Sets) structCore(t types.Type) ([]types.Type, bool) {
+	tp, isParam := types.Unalias(t).(*types.TypeParam)
+	if !isParam {
+		if _, ok := t.Underlying().(*types.Struct); ok {
+			return []types.Type{t}, true
+		}
+		return nil, true
+	}
+	set := s.of(tp)
+	if !set.known {
+		return s.Conversion(t)
+	}
+	if _, ok := typeparams.CoreType(set.terms).(*types.Struct); !ok {
+		return nil, true
+	}
+	out := make([]types.Type, len(set.terms))
+	for i, term := range set.terms {
+		out[i] = term.Type()
+	}
+	return out, true
+}
+
+// Conversion returns the types whose fields a conversion to or from t pairs
+// by name, and whether that is exact. Each has a struct as its underlying
+// type.
+//
+// (*Snap)(&user) converts between pointers to two structs, and pairs their
+// fields as Snap(user) does. A conversion to or from a type parameter needs no
+// core type: it converts to or from each type in the set, so each struct
+// there, or behind a pointer there, is paired. An inexact result is read as
+// Literal says.
+func (s *Sets) Conversion(t types.Type) ([]types.Type, bool) {
+	var out []types.Type
+	known := true
+	add := func(t types.Type) {
+		if _, ok := t.Underlying().(*types.Struct); ok {
+			out = append(out, t)
 		}
 	}
-	var walk func(iface *types.Interface)
-	walk = func(iface *types.Interface) {
-		for e := range iface.EmbeddedTypes() {
-			if union, ok := e.(*types.Union); ok {
-				for i := range union.Len() {
-					u := union.Term(i).Type().Underlying()
-					// A term that is itself an interface lets in every type
-					// it allows, which no term here limits.
-					if _, isInterface := u.(*types.Interface); isInterface {
-						agree = false
-					}
-					add(u)
-				}
-				continue
-			}
-			if inner, ok := e.Underlying().(*types.Interface); ok {
-				walk(inner)
-				continue
-			}
-			add(e.Underlying())
+	for _, x := range s.terms(t, &known) {
+		ptr, ok := x.Underlying().(*types.Pointer)
+		if !ok {
+			add(x)
+			continue
+		}
+		for _, elem := range s.terms(ptr.Elem(), &known) {
+			add(elem)
 		}
 	}
-	if iface, ok := tp.Constraint().Underlying().(*types.Interface); ok {
-		walk(iface)
+	return out, known
+}
+
+// terms returns the types of t's type set: t alone, unless it is a type
+// parameter. It clears known when the set had to be guessed.
+func (s *Sets) terms(t types.Type, known *bool) []types.Type {
+	tp, isParam := types.Unalias(t).(*types.TypeParam)
+	if !isParam {
+		return []types.Type{t}
 	}
-	if !agree {
+	set := s.of(tp)
+	*known = *known && set.known
+	out := make([]types.Type, len(set.terms))
+	for i, term := range set.terms {
+		out[i] = term.Type()
+	}
+	return out
+}
+
+// of returns the type set of tp, computed once per pass.
+func (s *Sets) of(tp *types.TypeParam) paramSet {
+	if set, ok := s.byParam[tp]; ok {
+		return set
+	}
+	if s.byParam == nil {
+		s.byParam = map[*types.TypeParam]paramSet{}
+	}
+	terms, err := typeparams.NormalTerms(tp)
+	written := writtenTerms(tp.Constraint(), map[types.Type]bool{})
+	set := paramSet{terms: terms, known: err == nil}
+	if err != nil {
+		set.terms = written
+		s.byParam[tp] = set
+		return set
+	}
+	// A term a tilde term absorbed still counts. The normal form of
+	// interface{ ~struct{ X int } | S } is ~struct{ X int } alone, since S has
+	// that underlying type. Unexporting a field of S changes it, S is no
+	// longer absorbed, and the set loses its core type, so a literal of P
+	// breaks. Each such term has the underlying type of one in the set, and
+	// so leaves the core type as it is.
+	for _, w := range written {
+		absorbed := slices.ContainsFunc(set.terms, func(t *types.Term) bool {
+			return t.Tilde() && types.Identical(w.Type().Underlying(), t.Type())
+		})
+		listed := slices.ContainsFunc(set.terms, func(t *types.Term) bool { return types.Identical(w.Type(), t.Type()) })
+		if absorbed && !listed {
+			set.terms = append(set.terms, w)
+		}
+	}
+	s.byParam[tp] = set
+	return set
+}
+
+// writtenTerms returns every term a constraint writes, through the interfaces it
+// embeds and the interface terms of its unions, left as written.
+func writtenTerms(constraint types.Type, seen map[types.Type]bool) []*types.Term {
+	iface, ok := constraint.Underlying().(*types.Interface)
+	if !ok || seen[constraint] {
 		return nil
 	}
-	return found
+	seen[constraint] = true
+	var out []*types.Term
+	for e := range iface.EmbeddedTypes() {
+		union, ok := e.(*types.Union)
+		if !ok {
+			if _, isInterface := e.Underlying().(*types.Interface); isInterface {
+				out = append(out, writtenTerms(e, seen)...)
+			} else {
+				out = append(out, types.NewTerm(false, e))
+			}
+			continue
+		}
+		for term := range union.Terms() {
+			if _, isInterface := term.Type().Underlying().(*types.Interface); isInterface {
+				out = append(out, writtenTerms(term.Type(), seen)...)
+			} else {
+				out = append(out, term)
+			}
+		}
+	}
+	return out
 }

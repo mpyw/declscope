@@ -28,6 +28,7 @@ import (
 
 	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/namespace"
+	"github.com/mpyw/declscope/internal/pointer"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
@@ -309,6 +310,16 @@ type collection struct {
 	//
 	//declscope:private
 	linknamedScan map[string]bool
+
+	// typeSets is the type set of every type parameter an unkeyed literal or
+	// a struct conversion goes through. The reference collection and the
+	// surplus evidence both ask it, so each is computed once per pass.
+	typeSets pointer.Sets
+	// unkeyedGuessed is every field an unkeyed literal in another namespace
+	// may write, through a type parameter whose type set could not be
+	// computed. It is no ref: the guess may name a struct the literal does
+	// not write, so it reports no crossing, and surplus counts it as reach.
+	unkeyedGuessed map[types.Object]bool
 }
 
 // origin maps an instantiated field or method back to the object declared in

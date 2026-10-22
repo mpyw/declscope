@@ -14,7 +14,6 @@ import (
 
 	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/namespace"
-	"github.com/mpyw/declscope/internal/pointer"
 	"github.com/mpyw/declscope/internal/rule"
 )
 
@@ -40,6 +39,8 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		byObj:  make(map[types.Object]*target),
 		refs:   make(map[types.Object][]ref),
 		idents: make(map[types.Object][]*ast.Ident),
+
+		unkeyedGuessed: make(map[types.Object]bool),
 
 		// Only this file's own half is built here. ignore.go and scopesite.go
 		// fill theirs on first use, the way rename.go already did, so the
@@ -440,24 +441,33 @@ func (c *collection) collectUnkeyedFields(pass *analysis.Pass, fi *fileInfo, lit
 	if _, keyed := lit.Elts[0].(*ast.KeyValueExpr); keyed {
 		return
 	}
-	// A literal inside another may leave out a pointer type: in []*T{{1}} the
-	// inner literal's type is *T, and it writes the fields of T. The pointer
-	// may also be a defined type or a type parameter (pointer.Elem).
-	t := pass.TypesInfo.TypeOf(lit)
-	if elem, ok := pointer.Elem(t); ok {
-		t = elem
-	}
-	st, ok := t.Underlying().(*types.Struct)
-	if !ok || st.NumFields() != len(lit.Elts) {
-		return
-	}
-	// refs is only ever read for a target, so a field that is not one, such
-	// as an embedded one or one declared in another package, is skipped. The
-	// literal of an instantiated generic struct holds the instantiated fields,
-	// and byObj is keyed by the declared ones, which origin maps them back to.
-	for i, elt := range lit.Elts {
-		if f := origin(st.Field(i)); c.byObj[f] != nil {
-			c.refs[f] = append(c.refs[f], ref{node: elt, file: fi})
+	// The literal's type may be a pointer the literal leaves out, as in
+	// []*T{{1}}, or a type parameter, whose type set may hold several structs
+	// (pointer.Sets.Literal).
+	holders, exact := c.typeSets.Literal(pass.TypesInfo.TypeOf(lit))
+	for _, h := range holders {
+		st := h.Underlying().(*types.Struct)
+		if st.NumFields() != len(lit.Elts) {
+			continue
+		}
+		// refs is only ever read for a target, so a field that is not one,
+		// such as an embedded one or one declared in another package, is
+		// skipped. The literal of an instantiated generic struct holds the
+		// instantiated fields, and byObj is keyed by the declared ones, which
+		// origin maps them back to.
+		for i, elt := range lit.Elts {
+			f := origin(st.Field(i))
+			target := c.byObj[f]
+			switch {
+			case target == nil:
+			case exact:
+				c.refs[f] = append(c.refs[f], ref{node: elt, file: fi})
+			case target.file.key() != fi.key():
+				// A guess may name a struct the literal does not write, so it
+				// reports no crossing. It still keeps surplus from calling the
+				// field unused.
+				c.unkeyedGuessed[f] = true
+			}
 		}
 	}
 }
