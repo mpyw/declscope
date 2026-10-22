@@ -1464,7 +1464,7 @@ A package that does not type-check refuses the whole run, since it would show no
 > Two uses are outside what `shrink` can see. Silence either with the ignore below.
 >
 > - A name written as a string that no interface leads to, such as a template field or a constant given to `reflect.Value.MethodByName`.
-> - A module outside this module's directory tree whose path extends an `internal/` parent, such as a `/v2` on another branch, when neither this module's build list nor a nested module's names it. Go checks `internal/` by import path. One this module's build list names leaves the range unjudged, and one a nested module's names withholds the fixes, as the tables above show.
+> - A module outside this module's directory tree whose path extends an `internal/` parent, such as a `/v2` on another branch, or lies above one and holds its directory, when neither this module's build list nor a nested module's names it. Go checks `internal/` by import path. One this module's build list names leaves the range unjudged, and one a nested module's names withholds the fixes, as the tables above show.
 
 ### Silencing it
 
