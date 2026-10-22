@@ -18,8 +18,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
 
 	"golang.org/x/mod/modfile"
 	"golang.org/x/tools/go/packages"
@@ -156,16 +158,61 @@ func Load(dir string) (*Module, error) {
 	if err := m.walk(); err != nil {
 		return nil, err
 	}
-	for i := range m.nested {
-		m.loadImporter(&m.nested[i], cfg.Mode)
-	}
+	m.loadImporters(cfg.Mode)
 	return m, nil
+}
+
+// loaded is what loading one nested module read: its packages and the files
+// its build excludes, or why it could not read them.
+type loaded struct {
+	imp      Importer
+	excluded []*excluded.File
+	why      string
+}
+
+// loadImporters loads every nested module that may import an internal
+// package, up to GOMAXPROCS at a time. Each load runs go list and spends
+// most of its time waiting on it: one after another, 40 nested modules took
+// 15 to 37 s of wall time for about 1 s of CPU. Each load only reads the
+// main load and writes its own slot, and the slots are folded in the order
+// of m.nested, so the result does not depend on scheduling. The loads share
+// the main load's file set, which is safe for concurrent use, and keyOf
+// reads a file name and an offset, which do not depend on the order the
+// files were added in.
+func (m *Module) loadImporters(mode packages.LoadMode) {
+	slots := make([]loaded, len(m.nested))
+	limit := make(chan struct{}, runtime.GOMAXPROCS(0))
+	var wg sync.WaitGroup
+	for i, n := range m.nested {
+		if !m.covers(n.path) {
+			continue
+		}
+		limit <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-limit }()
+			slots[i] = m.loadImporter(n, mode)
+		})
+	}
+	wg.Wait()
+	for i, l := range slots {
+		if !m.covers(m.nested[i].path) {
+			continue
+		}
+		m.nested[i].why = l.why
+		if l.why != "" {
+			continue
+		}
+		m.Excluded = append(m.Excluded, l.excluded...)
+		if len(l.imp.Pkgs) > 0 {
+			m.Importers = append(m.Importers, l.imp)
+		}
+	}
 }
 
 // loadImporter loads a nested module that may import a main module's
 // internal packages, so that its uses count as any other importer's. A
 // nested module that no internal parent covers imports nothing that matters,
-// and is left alone.
+// and loadImporters leaves it alone.
 //
 // It takes two loads. The first asks what the module imports, the way go
 // list -deps does. The second type-checks its packages together with the
@@ -175,15 +222,11 @@ func Load(dir string) (*Module, error) {
 // internal package cannot be a root instead. The module's go.mod need not
 // require what those import, and loading them fails.
 //
-// Whatever it cannot read leaves why set, and the ranges it may import stay
+// Whatever it cannot read sets why, and the ranges it may import stay
 // unjudged: a load that fails, and a main module's package read from
 // anywhere but that module's directory, such as a published version. Uses of
 // other source say nothing about this one.
-func (m *Module) loadImporter(n *nestedModule, mode packages.LoadMode) {
-	if !m.covers(n.path) {
-		return
-	}
-	n.why = "this run does not load it"
+func (m *Module) loadImporter(n nestedModule, mode packages.LoadMode) loaded {
 	deps, err := packages.Load(&packages.Config{
 		Dir:   n.dir,
 		Mode:  packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles | packages.NeedImports | packages.NeedDeps | packages.NeedModule,
@@ -203,8 +246,7 @@ func (m *Module) loadImporter(n *nestedModule, mode packages.LoadMode) {
 		}
 	})
 	if problem != "" {
-		n.why = problem
-		return
+		return loaded{why: problem}
 	}
 	var imp Importer
 	own := deps
@@ -238,8 +280,7 @@ func (m *Module) loadImporter(n *nestedModule, mode packages.LoadMode) {
 			}
 		}
 		if problem != "" {
-			n.why = problem
-			return
+			return loaded{why: problem}
 		}
 		for _, path := range slices.Sorted(maps.Keys(widest)) {
 			imp.Pkgs = append(imp.Pkgs, widest[path])
@@ -249,14 +290,9 @@ func (m *Module) loadImporter(n *nestedModule, mode packages.LoadMode) {
 	// written under a tag this run does not set still counts.
 	var xs []*excluded.File
 	if err := m.walkTree(n.dir, compiledFiles(own), token.NewFileSet(), false, &xs); err != nil {
-		n.why = err.Error()
-		return
+		return loaded{why: err.Error()}
 	}
-	m.Excluded = append(m.Excluded, xs...)
-	if len(imp.Pkgs) > 0 {
-		m.Importers = append(m.Importers, imp)
-	}
-	n.why = ""
+	return loaded{imp: imp, excluded: xs}
 }
 
 // loadFailure words a failed load, or is empty when the load did not fail.
