@@ -107,7 +107,7 @@ For example, a cache that two parts of a package read was placed in `surplus.go`
 
 A test file's namespace comes from its own file name: `collect_test.go` is `collect`. So name a test file for the source file whose unexported code it calls, not for the behavior it tests. A test of ordering that calls `collect.go` goes in `collect_test.go`, not `order_test.go`.
 
-The namespace does not follow the subject's `//declscope:namespace`. If `user_extra.go` carries `//declscope:namespace user`, write the same directive on `user_extra_test.go`. A test of a core file joins the core by itself, since `client_test.go` shares `client.go`'s stem. A test file with its own `//declscope:namespace` keeps that namespace instead.
+The namespace does not follow the subject's `//declscope:namespace`. If `user_extra.go` carries `//declscope:namespace user`, write the same directive on `user_extra_test.go`. A test of a core file joins the core by itself: `client_test.go` joins a core `client.go`. Nothing else joins, so the core takes no GOOS sibling such as `client_linux.go`. A test file with its own `//declscope:namespace` keeps that namespace instead.
 
 | The test calls | Put it |
 | --- | --- |

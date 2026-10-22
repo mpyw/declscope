@@ -397,6 +397,40 @@ func TestResolve(t *testing.T) {
 			[]Resolved{{Core: true}, {Name: "other"}},
 		},
 		{
+			// A core test file does not take its subject with it: the subject
+			// is read by both variants, the test file by one.
+			"subject does not join core test file",
+			[]Declared{{Path: "client.go"}, {Path: "client_test.go", Core: true}},
+			[]Resolved{{Name: "client"}, {Core: true}},
+		},
+		{
+			// A GOOS sibling is built only sometimes, so joining it would make
+			// the namespace of foo.go depend on the build.
+			"plain sibling does not join core GOOS file",
+			[]Declared{{Path: "foo.go"}, {Path: "foo_linux.go", Core: true}},
+			[]Resolved{{Name: "foo"}, {Core: true}},
+		},
+		{
+			"GOOS sibling does not join core file",
+			[]Declared{{Path: "foo.go", Core: true}, {Path: "foo_linux.go"}},
+			[]Resolved{{Core: true}, {Name: "foo"}},
+		},
+		{
+			// A test file joins the file it tests, named in full.
+			"GOOS test file joins its own subject only",
+			[]Declared{
+				{Path: "foo_linux.go", Core: true},
+				{Path: "foo_test.go"},
+				{Path: "foo_linux_test.go"},
+			},
+			[]Resolved{{Core: true}, {Name: "foo"}, {Core: true}},
+		},
+		{
+			"test-suffixed GOOS file is no test file",
+			[]Declared{{Path: "foo.go", Core: true}, {Path: "foo_test_linux.go"}},
+			[]Resolved{{Core: true}, {Name: "fooTest"}},
+		},
+		{
 			"mixed core and named",
 			[]Declared{
 				{Path: "core.go", Core: true},

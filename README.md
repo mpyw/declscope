@@ -674,7 +674,7 @@ package transport
 
 The core has no prefix, so [the naming rule](#the-naming-rule) asks nothing of its declarations. No prefix still names exactly one unit.
 
-A test file joins the core when it shares a core file's stem, as `client_test.go` does `client.go`'s. A test file that names its own namespace with `//declscope:namespace` keeps it.
+A test file joins the core when it tests a core file, as `client_test.go` tests `client.go`. The test file is matched by its whole name, so `client_linux_test.go` joins a core `client_linux.go` but not a core `client.go`. Only a test file joins: a core `client_test.go` does not take `client.go` into the core, and a core `client_linux.go` does not take `client.go`. A test file that names its own namespace with `//declscope:namespace` keeps it.
 
 > [!IMPORTANT]
 > `//declscope:core` sets the namespace and nothing else. It carries no scope. A core declaration still takes [`defaults.unexported`](#configuration): by default it is private *to the core*, and a file outside the core that names it crosses a boundary.
