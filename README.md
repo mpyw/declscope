@@ -1342,7 +1342,7 @@ require example.com/app/gen v1.0.0
 ```
 
 </td>
-<td>Reported, with no fix for any package in the range, when a nested module this run loads builds a copy from outside the tree whose files import an internal package in the range: <code>(no fix: the build of the nested module example.com/app/tools uses example.com/app/gen from /path/to/modcache/example.com/app/gen@v1.0.0, which imports example.com/app/internal/user)</code>. Its uses are of other source</td>
+<td>Reported, with no fix for any package in the range, when a nested module builds a copy from outside the tree whose files import an internal package in the range: <code>(no fix: the build of the nested module example.com/app/tools uses example.com/app/gen from /path/to/modcache/example.com/app/gen@v1.0.0, which imports example.com/app/internal/user)</code>. Its uses are of other source. Every fix is withheld when the build list of a nested module that no internal parent covers cannot be read</td>
 </tr>
 </tbody>
 </table>
@@ -1464,7 +1464,7 @@ A package that does not type-check refuses the whole run, since it would show no
 > Two uses are outside what `shrink` can see. Silence either with the ignore below.
 >
 > - A name written as a string that no interface leads to, such as a template field or a constant given to `reflect.Value.MethodByName`.
-> - A module outside this module's directory tree whose path extends an `internal/` parent, such as a `/v2` on another branch, when neither this module's build list nor that of a nested module it loads names it. Go checks `internal/` by import path. One this module's build list names leaves the range unjudged, and one a nested module's names withholds the fixes, as the tables above show.
+> - A module outside this module's directory tree whose path extends an `internal/` parent, such as a `/v2` on another branch, when neither this module's build list nor a nested module's names it. Go checks `internal/` by import path. One this module's build list names leaves the range unjudged, and one a nested module's names withholds the fixes, as the tables above show.
 
 ### Silencing it
 
