@@ -55,6 +55,9 @@ type evidence struct {
 	paired map[string]bool
 	// escaped is every type a value that reflection may inspect reaches.
 	escaped map[string]bool
+	// guessed is every field an unkeyed literal or a struct conversion may
+	// write, through a type parameter whose type set could not be computed.
+	guessed map[string]bool
 	// exposed is every method and field another module can reach through a
 	// value that the exported API of an importable package hands out.
 	exposed map[string]bool
@@ -72,6 +75,11 @@ type evidence struct {
 	//
 	//declscope:private // only record reads it
 	keys map[types.Object]string
+	// typeSets is the type set of every type parameter a literal or a
+	// conversion goes through, computed once per run.
+	//
+	//declscope:private // only structsOf reads it
+	typeSets pointer.Sets
 }
 
 // evidenceSite is one identifier naming a declaration, in the package
@@ -89,7 +97,7 @@ type evidenceSite struct {
 func evidenceCollect(m *module.Module) (ev *evidence, err error) {
 	ev = &evidence{
 		outside: map[string]bool{}, everywhere: map[string]bool{}, extTest: map[string]bool{}, generated: map[string]bool{}, example: map[string]bool{},
-		satisfied: map[string]bool{}, paired: map[string]bool{}, escaped: map[string]bool{},
+		satisfied: map[string]bool{}, paired: map[string]bool{}, escaped: map[string]bool{}, guessed: map[string]bool{},
 		exposed: map[string]bool{}, sites: map[string][]evidenceSite{},
 		inModule: map[string]bool{}, keys: map[types.Object]string{},
 	}
@@ -300,27 +308,36 @@ func (ev *evidence) unkeyed(m *module.Module, p *packages.Package, lit *ast.Comp
 	if _, keyed := lit.Elts[0].(*ast.KeyValueExpr); keyed {
 		return
 	}
-	st, owner := evidenceStructOf(p.TypesInfo.TypeOf(lit))
-	if st == nil || owner == nil || owner.Pkg() == nil {
-		return
-	}
-	if evidenceClassify(p, owner.Pkg().Path()) == evidenceSame {
-		return
-	}
-	uses := []map[string]bool{ev.outside}
-	if evidenceClassify(p, owner.Pkg().Path()) == evidenceExtTest {
-		uses = []map[string]bool{ev.extTest}
-	} else if free {
-		uses = append(uses, ev.everywhere)
-	}
-	for i := range min(len(lit.Elts), st.NumFields()) {
-		for _, u := range uses {
-			u[keyOf(m.Fset, st.Field(i))] = true
-			// An embedded field is named by its type, and a literal writing
-			// it by position would write an unexported field once the type is
-			// fixed.
-			if tn := embeddedTypeName(st.Field(i)); tn != nil {
-				u[keyOf(m.Fset, tn)] = true
+	structs, exact := ev.structsOf(p.TypesInfo.TypeOf(lit), true)
+	for _, s := range structs {
+		if s.owner == nil || s.owner.Pkg() == nil {
+			continue
+		}
+		class := evidenceClassify(p, s.owner.Pkg().Path())
+		if class == evidenceSame {
+			continue
+		}
+		uses := []map[string]bool{ev.outside}
+		switch {
+		case !exact:
+			// The type set was guessed, and holds more than the literal may
+			// write: a possible use, which keeps the report and withholds
+			// the fix.
+			uses = []map[string]bool{ev.guessed}
+		case class == evidenceExtTest:
+			uses = []map[string]bool{ev.extTest}
+		case free:
+			uses = append(uses, ev.everywhere)
+		}
+		for i := range min(len(lit.Elts), s.st.NumFields()) {
+			for _, u := range uses {
+				u[keyOf(m.Fset, s.st.Field(i))] = true
+				// An embedded field is named by its type, and a literal
+				// writing it by position would write an unexported field
+				// once the type is fixed.
+				if tn := embeddedTypeName(s.st.Field(i)); tn != nil {
+					u[keyOf(m.Fset, tn)] = true
+				}
 			}
 		}
 	}
@@ -334,36 +351,53 @@ func (ev *evidence) conversion(m *module.Module, p *packages.Package, call *ast.
 	if !ok || !tv.IsType() || len(call.Args) != 1 {
 		return
 	}
-	to, _ := evidenceStructOf(tv.Type)
-	from, _ := evidenceStructOf(p.TypesInfo.TypeOf(call.Args[0]))
-	if to == nil || from == nil || to == from {
+	to, toExact := ev.structsOf(tv.Type, false)
+	from, fromExact := ev.structsOf(p.TypesInfo.TypeOf(call.Args[0]), false)
+	// A struct converted to itself pairs nothing.
+	if len(to) == 0 || len(from) == 0 || len(to) == 1 && len(from) == 1 && to[0].st == from[0].st {
 		return
 	}
-	for _, st := range []*types.Struct{to, from} {
-		for i := range st.NumFields() {
-			ev.paired[keyOf(m.Fset, st.Field(i))] = true
+	pairs := ev.paired
+	if !toExact || !fromExact {
+		pairs = ev.guessed
+	}
+	for _, s := range slices.Concat(to, from) {
+		for i := range s.st.NumFields() {
+			pairs[keyOf(m.Fset, s.st.Field(i))] = true
 		}
 	}
 }
 
-// evidenceStructOf returns the declared struct type behind t, through a
-// pointer in any of its forms (pointer.Elem) and an instantiation, and the
-// type name declaring it.
-func evidenceStructOf(t types.Type) (*types.Struct, *types.TypeName) {
+// evidenceStruct is a declared struct type, and the type name declaring it.
+type evidenceStruct struct {
+	st    *types.Struct
+	owner *types.TypeName
+}
+
+// structsOf returns the declared struct types an unkeyed literal of type t
+// writes, or a conversion to or from t pairs, through a pointer in any of its
+// forms, the type set of a type parameter, and an instantiation
+// (pointer.Sets), and whether that is exact.
+func (ev *evidence) structsOf(t types.Type, literal bool) ([]evidenceStruct, bool) {
 	if t == nil {
-		return nil, nil
+		return nil, true
 	}
-	if elem, ok := pointer.Elem(t); ok {
-		t = elem
+	read := ev.typeSets.Conversion
+	if literal {
+		read = ev.typeSets.Literal
 	}
-	switch t := types.Unalias(t).(type) {
-	case *types.Named:
-		st, _ := t.Origin().Underlying().(*types.Struct)
-		return st, t.Origin().Obj()
-	case *types.Struct:
-		return t, nil
+	holders, exact := read(t)
+	var out []evidenceStruct
+	for _, h := range holders {
+		switch h := types.Unalias(h).(type) {
+		case *types.Named:
+			st, _ := h.Origin().Underlying().(*types.Struct)
+			out = append(out, evidenceStruct{st, h.Origin().Obj()})
+		case *types.Struct:
+			out = append(out, evidenceStruct{h, nil})
+		}
 	}
-	return nil, nil
+	return out, exact
 }
 
 // unnamedStructs pairs the fields of every named struct type whose

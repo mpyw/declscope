@@ -49,7 +49,6 @@ import (
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
 
-	"github.com/mpyw/declscope/internal/pointer"
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
@@ -260,6 +259,11 @@ func (c *collection) surplusReached(pass *analysis.Pass) map[types.Object]bool {
 	surplusSatisfies(pass, reached, c.surplusTrackedMethodNames(), interfaces, satisfiers)
 	surplusCarried(pass, reached)
 	c.surplusConversions(pass, reached)
+	// A field an unkeyed literal may write, through a type set that had to
+	// be guessed, is reached too.
+	for f := range c.unkeyedGuessed {
+		reached[f] = true
+	}
 	return reached
 }
 
@@ -468,19 +472,16 @@ func (c *collection) surplusConversions(pass *analysis.Pass, reached map[types.O
 	mark := func(t types.Type, fi *fileInfo) {
 		// (*snapshot)(&user) converts between pointers to the two struct
 		// types, and pairs their fields the same way. So does P(&user) with
-		// P ~*snapshot (pointer.Elem).
-		if elem, ok := pointer.Elem(t); ok {
-			t = elem
-		}
-		st, ok := t.Underlying().(*types.Struct)
-		if !ok {
-			return
-		}
-		for field := range st.Fields() {
-			f := origin(field)
-			target, tracked := c.byObj[f]
-			if tracked && target.file.key() != fi.key() {
-				reached[f] = true
+		// P ~*snapshot, for every struct in the type set of P
+		// (pointer.Sets.Conversion). A guessed set only marks more.
+		holders, _ := c.typeSets.Conversion(t)
+		for _, h := range holders {
+			for field := range h.Underlying().(*types.Struct).Fields() {
+				f := origin(field)
+				target, tracked := c.byObj[f]
+				if tracked && target.file.key() != fi.key() {
+					reached[f] = true
+				}
 			}
 		}
 	}

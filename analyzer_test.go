@@ -503,6 +503,14 @@ func TestSurplusConversion(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusconvert")
 }
 
+// TestTypeParamSets checks that a literal or a conversion through a type
+// parameter writes the fields of every struct in its type set: a named struct
+// as the constraint, an intersection leaving one pointer, an interface term
+// inside a union, and two structs sharing one underlying type.
+func TestTypeParamSets(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "typeparamsets")
+}
+
 // TestSurplusDefault pins the built-in default: with no config, the rule
 // reports a directive nothing needs.
 func TestSurplusDefault(t *testing.T) {

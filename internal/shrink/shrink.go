@@ -911,6 +911,7 @@ func (r *run) withheld(c *candidate) string {
 		{"a generated file names it", func() bool { return r.ev.generated[c.key] }},
 		{"an example function names it", func() bool { return r.ev.example[c.key] }},
 		{"a string variable may be set by -ldflags -X, which names it", c.linkerSet},
+		{"a literal or conversion through a type parameter whose type set cannot be computed may write it", func() bool { return r.ev.guessed[c.key] }},
 	}
 	for _, reason := range reasons {
 		if reason.applies() {
