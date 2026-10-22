@@ -219,9 +219,10 @@ func resolve(dir, explicit string) (internal.Options, []string, error) {
 // outermost first. The nearest file is last, so applying the slice in order
 // leaves the nearest one's stated keys on top.
 //
-// The search stops at a module root, exactly as Find does. Config files do
-// compose, so a file above the module would reach into it, which is the one
-// thing the module boundary is there to prevent.
+// The search stops at a module root, so a stray config file somewhere above
+// the module cannot silently change its rules. Config files do compose, so a
+// file above the module would reach into it, which is the one thing the
+// module boundary is there to prevent.
 //
 //declscope:ignore overexported // config_test drives the lookup through it
 func FindChain(dir string) []string {
@@ -234,13 +235,6 @@ func FindChain(dir string) []string {
 	slices.Reverse(found)
 	return found
 }
-
-// Find walks up from dir looking for a config file and returns its path, or
-// "" when there is none. The search stops at a module root, so a stray config
-// file somewhere above the module cannot silently change its rules.
-//
-//declscope:ignore overexported // config_test drives the lookup through it
-func Find(dir string) string { return findUp(dir, names) }
 
 // FindBaseline walks up from dir looking for a default-named baseline file.
 // Its presence is what enables suppression, so the name is fixed and the
