@@ -61,6 +61,27 @@ func BenchmarkShrinkStructs(b *testing.B) {
 	benchShrinkRun(b, files)
 }
 
+// BenchmarkShrinkNestedModules loads 40 nested modules, each importing the
+// judged package and holding 6 build-excluded files (#301). Each nested
+// module is loaded on its own, so this measures wall time spent on the go
+// command rather than the judgment.
+func BenchmarkShrinkNestedModules(b *testing.B) {
+	var src strings.Builder
+	src.WriteString("package a\n")
+	files := map[string]string{}
+	for i := range 40 {
+		fmt.Fprintf(&src, "\nfunc F%d() {}\n", i)
+		dir := fmt.Sprintf("tools/t%d/", i)
+		files[dir+"go.mod"] = fmt.Sprintf("module example.com/bench/tools/t%d\n\ngo 1.24\n\nrequire example.com/bench v0.0.0\n\nreplace example.com/bench => ../..\n", i)
+		files[dir+"main.go"] = fmt.Sprintf("package main\n\nimport \"example.com/bench/internal/a\"\n\nfunc main() { a.F%d() }\n", i)
+		for j := range 6 {
+			files[fmt.Sprintf("%sx%d.go", dir, j)] = fmt.Sprintf("//go:build never\n\npackage main\n\nimport \"example.com/bench/internal/a\"\n\nvar _ = a.F%d\n", i)
+		}
+	}
+	files["internal/a/a.go"] = src.String()
+	benchShrinkRun(b, files)
+}
+
 // benchShrinkRun writes files into a new module and runs shrink on it.
 func benchShrinkRun(b *testing.B, files map[string]string) {
 	b.Helper()
