@@ -443,7 +443,7 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 	u := &unseenFiles{names: make(map[string]bool)}
 	c.unseenScan = u
 
-	dir, inPass, holdsTests := "", make(map[string]bool), false
+	dir, inPass, holdsTests, onlyTests := "", make(map[string]bool), false, true
 	for _, f := range pass.Files {
 		// The file on disk, even under a //line directive above the package
 		// clause. The adjusted name would leave the file out of inPass.
@@ -453,6 +453,7 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 		}
 		inPass[name] = true
 		holdsTests = holdsTests || strings.HasSuffix(name, "_test.go")
+		onlyTests = onlyTests && strings.HasSuffix(name, "_test.go")
 		// The directory is taken from a source file. Under go/packages, a
 		// file the go command produced lives in the build cache, named
 		// without the .go extension: cgo's output, which go list puts after
@@ -488,7 +489,19 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 		return u
 	}
 	// Before the scan, which stops early: the answer needs every entry.
-	u.nonGo = u.nonGo || slices.ContainsFunc(entries, func(e os.DirEntry) bool { return !e.IsDir() && nonGoExts[filepath.Ext(e.Name())] })
+	//
+	// An external test package shares the folder with the package under
+	// test, and the go command builds the folder's non-Go files into that
+	// package only. They can name its symbols, never the external test's
+	// (#323). The go command also skips a name that starts with _ or ., such
+	// as _old.s or an editor's lock file, as matchFile in go/build does
+	// (#324).
+	if !strings.HasSuffix(pass.Pkg.Name(), "_test") || !onlyTests {
+		u.nonGo = u.nonGo || slices.ContainsFunc(entries, func(e os.DirEntry) bool {
+			name := e.Name()
+			return !e.IsDir() && !strings.HasPrefix(name, "_") && !strings.HasPrefix(name, ".") && nonGoExts[filepath.Ext(name)]
+		})
+	}
 	fset := token.NewFileSet()
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {

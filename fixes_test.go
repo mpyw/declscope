@@ -101,12 +101,16 @@ func TestSuggestedFixLinkname(t *testing.T) {
 
 // TestSuggestedFixAssembly checks that a package holding assembly offers no
 // rename, since an .s file names Go symbols the rename cannot follow. That
-// holds for assembly in this build and for assembly the build excludes.
+// holds for assembly in this build and for assembly the build excludes. The
+// external test package beside it keeps its rename (#323): the assembly is
+// built into the package under test only. A file the go command skips, such
+// as _old.s, blocks nothing (#324).
 func TestSuggestedFixAssembly(t *testing.T) {
-	for _, pkg := range []string{"fixasm", "fixasmignored"} {
+	// One entry per rename offered: whether its pass holds a test file.
+	for pkg, want := range map[string][]bool{"fixasm": {true}, "fixasmignored": nil, "fixasmskipped": {false}} {
 		results := analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, pkg)
-		if got := fixOffers(results, "func "); len(got) != 0 {
-			t.Errorf("%s: %d renames offered, want none", pkg, len(got))
+		if got := fixOffers(results, "func "); !slices.Equal(got, want) {
+			t.Errorf("%s: renames offered %v, want %v", pkg, got, want)
 		}
 	}
 }
