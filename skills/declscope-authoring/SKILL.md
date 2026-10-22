@@ -6,7 +6,7 @@ license: MIT
 
 # Writing code under declscope
 
-Written against **declscope 0.22.0**. Check the version first with `declscope -V=full`: this describes how that release behaves, not how an older one does.
+Written against **declscope 0.23.0**. Check the version first with `declscope -V=full`: this describes how that release behaves, not how an older one does.
 
 This skill is for everyday work in a repository that already runs declscope. Introducing it, choosing its configuration, and clearing a baseline are in [declscope-adoption](../declscope-adoption/SKILL.md), installed beside this one. What each directive and config key means is in [the README](https://github.com/mpyw/declscope#readme).
 
@@ -310,7 +310,10 @@ Test files and generated files are out of scope. `TestXxx` functions are exporte
 
 - outside `internal/`, and in `package main`;
 - beside assembly or cgo;
-- under an `internal/` that a nested module's path extends, when that module fails to load or reads this one from elsewhere, such as a published version.
+- under an `internal/` whose tree a nested module may import into, when that module fails to load or reads this one from elsewhere, such as a published version;
+- under an `internal/` whose tree a module of the build list may import into, when the build reads that module from elsewhere, such as a published version.
+
+A copy from elsewhere that a nested module builds keeps the reports in its range, but withholds their fixes, and the reason names the copy.
 
 The exit status ignores those packages.
 
