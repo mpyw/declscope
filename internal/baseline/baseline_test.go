@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -35,6 +36,16 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	set, err := baseline.Load(path)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Keys is what declscope baseline -merge reads back, so it lists each
+	// entry once, as Len counts them.
+	if got := set.Keys(); len(got) != 4 {
+		t.Errorf("Keys = %v, want the 4 entries", got)
+	}
+	for _, k := range set.Keys() {
+		if !slices.Contains(keys, k) {
+			t.Errorf("Keys lists %+v, which was never saved", k)
+		}
 	}
 	if set.Len() != 4 {
 		t.Errorf("Len = %d, want 4 (duplicates collapse)", set.Len())
@@ -123,6 +134,9 @@ func TestLoadRejectsUnknownKey(t *testing.T) {
 // is how the analyzer runs when none is configured.
 func TestNilSet(t *testing.T) {
 	var set *baseline.Set
+	if len(set.Keys()) != 0 {
+		t.Error("a nil set should list nothing")
+	}
 	if set.Has(baseline.Key{Package: "a", Rule: "boundary", Namespace: "user", Decl: "x"}) {
 		t.Error("a nil set should suppress nothing")
 	}
