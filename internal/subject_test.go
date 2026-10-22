@@ -68,3 +68,23 @@ func unseenOf(t *testing.T, paths ...string) *unseenFiles {
 	pass := &analysis.Pass{Fset: fset, Files: files, Pkg: types.NewPackage("p", "p")}
 	return (&collection{}).unseen(pass)
 }
+
+// TestUnseenReadsNonGoFromTheFolder pins that a non-Go source file blocks a
+// rename whether or not the driver lists it (#285). go vet leaves .h and .syso
+// files out of OtherFiles, so a pass with empty lists must still learn of them
+// from the folder. A file the go command does not build is not one.
+func TestUnseenReadsNonGoFromTheFolder(t *testing.T) {
+	for name, want := range map[string]bool{"x.h": true, "x.syso": true, "x_arm64.s": true, "README.md": false, "go.sum": false} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			for file, content := range map[string]string{"a.go": "package p\n", name: ""} {
+				if err := os.WriteFile(filepath.Join(dir, file), []byte(content), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := unseenOf(t, filepath.Join(dir, "a.go")).nonGo; got != want {
+				t.Errorf("nonGo = %v, want %v", got, want)
+			}
+		})
+	}
+}

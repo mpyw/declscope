@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"go/ast"
 	"go/types"
-	"slices"
-	"strings"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
@@ -163,7 +161,7 @@ func (c *collection) safeToRename(pass *analysis.Pass, t *target, newName string
 	// Assembly and cgo name Go symbols from files go/types never reads, so
 	// a function an .s file defines or calls would lose its link. Reading
 	// them for symbols is rejected: a missed spelling is a broken build.
-	if nonGoBlocksRename(pass) {
+	if c.nonGoBlocksRename(pass) {
 		return false
 	}
 	// Another fix in this pass has already taken the name.
@@ -198,11 +196,13 @@ func (c *collection) renames() *renameState {
 // nonGoBlocksRename reports whether the package holds a source file that is not
 // Go, in this build or in another. Assembly for another GOARCH is in
 // IgnoredFiles, and names the package's symbols in the build that holds it.
-// declscope shrink makes the same test before judging a package.
+// The answer comes from the folder listing (unseen), so go vet, which leaves
+// .h and .syso files out of OtherFiles, and the direct driver, which lists
+// them, agree. declscope shrink makes the same test before judging a package.
 //
 //declscope:shared // surplus.go stands down on the same files, which it cannot read either
-func nonGoBlocksRename(pass *analysis.Pass) bool {
-	return len(pass.OtherFiles) > 0 || slices.ContainsFunc(pass.IgnoredFiles, func(f string) bool { return !strings.HasSuffix(f, ".go") })
+func (c *collection) nonGoBlocksRename(pass *analysis.Pass) bool {
+	return c.unseen(pass).nonGo
 }
 
 // renameBoundByImport reports whether any file scope of the package binds name,
