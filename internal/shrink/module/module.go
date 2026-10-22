@@ -10,6 +10,7 @@ package module
 import (
 	"bytes"
 	"cmp"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"go/token"
@@ -60,6 +61,18 @@ type Module struct {
 	// whose path extends an internal parent may import the package. One with
 	// an unrelated path cannot, wherever it sits.
 	nested []nestedModule
+	// built is every module of the main modules' build list, other than a
+	// main module, whose path lies in a main module's: a module that may
+	// import their internal packages from wherever the build reads it.
+	// unbuilt says why the build list could not be read, or is empty.
+	built   []builtModule
+	unbuilt string
+}
+
+// builtModule is one module of the build list: its path, and where the build
+// reads it from.
+type builtModule struct {
+	path, dir, version string
 }
 
 // Importer is one nested module this run loaded to read what it uses.
@@ -123,6 +136,7 @@ func Load(dir string) (*Module, error) {
 		return nil, err
 	}
 	m := &Module{mains: mains, byPath: map[string][]*packages.Package{}}
+	m.built, m.unbuilt = buildList(dir, mains)
 	var failed []string
 	for _, p := range pkgs {
 		if IsTestMain(p) {
@@ -425,11 +439,13 @@ func (m *Module) Widest() []*packages.Package {
 //
 // The deepest internal element is the one that restricts: a/internal/b/
 // internal/c is importable only from a/internal/b. The tree must lie inside
-// the main module declaring the package, and no nested module may have a
-// path inside it: that module could import the package, and this run never
-// loads it. The reason names that module, since nothing else would lead a
-// reader to it. Another main module's path may lie inside the tree, since
-// every main module is loaded.
+// the main module declaring the package, and every nested module with a path
+// inside it must be one this run read: that module could import the package.
+// So must every module of the build list with a path inside it, since the
+// build compiles the copy the list names, such as a published version, and
+// not the nested directory. The reason names that module, since nothing else
+// would lead a reader to it. Another main module's path may lie inside the
+// tree, since every main module is loaded.
 func (m *Module) Range(path string) (parent, why string) {
 	parent, ok := InternalParent(path)
 	if !ok {
@@ -438,12 +454,128 @@ func (m *Module) Range(path string) (parent, why string) {
 	if owner := m.owner(path); parent != owner.path && !strings.HasPrefix(parent, owner.path+"/") {
 		return "", fmt.Sprintf("its internal/ parent %s lies above the module %s", parent, owner.path)
 	}
+	inside := func(path string) bool { return path == parent || strings.HasPrefix(path, parent+"/") }
 	for _, n := range m.nested {
-		if n.why != "" && (n.path == parent || strings.HasPrefix(n.path, parent+"/")) {
+		if n.why != "" && inside(n.path) {
 			return "", fmt.Sprintf("the nested module %s may import it, and %s", n.path, n.why)
 		}
 	}
+	if m.unbuilt != "" {
+		return "", m.unbuilt
+	}
+	for _, b := range m.built {
+		if inside(b.path) && !m.loadedFrom(b) {
+			return "", fmt.Sprintf("the build uses %s from %s", b.path, cmp.Or(b.dir, b.path+"@"+b.version))
+		}
+	}
 	return parent, ""
+}
+
+// loadedFrom reports whether this run loaded the nested module the build
+// reads b from. Uses of any other copy are of other source: a published
+// version, or a replacement outside the tree.
+func (m *Module) loadedFrom(b builtModule) bool {
+	return b.dir != "" && slices.ContainsFunc(m.nested, func(n nestedModule) bool {
+		return n.path == b.path && n.why == "" && sameDir(n.dir, b.dir)
+	})
+}
+
+// buildList reads the main modules' build list, as go list -m all does, and
+// keeps each module other than a main module whose path lies in one's. Go
+// checks internal/ by import path, so such a module may import the main
+// modules' internal packages, and the build compiles the copy the list
+// names, wherever it is.
+//
+// -e lists the modules whose go.mod the go command cannot read, with an
+// error, instead of failing: in a workspace, a requirement on a workspace
+// module at v0.0.0 is one, and the build never reads it. Any other module
+// with an error may hide what it requires, so the second result says why
+// the list is unknown, and every range stays unjudged. In vendor mode the go
+// command computes no list at all, and vendor/modules.txt names every module
+// the build reads instead.
+func buildList(dir string, mains []mainModule) ([]builtModule, string) {
+	inMain := func(path string) bool {
+		return slices.ContainsFunc(mains, func(mm mainModule) bool { return strings.HasPrefix(path, mm.path+"/") })
+	}
+	isMain := func(path string) bool {
+		return slices.ContainsFunc(mains, func(mm mainModule) bool { return path == mm.path })
+	}
+	out, err := goIn(dir, "list", "-m", "-e", "-json", "all")
+	if err != nil {
+		if strings.Contains(err.Error(), "using the vendor directory") {
+			return vendored(dir, mains, inMain, isMain)
+		}
+		return nil, fmt.Sprintf("reading the build list failed: %v", err)
+	}
+	var built []builtModule
+	for dec := json.NewDecoder(bytes.NewReader(out)); dec.More(); {
+		var mod struct {
+			Path, Version, Dir string
+			Main               bool
+			Replace            *struct{ Dir string }
+			Error              *struct{ Err string }
+		}
+		if err := dec.Decode(&mod); err != nil {
+			return nil, fmt.Sprintf("reading the build list failed: %v", err)
+		}
+		if mod.Error != nil && !isMain(mod.Path) {
+			return nil, fmt.Sprintf("reading the build list failed: %s: %s", mod.Path, mod.Error.Err)
+		}
+		if mod.Replace != nil {
+			mod.Dir = cmp.Or(mod.Replace.Dir, mod.Dir)
+		}
+		if !mod.Main && inMain(mod.Path) {
+			built = append(built, builtModule{path: mod.Path, dir: mod.Dir, version: mod.Version})
+		}
+	}
+	return built, ""
+}
+
+// vendored reads the modules a vendored build reads from vendor/modules.txt,
+// in the workspace's directory or else the main module's. Each is read from
+// the vendor directory, which is never a nested module this run loads. A
+// vendor directory with no modules.txt vendors nothing.
+func vendored(dir string, mains []mainModule, inMain, isMain func(string) bool) ([]builtModule, string) {
+	work, err := goIn(dir, "env", "GOWORK")
+	if err != nil {
+		return nil, fmt.Sprintf("reading the build list failed: %v", err)
+	}
+	root := mains[0].dir
+	if w := strings.TrimSpace(string(work)); w != "" && w != "off" {
+		root = filepath.Dir(w)
+	}
+	vendor := filepath.Join(root, "vendor")
+	data, err := os.ReadFile(filepath.Join(vendor, "modules.txt"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, ""
+	}
+	if err != nil {
+		return nil, fmt.Sprintf("reading the build list failed: %v", err)
+	}
+	var built []builtModule
+	for line := range strings.Lines(string(data)) {
+		// "# path version", with "=> replacement" after it for a replace.
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[0] != "#" || isMain(fields[1]) || !inMain(fields[1]) {
+			continue
+		}
+		built = append(built, builtModule{path: fields[1], dir: filepath.Join(vendor, filepath.FromSlash(fields[1]))})
+	}
+	return built, ""
+}
+
+// goIn runs the go command in dir and returns its output, or an error that
+// holds what it wrote to stderr.
+func goIn(dir string, args ...string) ([]byte, error) {
+	cmd := exec.Command("go", args...)
+	cmd.Dir = dir
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("%v: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return out, nil
 }
 
 // owner returns the main module declaring the package at path: the one with

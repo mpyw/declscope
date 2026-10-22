@@ -1416,6 +1416,20 @@ replace example.com/app => ../../elsewhere
 <tr>
 <td>
 
+```text
+// go.mod
+module example.com/app
+
+require example.com/app/tools v1.0.0
+```
+
+</td>
+<td>The build list names a module whose path lies in the range, and the build reads it from somewhere other than a nested module this run loaded: a published version, a <code>replace</code> outside the tree, or a vendored copy. Its uses are of other source. A build list that cannot be read is the same</td>
+<td><code>not judged: example.com/app/internal/user: the build uses example.com/app/tools from /path/to/modcache/example.com/app/tools@v1.0.0</code></td>
+</tr>
+<tr>
+<td>
+
 ```console
 $ declscope shrink ./internal/user/testdata/fixture
 ```
@@ -1437,7 +1451,7 @@ A package that does not type-check refuses the whole run, since it would show no
 > Two uses are outside what `shrink` can see. Silence either with the ignore below.
 >
 > - A name written as a string that no interface leads to, such as a template field or a constant given to `reflect.Value.MethodByName`.
-> - A module outside this module's directory tree whose path extends an `internal/` parent, such as a `/v2` on another branch. Go checks `internal/` by import path.
+> - A module outside this module's directory tree whose path extends an `internal/` parent, such as a `/v2` on another branch, when this module's build list does not name it. Go checks `internal/` by import path. One the build list names leaves the range unjudged, as the table above shows.
 
 ### Silencing it
 
