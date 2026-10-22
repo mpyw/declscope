@@ -255,6 +255,36 @@ func TestLoadLeavesUnreadableNestedModulesUnjudged(t *testing.T) {
 	}
 }
 
+// TestLoadReadsNestedWorkspace pins that a module a nested module's own
+// go.work uses from outside the tree leaves the range unjudged: it is a main
+// module of that build, not of this run, and the nested module builds with
+// it.
+func TestLoadReadsNestedWorkspace(t *testing.T) {
+	ext, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"go.mod": "module example.com/m/ext\n\ngo 1.25\n",
+		"e.go":   "package ext\n\nimport \"example.com/m/internal/a\"\n\nfunc Run() { a.F() }\n",
+	} {
+		if err := os.WriteFile(filepath.Join(ext, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m, err := Load(nestedTree(t, map[string]string{
+		"tools/go.mod":  "module example.com/m/tools\n\ngo 1.25\n",
+		"tools/go.work": "go 1.25\n\nuse (\n\t.\n\t..\n\t" + ext + "\n)\n",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "the build of the nested module example.com/m/tools uses example.com/m/ext from " + ext
+	if _, why := m.Range("example.com/m/internal/a"); why != want {
+		t.Errorf("why = %q, want %q", why, want)
+	}
+}
+
 // TestBuildListFailures pins that a build list this run cannot read in full
 // leaves every range unjudged with the reason, rather than reading as one
 // that names no module in the range.
