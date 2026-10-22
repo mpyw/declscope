@@ -1,6 +1,7 @@
 package baseline_test
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/mpyw/declscope/internal/baseline"
 )
@@ -125,8 +128,17 @@ func TestLoadRejectsUnknownKey(t *testing.T) {
 	if err := os.WriteFile(path, []byte("packagez:\n  a:\n    boundary: [x]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := baseline.Load(path); err == nil {
+	_, err := baseline.Load(path)
+	if err == nil {
 		t.Fatal("a misspelled key must not silently suppress nothing")
+	}
+	// A caller words a parse error apart from a read error by its type, and
+	// can still reach the decoder's error beneath it.
+	if perr, ok := errors.AsType[*baseline.ParseError](err); !ok || perr.Path != path {
+		t.Errorf("err = %v, want a *baseline.ParseError for %s", err, path)
+	}
+	if _, ok := errors.AsType[*yaml.TypeError](err); !ok {
+		t.Errorf("err = %v, want the decoder's *yaml.TypeError beneath it", err)
 	}
 }
 
