@@ -148,14 +148,24 @@ func candidateSpec(p *packages.Package, d *ast.GenDecl, spec ast.Spec, own, file
 		if s.Name.IsExported() {
 			add(tn, kindType, nil, slices.Concat(own, fileIgnores), candidateDoc(d, s.Doc, 1))
 		}
-		st, ok := s.Type.(*ast.StructType)
-		if !ok || tn.IsAlias() {
-			return
+		// Every member's ignores are parsed, as the analyzer parses them, so
+		// that they are one binding even where the member is no candidate: an
+		// interface's method, or a field of the struct type an alias denotes.
+		var members []*ast.Field
+		fields := false
+		switch t := s.Type.(type) {
+		case *ast.StructType:
+			members, fields = t.Fields.List, !tn.IsAlias()
+		case *ast.InterfaceType:
+			members = t.Methods.List
 		}
 		// A field is covered by its own ignores and by its type's, as the
 		// analyzer's suppression chain has it.
-		for _, field := range st.Fields.List {
+		for _, field := range members {
 			ignores := slices.Concat(parse(field.Doc, field.Comment), own, fileIgnores)
+			if !fields {
+				continue
+			}
 			for _, name := range field.Names {
 				if v, ok := p.TypesInfo.Defs[name].(*types.Var); ok && name.IsExported() {
 					add(v, kindField, tn, ignores, candidateDoc(nil, field.Doc, len(field.Names)))
