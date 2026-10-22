@@ -159,8 +159,15 @@ func loadFailedCauses(pkgs []*packages.Package) map[*packages.Package]*packages.
 
 // loadFirstError picks the error loadErrors names a package by: the first one
 // that is not a ListError, or the first of all when every one is.
+//
+// A type error that only says C could not be imported is passed over. When a
+// cgo package's C code does not compile, the type checker has no metadata for
+// C, and that is all it can say. The C compiler's message is in the go
+// command's build output instead.
 func loadFirstError(pkg *packages.Package) packages.Error {
-	if i := slices.IndexFunc(pkg.Errors, func(e packages.Error) bool { return e.Kind != packages.ListError }); i >= 0 {
+	if i := slices.IndexFunc(pkg.Errors, func(e packages.Error) bool {
+		return e.Kind != packages.ListError && !strings.HasPrefix(e.Msg, "could not import C (")
+	}); i >= 0 {
 		return pkg.Errors[i]
 	}
 	return pkg.Errors[0]
@@ -172,8 +179,10 @@ func loadFirstError(pkg *packages.Package) packages.Error {
 // only error: go/packages type-checks no function body there, so an error
 // inside one is never found again. The output is a "# path" header over one
 // line per compiler message, at positions relative to cwd. The first message
-// is kept, with its file made absolute. Any other error has its newlines
-// flattened, since an entry is one line of a refusal or a list.
+// with a line number is kept, with its file made absolute: a C compiler can
+// print a line without one first, such as gcc's "In function" context. Any
+// other error has its newlines flattened, since an entry is one line of a
+// refusal or a list.
 func loadErrorLine(e packages.Error, cwd string) string {
 	if e.Kind != packages.ListError {
 		return e.Error()
@@ -182,7 +191,14 @@ func loadErrorLine(e packages.Error, cwd string) string {
 	if !ok || !strings.HasPrefix(header, "# ") {
 		return strings.ReplaceAll(e.Error(), "\n", " ")
 	}
-	line, _, _ := strings.Cut(rest, "\n")
+	lines := strings.Split(rest, "\n")
+	line := lines[0]
+	for _, l := range lines {
+		if _, pos, ok := strings.Cut(l, ":"); ok && pos != "" && pos[0] >= '0' && pos[0] <= '9' {
+			line = l
+			break
+		}
+	}
 	if file, pos, ok := strings.Cut(line, ":"); ok && cwd != "" && strings.HasSuffix(file, ".go") && !filepath.IsAbs(file) {
 		line = filepath.Join(cwd, file) + ":" + pos
 	}

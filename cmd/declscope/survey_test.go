@@ -2,6 +2,7 @@ package main_test
 
 import (
 	"encoding/json"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -343,6 +344,45 @@ func TestPackageWithAFailingDependencyIsCountedAsFailed(t *testing.T) {
 		!strings.HasPrefix(f[1], "example.com/declscopetest/b: /") ||
 		!strings.HasPrefix(f[2], "example.com/declscopetest/c: imports example.com/declscopetest/b: /") {
 		t.Errorf("the entries do not name each package's own reason:\n%q", f)
+	}
+}
+
+// TestFailedCgoPackageEntryNamesTheCError checks that a cgo package whose C
+// code does not compile is named by the C compiler's message. The type
+// checker's only error there is "could not import C", which says nothing about
+// the code. It needs a C toolchain, so it is skipped where cgo is off.
+func TestFailedCgoPackageEntryNamesTheCError(t *testing.T) {
+	if out, err := exec.Command("go", "env", "CGO_ENABLED").Output(); err != nil || strings.TrimSpace(string(out)) != "1" {
+		t.Skip("cgo is not enabled")
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, "cg/cg.go", "package cg\n\n// int f(void) { return undefined_c; }\nimport \"C\"\n\nfunc F() int { return int(C.f()) }\n")
+	writeTree(t, dir, "u/u.go", "package u\n\nimport \"example.com/declscopetest/cg\"\n\nvar _ = cg.F\n")
+
+	out, code := runIn(t, bin, dir, "survey", "-allow-errors", "-format=json", "./...")
+	if code != 0 {
+		t.Fatalf("-allow-errors exited %d\n%s", code, out)
+	}
+	var got struct {
+		Checks struct {
+			TypeCheck struct {
+				Failed []string `json:"failed"`
+			} `json:"typeCheck"`
+		} `json:"checks"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	prefixes := []string{"example.com/declscopetest/cg: ", "example.com/declscopetest/u: imports example.com/declscopetest/cg: "}
+	if len(got.Checks.TypeCheck.Failed) != len(prefixes) {
+		t.Fatalf("want cg and u failed, got %q", got.Checks.TypeCheck.Failed)
+	}
+	for i, entry := range got.Checks.TypeCheck.Failed {
+		pos, ok := strings.CutPrefix(entry, prefixes[i])
+		if !ok || !strings.Contains(entry, "cg.go:3:") || !strings.Contains(entry, "undefined_c") || strings.Contains(entry, "\n") || !filepath.IsAbs(pos) {
+			t.Errorf("the entry does not name the C compiler's error on one line:\n%q", entry)
+		}
 	}
 }
 
