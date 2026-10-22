@@ -969,3 +969,16 @@ func TestBaselineMergeKeepsWhatShrinkLeftUnjudged(t *testing.T) {
 		t.Error("without -merge the file kept an entry this run did not record")
 	}
 }
+
+// TestBaselineCountsPackagesOutside pins that baseline counts the packages
+// shrink does not judge for lying outside the main module, as shrink does.
+func TestBaselineCountsPackagesOutside(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", testModule)
+	writeTree(t, root, "internal/a/a.go", "package a\n\nfunc Lonely() {}\n")
+	one :=filepath.Join(t.TempDir(), "one.yaml")
+	out, code := runIn(t, bin, root, "baseline", "-o", one, "errors", "./...")
+	if code != 0 || !strings.Contains(out, "declscope baseline: not judged: 1 package(s) outside the main module\n") {
+		t.Fatalf("exit %d, want one line counting errors:\n%s", code, out)
+	}
+}
