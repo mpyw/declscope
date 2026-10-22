@@ -74,7 +74,7 @@ func unseenOf(t *testing.T, paths ...string) *unseenFiles {
 // files out of OtherFiles, so a pass with empty lists must still learn of them
 // from the folder. A file the go command does not build is not one.
 func TestUnseenReadsNonGoFromTheFolder(t *testing.T) {
-	for name, want := range map[string]bool{"x.h": true, "x.syso": true, "x_arm64.s": true, "README.md": false, "go.sum": false} {
+	for name, want := range map[string]bool{"x.h": true, "x.syso": true, "x_arm64.s": true, "README.md": false, "go.sum": false, "_old.s": false, ".#x.s": false} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			for file, content := range map[string]string{"a.go": "package p\n", name: ""} {
