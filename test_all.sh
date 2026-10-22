@@ -54,6 +54,11 @@ run_test "Go version" \
 run_test "lint" \
     golangci-lint run ./...
 
+# The release builds from the tagged tree as it is, so go.mod and go.sum must
+# already be tidy. -diff prints what tidy would change and fails if anything.
+run_test "go mod tidy" \
+    go mod tidy -diff
+
 # declscope shrink first: a declaration it unexports becomes private to its
 # namespace, which only the analyzer then checks. Fixing in this order
 # converges, so the checks run in it too.

@@ -73,6 +73,11 @@ jobs:
       - name: Run golangci-lint
         run: golangci-lint run --timeout=5m ./...
 
+      # The release builds from the tagged tree as it is, so go.mod and go.sum
+      # must already be tidy there.
+      - name: Check go.mod and go.sum are tidy
+        run: go mod tidy -diff
+
       # The Tag workflow checks these against the version it tags. Checking
       # here that they agree with each other catches a partial bump early.
       - name: Check the version strings agree
