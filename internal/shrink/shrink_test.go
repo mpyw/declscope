@@ -288,6 +288,16 @@ func TestShrinkWorkspaceUnlistedNested(t *testing.T) {
 	}
 }
 
+// TestShrinkNestedOwnWorkspace pins that a nested module with a go.work of
+// its own is loaded through it: its go.mod does not require the main module,
+// which only its go.work uses, so x.Foo counts and x.Bar is judged.
+func TestShrinkNestedOwnWorkspace(t *testing.T) {
+	res := shrinkRun(t, "testdata/nested-own-workspace")
+	if len(res.Skipped) != 0 {
+		t.Errorf("skipped = %+v, want none: n is loaded", res.Skipped)
+	}
+}
+
 // shrinkPublish serves the module in src as version v from a new file
 // proxy, and returns the GOPROXY value that reads it.
 func shrinkPublish(t *testing.T, src string, v module.Version) string {
