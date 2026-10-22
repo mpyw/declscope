@@ -137,6 +137,10 @@ func TestSurveyRefusesAPatternItCannotLoad(t *testing.T) {
 	if !strings.Contains(out, "./nope") {
 		t.Errorf("the refusal does not name the pattern:\n%s", out)
 	}
+	// The go command's error has no position, so none is printed.
+	if strings.Contains(out, "./nope: -: ") {
+		t.Errorf("the refusal prints the go command's empty position:\n%s", out)
+	}
 }
 
 // TestSurveyCountsADecisionPerDeclaration checks the state a package row calls

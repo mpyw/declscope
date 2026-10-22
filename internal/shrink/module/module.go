@@ -143,7 +143,7 @@ func Load(dir string) (*Module, error) {
 			continue
 		}
 		if len(p.Errors) > 0 {
-			failed = append(failed, fmt.Sprintf("%s: %s", p.PkgPath, p.Errors[0]))
+			failed = append(failed, p.PkgPath+": "+ErrorLine(p, dir))
 			continue
 		}
 		if m.Fset == nil {
@@ -259,7 +259,7 @@ func (m *Module) loadImporter(n nestedModule, mode packages.LoadMode) loaded {
 	imported := map[string]bool{}
 	packages.Visit(deps, nil, func(p *packages.Package) {
 		if len(p.Errors) > 0 && problem == "" {
-			problem = fmt.Sprintf("loading it failed: %s: %s", p.PkgPath, p.Errors[0])
+			problem = fmt.Sprintf("loading it failed: %s: %s", p.PkgPath, ErrorLine(p, n.dir))
 		}
 		if m.byPath[p.PkgPath] != nil && p.PkgPath != n.path {
 			if where := m.elsewhere(p); where != "" && problem == "" {
@@ -299,7 +299,7 @@ func (m *Module) loadImporter(n nestedModule, mode packages.LoadMode) loaded {
 				}
 			}
 			if len(p.Errors) > 0 && problem == "" {
-				problem = fmt.Sprintf("its package %s does not type-check: %s", p.PkgPath, p.Errors[0])
+				problem = fmt.Sprintf("its package %s does not type-check: %s", p.PkgPath, ErrorLine(p, n.dir))
 			}
 		}
 		if problem != "" {
@@ -719,6 +719,53 @@ func IsTestMain(pkg *packages.Package) bool {
 		}
 	}
 	return len(paths) > 0
+}
+
+// ErrorLine names why a package with errors failed, on one line, as the type
+// checker would. cwd is the go command's working directory: the config's Dir,
+// or this process's when it sets none.
+//
+// The error named is the first that is not a ListError, or the first of all
+// when every one is. Dependencies come from export data, so go list compiles
+// the package too, and its build output comes first: a "-" position, a "# path"
+// header and one line per compiler message, at positions relative to cwd. The
+// type checker reports the same error after it, on one line at an absolute
+// position. A type error that only says C could not be imported is passed
+// over: when a cgo package's C code does not compile, the type checker has no
+// metadata for C, and the C compiler's message is in the build output instead.
+//
+// For a package outside the patterns, the build output can be the only error:
+// go/packages type-checks no function body there, so an error inside one is
+// never found again. The first compiler message with a line number is kept,
+// with its file made absolute: a C compiler can print a line without one
+// first, such as gcc's "In function" context. Any other error has its
+// newlines flattened and the "-" position dropped, since it names no place.
+//
+// shrink and the CLI's other subcommands both name failed packages, so one
+// rule serves both.
+func ErrorLine(pkg *packages.Package, cwd string) string {
+	e := pkg.Errors[0]
+	if i := slices.IndexFunc(pkg.Errors, func(e packages.Error) bool {
+		return e.Kind != packages.ListError && !strings.HasPrefix(e.Msg, "could not import C (")
+	}); i >= 0 {
+		e = pkg.Errors[i]
+	}
+	header, rest, ok := strings.Cut(e.Msg, "\n")
+	if e.Kind != packages.ListError || !ok || !strings.HasPrefix(header, "# ") {
+		return strings.TrimPrefix(strings.ReplaceAll(e.Error(), "\n", " "), "-: ")
+	}
+	lines := strings.Split(rest, "\n")
+	line := lines[0]
+	for _, l := range lines {
+		if _, pos, ok := strings.Cut(l, ":"); ok && pos != "" && pos[0] >= '0' && pos[0] <= '9' {
+			line = l
+			break
+		}
+	}
+	if file, pos, ok := strings.Cut(line, ":"); ok && cwd != "" && strings.HasSuffix(file, ".go") && !filepath.IsAbs(file) {
+		line = filepath.Join(cwd, file) + ":" + pos
+	}
+	return line
 }
 
 // walk reads every Go file no loaded package holds, and every nested module,
