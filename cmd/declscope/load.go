@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strings"
 	"sync"
 
 	"golang.org/x/tools/go/analysis"
@@ -92,7 +91,7 @@ func loadPackages(command string, patterns []string, tests bool) ([]*packages.Pa
 // directory. The type checker reports the same error after it, on one line at
 // an absolute position. A package the go command alone rejects, such as a
 // directory that does not exist, has only the go command's error, and that one
-// is named, on one line by loadErrorLine.
+// is named, on one line by module.ErrorLine.
 //
 //declscope:shared // survey refuses on it, and says which packages failed
 func loadErrors(pkgs []*packages.Package) []string {
@@ -112,7 +111,7 @@ func loadErrors(pkgs []*packages.Package) []string {
 		if cause != pkg {
 			entry += "imports " + cause.PkgPath + ": "
 		}
-		failed = append(failed, entry+loadErrorLine(loadFirstError(cause), cwd))
+		failed = append(failed, entry+module.ErrorLine(cause, cwd))
 	}
 	slices.Sort(failed)
 	return failed
@@ -155,54 +154,6 @@ func loadFailedCauses(pkgs []*packages.Package) map[*packages.Package]*packages.
 		visit(pkg)
 	}
 	return causes
-}
-
-// loadFirstError picks the error loadErrors names a package by: the first one
-// that is not a ListError, or the first of all when every one is.
-//
-// A type error that only says C could not be imported is passed over. When a
-// cgo package's C code does not compile, the type checker has no metadata for
-// C, and that is all it can say. The C compiler's message is in the go
-// command's build output instead.
-func loadFirstError(pkg *packages.Package) packages.Error {
-	if i := slices.IndexFunc(pkg.Errors, func(e packages.Error) bool {
-		return e.Kind != packages.ListError && !strings.HasPrefix(e.Msg, "could not import C (")
-	}); i >= 0 {
-		return pkg.Errors[i]
-	}
-	return pkg.Errors[0]
-}
-
-// loadErrorLine prints an error on one line, as the type checker would.
-//
-// For a package outside the patterns, the go command's build output can be the
-// only error: go/packages type-checks no function body there, so an error
-// inside one is never found again. The output is a "# path" header over one
-// line per compiler message, at positions relative to cwd. The first message
-// with a line number is kept, with its file made absolute: a C compiler can
-// print a line without one first, such as gcc's "In function" context. Any
-// other error has its newlines flattened, since an entry is one line of a
-// refusal or a list.
-func loadErrorLine(e packages.Error, cwd string) string {
-	if e.Kind != packages.ListError {
-		return e.Error()
-	}
-	header, rest, ok := strings.Cut(e.Msg, "\n")
-	if !ok || !strings.HasPrefix(header, "# ") {
-		return strings.ReplaceAll(e.Error(), "\n", " ")
-	}
-	lines := strings.Split(rest, "\n")
-	line := lines[0]
-	for _, l := range lines {
-		if _, pos, ok := strings.Cut(l, ":"); ok && pos != "" && pos[0] >= '0' && pos[0] <= '9' {
-			line = l
-			break
-		}
-	}
-	if file, pos, ok := strings.Cut(line, ":"); ok && cwd != "" && strings.HasSuffix(file, ".go") && !filepath.IsAbs(file) {
-		line = filepath.Join(cwd, file) + ":" + pos
-	}
-	return line
 }
 
 // loadErrorsForInspect leaves out an external test package when the package it

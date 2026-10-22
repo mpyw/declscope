@@ -369,3 +369,30 @@ func TestIsTestMain(t *testing.T) {
 		}
 	}
 }
+
+// TestErrorLine pins how a failed package is named: by one line, with an
+// absolute position where the error has one, and with no "-" position where it
+// has none. The go command's build output is passed over for the type error
+// that follows it, except where that error only says C could not be imported.
+func TestErrorLine(t *testing.T) {
+	build := func(lines ...string) packages.Error {
+		return packages.Error{Pos: "-", Msg: strings.Join(append([]string{"# example.com/m/a"}, lines...), "\n"), Kind: packages.ListError}
+	}
+	typeError := packages.Error{Pos: "/m/a/a.go:3:14", Msg: `cannot use "s" (untyped string constant) as int value in variable declaration`, Kind: packages.TypeError}
+	noC := packages.Error{Pos: "/m/a/a.go:4:8", Msg: "could not import C (no metadata for C)", Kind: packages.TypeError}
+	for _, tc := range []struct {
+		name   string
+		errors []packages.Error
+		want   string
+	}{
+		{"the type error after the build output", []packages.Error{build(`a/a.go:3:14: cannot use "s"`), typeError}, `/m/a/a.go:3:14: cannot use "s" (untyped string constant) as int value in variable declaration`},
+		{"the build output alone", []packages.Error{build(`a/a.go:3:14: cannot use "s"`, "a/a.go:4:1: too many errors")}, `/m/a/a.go:3:14: cannot use "s"`},
+		{"the C error over could not import C", []packages.Error{build("a/a.go: In function 'f':", "a/a.go:3:22: error: 'undefined_c' undeclared"), noC}, "/m/a/a.go:3:22: error: 'undefined_c' undeclared"},
+		{"could not import C alone", []packages.Error{noC}, "/m/a/a.go:4:8: could not import C (no metadata for C)"},
+		{"a go command error with no position", []packages.Error{{Pos: "", Msg: "import cycle not allowed: a imports b\n\timports a", Kind: packages.ListError}}, "import cycle not allowed: a imports b \timports a"},
+	} {
+		if got := ErrorLine(&packages.Package{Errors: tc.errors}, "/m"); got != tc.want {
+			t.Errorf("%s: ErrorLine = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

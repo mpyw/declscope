@@ -99,13 +99,17 @@ func TestShrinkPatterns(t *testing.T) {
 
 // TestShrinkRefusesTypeErrors pins that a module that does not type-check is
 // refused: a package with no references reads exactly like nothing using a
-// declaration.
+// declaration. The package is named by its type error on one line, at an
+// absolute position, not by the go command's build output.
 func TestShrinkRefusesTypeErrors(t *testing.T) {
 	root := shrinkModule(t)
 	writeTree(t, root, "c/c.go", "package c\n\nvar _ int = \"x\"\n")
 	out, code := runIn(t, bin, root, "shrink")
 	if code != 1 || !strings.Contains(out, "do not type-check") {
 		t.Fatalf("exit %d, want a refusal naming the type error:\n%s", code, out)
+	}
+	if !strings.Contains(out, "\n  example.com/declscopetest/c: "+filepath.Join(root, "c", "c.go")+":3:13: cannot use") || strings.Contains(out, "# example.com") {
+		t.Errorf("the refusal does not name the type error on one line:\n%s", out)
 	}
 }
 
@@ -308,7 +312,8 @@ func TestShrinkNamesSkippedPackages(t *testing.T) {
 	if err != nil || len(out) != 0 {
 		t.Fatalf("err %v, want a silent success on stdout:\n%s", err, out)
 	}
-	if !strings.Contains(stderr.String(), "not judged: example.com/declscopetest/internal/a: the nested module example.com/declscopetest/tools may import it, and its package example.com/declscopetest/tools does not type-check") {
+	// The reason is one line, naming the type error at an absolute position.
+	if !strings.Contains(stderr.String(), "not judged: example.com/declscopetest/internal/a: the nested module example.com/declscopetest/tools may import it, and its package example.com/declscopetest/tools does not type-check: "+filepath.Join(root, "tools", "t.go")+":5:16: cannot use a.Used() ") {
 		t.Errorf("stderr does not name the skipped package:\n%s", stderr.String())
 	}
 }
