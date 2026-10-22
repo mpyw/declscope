@@ -3,9 +3,8 @@ version: 2
 
 project_name: declscope
 
-before:
-  hooks:
-    - go mod tidy
+# No `go mod tidy` hook: the binary must be built from the tree the tag names.
+# CI and test_all.sh fail on an untidy go.mod or go.sum instead.
 
 builds:
   # Pure Go analysis binary — no CGO, so every platform cross-compiles.
