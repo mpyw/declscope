@@ -2,6 +2,7 @@ package main_test
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -205,6 +206,65 @@ func TestSurveyRefusesAPackageThatDoesNotCompile(t *testing.T) {
 	}
 	if strings.Contains(out, "`example.com/declscopetest/p` |") {
 		t.Errorf("a package that did not compile was given a clean row:\n%s", out)
+	}
+}
+
+// TestFailedPackageEntryNamesTheTypeError pins the shape of a failed-package
+// entry as the go command really produces it. The first error go/packages
+// reports is the go command's own build output: a "-" position, the "# path"
+// header, a newline, and a position relative to the working directory. The
+// type checker's error follows it, with an absolute position on one line, and
+// that is the one to name. The measure goldens are built from fixture data, so
+// only a run of the binary can tell the two apart.
+func TestFailedPackageEntryNamesTheTypeError(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, "p/p.go", "package p\n\nfunc broken() int { return undefinedThing }\n")
+
+	const prefix = "example.com/declscopetest/p: "
+	const suffix = "p.go:3:28: undefined: undefinedThing"
+	checkEntry := func(how, entry string) {
+		t.Helper()
+		pos, ok := strings.CutPrefix(entry, prefix)
+		if !ok || !strings.HasSuffix(entry, suffix) || strings.Contains(entry, "\n") || !filepath.IsAbs(pos) {
+			t.Errorf("%s: the entry is not the type error at an absolute position:\n%q", how, entry)
+		}
+	}
+
+	out, code := runIn(t, bin, dir, "survey", "-allow-errors", "-format=json", "./p")
+	if code != 0 {
+		t.Fatalf("-allow-errors exited %d\n%s", code, out)
+	}
+	var got struct {
+		Checks struct {
+			TypeCheck struct {
+				Failed []string `json:"failed"`
+			} `json:"typeCheck"`
+		} `json:"checks"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if len(got.Checks.TypeCheck.Failed) != 1 {
+		t.Fatalf("want one failed package, got %q", got.Checks.TypeCheck.Failed)
+	}
+	checkEntry("survey -format=json", got.Checks.TypeCheck.Failed[0])
+
+	out, _ = runIn(t, bin, dir, "survey", "-allow-errors", "./p")
+	_, item, _ := strings.Cut(out, "\n- `")
+	item, _, _ = strings.Cut(item, "`\n")
+	checkEntry("survey Markdown", item)
+
+	// The refusals indent each entry under their first line. An entry of two
+	// lines would leave its second flush left, read as a line of its own.
+	for _, command := range []string{"survey", "inspect"} {
+		out, code := runIn(t, bin, dir, command, "./p")
+		if code == 0 {
+			t.Fatalf("%s measured a package that does not compile\n%s", command, out)
+		}
+		_, entry, _ := strings.Cut(out, "\n  ")
+		entry, _, _ = strings.Cut(entry, "\n")
+		checkEntry(command+" refusal", entry)
 	}
 }
 

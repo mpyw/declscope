@@ -80,6 +80,14 @@ func loadPackages(command string, patterns []string, tests bool) ([]*packages.Pa
 // nothing could be measured for. One entry per import path, since the two
 // variants of a package report the same error twice.
 //
+// Each entry names the package's first error that is not the go command's.
+// Dependencies come from export data, so go list compiles the package too, and
+// its build output comes first: a "-" position, a "# path" header and the
+// compiler's message on a second line, relative to the working directory. The
+// type checker reports the same error after it, on one line at an absolute
+// position. A package the go command alone rejects, such as a directory that
+// does not exist, has only the go command's error, and that one is named.
+//
 //declscope:shared // survey refuses on it, and says which packages failed
 func loadErrors(pkgs []*packages.Package) []string {
 	seen := map[string]bool{}
@@ -89,10 +97,19 @@ func loadErrors(pkgs []*packages.Package) []string {
 			continue
 		}
 		seen[pkg.PkgPath] = true
-		failed = append(failed, fmt.Sprintf("%s: %s", pkg.PkgPath, pkg.Errors[0]))
+		failed = append(failed, fmt.Sprintf("%s: %s", pkg.PkgPath, loadFirstError(pkg)))
 	}
 	slices.Sort(failed)
 	return failed
+}
+
+// loadFirstError picks the error loadErrors names a package by: the first one
+// that is not a ListError, or the first of all when every one is.
+func loadFirstError(pkg *packages.Package) packages.Error {
+	if i := slices.IndexFunc(pkg.Errors, func(e packages.Error) bool { return e.Kind != packages.ListError }); i >= 0 {
+		return pkg.Errors[i]
+	}
+	return pkg.Errors[0]
 }
 
 // loadErrorsForInspect leaves out an external test package when the package it
