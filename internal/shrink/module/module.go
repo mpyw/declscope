@@ -27,6 +27,7 @@ import (
 	"sync"
 
 	"golang.org/x/mod/modfile"
+	"golang.org/x/mod/semver"
 	"golang.org/x/tools/go/packages"
 
 	"github.com/mpyw/declscope/internal/pattern"
@@ -73,6 +74,9 @@ type Module struct {
 	// read, or is empty.
 	built   []builtModule
 	unbuilt string
+	// doubtAll says why every fix is withheld, or is empty: the build list of
+	// a nested module this run does not load could not be read.
+	doubtAll string
 }
 
 // builtModule is one module of a build list: its path, and where the build
@@ -153,7 +157,7 @@ func Load(dir string) (*Module, error) {
 		return nil, fmt.Errorf("finding the go.work: %w", err)
 	}
 	m := &Module{mains: mains, byPath: map[string][]*packages.Package{}, work: strings.TrimSpace(string(work))}
-	m.built, m.unbuilt = buildList(dir, mains[0].dir, nil, mains)
+	m.built, m.unbuilt = buildList(dir, mains[0].dir, nil, mains, false)
 	var failed []string
 	for _, p := range pkgs {
 		if IsTestMain(p) {
@@ -206,7 +210,8 @@ type loaded struct {
 }
 
 // loadImporters loads every nested module that may import an internal
-// package, up to GOMAXPROCS at a time. Each load runs go list and spends
+// package, and reads the build list of every other one, up to GOMAXPROCS at
+// a time. Each load runs go list and spends
 // most of its time waiting on it: one after another, 40 nested modules took
 // 15 to 37 s of wall time for about 1 s of CPU. Each load only reads the
 // main load and writes its own slot, and the slots are folded in the order
@@ -219,18 +224,23 @@ func (m *Module) loadImporters(mode packages.LoadMode) {
 	limit := make(chan struct{}, runtime.GOMAXPROCS(0))
 	var wg sync.WaitGroup
 	for i, n := range m.nested {
-		if !m.covers(n.path) {
-			continue
-		}
 		limit <- struct{}{}
 		wg.Go(func() {
 			defer func() { <-limit }()
-			slots[i] = m.loadImporter(n, mode)
+			if m.covers(n.path) {
+				slots[i] = m.loadImporter(n, mode)
+			} else {
+				slots[i] = m.listUncovered(n)
+			}
 		})
 	}
 	wg.Wait()
 	for i, l := range slots {
 		if !m.covers(m.nested[i].path) {
+			m.built = append(m.built, l.built...)
+			if l.unbuilt != "" && m.doubtAll == "" {
+				m.doubtAll = fmt.Sprintf("the build list of the nested module %s cannot be read, and a module it names may use it: %s", m.nested[i].path, l.unbuilt)
+			}
 			continue
 		}
 		// The build list counts even when the load failed: a module it names
@@ -250,10 +260,61 @@ func (m *Module) loadImporters(mode packages.LoadMode) {
 	}
 }
 
+// listUncovered reads the build list of a nested module that no internal
+// parent covers. It cannot import an internal package of the main modules,
+// so it is not loaded, but its build may compile a copy of other source that
+// can: a published version, or a replacement outside the tree, of a module
+// with a path in a range. Doubt withholds the fixes there, as for a nested
+// module this run loads.
+//
+// Only the build list is read, with GOPROXY=off so that a module this run
+// cannot find costs no network. A module the list names with an error is
+// passed over when its path lies outside every main module's and the go.mod
+// is 1.17 or later: since then a go.mod requires every module that provides
+// a package its build needs, so a copy with a path in a range is named
+// directly, error or not. A list that cannot be read withholds every fix. A
+// go.mod that does not parse reads nothing, since nothing builds from it.
+func (m *Module) listUncovered(n nestedModule) loaded {
+	name := filepath.Join(n.dir, "go.mod")
+	data, err := os.ReadFile(name)
+	if err != nil {
+		return loaded{unbuilt: err.Error()}
+	}
+	f, err := modfile.Parse(name, data, nil)
+	if err != nil {
+		return loaded{}
+	}
+	env, err := m.nestedEnv(n)
+	if err != nil {
+		return loaded{unbuilt: err.Error()}
+	}
+	pruned := f.Go != nil && semver.Compare("v"+f.Go.Version, "v1.17") >= 0
+	built, unbuilt := buildList(n.dir, n.dir, append(env, "GOPROXY=off"), m.mains, pruned)
+	for i := range built {
+		built[i].by = n.path
+	}
+	return loaded{built: built, unbuilt: unbuilt}
+}
+
+// nestedEnv returns the environment a nested module's go commands run with:
+// this process's, with GOWORK=off when go env GOWORK in its directory is the
+// main run's go.work. See loadImporter.
+func (m *Module) nestedEnv(n nestedModule) ([]string, error) {
+	work, err := goIn(n.dir, nil, "env", "GOWORK")
+	if err != nil {
+		return nil, fmt.Errorf("finding its go.work failed: %v", err)
+	}
+	env := os.Environ()
+	if sameDir(strings.TrimSpace(string(work)), m.work) {
+		env = append(env, "GOWORK=off")
+	}
+	return env, nil
+}
+
 // loadImporter loads a nested module that may import a main module's
 // internal packages, so that its uses count as any other importer's. A
 // nested module that no internal parent covers imports nothing that matters,
-// and loadImporters leaves it alone.
+// so only its build list is read (listUncovered).
 //
 // It takes two loads. The first asks what the module imports, the way go
 // list -deps does. The second type-checks its packages together with the
@@ -285,18 +346,13 @@ func (m *Module) loadImporters(mode packages.LoadMode) {
 // go.mod does not require. Either way, the check that each main module's
 // package is read from that module's directory still holds it to this tree.
 func (m *Module) loadImporter(n nestedModule, mode packages.LoadMode) loaded {
-	work, err := goIn(n.dir, nil, "env", "GOWORK")
+	env, err := m.nestedEnv(n)
 	if err != nil {
 		// Its build list is unknown too, so it unjudges every range.
-		why := fmt.Sprintf("finding its go.work failed: %v", err)
-		return loaded{why: why, unbuilt: why}
-	}
-	var env []string
-	if sameDir(strings.TrimSpace(string(work)), m.work) {
-		env = append(os.Environ(), "GOWORK=off")
+		return loaded{why: err.Error(), unbuilt: err.Error()}
 	}
 	var l loaded
-	l.built, l.unbuilt = buildList(n.dir, n.dir, env, m.mains)
+	l.built, l.unbuilt = buildList(n.dir, n.dir, env, m.mains, false)
 	for i := range l.built {
 		l.built[i].by = n.path
 	}
@@ -568,7 +624,7 @@ func (m *Module) Doubt(path string) string {
 			return build + ", which imports " + b.imports[i]
 		}
 	}
-	return ""
+	return m.doubtAll
 }
 
 // scanCopies reads, for each module of a nested module's build list that
@@ -654,7 +710,9 @@ func importsUnder(dir string) ([]string, error) {
 // version, or a replacement outside the tree.
 func (m *Module) loadedFrom(b builtModule) bool {
 	return b.dir != "" && slices.ContainsFunc(m.nested, func(n nestedModule) bool {
-		return n.path == b.path && n.why == "" && sameDir(n.dir, b.dir)
+		// One that no internal parent covers is not loaded, but it cannot
+		// import an internal package of the main modules either.
+		return n.path == b.path && (n.why == "" || !m.covers(n.path)) && sameDir(n.dir, b.dir)
 	})
 }
 
@@ -673,7 +731,7 @@ func (m *Module) loadedFrom(b builtModule) bool {
 // the list is unknown, and every range stays unjudged. In vendor mode the go
 // command computes no list at all, and vendor/modules.txt names every module
 // the build reads instead.
-func buildList(dir, root string, env []string, mains []mainModule) ([]builtModule, string) {
+func buildList(dir, root string, env []string, mains []mainModule, pruned bool) ([]builtModule, string) {
 	inMain := func(path string) bool {
 		return slices.ContainsFunc(mains, func(mm mainModule) bool { return strings.HasPrefix(path, mm.path+"/") })
 	}
@@ -699,7 +757,16 @@ func buildList(dir, root string, env []string, mains []mainModule) ([]builtModul
 			return nil, fmt.Sprintf("reading the build list failed: %v", err)
 		}
 		if mod.Error != nil && !mod.Main && !isMain(mod.Path) {
-			return nil, fmt.Sprintf("reading the build list failed: %s: %s", mod.Path, mod.Error.Err)
+			switch {
+			case !pruned:
+				return nil, fmt.Sprintf("reading the build list failed: %s: %s", mod.Path, mod.Error.Err)
+			case !inMain(mod.Path):
+				// A pruned go.mod names every module its build needs
+				// directly, so what this one requires is in the list.
+				continue
+			}
+			// Kept with no directory: nothing shows what it imports.
+			mod.Dir = ""
 		}
 		if mod.Replace != nil {
 			mod.Dir = cmp.Or(mod.Replace.Dir, mod.Dir)
