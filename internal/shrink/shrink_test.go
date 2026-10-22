@@ -2,6 +2,7 @@ package shrink_test
 
 import (
 	"bytes"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -280,47 +281,65 @@ func TestShrinkBuildListVendored(t *testing.T) {
 
 // TestShrinkNestedBuildList pins that a module of a nested module's build
 // list whose path lies in the range, replaced by a directory outside the
-// tree, leaves the range unjudged: n builds with that copy of t, not the
-// nested module t, and only the copy uses x.Foo. The range of y, which no
-// copy of t has a path in, is still judged.
+// tree, leaves the range unjudged when the copy imports a package in it: n
+// builds with that copy of t, not the nested module t, and only the copy uses
+// x.Foo. g builds the copy of u only under the never tag, and it uses z.Baz,
+// so z's range is unjudged too. The range of y, which no copy imports, is
+// still judged.
 func TestShrinkNestedBuildList(t *testing.T) {
 	res := shrinkRun(t, "testdata/nested-build-list/m")
-	if len(res.Skipped) != 1 || res.Skipped[0].Package != "example.com/nbl/internal/x" ||
-		!strings.Contains(res.Skipped[0].Reason, "the build of the nested module example.com/nbl/n uses example.com/nbl/t from ") ||
-		!strings.Contains(res.Skipped[0].Reason, "t-copy") {
-		t.Errorf("skipped = %+v, want internal/x, naming the copy n builds with", res.Skipped)
+	shrinkNestedSkipped(t, res, "t-copy")
+}
+
+// shrinkNestedSkipped checks the ranges nested-build-list leaves unjudged,
+// and that x's reason names tCopy, where n's build reads t from.
+func shrinkNestedSkipped(t *testing.T, res shrink.Result, tCopy string) {
+	t.Helper()
+	got := map[string]string{}
+	for _, s := range res.Skipped {
+		got[s.Package] = s.Reason
+	}
+	want := map[string][]string{
+		"example.com/nbl/s/internal/x": {"the build of the nested module example.com/nbl/s/n uses example.com/nbl/s/t from ", tCopy, ", which imports example.com/nbl/s/internal/x"},
+		"example.com/nbl/b/internal/z": {"the build of the nested module example.com/nbl/b/g uses example.com/nbl/b/u from ", "u-copy", ", which imports example.com/nbl/b/internal/z"},
+	}
+	if len(got) != len(want) {
+		t.Errorf("skipped = %+v, want %v", res.Skipped, slices.Sorted(maps.Keys(want)))
+	}
+	for pkg, parts := range want {
+		for _, part := range parts {
+			if !strings.Contains(got[pkg], part) {
+				t.Errorf("%s: reason %q, want it to hold %q", pkg, got[pkg], part)
+			}
+		}
 	}
 }
 
 // TestShrinkNestedBuildListPublished pins the same for a published version
 // of t that n requires, served from a local proxy.
 func TestShrinkNestedBuildListPublished(t *testing.T) {
-	proxy := shrinkPublish(t, "testdata/nested-build-list/t-copy", module.Version{Path: "example.com/nbl/t", Version: "v1.0.0"})
+	proxy := shrinkPublish(t, "testdata/nested-build-list/t-copy", module.Version{Path: "example.com/nbl/s/t", Version: "v1.0.0"})
 	t.Setenv("GOPROXY", proxy)
 	t.Setenv("GOSUMDB", "off")
 	t.Setenv("GOMODCACHE", t.TempDir())
 	t.Setenv("GOFLAGS", "-modcacherw")
 	dir := t.TempDir()
-	if err := os.CopyFS(dir, os.DirFS("testdata/nested-build-list/m")); err != nil {
+	if err := os.CopyFS(dir, os.DirFS("testdata/nested-build-list")); err != nil {
 		t.Fatal(err)
 	}
 	dir, _ = filepath.EvalSymlinks(dir)
+	dir = filepath.Join(dir, "m")
 	for _, args := range [][]string{
-		{"mod", "edit", "-dropreplace=example.com/nbl/t", "-require=example.com/nbl/t@v1.0.0"},
+		{"mod", "edit", "-dropreplace=example.com/nbl/s/t", "-require=example.com/nbl/s/t@v1.0.0"},
 		{"mod", "tidy"},
 	} {
 		cmd := exec.Command("go", args...)
-		cmd.Dir = filepath.Join(dir, "n")
+		cmd.Dir = filepath.Join(dir, "s", "n")
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("go %v: %v\n%s", args, err, out)
 		}
 	}
-	res := shrinkRun(t, dir)
-	if len(res.Skipped) != 1 || res.Skipped[0].Package != "example.com/nbl/internal/x" ||
-		!strings.Contains(res.Skipped[0].Reason, "the build of the nested module example.com/nbl/n uses example.com/nbl/t from ") ||
-		!strings.Contains(res.Skipped[0].Reason, "example.com/nbl/t@v1.0.0") {
-		t.Errorf("skipped = %+v, want internal/x, naming the published version", res.Skipped)
-	}
+	shrinkNestedSkipped(t, shrinkRun(t, dir), "example.com/nbl/s/t@v1.0.0")
 }
 
 // TestShrinkWorkspaceUnlistedNested pins that a nested module the go.work

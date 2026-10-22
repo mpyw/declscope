@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -255,33 +256,67 @@ func TestLoadLeavesUnreadableNestedModulesUnjudged(t *testing.T) {
 	}
 }
 
-// TestLoadReadsNestedWorkspace pins that a module a nested module's own
-// go.work uses from outside the tree leaves the range unjudged: it is a main
-// module of that build, not of this run, and the nested module builds with
-// it.
+// TestLoadReadsNestedWorkspace pins which copy of a module that a nested
+// module's own go.work uses from outside the tree leaves the range unjudged.
+// It is a main module of that build, not of this run. A copy whose files,
+// under any build constraint, import an internal package of the range does.
+// One that imports none cannot break the build, and one that cannot be read
+// counts as if it did.
 func TestLoadReadsNestedWorkspace(t *testing.T) {
-	ext, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for name, body := range map[string]string{
-		"go.mod": "module example.com/m/ext\n\ngo 1.25\n",
-		"e.go":   "package ext\n\nimport \"example.com/m/internal/a\"\n\nfunc Run() { a.F() }\n",
+	const prefix = "the build of the nested module example.com/m/tools uses example.com/m/ext from "
+	for name, tc := range map[string]struct {
+		files map[string]string
+		want  func(ext string) string
+	}{
+		"imports an internal package under a tag": {
+			files: map[string]string{"e.go": "//go:build never\n\npackage ext\n\nimport \"example.com/m/internal/a\"\n\nfunc Run() { a.F() }\n"},
+			want:  func(ext string) string { return prefix + ext + ", which imports example.com/m/internal/a" },
+		},
+		"imports none": {
+			files: map[string]string{
+				"e.go":                "package ext\n\nimport \"example.com/m/pub\"\n\nvar _ = pub.X\n",
+				"testdata/t.go":       "package t\n\nimport \"example.com/m/internal/a\"\n",
+				"sub/go.mod":          "module example.com/m/ext/sub\n",
+				"sub/s.go":            "package sub\n\nimport \"example.com/m/internal/a\"\n",
+				"_skipped/s.go":       "package s\n\nimport \"example.com/m/internal/a\"\n",
+				"vendor/v/v.go":       "package v\n\nimport \"example.com/m/internal/a\"\n",
+				".hidden/h.go":        "package h\n\nimport \"example.com/m/internal/a\"\n",
+				"README.md":           "not Go\n",
+				"internal/own/own.go": "package own\n",
+			},
+			want: func(string) string { return "" },
+		},
+		"cannot be read": {
+			files: map[string]string{"e.go": "this is not Go\n"},
+			want:  func(ext string) string { return prefix + ext },
+		},
 	} {
-		if err := os.WriteFile(filepath.Join(ext, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	m, err := Load(nestedTree(t, map[string]string{
-		"tools/go.mod":  "module example.com/m/tools\n\ngo 1.25\n",
-		"tools/go.work": "go 1.25\n\nuse (\n\t.\n\t..\n\t" + ext + "\n)\n",
-	}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "the build of the nested module example.com/m/tools uses example.com/m/ext from " + ext
-	if _, why := m.Range("example.com/m/internal/a"); why != want {
-		t.Errorf("why = %q, want %q", why, want)
+		t.Run(name, func(t *testing.T) {
+			ext, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			tc.files["go.mod"] = "module example.com/m/ext\n\ngo 1.25\n"
+			for name, body := range tc.files {
+				path := filepath.Join(ext, name)
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			m, err := Load(nestedTree(t, map[string]string{
+				"tools/go.mod":  "module example.com/m/tools\n\ngo 1.25\n",
+				"tools/go.work": "go 1.25\n\nuse (\n\t.\n\t..\n\t" + ext + "\n)\n",
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, why := m.Range("example.com/m/internal/a"); why != tc.want(ext) {
+				t.Errorf("why = %q, want %q", why, tc.want(ext))
+			}
+		})
 	}
 }
 
@@ -368,7 +403,7 @@ func TestBuildListVendored(t *testing.T) {
 		}
 		built, why := buildList(work, main, nil, mains)
 		want := []builtModule{{path: "example.com/m/x", dir: filepath.Join(work, "vendor", "example.com", "m", "x")}}
-		if !slices.Equal(built, want) || why != "" {
+		if !reflect.DeepEqual(built, want) || why != "" {
 			t.Errorf("built = %+v, why = %q, want %+v", built, why, want)
 		}
 	})

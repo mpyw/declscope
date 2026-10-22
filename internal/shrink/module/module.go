@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/parser"
 	"go/token"
 	"io/fs"
 	"maps"
@@ -21,6 +22,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -76,8 +78,14 @@ type Module struct {
 // builtModule is one module of a build list: its path, and where the build
 // reads it from. by is the nested module whose build list names it, or empty
 // for the main modules'.
+//
+// For a nested module's, imports are the main modules' internal packages
+// that any file of the copy imports, once scanned is set. A copy that is not
+// downloaded, or that cannot be read, is never scanned.
 type builtModule struct {
 	path, dir, version, by string
+	imports                []string
+	scanned                bool
 }
 
 // Importer is one nested module this run loaded to read what it uses.
@@ -182,6 +190,7 @@ func Load(dir string) (*Module, error) {
 		return nil, err
 	}
 	m.loadImporters(cfg.Mode)
+	m.scanCopies()
 	return m, nil
 }
 
@@ -519,15 +528,103 @@ func (m *Module) Range(path string) (parent, why string) {
 		return "", m.unbuilt
 	}
 	for _, b := range m.built {
-		if inside(b.path) && !m.loadedFrom(b) {
-			build := "the build"
-			if b.by != "" {
-				build = "the build of the nested module " + b.by
+		if m.loadedFrom(b) {
+			continue
+		}
+		build := "the build"
+		if b.by != "" {
+			build = "the build of the nested module " + b.by
+		}
+		where := cmp.Or(b.dir, b.path+"@"+b.version)
+		if !b.scanned {
+			if inside(b.path) {
+				return "", fmt.Sprintf("%s uses %s from %s", build, b.path, where)
 			}
-			return "", fmt.Sprintf("%s uses %s from %s", build, b.path, cmp.Or(b.dir, b.path+"@"+b.version))
+			continue
+		}
+		if i := slices.IndexFunc(b.imports, inside); i >= 0 {
+			return "", fmt.Sprintf("%s uses %s from %s, which imports %s", build, b.path, where, b.imports[i])
 		}
 	}
 	return parent, ""
+}
+
+// scanCopies reads, for each module of a nested module's build list that
+// this run does not load, which of the main modules' internal packages its
+// files import, under any build constraint. The build list holds every
+// module that some build configuration may compile, so a module it names
+// that imports none of them cannot break the build, such as a dependency's
+// test-only module: gopls names golang.org/x/tools/go/expect that way. Only
+// an internal package counts. Any module may import another package, so this
+// run already treats it as imported from anywhere.
+//
+// The main modules' own build list is not scanned. That list is #284's, and
+// a module it names leaves its whole range unjudged.
+func (m *Module) scanCopies() {
+	inMain := func(path string) bool {
+		return slices.ContainsFunc(m.mains, func(mm mainModule) bool { return strings.HasPrefix(path, mm.path+"/") })
+	}
+	cache := map[string][]string{}
+	for i, b := range m.built {
+		if b.by == "" || b.dir == "" || m.loadedFrom(b) {
+			continue
+		}
+		imports, ok := cache[b.dir]
+		if !ok {
+			all, err := importsUnder(b.dir)
+			if err != nil {
+				// Unread, it counts as if not downloaded.
+				continue
+			}
+			for _, path := range all {
+				if _, internal := InternalParent(path); internal && inMain(path) {
+					imports = append(imports, path)
+				}
+			}
+			cache[b.dir] = imports
+		}
+		m.built[i].imports, m.built[i].scanned = imports, true
+	}
+}
+
+// importsUnder returns every path any Go file of the module rooted at dir
+// imports, under any build constraint and in tests too, sorted. It reads
+// what a module zip holds: no directory named testdata or vendor, or holding
+// a go.mod of its own, below the root.
+func importsUnder(dir string) ([]string, error) {
+	fset := token.NewFileSet()
+	seen := map[string]bool{}
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if path == dir {
+				return nil
+			}
+			if name := d.Name(); name == "testdata" || name == "vendor" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") {
+				return filepath.SkipDir
+			}
+			if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		f, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, spec := range f.Imports {
+			if p, err := strconv.Unquote(spec.Path.Value); err == nil {
+				seen[p] = true
+			}
+		}
+		return nil
+	})
+	return slices.Sorted(maps.Keys(seen)), err
 }
 
 // loadedFrom reports whether this run loaded the nested module the build

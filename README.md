@@ -1424,7 +1424,7 @@ require example.com/app/tools v1.0.0
 ```
 
 </td>
-<td>The build list names a module whose path lies in the range, and the build reads it from somewhere other than a nested module this run loaded: a published version, a <code>replace</code> outside the tree, or a vendored copy. Its uses are of other source. The build list of a nested module this run loads is read the same way, and a build list that cannot be read is the same</td>
+<td>The build list names a module whose path lies in the range, and the build reads it from somewhere other than a nested module this run loaded: a published version, a <code>replace</code> outside the tree, or a vendored copy. Its uses are of other source. The build list of a nested module this run loads is read the same way, but there such a copy counts only when one of its files imports an internal package in the range. A build list that cannot be read is the same</td>
 <td><code>not judged: example.com/app/internal/user: the build uses example.com/app/tools from /path/to/modcache/example.com/app/tools@v1.0.0</code></td>
 </tr>
 <tr>
