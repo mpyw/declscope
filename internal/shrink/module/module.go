@@ -240,9 +240,18 @@ func (m *Module) loadImporters(mode packages.LoadMode) {
 // unjudged: a load that fails, and a main module's package read from
 // anywhere but that module's directory, such as a published version. Uses of
 // other source say nothing about this one.
+//
+// Both loads run with GOWORK=off. A nested module is never one the go.work
+// uses, or it would be a main module, so the workspace has nothing to say
+// about how it builds: inheriting it failed the load outright, since ./...
+// names no module the go.work lists. Its own go.mod is what go build in its
+// directory reads with GOWORK=off, and the check that each main module's
+// package is read from that module's directory still holds it to this tree.
 func (m *Module) loadImporter(n nestedModule, mode packages.LoadMode) loaded {
+	env := append(os.Environ(), "GOWORK=off")
 	deps, err := packages.Load(&packages.Config{
 		Dir:   n.dir,
+		Env:   env,
 		Mode:  packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles | packages.NeedImports | packages.NeedDeps | packages.NeedModule,
 		Tests: true,
 	}, "./...")
@@ -267,7 +276,7 @@ func (m *Module) loadImporter(n nestedModule, mode packages.LoadMode) loaded {
 	if len(imported) > 0 {
 		// The first load has already checked where each of these is read
 		// from, and this one reads the same go.mod.
-		pkgs, err := packages.Load(&packages.Config{Dir: n.dir, Fset: m.Fset, Mode: mode, Tests: true},
+		pkgs, err := packages.Load(&packages.Config{Dir: n.dir, Env: env, Fset: m.Fset, Mode: mode, Tests: true},
 			append([]string{"./..."}, slices.Sorted(maps.Keys(imported))...)...)
 		problem = loadFailure(err)
 		own = nil

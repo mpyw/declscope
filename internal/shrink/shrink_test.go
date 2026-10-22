@@ -278,6 +278,16 @@ func TestShrinkBuildListVendored(t *testing.T) {
 	}
 }
 
+// TestShrinkWorkspaceUnlistedNested pins that a nested module the go.work
+// does not list is loaded from its own go.mod, outside the workspace, so its
+// use of a.Used counts and a.Unused is judged.
+func TestShrinkWorkspaceUnlistedNested(t *testing.T) {
+	res := shrinkRun(t, "testdata/workspace-unlisted/m")
+	if len(res.Skipped) != 0 {
+		t.Errorf("skipped = %+v, want none: tools is loaded", res.Skipped)
+	}
+}
+
 // shrinkPublish serves the module in src as version v from a new file
 // proxy, and returns the GOPROXY value that reads it.
 func shrinkPublish(t *testing.T, src string, v module.Version) string {
