@@ -47,6 +47,14 @@ jobs:
           fi
           echo "Tag does not exist: $VERSION"
 
+      # The README's install commands and the skills name the release. A tag
+      # whose commit still names the previous one ships stale instructions:
+      # v0.20.3 did, and v0.20.4 had to follow.
+      - name: Check the version strings match the tag
+        env:
+          VERSION: ${{ inputs.version }}
+        run: .github/scripts/check-version.sh "$VERSION"
+
       - name: Create and push tag
         env:
           VERSION: ${{ inputs.version }}

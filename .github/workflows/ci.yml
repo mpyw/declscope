@@ -73,6 +73,11 @@ jobs:
       - name: Run golangci-lint
         run: golangci-lint run --timeout=5m ./...
 
+      # The Tag workflow checks these against the version it tags. Checking
+      # here that they agree with each other catches a partial bump early.
+      - name: Check the version strings agree
+        run: .github/scripts/check-version.sh
+
   spec:
     name: Spec
     runs-on: ubuntu-latest
