@@ -449,6 +449,13 @@ type Resolved struct {
 // whole core. Only a file with no namespace directive joins: one that names
 // its own namespace has decided where it belongs, and the core must not
 // override that decision unseen.
+//
+// Only a test file joins, and only the core file it tests (see subjectOf).
+// Joining by the shared stem pulled client.go into the core of a core
+// client_test.go, so the test variant spelled each of client.go's
+// declarations under another namespace than the package did. It pulled
+// foo.go into the core of a core foo_linux.go too, but only in a linux build,
+// so a baseline recorded there suppressed nothing elsewhere.
 func Resolve(files []Declared) []Resolved {
 	out := make([]Resolved, len(files))
 	cores := map[string]bool{}
@@ -458,7 +465,7 @@ func Resolve(files []Declared) []Resolved {
 			// The core namespace has no name. Every core file shares it, which
 			// is what makes having no prefix name exactly one unit.
 			out[i].Core = true
-			cores[of(f.Path)] = true
+			cores[filepath.Base(f.Path)] = true
 		case f.Named:
 			out[i].Name = f.Name
 		default:
@@ -466,11 +473,25 @@ func Resolve(files []Declared) []Resolved {
 		}
 	}
 	for i, f := range files {
-		if !out[i].Core && !f.Named && cores[of(f.Path)] {
+		if subject, ok := subjectOf(f.Path); ok && !out[i].Core && !f.Named && cores[subject] {
 			out[i] = Resolved{Core: true}
 		}
 	}
 	return out
+}
+
+// subjectOf returns the base name of the file a test file tests, read from
+// its name: client_test.go tests client.go, and client_linux_test.go tests
+// client_linux.go, not client.go. Matching the whole name keeps the pairing
+// the same in every build: by the stem alone, client_test.go would join a
+// core client_linux.go in a linux build only. A file that is not a test file
+// has no subject.
+func subjectOf(path string) (string, bool) {
+	stem, ok := strings.CutSuffix(filepath.Base(path), "_test.go")
+	if !ok || stem == "" {
+		return "", false
+	}
+	return stem + ".go", true
 }
 
 // Spell spells a file's namespace for a baseline, which is the one place it

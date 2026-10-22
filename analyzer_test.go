@@ -289,6 +289,19 @@ func TestCoreNamedTest(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "corenamedtest")
 }
 
+// TestCoreTestSubject checks that a core test file does not take its subject
+// into the core. Only a test file joins, so the package and its test variant
+// report client.go's crossing under the same namespace.
+func TestCoreTestSubject(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "coretestsubject")
+}
+
+// TestCoreGOOSSibling checks that a core GOOS file does not take its plain
+// sibling into the core. Joining made foo.go's namespace depend on the build.
+func TestCoreGOOSSibling(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "coregoossibling")
+}
+
 // TestFileScope checks a file-level scope directive: a default for what the file
 // declares, which a declaration may still narrow back. Under the ignore this
 // replaces, the narrowing would have meant nothing.
