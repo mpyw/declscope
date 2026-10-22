@@ -288,9 +288,6 @@ func (m *Module) listUncovered(n nestedModule) loaded {
 	if err != nil {
 		return loaded{unbuilt: err.Error()}
 	}
-	if env == nil {
-		env = os.Environ()
-	}
 	pruned := f.Go != nil && semver.Compare("v"+f.Go.Version, "v1.17") >= 0
 	built, unbuilt := buildList(n.dir, n.dir, append(env, "GOPROXY=off"), m.mains, pruned)
 	for i := range built {
@@ -300,17 +297,18 @@ func (m *Module) listUncovered(n nestedModule) loaded {
 }
 
 // nestedEnv returns the environment a nested module's go commands run with:
-// GOWORK=off when go env GOWORK in its directory is the main run's go.work,
-// and nil, this process's environment, otherwise. See loadImporter.
+// this process's, with GOWORK=off when go env GOWORK in its directory is the
+// main run's go.work. See loadImporter.
 func (m *Module) nestedEnv(n nestedModule) ([]string, error) {
 	work, err := goIn(n.dir, nil, "env", "GOWORK")
 	if err != nil {
 		return nil, fmt.Errorf("finding its go.work failed: %v", err)
 	}
+	env := os.Environ()
 	if sameDir(strings.TrimSpace(string(work)), m.work) {
-		return append(os.Environ(), "GOWORK=off"), nil
+		env = append(env, "GOWORK=off")
 	}
-	return nil, nil
+	return env, nil
 }
 
 // loadImporter loads a nested module that may import a main module's
