@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -255,6 +256,92 @@ func TestLoadLeavesUnreadableNestedModulesUnjudged(t *testing.T) {
 	}
 }
 
+// TestLoadReadsNestedWorkspace pins which copy of a module that a nested
+// module's own go.work uses from outside the tree withholds the fixes in the
+// range. It is a main module of that build, not of this run. A copy whose
+// files, under any build constraint, import an internal package of the range
+// does. One that imports none cannot break the build, and one that cannot be
+// read counts as if it did. The range is judged either way.
+func TestLoadReadsNestedWorkspace(t *testing.T) {
+	const prefix = "the build of the nested module example.com/m/tools uses example.com/m/ext from "
+	for name, tc := range map[string]struct {
+		files map[string]string
+		want  func(ext string) string
+	}{
+		"imports an internal package under a tag": {
+			files: map[string]string{"e.go": "//go:build never\n\npackage ext\n\nimport \"example.com/m/internal/a\"\n\nfunc Run() { a.F() }\n"},
+			want:  func(ext string) string { return prefix + ext + ", which imports example.com/m/internal/a" },
+		},
+		"imports none": {
+			files: map[string]string{
+				"e.go":                "package ext\n\nimport \"example.com/m/pub\"\n\nvar _ = pub.X\n",
+				"testdata/t.go":       "package t\n\nimport \"example.com/m/internal/a\"\n",
+				"sub/go.mod":          "module example.com/m/ext/sub\n",
+				"sub/s.go":            "package sub\n\nimport \"example.com/m/internal/a\"\n",
+				"_skipped/s.go":       "package s\n\nimport \"example.com/m/internal/a\"\n",
+				"vendor/v/v.go":       "package v\n\nimport \"example.com/m/internal/a\"\n",
+				".hidden/h.go":        "package h\n\nimport \"example.com/m/internal/a\"\n",
+				"README.md":           "not Go\n",
+				"internal/own/own.go": "package own\n",
+			},
+			want: func(string) string { return "" },
+		},
+		"cannot be read": {
+			files: map[string]string{"e.go": "this is not Go\n"},
+			want:  func(ext string) string { return prefix + ext },
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ext, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			tc.files["go.mod"] = "module example.com/m/ext\n\ngo 1.25\n"
+			for name, body := range tc.files {
+				path := filepath.Join(ext, name)
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			m, err := Load(nestedTree(t, map[string]string{
+				"tools/go.mod":  "module example.com/m/tools\n\ngo 1.25\n",
+				"tools/go.work": "go 1.25\n\nuse (\n\t.\n\t..\n\t" + ext + "\n)\n",
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if why := m.Doubt("example.com/m/internal/a"); why != tc.want(ext) {
+				t.Errorf("doubt = %q, want %q", why, tc.want(ext))
+			}
+			if _, why := m.Range("example.com/m/internal/a"); why != "" {
+				t.Errorf("why = %q, want the range judged", why)
+			}
+		})
+	}
+}
+
+// TestCopiesOutsideTheRange pins that a copy only reaches the ranges it may
+// import into: one never scanned counts in a range holding its path alone, a
+// package outside internal/ has no range to doubt, and a copy that cannot be
+// walked is never scanned.
+func TestCopiesOutsideTheRange(t *testing.T) {
+	m := &Module{
+		mains: []mainModule{{path: "example.com/m"}},
+		built: []builtModule{{path: "example.com/m/b/x", by: "example.com/m/b/n"}},
+	}
+	for _, path := range []string{"example.com/m/a/internal/p", "example.com/m/b/x/pub"} {
+		if why := m.Doubt(path); why != "" {
+			t.Errorf("%s: doubt = %q, want none", path, why)
+		}
+	}
+	if _, err := importsUnder(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Error("err = nil, want the walk's failure")
+	}
+}
+
 // TestBuildListFailures pins that a build list this run cannot read in full
 // leaves every range unjudged with the reason, rather than reading as one
 // that names no module in the range.
@@ -266,19 +353,19 @@ func TestBuildListFailures(t *testing.T) {
 	t.Run("a module the go command cannot read", func(t *testing.T) {
 		t.Setenv("GOPROXY", "off")
 		t.Setenv("GOFLAGS", "-mod=mod")
-		if _, why := buildList(root, mains); !strings.Contains(why, "reading the build list failed: ") || !strings.Contains(why, "example.com/m/gone") {
+		if _, why := buildList(root, root, nil, mains); !strings.Contains(why, "reading the build list failed: ") || !strings.Contains(why, "example.com/m/gone") {
 			t.Errorf("why = %q, want the module that failed named", why)
 		}
 	})
 	missing := filepath.Join(root, "missing")
 	t.Run("go list -m all fails", func(t *testing.T) {
-		if _, why := buildList(missing, mains); !strings.HasPrefix(why, "reading the build list failed: ") {
+		if _, why := buildList(missing, root, nil, mains); !strings.HasPrefix(why, "reading the build list failed: ") {
 			t.Errorf("why = %q, want the go command's failure", why)
 		}
 	})
 	inAny := func(string) bool { return true }
 	t.Run("go env fails in vendor mode", func(t *testing.T) {
-		if _, why := vendored(missing, mains, inAny, inAny); !strings.HasPrefix(why, "reading the build list failed: ") {
+		if _, why := vendored(missing, root, nil, inAny, inAny); !strings.HasPrefix(why, "reading the build list failed: ") {
 			t.Errorf("why = %q, want the go command's failure", why)
 		}
 	})
@@ -286,14 +373,23 @@ func TestBuildListFailures(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(root, "vendor", "modules.txt"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if _, why := vendored(root, mains, inAny, inAny); !strings.HasPrefix(why, "reading the build list failed: ") {
+		if _, why := vendored(root, root, nil, inAny, inAny); !strings.HasPrefix(why, "reading the build list failed: ") {
 			t.Errorf("why = %q, want the read error", why)
 		}
 	})
 	t.Run("go list -m prints what is not JSON", func(t *testing.T) {
 		fakeGo(t, "echo '{'")
-		if _, why := buildList(root, mains); !strings.HasPrefix(why, "reading the build list failed: ") {
+		if _, why := buildList(root, root, nil, mains); !strings.HasPrefix(why, "reading the build list failed: ") {
 			t.Errorf("why = %q, want the decode error", why)
+		}
+	})
+	t.Run("a nested module's", func(t *testing.T) {
+		m, err := Load(nestedTree(t, map[string]string{"tools/go.mod": "module example.com/m/tools\n\ngo 1.25\n\nrequire (\n"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(m.unbuilt, "the nested module example.com/m/tools: reading the build list failed: ") {
+			t.Errorf("unbuilt = %q, want the nested module named", m.unbuilt)
 		}
 	})
 	t.Run("Range names it", func(t *testing.T) {
@@ -314,7 +410,7 @@ func TestBuildListVendored(t *testing.T) {
 	vendorErr := `if [ "$1" = list ]; then echo "go: can't compute 'all' using the vendor directory" >&2; exit 1; fi; `
 	t.Run("no modules.txt", func(t *testing.T) {
 		fakeGo(t, vendorErr+"echo")
-		if built, why := buildList(work, mains); built != nil || why != "" {
+		if built, why := buildList(work, main, nil, mains); built != nil || why != "" {
 			t.Errorf("built = %+v, why = %q, want nothing", built, why)
 		}
 	})
@@ -327,9 +423,9 @@ func TestBuildListVendored(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(work, "vendor", "modules.txt"), []byte(txt), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		built, why := buildList(work, mains)
+		built, why := buildList(work, main, nil, mains)
 		want := []builtModule{{path: "example.com/m/x", dir: filepath.Join(work, "vendor", "example.com", "m", "x")}}
-		if !slices.Equal(built, want) || why != "" {
+		if !reflect.DeepEqual(built, want) || why != "" {
 			t.Errorf("built = %+v, why = %q, want %+v", built, why, want)
 		}
 	})

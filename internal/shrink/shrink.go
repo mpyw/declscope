@@ -901,6 +901,10 @@ func (r *run) neededWithoutConstrained(c *candidate) bool {
 // rename itself, or "". Each entry is a use that may exist but cannot be
 // proved, or a reference the rename cannot rewrite.
 func (r *run) withheld(c *candidate) string {
+	// A copy of other source that a nested module builds may use it.
+	if why := r.mod.Doubt(c.pkg.PkgPath); why != "" {
+		return why
+	}
 	reasons := []struct {
 		why     string
 		applies func() bool

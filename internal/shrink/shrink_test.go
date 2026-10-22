@@ -278,6 +278,58 @@ func TestShrinkBuildListVendored(t *testing.T) {
 	}
 }
 
+// TestShrinkNestedBuildList pins that a module of a nested module's build
+// list whose path lies in the range, replaced by a directory outside the
+// tree, withholds the fixes in the range when the copy imports a package in
+// it, and keeps the reports: s/n builds with that copy of t, not the nested
+// module t, and only the copy uses x.Foo. b/g builds the copy of u only under
+// the never tag, and it uses z.Baz, so z's fix is withheld too. The range of
+// y, which no copy imports, keeps its fix. The wants pin the reports.
+func TestShrinkNestedBuildList(t *testing.T) {
+	shrinkNestedWithheld(t, shrinkRun(t, "testdata/nested-build-list/m"), "t-copy")
+}
+
+// shrinkNestedWithheld checks that nested-build-list leaves no range
+// unjudged, and that x.Foo's fix is withheld naming tCopy, where s/n's build
+// reads t from.
+func shrinkNestedWithheld(t *testing.T, res shrink.Result, tCopy string) {
+	t.Helper()
+	if len(res.Skipped) != 0 {
+		t.Errorf("skipped = %+v, want none: the reports stand and only their fixes are withheld", res.Skipped)
+	}
+	i := slices.IndexFunc(res.Findings, func(f shrink.Finding) bool { return strings.HasPrefix(f.Message(), "func Foo ") })
+	if i < 0 || !strings.Contains(res.Findings[i].Withheld, tCopy) {
+		t.Errorf("findings = %+v, want Foo's fix withheld naming %s", res.Findings, tCopy)
+	}
+}
+
+// TestShrinkNestedBuildListPublished pins the same for a published version
+// of t that n requires, served from a local proxy.
+func TestShrinkNestedBuildListPublished(t *testing.T) {
+	proxy := shrinkPublish(t, "testdata/nested-build-list/t-copy", module.Version{Path: "example.com/nbl/s/t", Version: "v1.0.0"})
+	t.Setenv("GOPROXY", proxy)
+	t.Setenv("GOSUMDB", "off")
+	t.Setenv("GOMODCACHE", t.TempDir())
+	t.Setenv("GOFLAGS", "-modcacherw")
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS("testdata/nested-build-list")); err != nil {
+		t.Fatal(err)
+	}
+	dir, _ = filepath.EvalSymlinks(dir)
+	dir = filepath.Join(dir, "m")
+	for _, args := range [][]string{
+		{"mod", "edit", "-dropreplace=example.com/nbl/s/t", "-require=example.com/nbl/s/t@v1.0.0"},
+		{"mod", "tidy"},
+	} {
+		cmd := exec.Command("go", args...)
+		cmd.Dir = filepath.Join(dir, "s", "n")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("go %v: %v\n%s", args, err, out)
+		}
+	}
+	shrinkNestedWithheld(t, shrinkRun(t, dir), "example.com/nbl/s/t@v1.0.0")
+}
+
 // TestShrinkWorkspaceUnlistedNested pins that a nested module the go.work
 // does not list is loaded from its own go.mod, outside the workspace, so its
 // use of a.Used counts and a.Unused is judged.
@@ -396,13 +448,17 @@ func TestShrinkRenamesDoc(t *testing.T) {
 // which also compiles the tests; every report that offered a fix is gone; and
 // no report appears that was not there before.
 func TestShrinkConverges(t *testing.T) {
-	for _, name := range []string{"uses", "escapes", "fix-withheld", "rename-guards", "ignores", "module-under-internal", "nested-module-uses", "nested-module-excluded", "const-sets", "typeparam-sets"} {
+	// A name with a slash is a module inside the copied directory, beside
+	// what it reads from outside its tree.
+	for _, name := range []string{"uses", "escapes", "fix-withheld", "rename-guards", "ignores", "module-under-internal", "nested-module-uses", "nested-module-excluded", "nested-build-list/m", "const-sets", "typeparam-sets"} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
-			if err := os.CopyFS(dir, os.DirFS(filepath.Join("testdata", name))); err != nil {
+			copied, sub, _ := strings.Cut(name, "/")
+			if err := os.CopyFS(dir, os.DirFS(filepath.Join("testdata", copied))); err != nil {
 				t.Fatal(err)
 			}
 			dir, _ = filepath.EvalSymlinks(dir)
+			dir = filepath.Join(dir, sub)
 			res, err := shrink.Run(dir, nil, nil)
 			if err != nil {
 				t.Fatal(err)
