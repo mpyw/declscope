@@ -16,10 +16,8 @@ package internal
 import (
 	"cmp"
 	"go/ast"
-	"go/parser"
 	"go/token"
 	"go/types"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -413,7 +411,9 @@ type unseenFiles struct {
 // policy admits only the files of the pass itself; the config lookup already
 // reads the filesystem, so this adds no new assumption about the driver.
 // Anything that cannot be read or parsed withholds everything, which withholds
-// rather than risks.
+// rather than risks. The listing and each file read are shared with every
+// other pass over the same folder (listFolder), since the test and non-test
+// variants both scan it.
 func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 	if c.unseenScan != nil {
 		return c.unseenScan
@@ -452,17 +452,13 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 	if dir == "" {
 		return u
 	}
-	entries, err := os.ReadDir(dir)
+	listing, err := listFolder(dir)
 	if err != nil {
 		u.all = true
 		return u
 	}
-	fset := token.NewFileSet()
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
-			continue
-		}
-		p := filepath.Join(dir, e.Name())
+	for _, name := range listing.goFiles {
+		p := filepath.Join(dir, name)
 		if inPass[p] {
 			continue
 		}
@@ -474,12 +470,12 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 		//
 		// Once all is set, nothing later in the directory can change the
 		// answer: every reader checks all before names. So the scan stops.
-		f, err := parser.ParseFile(fset, p, nil, parser.PackageClauseOnly)
+		f, err := listing.readFolderFile(p)
 		if err != nil {
 			u.all = true
 			return u
 		}
-		if f.Name.Name != pass.Pkg.Name() {
+		if f.pkg != pass.Pkg.Name() {
 			continue
 		}
 		// An in-package test file is left to the test variant, which sees
@@ -488,21 +484,18 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 		// a test file is the test variant, so a test file it lacks is
 		// excluded. The non-test variant knows that only from IgnoredFiles,
 		// and that is the case where there may be no test variant at all.
-		if strings.HasSuffix(e.Name(), "_test.go") && !holdsTests && !ignored[p] {
+		if strings.HasSuffix(name, "_test.go") && !holdsTests && !ignored[p] {
 			u.all = true
 			return u
 		}
-		// Only the names are read, so the parser need not resolve them.
-		if f, err = parser.ParseFile(fset, p, nil, parser.SkipObjectResolution); err != nil {
+		names, err := listing.readFolderFileNames(p, f)
+		if err != nil {
 			u.all = true
 			return u
 		}
-		ast.Inspect(f, func(n ast.Node) bool {
-			if id, ok := n.(*ast.Ident); ok {
-				u.names[id.Name] = true
-			}
-			return true
-		})
+		for _, n := range names {
+			u.names[n] = true
+		}
 	}
 	return u
 }
