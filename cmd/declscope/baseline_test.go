@@ -851,8 +851,9 @@ func TestBaselineMergeRefusesAnUnparsableFile(t *testing.T) {
 	writeTree(t, root, ".declscope-baseline.yaml", corrupt)
 
 	out, code := runIn(t, bin, root, "baseline", "-merge", "./...")
-	if code != 1 || !strings.Contains(out, "-merge") || !strings.Contains(out, "bogus") {
-		t.Errorf("exited %d, want 1 naming -merge and the parse error:\n%s", code, out)
+	if code != 1 || !strings.Contains(out, ".declscope-baseline.yaml cannot be parsed: ") || !strings.Contains(out, "bogus") ||
+		!strings.Contains(out, "; run without -merge to replace it\n") || strings.Contains(out, "regenerate") {
+		t.Errorf("exited %d, want 1 naming the parse error with one piece of advice:\n%s", code, out)
 	}
 	if got := readFile(t, filepath.Join(root, ".declscope-baseline.yaml")); got != corrupt {
 		t.Errorf("-merge rewrote a file it could not parse:\n%s", got)
@@ -865,6 +866,21 @@ func TestBaselineMergeRefusesAnUnparsableFile(t *testing.T) {
 		t.Fatalf("without -merge the corrupt file should be replaced: exit %d\n%s", code, out)
 	}
 	assertSuppressed(t, bin, root)
+}
+
+// TestBaselineMergeReportsAFileItCannotRead checks that a target -merge
+// cannot read is named as such, without the advice to run without -merge:
+// that run cannot write the file either.
+func TestBaselineMergeReportsAFileItCannotRead(t *testing.T) {
+	root := mergeModule(t)
+	dir := filepath.Join(root, "dir.yaml")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, code := runIn(t, bin, root, "baseline", "-merge", "-o", dir, "./...")
+	if code != 1 || !strings.Contains(out, "declscope baseline: "+dir+" cannot be read: ") || strings.Contains(out, "without -merge") {
+		t.Errorf("exited %d, want 1 naming the file that cannot be read, with no advice:\n%s", code, out)
+	}
 }
 
 // TestBaselineMergeWithO checks that -merge reads the file -o names, which

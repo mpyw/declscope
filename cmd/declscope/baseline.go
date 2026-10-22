@@ -2,9 +2,11 @@ package main
 
 import (
 	"cmp"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -243,7 +245,7 @@ func baselineMerge(targets map[string][]baseline.Key, loaded, shrunk map[string]
 	for _, path := range slices.Sorted(maps.Keys(targets)) {
 		set, err := baseline.Load(path)
 		if err != nil {
-			return fmt.Errorf("-merge cannot keep the entries of %w; run without -merge to replace the file", err)
+			return baselineMergeError(path, err)
 		}
 		for _, k := range set.Keys() {
 			if !loaded[k.Package] || (k.Rule == rule.Overexported && !shrunk[k.Package]) {
@@ -252,6 +254,19 @@ func baselineMerge(targets map[string][]baseline.Key, loaded, shrunk map[string]
 		}
 	}
 	return nil
+}
+
+// baselineMergeError words a file -merge could not load. Only a file that
+// does not parse is replaced by a run without -merge; a file that cannot be
+// read most likely cannot be written either.
+func baselineMergeError(path string, err error) error {
+	if perr, ok := errors.AsType[*baseline.ParseError](err); ok {
+		return fmt.Errorf("%s cannot be parsed: %w; run without -merge to replace it", path, perr.Err)
+	}
+	if perr, ok := errors.AsType[*fs.PathError](err); ok {
+		err = perr.Err
+	}
+	return fmt.Errorf("%s cannot be read: %w", path, err)
 }
 
 // baselineTarget is the file a package in dir records its entries in: out
