@@ -64,18 +64,20 @@ type Module struct {
 	// whose path extends an internal parent may import the package. One with
 	// an unrelated path cannot, wherever it sits.
 	nested []nestedModule
-	// built is every module of the main modules' build list, other than a
-	// main module, whose path lies in a main module's: a module that may
-	// import their internal packages from wherever the build reads it.
-	// unbuilt says why the build list could not be read, or is empty.
+	// built is every module of the main modules' build list, and of each
+	// loaded nested module's, other than a main module, whose path lies in a
+	// main module's: a module that may import their internal packages from
+	// wherever the build reads it. unbuilt says why a build list could not be
+	// read, or is empty.
 	built   []builtModule
 	unbuilt string
 }
 
-// builtModule is one module of the build list: its path, and where the build
-// reads it from.
+// builtModule is one module of a build list: its path, and where the build
+// reads it from. by is the nested module whose build list names it, or empty
+// for the main modules'.
 type builtModule struct {
-	path, dir, version string
+	path, dir, version, by string
 }
 
 // Importer is one nested module this run loaded to read what it uses.
@@ -138,12 +140,12 @@ func Load(dir string) (*Module, error) {
 	if err != nil {
 		return nil, err
 	}
-	work, err := goIn(dir, "env", "GOWORK")
+	work, err := goIn(dir, nil, "env", "GOWORK")
 	if err != nil {
 		return nil, fmt.Errorf("finding the go.work: %w", err)
 	}
 	m := &Module{mains: mains, byPath: map[string][]*packages.Package{}, work: strings.TrimSpace(string(work))}
-	m.built, m.unbuilt = buildList(dir, mains)
+	m.built, m.unbuilt = buildList(dir, mains[0].dir, nil, mains)
 	var failed []string
 	for _, p := range pkgs {
 		if IsTestMain(p) {
@@ -184,11 +186,14 @@ func Load(dir string) (*Module, error) {
 }
 
 // loaded is what loading one nested module read: its packages and the files
-// its build excludes, or why it could not read them.
+// its build excludes, or why it could not read them, and the modules of its
+// build list that built holds, or why that could not be read.
 type loaded struct {
 	imp      Importer
 	excluded []*excluded.File
 	why      string
+	built    []builtModule
+	unbuilt  string
 }
 
 // loadImporters loads every nested module that may import an internal
@@ -219,6 +224,12 @@ func (m *Module) loadImporters(mode packages.LoadMode) {
 		if !m.covers(m.nested[i].path) {
 			continue
 		}
+		// The build list counts even when the load failed: a module it names
+		// may lie in a range the nested module's own path does not.
+		m.built = append(m.built, l.built...)
+		if l.unbuilt != "" && m.unbuilt == "" {
+			m.unbuilt = fmt.Sprintf("the nested module %s: %s", m.nested[i].path, l.unbuilt)
+		}
 		m.nested[i].why = l.why
 		if l.why != "" {
 			continue
@@ -248,6 +259,14 @@ func (m *Module) loadImporters(mode packages.LoadMode) {
 // anywhere but that module's directory, such as a published version. Uses of
 // other source say nothing about this one.
 //
+// Its build list is read too, as the main modules' is, with the same
+// environment as its loads. A module it names with a path in a range, such
+// as a published version of another nested module, or one its own go.work
+// uses from outside the tree, is compiled into its build. Its uses of
+// internal packages are in export data, which holds none, so Range leaves
+// that range unjudged unless the build reads the module from a nested module
+// this run loaded.
+//
 // Both loads read what go build in its directory reads. When that is the
 // main run's go.work, they run with GOWORK=off. A nested module is never one
 // that go.work uses, or it would be a main module, so the workspace has
@@ -257,13 +276,20 @@ func (m *Module) loadImporters(mode packages.LoadMode) {
 // go.mod does not require. Either way, the check that each main module's
 // package is read from that module's directory still holds it to this tree.
 func (m *Module) loadImporter(n nestedModule, mode packages.LoadMode) loaded {
-	work, err := goIn(n.dir, "env", "GOWORK")
+	work, err := goIn(n.dir, nil, "env", "GOWORK")
 	if err != nil {
-		return loaded{why: fmt.Sprintf("finding its go.work failed: %v", err)}
+		// Its build list is unknown too, so it unjudges every range.
+		why := fmt.Sprintf("finding its go.work failed: %v", err)
+		return loaded{why: why, unbuilt: why}
 	}
 	var env []string
 	if sameDir(strings.TrimSpace(string(work)), m.work) {
 		env = append(os.Environ(), "GOWORK=off")
+	}
+	var l loaded
+	l.built, l.unbuilt = buildList(n.dir, n.dir, env, m.mains)
+	for i := range l.built {
+		l.built[i].by = n.path
 	}
 	deps, err := packages.Load(&packages.Config{
 		Dir:   n.dir,
@@ -285,7 +311,8 @@ func (m *Module) loadImporter(n nestedModule, mode packages.LoadMode) loaded {
 		}
 	})
 	if problem != "" {
-		return loaded{why: problem}
+		l.why = problem
+		return l
 	}
 	var imp Importer
 	own := deps
@@ -319,7 +346,8 @@ func (m *Module) loadImporter(n nestedModule, mode packages.LoadMode) loaded {
 			}
 		}
 		if problem != "" {
-			return loaded{why: problem}
+			l.why = problem
+			return l
 		}
 		for _, path := range slices.Sorted(maps.Keys(widest)) {
 			imp.Pkgs = append(imp.Pkgs, widest[path])
@@ -329,9 +357,11 @@ func (m *Module) loadImporter(n nestedModule, mode packages.LoadMode) loaded {
 	// written under a tag this run does not set still counts.
 	var xs []*excluded.File
 	if err := m.walkTree(n.dir, compiledFiles(own), token.NewFileSet(), false, &xs); err != nil {
-		return loaded{why: err.Error()}
+		l.why = err.Error()
+		return l
 	}
-	return loaded{imp: imp, excluded: xs}
+	l.imp, l.excluded = imp, xs
+	return l
 }
 
 // loadFailure words a failed load, or is empty when the load did not fail.
@@ -490,7 +520,11 @@ func (m *Module) Range(path string) (parent, why string) {
 	}
 	for _, b := range m.built {
 		if inside(b.path) && !m.loadedFrom(b) {
-			return "", fmt.Sprintf("the build uses %s from %s", b.path, cmp.Or(b.dir, b.path+"@"+b.version))
+			build := "the build"
+			if b.by != "" {
+				build = "the build of the nested module " + b.by
+			}
+			return "", fmt.Sprintf("%s uses %s from %s", build, b.path, cmp.Or(b.dir, b.path+"@"+b.version))
 		}
 	}
 	return parent, ""
@@ -505,11 +539,13 @@ func (m *Module) loadedFrom(b builtModule) bool {
 	})
 }
 
-// buildList reads the main modules' build list, as go list -m all does, and
-// keeps each module other than a main module whose path lies in one's. Go
-// checks internal/ by import path, so such a module may import the main
-// modules' internal packages, and the build compiles the copy the list
-// names, wherever it is.
+// buildList reads the build list seen from dir, as go list -m all does with
+// env, and keeps each module other than a main module whose path lies in
+// one's. Go checks internal/ by import path, so such a module may import the
+// main modules' internal packages, and the build compiles the copy the list
+// names, wherever it is. dir is where the main load runs, or a nested
+// module's directory. Outside a workspace, root is the module whose vendor
+// directory a vendored build reads. A nil env is this process's environment.
 //
 // -e lists the modules whose go.mod the go command cannot read, with an
 // error, instead of failing: in a workspace, a requirement on a workspace
@@ -518,17 +554,17 @@ func (m *Module) loadedFrom(b builtModule) bool {
 // the list is unknown, and every range stays unjudged. In vendor mode the go
 // command computes no list at all, and vendor/modules.txt names every module
 // the build reads instead.
-func buildList(dir string, mains []mainModule) ([]builtModule, string) {
+func buildList(dir, root string, env []string, mains []mainModule) ([]builtModule, string) {
 	inMain := func(path string) bool {
 		return slices.ContainsFunc(mains, func(mm mainModule) bool { return strings.HasPrefix(path, mm.path+"/") })
 	}
 	isMain := func(path string) bool {
 		return slices.ContainsFunc(mains, func(mm mainModule) bool { return path == mm.path })
 	}
-	out, err := goIn(dir, "list", "-m", "-e", "-json", "all")
+	out, err := goIn(dir, env, "list", "-m", "-e", "-json", "all")
 	if err != nil {
 		if strings.Contains(err.Error(), "using the vendor directory") {
-			return vendored(dir, mains, inMain, isMain)
+			return vendored(dir, root, env, inMain, isMain)
 		}
 		return nil, fmt.Sprintf("reading the build list failed: %v", err)
 	}
@@ -543,13 +579,17 @@ func buildList(dir string, mains []mainModule) ([]builtModule, string) {
 		if err := dec.Decode(&mod); err != nil {
 			return nil, fmt.Sprintf("reading the build list failed: %v", err)
 		}
-		if mod.Error != nil && !isMain(mod.Path) {
+		if mod.Error != nil && !mod.Main && !isMain(mod.Path) {
 			return nil, fmt.Sprintf("reading the build list failed: %s: %s", mod.Path, mod.Error.Err)
 		}
 		if mod.Replace != nil {
 			mod.Dir = cmp.Or(mod.Replace.Dir, mod.Dir)
 		}
-		if !mod.Main && inMain(mod.Path) {
+		// A main module of a nested module's list counts too, unless it is
+		// one of this run's: the nested module's own go.work may use a copy
+		// from outside the tree. The nested module itself is one this run
+		// loads, so it passes.
+		if !isMain(mod.Path) && inMain(mod.Path) {
 			built = append(built, builtModule{path: mod.Path, dir: mod.Dir, version: mod.Version})
 		}
 	}
@@ -557,15 +597,14 @@ func buildList(dir string, mains []mainModule) ([]builtModule, string) {
 }
 
 // vendored reads the modules a vendored build reads from vendor/modules.txt,
-// in the workspace's directory or else the main module's. Each is read from
+// in the workspace's directory or else root's. Each is read from
 // the vendor directory, which is never a nested module this run loads. A
 // vendor directory with no modules.txt vendors nothing.
-func vendored(dir string, mains []mainModule, inMain, isMain func(string) bool) ([]builtModule, string) {
-	work, err := goIn(dir, "env", "GOWORK")
+func vendored(dir, root string, env []string, inMain, isMain func(string) bool) ([]builtModule, string) {
+	work, err := goIn(dir, env, "env", "GOWORK")
 	if err != nil {
 		return nil, fmt.Sprintf("reading the build list failed: %v", err)
 	}
-	root := mains[0].dir
 	if w := strings.TrimSpace(string(work)); w != "" && w != "off" {
 		root = filepath.Dir(w)
 	}
@@ -589,11 +628,12 @@ func vendored(dir string, mains []mainModule, inMain, isMain func(string) bool) 
 	return built, ""
 }
 
-// goIn runs the go command in dir and returns its output, or an error that
-// holds what it wrote to stderr.
-func goIn(dir string, args ...string) ([]byte, error) {
+// goIn runs the go command in dir with env, or this process's environment
+// when env is nil, and returns its output, or an error that holds what it
+// wrote to stderr.
+func goIn(dir string, env []string, args ...string) ([]byte, error) {
 	cmd := exec.Command("go", args...)
-	cmd.Dir = dir
+	cmd.Dir, cmd.Env = dir, env
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
