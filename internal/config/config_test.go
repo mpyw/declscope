@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -180,42 +181,45 @@ func TestApplyRejectsUnknownScope(t *testing.T) {
 	}
 }
 
-func TestFind(t *testing.T) {
+func TestFindChain(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "go.mod", "module example.com/m\n")
 	write(t, root, ".declscope.yaml", "")
 	write(t, filepath.Join(root, "pkg", "sub"), "keep.go", "package sub\n")
 
-	got := config.Find(filepath.Join(root, "pkg", "sub"))
-	if want := filepath.Join(root, ".declscope.yaml"); got != want {
-		t.Errorf("Find = %q, want %q", got, want)
+	got := config.FindChain(filepath.Join(root, "pkg", "sub"))
+	if want := []string{filepath.Join(root, ".declscope.yaml")}; !slices.Equal(got, want) {
+		t.Errorf("FindChain = %q, want %q", got, want)
 	}
 }
 
-// TestFindStopsAtModuleRoot checks that a config file above the module cannot
-// silently change the module's rules.
-func TestFindStopsAtModuleRoot(t *testing.T) {
+// TestFindChainStopsAtModuleRoot checks that a config file above the module
+// cannot silently change the module's rules.
+func TestFindChainStopsAtModuleRoot(t *testing.T) {
 	outer := t.TempDir()
 	write(t, outer, ".declscope.yaml", "")
 	root := filepath.Join(outer, "m")
 	write(t, root, "go.mod", "module example.com/m\n")
 	write(t, filepath.Join(root, "pkg"), "keep.go", "package pkg\n")
 
-	if got := config.Find(filepath.Join(root, "pkg")); got != "" {
-		t.Errorf("Find = %q, want \"\"", got)
+	if got := config.FindChain(filepath.Join(root, "pkg")); len(got) != 0 {
+		t.Errorf("FindChain = %q, want none", got)
 	}
 }
 
-func TestFindPrefersNearest(t *testing.T) {
+// TestFindChainPutsNearestLast checks the order the chain is applied in: the
+// nearest file last, so its keys land on top.
+func TestFindChainPutsNearestLast(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "go.mod", "module example.com/m\n")
 	write(t, root, ".declscope.yaml", "")
 	nested := filepath.Join(root, "store")
 	write(t, nested, ".declscope.yml", "")
 
-	got := config.Find(nested)
-	if want := filepath.Join(nested, ".declscope.yml"); got != want {
-		t.Errorf("Find = %q, want %q", got, want)
+	got := config.FindChain(nested)
+	want := []string{filepath.Join(root, ".declscope.yaml"), filepath.Join(nested, ".declscope.yml")}
+	if !slices.Equal(got, want) {
+		t.Errorf("FindChain = %q, want %q", got, want)
 	}
 }
 
@@ -826,9 +830,6 @@ func TestFindWithNoDirectory(t *testing.T) {
 	write(t, dir, ".declscope.yaml", "")
 	write(t, dir, ".declscope-baseline.yaml", "")
 	t.Chdir(dir)
-	if got := config.Find(""); got != "" {
-		t.Errorf("Find(\"\") = %q, want none", got)
-	}
 	if got := config.FindBaseline(""); got != "" {
 		t.Errorf("FindBaseline(\"\") = %q, want none", got)
 	}
