@@ -320,6 +320,22 @@ func TestLoadReadsNestedWorkspace(t *testing.T) {
 	}
 }
 
+// TestCopiesOutsideTheRange pins that a copy only reaches the ranges it may
+// import into: one never scanned counts in a range holding its path alone,
+// and a copy that cannot be walked is never scanned.
+func TestCopiesOutsideTheRange(t *testing.T) {
+	m := &Module{
+		mains: []mainModule{{path: "example.com/m"}},
+		built: []builtModule{{path: "example.com/m/b/x", by: "example.com/m/b/n"}},
+	}
+	if _, why := m.Range("example.com/m/a/internal/p"); why != "" {
+		t.Errorf("why = %q, want the range judged", why)
+	}
+	if _, err := importsUnder(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Error("err = nil, want the walk's failure")
+	}
+}
+
 // TestBuildListFailures pins that a build list this run cannot read in full
 // leaves every range unjudged with the reason, rather than reading as one
 // that names no module in the range.
