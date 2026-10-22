@@ -455,8 +455,9 @@ func TestBuildListFailures(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.HasPrefix(m.unbuilt, "the nested module example.com/m/tools: reading the build list failed: ") {
-			t.Errorf("unbuilt = %q, want the nested module named", m.unbuilt)
+		// Every fix is withheld, and no range is unjudged for it.
+		if m.unbuilt != "" || !strings.HasPrefix(m.Doubt("example.com/m/internal/a"), "the build list of the nested module example.com/m/tools cannot be read, and a module it names may use it: reading the build list failed: ") {
+			t.Errorf("unbuilt = %q, doubt = %q, want every fix withheld naming the nested module", m.unbuilt, m.Doubt("example.com/m/internal/a"))
 		}
 	})
 	t.Run("Range names it", func(t *testing.T) {

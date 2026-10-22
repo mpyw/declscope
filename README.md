@@ -1342,7 +1342,7 @@ require example.com/app/gen v1.0.0
 ```
 
 </td>
-<td>Reported, with no fix for any package in the range, when a nested module builds a copy from outside the tree whose files import an internal package in the range: <code>(no fix: the build of the nested module example.com/app/tools uses example.com/app/gen from /path/to/modcache/example.com/app/gen@v1.0.0, which imports example.com/app/internal/user)</code>. Its uses are of other source. Every fix is withheld when the build list of a nested module that no internal parent covers cannot be read</td>
+<td>Reported, with no fix for any package in the range, when a nested module builds a copy from outside the tree whose files import an internal package in the range: <code>(no fix: the build of the nested module example.com/app/tools uses example.com/app/gen from /path/to/modcache/example.com/app/gen@v1.0.0, which imports example.com/app/internal/user)</code>. Its uses are of other source. Every fix is withheld when the build list of a nested module cannot be read</td>
 </tr>
 </tbody>
 </table>

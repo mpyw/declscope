@@ -68,14 +68,14 @@ type Module struct {
 	// an unrelated path cannot, wherever it sits.
 	nested []nestedModule
 	// built is every module of the main modules' build list, and of each
-	// loaded nested module's, other than a main module, whose path lies in a
-	// main module's: a module that may import their internal packages from
-	// wherever the build reads it. unbuilt says why a build list could not be
-	// read, or is empty.
+	// nested module's, other than a main module, whose path lies in a main
+	// module's: a module that may import their internal packages from
+	// wherever the build reads it. unbuilt says why the main modules' build
+	// list could not be read, or is empty.
 	built   []builtModule
 	unbuilt string
 	// doubtAll says why every fix is withheld, or is empty: the build list of
-	// a nested module this run does not load could not be read.
+	// a nested module could not be read.
 	doubtAll string
 }
 
@@ -236,18 +236,16 @@ func (m *Module) loadImporters(mode packages.LoadMode) {
 	}
 	wg.Wait()
 	for i, l := range slots {
-		if !m.covers(m.nested[i].path) {
-			m.built = append(m.built, l.built...)
-			if l.unbuilt != "" && m.doubtAll == "" {
-				m.doubtAll = fmt.Sprintf("the build list of the nested module %s cannot be read, and a module it names may use it: %s", m.nested[i].path, l.unbuilt)
-			}
-			continue
-		}
 		// The build list counts even when the load failed: a module it names
-		// may lie in a range the nested module's own path does not.
+		// may lie in a range the nested module's own path does not. One that
+		// cannot be read withholds every fix, rather than unjudging every
+		// range: a single broken fixture would silence the whole run.
 		m.built = append(m.built, l.built...)
-		if l.unbuilt != "" && m.unbuilt == "" {
-			m.unbuilt = fmt.Sprintf("the nested module %s: %s", m.nested[i].path, l.unbuilt)
+		if l.unbuilt != "" && m.doubtAll == "" {
+			m.doubtAll = fmt.Sprintf("the build list of the nested module %s cannot be read, and a module it names may use it: %s", m.nested[i].path, l.unbuilt)
+		}
+		if !m.covers(m.nested[i].path) {
+			continue
 		}
 		m.nested[i].why = l.why
 		if l.why != "" {
@@ -348,7 +346,7 @@ func (m *Module) nestedEnv(n nestedModule) ([]string, error) {
 func (m *Module) loadImporter(n nestedModule, mode packages.LoadMode) loaded {
 	env, err := m.nestedEnv(n)
 	if err != nil {
-		// Its build list is unknown too, so it unjudges every range.
+		// Its build list is unknown too, so it withholds every fix.
 		return loaded{why: err.Error(), unbuilt: err.Error()}
 	}
 	var l loaded
