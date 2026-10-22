@@ -1429,7 +1429,7 @@ $ declscope shrink ./internal/user/testdata/fixture
 
 An interface's method names, and the test functions of a `_test.go` file, are never reported either. Every implementation would rename too, and `go test` finds a test by name.
 
-A package that does not type-check refuses the whole run, since it would show no uses at all.
+A package that does not type-check refuses the whole run, since it would show no uses at all. So does a package that imports one that does not, directly or not.
 
 </details>
 
@@ -1514,7 +1514,7 @@ That is one package of this repository. A codebase adopting declscope has number
 
 - **The state of the checks comes first**, because a count means nothing without it. A zero from a rule that was off, a package that did not compile, or a baseline that absorbed everything looks like a zero from clean code.
 - A rule prints `-` rather than `0` where it was not asked. It may be switched off, or it may stand itself down, as `surplus` does for a package with a file it cannot read.
-- A package that does not type-check stops the run. `-allow-errors` continues: `type check` counts the failures, and a list under the Checks table names each package with its first error.
+- A package that does not type-check stops the run, and so does a package that imports one, directly or not. `-allow-errors` continues: `type check` counts the failures, and a list under the Checks table names each package with its first error. For a package whose dependency failed, the list names that dependency and its error.
 - So does a run whose patterns match no package. A pattern that matches nothing beside others that do gets a warning. `inspect` does the same.
 - Rows are ordered by how much is outstanding: undecided, reported and baselined together. `largest crossing` names where it is concentrated.
 
