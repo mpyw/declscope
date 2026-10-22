@@ -21,6 +21,7 @@ import (
 	"go/types"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -397,6 +398,16 @@ type unseenFiles struct {
 	//
 	//declscope:shared // rename.go and scopesite.go check names against it; surplus.go defers on any
 	names map[string]bool
+
+	// nonGo is whether the package holds a source file that is not Go, in
+	// this build or in another (nonGoBlocksRename). It is read from the
+	// folder, since the drivers list such files differently: go/packages
+	// puts .h and .syso files in OtherFiles, and go vet passes only .s and
+	// .c files, and none in a cgo package. It is set before the scan, so it
+	// holds even when all is set.
+	//
+	//declscope:shared // rename.go reads it through nonGoBlocksRename
+	nonGo bool
 }
 
 // unseen scans the package directory, once per pass. It lives here rather
@@ -431,11 +442,14 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 		}
 		inPass[name] = true
 		holdsTests = holdsTests || strings.HasSuffix(name, "_test.go")
-		// The directory is taken from a source file. A file the go command
-		// produced lives in the build cache, named without the .go
-		// extension: cgo's output, which go list puts after the plain
-		// files, and the whole of a synthesized test main. That folder
-		// holds thousands of cache entries and none of the package's files.
+		// The directory is taken from a source file. Under go/packages, a
+		// file the go command produced lives in the build cache, named
+		// without the .go extension: cgo's output, which go list puts after
+		// the plain files, and the whole of a synthesized test main. That
+		// folder holds thousands of cache entries and none of the package's
+		// files. Under go vet, cgo's output does end in .go
+		// ($WORK/b001/x.cgo1.go), but vet also puts it after the plain
+		// files, and never analyzes a test main.
 		if dir == "" && filepath.Ext(name) == ".go" {
 			dir = filepath.Dir(name)
 		}
@@ -446,9 +460,14 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 	for _, name := range pass.IgnoredFiles {
 		ignored[name] = true
 	}
+	// The driver's lists are read as well as the folder, which holds every
+	// file they name.
+	u.nonGo = len(pass.OtherFiles) > 0 || slices.ContainsFunc(pass.IgnoredFiles, func(f string) bool { return !strings.HasSuffix(f, ".go") })
 	// No source file: a test main, or a package whose every file uses cgo.
-	// Each file is then generated and collects nothing, so no rename,
-	// directive or ignore of this pass waits on the answer.
+	// Under go vet, such a package takes the directory of cgo's output
+	// instead: the work folder of its own build, which is small. Either way
+	// each file is generated and collects nothing, so no rename, directive or
+	// ignore of this pass waits on the answer.
 	if dir == "" {
 		return u
 	}
@@ -457,6 +476,8 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 		u.all = true
 		return u
 	}
+	// Before the scan, which stops early: the answer needs every entry.
+	u.nonGo = u.nonGo || slices.ContainsFunc(entries, func(e os.DirEntry) bool { return !e.IsDir() && nonGoExts[filepath.Ext(e.Name())] })
 	fset := token.NewFileSet()
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") {
@@ -505,6 +526,19 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 		})
 	}
 	return u
+}
+
+// nonGoExts is every extension other than .go that the go command builds a
+// file of: the files go list reports in OtherFiles, or in IgnoredOtherFiles
+// for another target. A README or a go.sum blocks nothing.
+//
+//declscope:private // only unseen reads it
+var nonGoExts = map[string]bool{
+	".c": true, ".cc": true, ".cxx": true, ".cpp": true, ".m": true,
+	".h": true, ".hh": true, ".hpp": true, ".hxx": true,
+	".f": true, ".F": true, ".for": true, ".f90": true,
+	".s": true, ".S": true, ".sx": true,
+	".swig": true, ".swigcxx": true, ".syso": true,
 }
 
 // linknamed returns every local name bound by a //go:linkname or //export

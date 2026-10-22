@@ -228,7 +228,7 @@ func (c *collection) surplusSeesEveryFile(pass *analysis.Pass) bool {
 	if u := c.unseen(pass); u.all || len(u.names) > 0 {
 		return false
 	}
-	if nonGoBlocksRename(pass) {
+	if c.nonGoBlocksRename(pass) {
 		return false
 	}
 	for _, f := range pass.Files {
