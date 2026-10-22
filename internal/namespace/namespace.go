@@ -399,6 +399,12 @@ func isVowel(r rune) bool {
 // camelCase identifier. An initialism counts as one word, so the P of APIParser
 // opens a word while the I of API does not: inside a run of capitals, only the
 // last one does, and only because a lowercase rune follows it.
+//
+// A plural initialism is one word too, as lowerLeading reads it: when the run
+// up to that capital is an initialism and an s that ends the word follows it,
+// the capital stays inside the run. Opening a word at the L of fetchURLs found
+// ls.go's namespace there but not in fetchUrls, and shrink's rename of URLs to
+// urls then lost a namespace the name had carried.
 func wordStart(name string, i int) bool {
 	if i == 0 {
 		return true
@@ -414,8 +420,26 @@ func wordStart(name string, i int) bool {
 	if !unicode.IsUpper(prev) {
 		return true
 	}
-	next, _ := utf8.DecodeRuneInString(name[i+size:])
-	return unicode.IsLower(next)
+	next, nextSize := utf8.DecodeRuneInString(name[i+size:])
+	if !unicode.IsLower(next) {
+		return false
+	}
+	if next == 's' {
+		after, _ := utf8.DecodeRuneInString(name[i+size+nextSize:])
+		start := i
+		for start > 0 {
+			c, cSize := utf8.DecodeLastRuneInString(name[:start])
+			if !unicode.IsUpper(c) {
+				break
+			}
+			start -= cSize
+		}
+		if !unicode.IsLower(after) && isInitialism(name[start:i+size]) {
+			// URLs, UIDsCache: the s closes the initialism's plural.
+			return false
+		}
+	}
+	return true
 }
 
 // Declared is what one file of a package states about its namespace: its
