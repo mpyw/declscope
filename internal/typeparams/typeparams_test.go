@@ -9,11 +9,14 @@
 package typeparams
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"go/types"
+	"math/rand/v2"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -290,6 +293,103 @@ func TestTerms(t *testing.T) {
 	if l := (termlist{}).intersect(allTermlist); l != nil {
 		t.Errorf("∅ ∩ 𝓤 = %d terms", len(l))
 	}
+}
+
+// TestUnionAsNorm pins union, which inserts terms where x/tools normalizes
+// the appended list again, against that list on random terms: the same set,
+// in normal form, and never more terms. Each term is checked one at a time,
+// as a union of plain terms grows, and as a list, as an interface term adds
+// its own.
+func TestUnionAsNorm(t *testing.T) {
+	named := func(name string, under types.Type) types.Type {
+		return types.NewNamed(types.NewTypeName(token.NoPos, nil, name, nil), under, nil)
+	}
+	myInt, myInt2, myString := named("myInt", types.Typ[types.Int]), named("myInt2", types.Typ[types.Int]), named("myString", types.Typ[types.String])
+	pool := []*term{
+		nil, {},
+		{false, types.Typ[types.Int]}, {true, types.Typ[types.Int]},
+		{false, types.Typ[types.String]}, {true, types.Typ[types.String]},
+		{false, myInt}, {false, myInt2}, {false, myString},
+	}
+	// The probes tell every set the pool builds apart: myInt3 is in ~int
+	// alone, and float64 is in 𝓤 alone.
+	probes := []types.Type{types.Typ[types.Int], types.Typ[types.String], types.Typ[types.Float64], myInt, myInt2, myString, named("myInt3", types.Typ[types.Int])}
+	holds := func(l termlist, typ types.Type) bool {
+		return slices.ContainsFunc(l, func(x *term) bool {
+			return x != nil && (x.typ == nil || !x.disjoint(&term{false, typ}))
+		})
+	}
+	check := func(t *testing.T, xl, yl termlist) termlist {
+		t.Helper()
+		got, want := xl.union(yl), append(slices.Clone(xl), yl...).norm()
+		for _, p := range probes {
+			if holds(got, p) != holds(want, p) {
+				t.Fatalf("%s ∪ %s holds %s: %v, norm: %v", termsName(xl), termsName(yl), p, holds(got, p), holds(want, p))
+			}
+		}
+		for i, x := range got {
+			if x == nil || (x.typ == nil && len(got) > 1) || slices.ContainsFunc(got[i+1:], func(y *term) bool { return y == nil || y.typ == nil || !x.disjoint(y) }) {
+				t.Fatalf("%s ∪ %s = %s, not in normal form", termsName(xl), termsName(yl), termsName(got))
+			}
+		}
+		if len(got) > len(want) {
+			t.Fatalf("%s ∪ %s = %s, longer than norm's %s", termsName(xl), termsName(yl), termsName(got), termsName(want))
+		}
+		return got
+	}
+	rng := rand.New(rand.NewPCG(1, 1))
+	pick := func() *term { return pool[rng.IntN(len(pool))] }
+	for range 20000 {
+		var xl termlist
+		for range rng.IntN(8) {
+			xl = check(t, xl, termlist{pick()})
+		}
+		yl := make(termlist, rng.IntN(5))
+		for i := range yl {
+			yl[i] = pick()
+		}
+		check(t, xl, yl)
+	}
+	// norm keeps myInt, which the ~int after it covers.
+	if l := (termlist{pool[2], pool[6], pool[3]}).norm(); len(l) != 2 {
+		t.Errorf("norm(int | myInt | ~int) = %s, want two terms", termsName(l))
+	}
+	if l := (termlist{pool[2], pool[6]}).union(termlist{pool[3]}); len(l) != 1 {
+		t.Errorf("int | myInt ∪ ~int = %s, want ~int", termsName(l))
+	}
+}
+
+// BenchmarkUnion computes the type set of one union of 99 structs, written
+// inline, as in each function of #339's stress.
+func BenchmarkUnion(b *testing.B) {
+	var terms []*types.Term
+	for i := range 99 {
+		st := types.NewStruct([]*types.Var{types.NewField(token.NoPos, nil, "A", types.Typ[types.Int], false)}, nil)
+		terms = append(terms, types.NewTerm(false, types.NewNamed(types.NewTypeName(token.NoPos, nil, fmt.Sprintf("S%d", i), nil), st, nil)))
+	}
+	iface := types.NewInterfaceType(nil, []types.Type{types.NewUnion(terms)})
+	for b.Loop() {
+		if got, err := NormalTerms(iface); err != nil || len(got) != len(terms) {
+			b.Fatalf("NormalTerms = %d terms, %v", len(got), err)
+		}
+	}
+}
+
+func termsName(l termlist) string {
+	var names []string
+	for _, x := range l {
+		switch {
+		case x == nil:
+			names = append(names, "∅")
+		case x.typ == nil:
+			names = append(names, "𝓤")
+		case x.tilde:
+			names = append(names, "~"+x.typ.String())
+		default:
+			names = append(names, x.typ.String())
+		}
+	}
+	return "[" + strings.Join(names, " | ") + "]"
 }
 
 func termName(terms map[string]*term, x *term) string {

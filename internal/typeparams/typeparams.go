@@ -45,6 +45,11 @@
 //     pointer core type.
 //   - A check no type can meet is left out, where computeTermSetInternal
 //     reads an embedded type.
+//   - termlist.union inserts each term into a list already in normal form,
+//     instead of normalizing the whole list again. A union of n terms costs
+//     n² instead of n³. The set is the same. The order of its terms can
+//     differ, and where norm keeps a term a later one covers, as myInt in
+//     int | myInt | ~int, union drops it, so the list is never longer.
 //   - The term and termlist operations NormalTerms does not call, and the
 //     String methods only the tracing used, are left out.
 package typeparams
@@ -319,9 +324,43 @@ func (xl termlist) norm() termlist {
 	return rl
 }
 
-// union returns the union xl ∪ yl.
+// union returns the union xl ∪ yl, in normal form. xl must be in normal form.
+// x/tools appends yl and normalizes the whole list again, which costs n² for
+// each union and n³ for a union of n terms. This inserts each term of yl
+// instead, in linear time.
 func (xl termlist) union(yl termlist) termlist {
-	return append(xl, yl...).norm()
+	for _, y := range yl {
+		xl = xl.insert(y)
+	}
+	return xl
+}
+
+// insert returns xl ∪ {y}, in normal form, for xl in normal form. y joins
+// the first term x it overlaps. The term they make is x or y, so it is
+// disjoint from the terms before x, which y does not overlap. It may take in
+// terms after x: int | myInt joined with ~int is ~int. It does not grow by
+// taking them in, so one pass is enough. xl is left as it was.
+func (xl termlist) insert(y *term) termlist {
+	if y == nil {
+		return xl
+	}
+	for i, x := range xl {
+		joined, apart := x.union(y)
+		if apart != nil {
+			continue
+		}
+		if joined.typ == nil {
+			return allTermlist
+		}
+		out := append(xl[:i:i], joined)
+		for _, z := range xl[i+1:] {
+			if _, apart := joined.union(z); apart != nil {
+				out = append(out, z)
+			}
+		}
+		return out
+	}
+	return append(xl[:len(xl):len(xl)], y)
 }
 
 // intersect returns the intersection xl ∩ yl.

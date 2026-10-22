@@ -14,9 +14,12 @@ import (
 
 // Sets holds the type set of each type parameter asked about, for one pass.
 // A constraint is a tree of interfaces, and every literal and conversion of a
-// type parameter would otherwise walk it again. The zero value is ready.
+// type parameter would otherwise walk it again. The set is keyed by the
+// constraint, since it reads nothing else of the type parameter, so every
+// type parameter constrained by one C shares one computation. The zero value
+// is ready.
 type Sets struct {
-	byParam map[*types.TypeParam]paramSet
+	byConstraint map[types.Type]paramSet
 }
 
 // paramSet is the type set of one type parameter. When it could not be
@@ -137,20 +140,25 @@ func (s *Sets) terms(t types.Type, known *bool) []types.Type {
 	return out
 }
 
-// of returns the type set of tp, computed once per pass.
+// of returns the type set of tp, computed once per constraint for a pass.
+// NormalTerms and writtenTerms read only the constraint. go/types gives a
+// receiver's type parameter the constraint of the type's own when it names no
+// type parameter, and a substituted copy when it does, as in ~[]T. It shares
+// the instances of a generic constraint, G[int], and keeps G[string] apart.
 func (s *Sets) of(tp *types.TypeParam) paramSet {
-	if set, ok := s.byParam[tp]; ok {
+	constraint := tp.Constraint()
+	if set, ok := s.byConstraint[constraint]; ok {
 		return set
 	}
-	if s.byParam == nil {
-		s.byParam = map[*types.TypeParam]paramSet{}
+	if s.byConstraint == nil {
+		s.byConstraint = map[types.Type]paramSet{}
 	}
 	terms, err := typeparams.NormalTerms(tp)
-	written := writtenTerms(tp.Constraint(), map[types.Type]bool{})
+	written := writtenTerms(constraint, map[types.Type]bool{})
 	set := paramSet{terms: terms, known: err == nil}
 	if err != nil {
 		set.terms = written
-		s.byParam[tp] = set
+		s.byConstraint[constraint] = set
 		return set
 	}
 	// A term a tilde term absorbed still counts. The normal form of
@@ -168,7 +176,7 @@ func (s *Sets) of(tp *types.TypeParam) paramSet {
 			set.terms = append(set.terms, w)
 		}
 	}
-	s.byParam[tp] = set
+	s.byConstraint[constraint] = set
 	return set
 }
 

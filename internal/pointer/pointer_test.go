@@ -326,3 +326,50 @@ func TestLeftOut(t *testing.T) {
 		t.Errorf("Literal(*P) = %v, %v, with P allowing only *S", got, exact)
 	}
 }
+
+// BenchmarkSharedUnion reads the literals of 600 type parameters, three in
+// each of 200 functions, all constrained by one union of 99 structs (#339).
+// The set is computed once for the constraint, not once per type parameter,
+// and the union grows by inserting each term. The package is type-checked
+// once, outside the loop.
+func BenchmarkSharedUnion(b *testing.B) {
+	const structs, funcs, params = 99, 200, 3
+	var src strings.Builder
+	src.WriteString("package p\n\n")
+	union := make([]string, structs)
+	for i := range structs {
+		fmt.Fprintf(&src, "type S%d struct{ A, B int }\n", i)
+		union[i] = fmt.Sprintf("S%d", i)
+	}
+	fmt.Fprintf(&src, "\ntype C interface{ %s }\n\n", strings.Join(union, " | "))
+	for i := range funcs {
+		fmt.Fprintf(&src, "func G%d[P0, P1, P2 C]() {}\n", i)
+	}
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "p.go", src.String(), 0)
+	if err != nil {
+		b.Fatal(err)
+	}
+	pkg, err := (&types.Config{}).Check("example.com/p", fset, []*ast.File{f}, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	var tparams []types.Type
+	for i := range funcs {
+		sig := pkg.Scope().Lookup(fmt.Sprintf("G%d", i)).Type().(*types.Signature)
+		for tp := range sig.TypeParams().TypeParams() {
+			tparams = append(tparams, tp)
+		}
+	}
+	if len(tparams) != funcs*params {
+		b.Fatalf("got %d type parameters", len(tparams))
+	}
+	for b.Loop() {
+		var sets pointer.Sets
+		for _, tp := range tparams {
+			if got, exact := sets.Literal(tp); len(got) != structs || !exact {
+				b.Fatalf("Literal(%s) = %d structs, exact %v", tp, len(got), exact)
+			}
+		}
+	}
+}
