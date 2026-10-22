@@ -302,6 +302,14 @@ func TestCoreGOOSSibling(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "coregoossibling")
 }
 
+// TestUncapitalizableNamespace checks that a namespace whose first letter has
+// no capital form, such as 用户 or _foo, gets no naming diagnostic. Qualify
+// could not keep an exported name exported with it, so the advice unexported
+// the name.
+func TestUncapitalizableNamespace(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "uncapitalizable")
+}
+
 // TestFileScope checks a file-level scope directive: a default for what the file
 // declares, which a declaration may still narrow back. Under the ignore this
 // replaces, the narrowing would have meant nothing.

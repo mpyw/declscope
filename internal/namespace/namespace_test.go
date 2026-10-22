@@ -126,7 +126,9 @@ func TestCanPrefix(t *testing.T) {
 		{"http2", true},
 		// A keyword still starts an identifier: structHelper is one.
 		{"struct", true},
-		{"_shadow", true},
+		{"äpfel", true},
+		// A titlecase letter is not exported, but its capital is.
+		{"\u01c5x", true},
 
 		// Nothing can be prepended to these and yield an unexported
 		// identifier.
@@ -135,6 +137,12 @@ func TestCanPrefix(t *testing.T) {
 		{"Foo", false},
 		{"foo-bar", false},
 		{"foo.bar", false},
+		// The first letter has no capital form, so an exported name could
+		// not take the prefix and stay exported.
+		{"_shadow", false},
+		{"用户", false},
+		// Its capital form is titlecase, which does not export a name either.
+		{"\u1f80x", false},
 	}
 	for _, tt := range tests {
 		if got := CanPrefix(tt.ns); got != tt.want {
@@ -175,6 +183,8 @@ func TestQualify(t *testing.T) {
 		// A namespace that cannot be a prefix leaves the name unchanged.
 		{"helper", "2faAuth", "helper"},
 		{"helper", "Foo", "helper"},
+		{"Load", "用户", "Load"},
+		{"Save", "_foo", "Save"},
 
 		// An exported name keeps its exportedness, so the prefix is raised.
 		{"Load", "user", "UserLoad"},

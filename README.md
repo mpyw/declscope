@@ -650,7 +650,7 @@ A **namespace** is the unit within which a `private` declaration may be used. By
 | `user_id.go`, `user_ids.go`, `parse_json.go` | `userID`, `userIDs`, `parseJSON`. An initialism, or its plural, is spelled the way Go spells it |
 | `foo-bar.go`, `Foo.go` | `fooBar`, `foo`. Any separator, and a PascalCase stem, become lowerCamelCase |
 | `HTTPServer.go`, `URLs.go`, `IPv4.go` | `httpServer`, `urls`, `ipv4`. A leading initialism is lowered the way Go lowers one |
-| `2fa_auth.go` | `2faAuth`. A valid namespace, but never a prefix |
+| `2fa_auth.go`, `用户.go` | `2faAuth`, `用户`. Valid namespaces, but never a prefix: the first character must be a letter with a capital form |
 
 The namespace comes *from* the file name and is not equal to it. So you can rename a file without renaming what it declares.
 
@@ -938,7 +938,7 @@ func verify() bool { return true }
 ```
 
 </td>
-<td>The fix prefixes, and no identifier begins with a digit</td>
+<td>The fix prefixes, and no identifier begins with a digit. A namespace whose first letter has no capital form, such as <code>用户</code> or <code>_foo</code>, is skipped too: an exported name could not take it and stay exported</td>
 </tr>
 <tr>
 <td>An exported identifier, unless <code>rules.naming.exported</code> is on</td>
