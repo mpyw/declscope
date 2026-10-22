@@ -244,7 +244,6 @@ func parse(path string, data []byte) (*Set, error) {
 // twice, and only one of them lands in the file.
 func Save(path string, keys []Key) (int, error) {
 	f := file{Packages: map[string]map[string]map[string][]string{}}
-	n := 0
 	for _, k := range keys {
 		rules, ok := f.Packages[k.Package]
 		if !ok {
@@ -257,15 +256,19 @@ func Save(path string, keys []Key) (int, error) {
 			spaces = map[string][]string{}
 			rules[name] = spaces
 		}
-		if !slices.Contains(spaces[k.Namespace], k.Decl) {
-			spaces[k.Namespace] = append(spaces[k.Namespace], k.Decl)
-			n++
-		}
+		spaces[k.Namespace] = append(spaces[k.Namespace], k.Decl)
 	}
+	// Duplicates are removed after sorting rather than looked up on the way
+	// in: -merge hands over whole files, and a linear lookup per key is
+	// quadratic in a namespace's size.
+	n := 0
 	for _, rules := range f.Packages {
 		for _, spaces := range rules {
-			for ns := range spaces {
-				slices.Sort(spaces[ns])
+			for ns, decls := range spaces {
+				slices.Sort(decls)
+				decls = slices.Compact(decls)
+				spaces[ns] = decls
+				n += len(decls)
 			}
 		}
 	}
