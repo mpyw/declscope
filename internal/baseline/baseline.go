@@ -202,6 +202,20 @@ var (
 	loadedFiles = map[string]*loadedFile{}
 )
 
+// ParseError is a baseline file that was read but does not parse. The
+// caller that wants to word it apart from a file that cannot be read, as
+// declscope baseline -merge does, tells the two apart by this type.
+type ParseError struct {
+	Path string
+	Err  error
+}
+
+func (e *ParseError) Error() string {
+	return fmt.Sprintf("%s: %v (regenerate it with `declscope baseline ./...`)", e.Path, e.Err)
+}
+
+func (e *ParseError) Unwrap() error { return e.Err }
+
 func parse(path string, data []byte) (*Set, error) {
 	var f file
 	dec := yaml.NewDecoder(bytes.NewReader(data))
@@ -209,7 +223,7 @@ func parse(path string, data []byte) (*Set, error) {
 	if err := dec.Decode(&f); err != nil && err != io.EOF {
 		// A baseline is generated, never written by hand, so anything that
 		// fails to parse is answered the same way: generate it again.
-		return nil, fmt.Errorf("%s: %w (regenerate it with `declscope baseline ./...`)", path, err)
+		return nil, &ParseError{Path: path, Err: err}
 	}
 	s := &Set{keys: map[Key]bool{}}
 	for pkg, rules := range f.Packages {
