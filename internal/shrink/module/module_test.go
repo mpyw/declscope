@@ -459,6 +459,88 @@ func TestUntidyNestedGoMod(t *testing.T) {
 	}
 }
 
+// TestHolds pins which module may hold a package in the tree at
+// example.com/m/x/y: one whose path lies inside the tree, and one whose path
+// lies above it whose directory has y outside any nested module, or whose
+// directory is unknown.
+func TestHolds(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"has/y/z.go", "nested/y/go.mod", "deep/y/sub/go.mod"} {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const parent = "example.com/m/x/y"
+	for _, tc := range []struct {
+		name, path, dir string
+		want            bool
+	}{
+		{"the tree itself", "example.com/m/x/y", "", true},
+		{"inside the tree", "example.com/m/x/y/z", filepath.Join(dir, "missing"), true},
+		{"unrelated", "example.com/m/w", filepath.Join(dir, "has"), false},
+		{"above, with no directory", "example.com/m/x", "", true},
+		{"above, holding the tree's directory", "example.com/m/x", filepath.Join(dir, "has"), true},
+		{"above, without the tree's directory", "example.com/m/x", filepath.Join(dir, "missing"), false},
+		{"above, the directory a nested module", "example.com/m/x", filepath.Join(dir, "nested"), false},
+		{"above, the directory holding a nested module", "example.com/m/x", filepath.Join(dir, "deep"), true},
+	} {
+		if got := holds(tc.path, tc.dir, parent); got != tc.want {
+			t.Errorf("%s: holds(%q, %q) = %v, want %v", tc.name, tc.path, tc.dir, got, tc.want)
+		}
+	}
+	t.Run("above, the directory cannot be read", func(t *testing.T) {
+		if os.Getuid() == 0 {
+			t.Skip("root reads every directory")
+		}
+		locked := filepath.Join(dir, "locked")
+		if err := os.MkdirAll(filepath.Join(locked, "y"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(locked, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+		if !holds("example.com/m/x", locked, parent) {
+			t.Error("holds = false, want true: nothing shows the directory is not there")
+		}
+	})
+}
+
+// TestBuildListAboveTheMainModule pins that a module of the main module's
+// build list whose path lies above the main module's leaves the range
+// unjudged when its copy holds the range's directory: example.com, read from
+// ../out, holds example.com/m/q, which imports example.com/m/internal/foo.
+func TestBuildListAboveTheMainModule(t *testing.T) {
+	root := t.TempDir()
+	for name, body := range map[string]string{
+		"m/go.mod":            "module example.com/m\n\ngo 1.24\n\nrequire example.com v0.0.0\n\nreplace example.com => ../out\n",
+		"m/internal/foo/f.go": "package foo\n\nfunc Hello() string { return \"hi\" }\n",
+		"m/cmd/app/main.go":   "package main\n\nimport \"example.com/m/q\"\n\nfunc main() { println(q.V) }\n",
+		"out/go.mod":          "module example.com\n\ngo 1.24\n",
+		"out/m/q/q.go":        "package q\n\nimport \"example.com/m/internal/foo\"\n\nvar V = foo.Hello()\n",
+	} {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m, err := Load(filepath.Join(root, "m"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "the build uses example.com from " + filepath.Join(root, "out")
+	if _, why := m.Range("example.com/m/internal/foo"); why != want {
+		t.Errorf("why = %q, want %q", why, want)
+	}
+}
+
 // TestCopiesOutsideTheRange pins that a copy only reaches the ranges it may
 // import into: one never scanned counts in a range holding its path alone, a
 // package outside internal/ has no range to doubt, and a copy that cannot be

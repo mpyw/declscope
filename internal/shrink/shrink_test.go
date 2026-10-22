@@ -203,6 +203,12 @@ func TestShrinkNestedModuleUses(t *testing.T) {
 // types.
 func TestShrinkNestedModuleExcluded(t *testing.T) { shrinkCheck(t, "testdata/nested-module-excluded") }
 
+// TestShrinkNestedModuleAbove pins that a nested module whose path lies above
+// an internal/ parent is loaded too: tools is example.com/nan/x, and its
+// package example.com/nan/x/y/z may import example.com/nan/x/y/internal/foo.
+// Its use of foo.Hello counts, and foo.Bye is judged.
+func TestShrinkNestedModuleAbove(t *testing.T) { shrinkCheck(t, "testdata/nested-module-above") }
+
 // TestShrinkNestedModuleElsewhere pins that a nested module reading the
 // module from another directory leaves the range unjudged, and says where
 // it reads it from.
@@ -450,7 +456,7 @@ func TestShrinkRenamesDoc(t *testing.T) {
 func TestShrinkConverges(t *testing.T) {
 	// A name with a slash is a module inside the copied directory, beside
 	// what it reads from outside its tree.
-	for _, name := range []string{"uses", "escapes", "fix-withheld", "rename-guards", "ignores", "module-under-internal", "nested-module-uses", "nested-module-excluded", "nested-build-list/m", "const-sets", "typeparam-sets"} {
+	for _, name := range []string{"uses", "escapes", "fix-withheld", "rename-guards", "ignores", "module-under-internal", "nested-module-uses", "nested-module-excluded", "nested-build-list/m", "nested-module-above", "const-sets", "typeparam-sets"} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			copied, sub, _ := strings.Cut(name, "/")

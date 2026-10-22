@@ -518,8 +518,43 @@ func (m *Module) inModules(path string) bool {
 func (m *Module) covers(path string) bool {
 	return slices.ContainsFunc(m.Paths, func(p string) bool {
 		parent, ok := InternalParent(p)
-		return ok && (path == parent || strings.HasPrefix(path, parent+"/"))
+		return ok && overlaps(path, parent)
 	})
+}
+
+// overlaps reports whether a module at path may hold a package in the tree
+// at parent, by path alone: its path lies inside the tree, or the tree lies
+// inside its path. A module example.com/m/x holds example.com/m/x/y/z, which
+// may import example.com/m/x/y/internal/foo.
+func overlaps(path, parent string) bool {
+	return path == parent || strings.HasPrefix(path, parent+"/") || strings.HasPrefix(parent, path+"/")
+}
+
+// holds reports whether the module at path, read from dir, may hold a package
+// in the tree at parent. One whose path lies inside the tree does. One whose
+// path lies above it does only when dir holds the tree's directory outside
+// any nested module, since Go gives a package to the module with the longest
+// path that has it: a published golang.org/x/tools holds no gopls directory.
+// One whose dir is unknown may hold anything its path allows.
+func holds(path, dir, parent string) bool {
+	if !overlaps(path, parent) {
+		return false
+	}
+	rel, above := strings.CutPrefix(parent, path+"/")
+	if !above || dir == "" {
+		return true
+	}
+	sub := filepath.Join(dir, filepath.FromSlash(rel))
+	for d := sub; len(d) > len(dir); d = filepath.Dir(d) {
+		if _, err := os.Stat(filepath.Join(d, "go.mod")); err == nil {
+			return false
+		}
+	}
+	info, err := os.Stat(sub)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false
+	}
+	return err != nil || info.IsDir()
 }
 
 // elsewhere returns where a nested module's load read p, a main module's
@@ -593,9 +628,8 @@ func (m *Module) Range(path string) (parent, why string) {
 	if owner := m.owner(path); parent != owner.path && !strings.HasPrefix(parent, owner.path+"/") {
 		return "", fmt.Sprintf("its internal/ parent %s lies above the module %s", parent, owner.path)
 	}
-	inside := func(path string) bool { return path == parent || strings.HasPrefix(path, parent+"/") }
 	for _, n := range m.nested {
-		if n.why != "" && inside(n.path) {
+		if n.why != "" && holds(n.path, n.dir, parent) {
 			return "", fmt.Sprintf("the nested module %s may import it, and %s", n.path, n.why)
 		}
 	}
@@ -603,7 +637,7 @@ func (m *Module) Range(path string) (parent, why string) {
 		return "", m.unbuilt
 	}
 	for _, b := range m.built {
-		if b.by == "" && inside(b.path) && !m.loadedFrom(b) {
+		if b.by == "" && holds(b.path, b.dir, parent) && !m.loadedFrom(b) {
 			return "", fmt.Sprintf("the build uses %s from %s", b.path, cmp.Or(b.dir, b.path+"@"+b.version))
 		}
 	}
@@ -633,7 +667,7 @@ func (m *Module) Doubt(path string) string {
 		}
 		build := fmt.Sprintf("the build of the nested module %s uses %s from %s", b.by, b.path, cmp.Or(b.dir, b.path+"@"+b.version))
 		if !b.scanned {
-			if inside(b.path) {
+			if holds(b.path, b.dir, parent) {
 				return build
 			}
 			continue
@@ -756,8 +790,10 @@ func (m *Module) loadedFrom(b builtModule) bool {
 // command computes no list at all, and vendor/modules.txt names every module
 // the build reads instead.
 func buildList(dir, root string, env []string, mains []mainModule, pruned bool) ([]builtModule, string) {
+	// inMain also keeps a module whose path lies above a main module's: it
+	// may hold a package below that path too (holds).
 	inMain := func(path string) bool {
-		return slices.ContainsFunc(mains, func(mm mainModule) bool { return strings.HasPrefix(path, mm.path+"/") })
+		return slices.ContainsFunc(mains, func(mm mainModule) bool { return path != mm.path && overlaps(path, mm.path) })
 	}
 	isMain := func(path string) bool {
 		return slices.ContainsFunc(mains, func(mm mainModule) bool { return path == mm.path })
