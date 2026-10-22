@@ -240,6 +240,18 @@ func TestContainsCases(t *testing.T) {
 		// The namespace does not appear at all.
 		{"Wrap", "client", false},
 		{"nounSecret", "command", false},
+		// A plural initialism is one word, so its last capital and s do not
+		// spell a short namespace.
+		{"fetchURLs", "ls", false},
+		{"URLs", "ls", false},
+		{"userIDs2", "ds", false},
+		{"UIDsCache", "ds", false},
+		{"fetchURLs", "urls", true},
+		{"UIDsCache", "cache", true},
+		// But a word opened by the last capital still is one.
+		{"URLSet", "set", true},
+		{"APIServer", "server", true},
+		{"IDStore", "store", true},
 		// Accepted as the price of anchoring only the left edge. Intended.
 		{"models", "mode", true},
 		// The core namespace has no name, so no name carries it.
@@ -331,6 +343,42 @@ func TestUnexported(t *testing.T) {
 	for _, in := range []string{"MAX_RETRIES", "Foo_bar"} {
 		if got, ok := Unexported(in); ok {
 			t.Errorf("Unexported(%q) = %q, want no spelling", in, got)
+		}
+	}
+}
+
+// TestPluralInitialismIsOneWord generates names that spell a common
+// initialism, singular and plural, at every position, and checks them
+// against short namespaces such as ls.go's and ds.go's. wordStart opened a
+// word at the last capital of URLs, so ls was found in fetchURLs but not in
+// fetchUrls, and shrink renamed an exported URLs that carried ls to urls,
+// which does not.
+func TestPluralInitialismIsOneWord(t *testing.T) {
+	var namespaces []string
+	for r := 'a'; r <= 'z'; r++ {
+		namespaces = append(namespaces, string(r), string(r)+"s")
+	}
+	var names []string
+	for word := range commonInitialisms {
+		for _, w := range []string{word, word + "s"} {
+			names = append(names,
+				w, w+"Cache", w+"2", "Fetch"+w, "Fetch"+w+"Cache", "Fetch"+w+"2",
+				"fetch"+w, "fetch"+w+"Cache", "fetch"+w+"2")
+		}
+	}
+	for _, name := range names {
+		renamed, ok := Unexported(name)
+		for _, ns := range namespaces {
+			// shrink renames with Unexported, and the rename must not take away
+			// a namespace the name carried.
+			if ok && Contains(name, ns) && !Contains(renamed, ns) {
+				t.Errorf("Contains(%q, %q) holds, but not for its rename %q", name, ns, renamed)
+			}
+			if CanPrefix(ns) {
+				if q := Qualify(name, ns); !Contains(q, ns) {
+					t.Errorf("Qualify(%q, %q) = %q does not carry it", name, ns, q)
+				}
+			}
 		}
 	}
 }
