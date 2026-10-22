@@ -272,9 +272,9 @@ func (m *Module) loadImporters(mode packages.LoadMode) {
 // environment as its loads. A module it names with a path in a range, such
 // as a published version of another nested module, or one its own go.work
 // uses from outside the tree, is compiled into its build. Its uses of
-// internal packages are in export data, which holds none, so Range leaves
-// that range unjudged unless the build reads the module from a nested module
-// this run loaded.
+// internal packages are in export data, which holds none, so Doubt withholds
+// the fixes in that range unless the build reads the module from a nested
+// module this run loaded.
 //
 // Both loads read what go build in its directory reads. When that is the
 // main run's go.work, they run with GOWORK=off. A nested module is never one
@@ -505,11 +505,12 @@ func (m *Module) Widest() []*packages.Package {
 // internal/c is importable only from a/internal/b. The tree must lie inside
 // the main module declaring the package, and every nested module with a path
 // inside it must be one this run read: that module could import the package.
-// So must every module of the build list with a path inside it, since the
-// build compiles the copy the list names, such as a published version, and
-// not the nested directory. The reason names that module, since nothing else
-// would lead a reader to it. Another main module's path may lie inside the
-// tree, since every main module is loaded.
+// So must every module of the main modules' build list with a path inside
+// it, since the build compiles the copy the list names, such as a published
+// version, and not the nested directory. The reason names that module, since
+// nothing else would lead a reader to it. Another main module's path may lie
+// inside the tree, since every main module is loaded. A nested module's build
+// list withholds fixes instead: see Doubt.
 func (m *Module) Range(path string) (parent, why string) {
 	parent, ok := InternalParent(path)
 	if !ok {
@@ -528,25 +529,46 @@ func (m *Module) Range(path string) (parent, why string) {
 		return "", m.unbuilt
 	}
 	for _, b := range m.built {
-		if m.loadedFrom(b) {
+		if b.by == "" && inside(b.path) && !m.loadedFrom(b) {
+			return "", fmt.Sprintf("the build uses %s from %s", b.path, cmp.Or(b.dir, b.path+"@"+b.version))
+		}
+	}
+	return parent, ""
+}
+
+// Doubt says why a fix in the package at path may break the build of a
+// nested module this run loaded, or "". That build may compile a copy of
+// other source with a path in the package's range, such as a published
+// version of another nested module, and the copy's uses are in export data,
+// which holds none. A copy whose files import an internal package in the
+// range may use it (scanCopies), and so may one this run could not read.
+//
+// It does not unjudge the range: the reports stand, and only their fixes are
+// withheld. Leaving the range unjudged cost the golang.org/x/tools checkout
+// 209 of its 348 reports, nearly all for one deprecated module that only a
+// test of a dependency imports.
+func (m *Module) Doubt(path string) string {
+	parent, ok := InternalParent(path)
+	if !ok {
+		return ""
+	}
+	inside := func(path string) bool { return path == parent || strings.HasPrefix(path, parent+"/") }
+	for _, b := range m.built {
+		if b.by == "" || m.loadedFrom(b) {
 			continue
 		}
-		build := "the build"
-		if b.by != "" {
-			build = "the build of the nested module " + b.by
-		}
-		where := cmp.Or(b.dir, b.path+"@"+b.version)
+		build := fmt.Sprintf("the build of the nested module %s uses %s from %s", b.by, b.path, cmp.Or(b.dir, b.path+"@"+b.version))
 		if !b.scanned {
 			if inside(b.path) {
-				return "", fmt.Sprintf("%s uses %s from %s", build, b.path, where)
+				return build
 			}
 			continue
 		}
 		if i := slices.IndexFunc(b.imports, inside); i >= 0 {
-			return "", fmt.Sprintf("%s uses %s from %s, which imports %s", build, b.path, where, b.imports[i])
+			return build + ", which imports " + b.imports[i]
 		}
 	}
-	return parent, ""
+	return ""
 }
 
 // scanCopies reads, for each module of a nested module's build list that
@@ -559,7 +581,7 @@ func (m *Module) Range(path string) (parent, why string) {
 // run already treats it as imported from anywhere.
 //
 // The main modules' own build list is not scanned. That list is #284's, and
-// a module it names leaves its whole range unjudged.
+// a module it names leaves its whole range unjudged (Range).
 func (m *Module) scanCopies() {
 	inMain := func(path string) bool {
 		return slices.ContainsFunc(m.mains, func(mm mainModule) bool { return strings.HasPrefix(path, mm.path+"/") })

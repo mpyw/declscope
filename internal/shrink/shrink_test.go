@@ -2,7 +2,6 @@ package shrink_test
 
 import (
 	"bytes"
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -281,37 +280,26 @@ func TestShrinkBuildListVendored(t *testing.T) {
 
 // TestShrinkNestedBuildList pins that a module of a nested module's build
 // list whose path lies in the range, replaced by a directory outside the
-// tree, leaves the range unjudged when the copy imports a package in it: n
-// builds with that copy of t, not the nested module t, and only the copy uses
-// x.Foo. g builds the copy of u only under the never tag, and it uses z.Baz,
-// so z's range is unjudged too. The range of y, which no copy imports, is
-// still judged.
+// tree, withholds the fixes in the range when the copy imports a package in
+// it, and keeps the reports: s/n builds with that copy of t, not the nested
+// module t, and only the copy uses x.Foo. b/g builds the copy of u only under
+// the never tag, and it uses z.Baz, so z's fix is withheld too. The range of
+// y, which no copy imports, keeps its fix. The wants pin the reports.
 func TestShrinkNestedBuildList(t *testing.T) {
-	res := shrinkRun(t, "testdata/nested-build-list/m")
-	shrinkNestedSkipped(t, res, "t-copy")
+	shrinkNestedWithheld(t, shrinkRun(t, "testdata/nested-build-list/m"), "t-copy")
 }
 
-// shrinkNestedSkipped checks the ranges nested-build-list leaves unjudged,
-// and that x's reason names tCopy, where n's build reads t from.
-func shrinkNestedSkipped(t *testing.T, res shrink.Result, tCopy string) {
+// shrinkNestedWithheld checks that nested-build-list leaves no range
+// unjudged, and that x.Foo's fix is withheld naming tCopy, where s/n's build
+// reads t from.
+func shrinkNestedWithheld(t *testing.T, res shrink.Result, tCopy string) {
 	t.Helper()
-	got := map[string]string{}
-	for _, s := range res.Skipped {
-		got[s.Package] = s.Reason
+	if len(res.Skipped) != 0 {
+		t.Errorf("skipped = %+v, want none: the reports stand and only their fixes are withheld", res.Skipped)
 	}
-	want := map[string][]string{
-		"example.com/nbl/s/internal/x": {"the build of the nested module example.com/nbl/s/n uses example.com/nbl/s/t from ", tCopy, ", which imports example.com/nbl/s/internal/x"},
-		"example.com/nbl/b/internal/z": {"the build of the nested module example.com/nbl/b/g uses example.com/nbl/b/u from ", "u-copy", ", which imports example.com/nbl/b/internal/z"},
-	}
-	if len(got) != len(want) {
-		t.Errorf("skipped = %+v, want %v", res.Skipped, slices.Sorted(maps.Keys(want)))
-	}
-	for pkg, parts := range want {
-		for _, part := range parts {
-			if !strings.Contains(got[pkg], part) {
-				t.Errorf("%s: reason %q, want it to hold %q", pkg, got[pkg], part)
-			}
-		}
+	i := slices.IndexFunc(res.Findings, func(f shrink.Finding) bool { return strings.HasPrefix(f.Message(), "func Foo ") })
+	if i < 0 || !strings.Contains(res.Findings[i].Withheld, tCopy) {
+		t.Errorf("findings = %+v, want Foo's fix withheld naming %s", res.Findings, tCopy)
 	}
 }
 
@@ -339,7 +327,7 @@ func TestShrinkNestedBuildListPublished(t *testing.T) {
 			t.Fatalf("go %v: %v\n%s", args, err, out)
 		}
 	}
-	shrinkNestedSkipped(t, shrinkRun(t, dir), "example.com/nbl/s/t@v1.0.0")
+	shrinkNestedWithheld(t, shrinkRun(t, dir), "example.com/nbl/s/t@v1.0.0")
 }
 
 // TestShrinkWorkspaceUnlistedNested pins that a nested module the go.work

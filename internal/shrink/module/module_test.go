@@ -257,11 +257,11 @@ func TestLoadLeavesUnreadableNestedModulesUnjudged(t *testing.T) {
 }
 
 // TestLoadReadsNestedWorkspace pins which copy of a module that a nested
-// module's own go.work uses from outside the tree leaves the range unjudged.
-// It is a main module of that build, not of this run. A copy whose files,
-// under any build constraint, import an internal package of the range does.
-// One that imports none cannot break the build, and one that cannot be read
-// counts as if it did.
+// module's own go.work uses from outside the tree withholds the fixes in the
+// range. It is a main module of that build, not of this run. A copy whose
+// files, under any build constraint, import an internal package of the range
+// does. One that imports none cannot break the build, and one that cannot be
+// read counts as if it did. The range is judged either way.
 func TestLoadReadsNestedWorkspace(t *testing.T) {
 	const prefix = "the build of the nested module example.com/m/tools uses example.com/m/ext from "
 	for name, tc := range map[string]struct {
@@ -313,23 +313,29 @@ func TestLoadReadsNestedWorkspace(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, why := m.Range("example.com/m/internal/a"); why != tc.want(ext) {
-				t.Errorf("why = %q, want %q", why, tc.want(ext))
+			if why := m.Doubt("example.com/m/internal/a"); why != tc.want(ext) {
+				t.Errorf("doubt = %q, want %q", why, tc.want(ext))
+			}
+			if _, why := m.Range("example.com/m/internal/a"); why != "" {
+				t.Errorf("why = %q, want the range judged", why)
 			}
 		})
 	}
 }
 
 // TestCopiesOutsideTheRange pins that a copy only reaches the ranges it may
-// import into: one never scanned counts in a range holding its path alone,
-// and a copy that cannot be walked is never scanned.
+// import into: one never scanned counts in a range holding its path alone, a
+// package outside internal/ has no range to doubt, and a copy that cannot be
+// walked is never scanned.
 func TestCopiesOutsideTheRange(t *testing.T) {
 	m := &Module{
 		mains: []mainModule{{path: "example.com/m"}},
 		built: []builtModule{{path: "example.com/m/b/x", by: "example.com/m/b/n"}},
 	}
-	if _, why := m.Range("example.com/m/a/internal/p"); why != "" {
-		t.Errorf("why = %q, want the range judged", why)
+	for _, path := range []string{"example.com/m/a/internal/p", "example.com/m/b/x/pub"} {
+		if why := m.Doubt(path); why != "" {
+			t.Errorf("%s: doubt = %q, want none", path, why)
+		}
 	}
 	if _, err := importsUnder(filepath.Join(t.TempDir(), "missing")); err == nil {
 		t.Error("err = nil, want the walk's failure")
