@@ -43,6 +43,8 @@
 //     them per type parameter does not compute them again. It leaves out the
 //     rule for directional channels: declscope asks only for a struct or a
 //     pointer core type.
+//   - A check no type can meet is left out, where computeTermSetInternal
+//     reads an embedded type.
 //   - The term and termlist operations NormalTerms does not call, and the
 //     String methods only the tracing used, are left out.
 package typeparams
@@ -143,17 +145,11 @@ func CoreType(terms []*types.Term) types.Type {
 }
 
 // structuralTerms returns the normalized terms of a type parameter's
-// constraint, as NormalTerms describes them.
+// constraint, as NormalTerms describes them. x/tools also checks that the
+// constraint is a non-nil interface. go/types guarantees both: it panics on a
+// nil constraint, and wraps a non-interface one in an implicit interface.
 func structuralTerms(tparam *types.TypeParam) ([]*types.Term, error) {
-	constraint := tparam.Constraint()
-	if constraint == nil {
-		return nil, fmt.Errorf("%s has nil constraint", tparam)
-	}
-	iface, _ := constraint.Underlying().(*types.Interface)
-	if iface == nil {
-		return nil, fmt.Errorf("constraint is %T, not *types.Interface", constraint.Underlying())
-	}
-	return computeTermSet(iface)
+	return computeTermSet(tparam.Constraint())
 }
 
 func computeTermSet(typ types.Type) ([]*types.Term, error) {
@@ -205,10 +201,10 @@ func computeTermSetInternal(t types.Type, seen map[types.Type]*termSet) (res *te
 		// The term set of an interface is the intersection of the term sets of its
 		// embedded types.
 		tset.terms = allTermlist
+		// x/tools refuses an embedded type whose underlying type is a type
+		// parameter here. None has one: the underlying type of a type
+		// parameter is its constraint interface. So the check is left out.
 		for embedded := range u.EmbeddedTypes() {
-			if _, ok := embedded.Underlying().(*types.TypeParam); ok {
-				return nil, fmt.Errorf("invalid embedded type %T", embedded)
-			}
 			tset2, err := computeTermSetInternal(embedded, seen)
 			if err != nil {
 				return nil, err

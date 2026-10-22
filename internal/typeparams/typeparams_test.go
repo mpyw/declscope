@@ -226,6 +226,16 @@ func TestCoreType(t *testing.T) {
 	}
 }
 
+// TestUnionOfUnion pins a union written as a term of another, which go/types
+// never builds.
+func TestUnionOfUnion(t *testing.T) {
+	inner := types.NewUnion([]*types.Term{types.NewTerm(false, types.Typ[types.Int])})
+	iface := types.NewInterfaceType(nil, []types.Type{types.NewUnion([]*types.Term{types.NewTerm(false, inner)})})
+	if _, err := NormalTerms(iface); err == nil || !strings.Contains(err.Error(), "invalid union term") {
+		t.Errorf("NormalTerms = %v, want an invalid union term", err)
+	}
+}
+
 // TestUnionTerms pins a union passed on its own, which NormalTerms reads as
 // the interface embedding it would.
 func TestUnionTerms(t *testing.T) {
