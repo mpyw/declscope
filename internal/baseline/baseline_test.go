@@ -3,6 +3,7 @@ package baseline_test
 import (
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -416,6 +417,93 @@ func BenchmarkLoad(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		if _, err := baseline.Load(path); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// TestSaveGolden pins the bytes Save writes for keys handed over shuffled and
+// with duplicates, as -merge hands over an existing file joined with a fresh
+// run. How Save removes duplicates and sorts may change; its output may not.
+func TestSaveGolden(t *testing.T) {
+	keys := []baseline.Key{
+		{Package: "example.com/b", Rule: "boundary", Namespace: "user", Decl: "zeta"},
+		{Package: "example.com/a", Rule: "boundary", Namespace: "user", Decl: "helper"},
+		{Package: "example.com/a", Rule: "boundary", Namespace: "user", Decl: "User.name"},
+		{Package: "example.com/a", Rule: "boundary", Namespace: "(core)", Decl: "config"},
+		{Package: "example.com/a", Rule: "boundary", Namespace: "order", Decl: "total"},
+		{Package: "example.com/a", Rule: "foreign-method", Namespace: "user", Decl: "User.normalize"},
+		{Package: "example.com/a", Rule: "boundary", Namespace: "user", Decl: "alpha"},
+	}
+	// Every key twice, in a fixed shuffle.
+	input := append(slices.Clone(keys), keys...)
+	rand.New(rand.NewPCG(1, 2)).Shuffle(len(input), func(i, j int) {
+		input[i], input[j] = input[j], input[i]
+	})
+
+	path := filepath.Join(t.TempDir(), ".declscope-baseline.yaml")
+	n, err := baseline.Save(path, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != len(keys) {
+		t.Errorf("Save returned %d, want %d", n, len(keys))
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `# declscope baseline
+#
+# Violations recorded here are suppressed; new ones are still reported.
+# Regenerate with:
+#
+#     declscope baseline ./...
+#
+# Do not edit by hand. An entry disappears when its violation is fixed, so the
+# diff of a regeneration is the record of what was cleaned up.
+packages:
+  example.com/a:
+    boundary:
+      (core):
+        - config
+      order:
+        - total
+      user:
+        - User.name
+        - alpha
+        - helper
+    foreign-method:
+      user:
+        - User.normalize
+  example.com/b:
+    boundary:
+      user:
+        - zeta
+`
+	if string(got) != want {
+		t.Errorf("Save wrote:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// BenchmarkSaveOneNamespace saves 100,000 entries of one namespace, each
+// handed over twice, as -merge does when a fresh run repeats an existing file.
+func BenchmarkSaveOneNamespace(b *testing.B) {
+	path := filepath.Join(b.TempDir(), ".declscope-baseline.yaml")
+	const n = 100_000
+	keys := make([]baseline.Key, 0, 2*n)
+	for i := range n {
+		keys = append(keys, baseline.Key{
+			Package:   "example.com/big",
+			Rule:      "boundary",
+			Namespace: "big",
+			Decl:      fmt.Sprintf("decl%06d", i),
+		})
+	}
+	keys = append(keys, keys...)
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := baseline.Save(path, keys); err != nil {
 			b.Fatal(err)
 		}
 	}
