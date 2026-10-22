@@ -905,13 +905,13 @@ func (r *run) withheld(c *candidate) string {
 		why     string
 		applies func() bool
 	}{
+		{"a literal or conversion through a type parameter whose type set cannot be computed may write it", func() bool { return r.ev.guessed[c.key] }},
 		{"a build-excluded file of another package may use it", func() bool { return r.maybeUsedIn(c) }},
 		{"a build-excluded file of its package names it", func() bool { return r.writtenInOwn(c, c.obj.Name()) }},
 		{"a build-excluded file of its package may use it", func() bool { return r.maybeUsedInOwn(c) }},
 		{"a generated file names it", func() bool { return r.ev.generated[c.key] }},
 		{"an example function names it", func() bool { return r.ev.example[c.key] }},
 		{"a string variable may be set by -ldflags -X, which names it", c.linkerSet},
-		{"a literal or conversion through a type parameter whose type set cannot be computed may write it", func() bool { return r.ev.guessed[c.key] }},
 	}
 	for _, reason := range reasons {
 		if reason.applies() {
