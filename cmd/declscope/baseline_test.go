@@ -928,3 +928,44 @@ func TestBaselineMergeWithNestedTargets(t *testing.T) {
 	}
 	assertSuppressed(t, bin, root)
 }
+
+// TestBaselineMergeKeepsWhatShrinkLeftUnjudged pins that a package shrink
+// does not judge keeps its overexported entries under -merge, since the run
+// recorded none for it, and that both runs name it on stderr as shrink does.
+// The condition is #316's: the build reads the module ext from a copy outside
+// the tree while a nested ext/ also exists.
+func TestBaselineMergeKeepsWhatShrinkLeftUnjudged(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "m")
+	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n")
+	writeTree(t, root, "internal/a/a.go", "package a\n\nfunc Used() {}\n\nfunc Unused() {}\n")
+	writeTree(t, root, "cmd/c/main.go", "package main\n\nimport \"example.com/m/internal/a\"\n\nfunc main() { a.Used() }\n")
+	writeTree(t, root, "ext/go.mod", "module example.com/m/ext\n\ngo 1.25\n\nrequire example.com/m v0.0.0\n\nreplace example.com/m => ../\n")
+	writeTree(t, root, "ext/e.go", "package ext\n\nimport \"example.com/m/internal/a\"\n\nfunc Run() { a.Used() }\n")
+	path := filepath.Join(root, ".declscope-baseline.yaml")
+	unused := baseline.Key{Package: "example.com/m/internal/a", Rule: "overexported", Namespace: "a", Decl: "Unused"}
+
+	if out, code := runIn(t, bin, root, "baseline", "./..."); code != 0 || !load(t, path).Has(unused) {
+		t.Fatalf("exit %d, want %+v recorded:\n%s", code, unused, out)
+	}
+	full := readFile(t, path)
+
+	writeTree(t, root, "go.mod", "module example.com/m\n\ngo 1.25\n\nrequire example.com/m/ext v0.0.0\n\nreplace example.com/m/ext => ../extcopy\n")
+	writeTree(t, filepath.Dir(root), "extcopy/go.mod", "module example.com/m/ext\n\ngo 1.25\n")
+	const note = "declscope baseline: not judged: example.com/m/internal/a: the build uses example.com/m/ext from "
+
+	out, code := runIn(t, bin, root, "baseline", "-merge", "./...")
+	if code != 0 || !strings.Contains(out, note) {
+		t.Errorf("-merge: exit %d, want 0 naming internal/a as not judged:\n%s", code, out)
+	}
+	if got := readFile(t, path); got != full {
+		t.Errorf("-merge dropped the entries of a package shrink did not judge:\n--- before ---\n%s\n--- after ---\n%s", full, got)
+	}
+
+	out, code = runIn(t, bin, root, "baseline", "./...")
+	if code != 0 || !strings.Contains(out, note) {
+		t.Errorf("without -merge: exit %d, want 0 naming internal/a as not judged:\n%s", code, out)
+	}
+	if load(t, path).Has(unused) {
+		t.Error("without -merge the file kept an entry this run did not record")
+	}
+}

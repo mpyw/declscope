@@ -1702,7 +1702,7 @@ $ declscope baseline ./a             # the file now holds only a
 $ declscope baseline -merge ./a      # a is regenerated, b is kept
 ```
 
-`-merge` reads each file it writes first. It replaces the entries of the packages this run loaded, their test variants included, and keeps every other entry. Under `-shrink=false` it keeps `shrink`'s entries too, since the run recorded none. A file that `-merge` cannot parse stops the run, and nothing is written.
+`-merge` reads each file it writes first. It replaces the entries of the packages this run loaded, their test variants included, and keeps every other entry. Under `-shrink=false` it keeps `shrink`'s entries too, since the run recorded none. It also keeps them for a package `shrink` did not judge, which the run names on stderr as `shrink` does. A file that `-merge` cannot parse stops the run, and nothing is written.
 
 > [!NOTE]
 > `-merge` also keeps the entries of a package that was deleted or renamed, since no pattern loads it any more. A run over `./...` without `-merge` prunes them.
