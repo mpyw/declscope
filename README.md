@@ -246,7 +246,7 @@ Every setting is optional. The table below lists each setting and its default va
 
 ```yaml
 defaults:
-  unexported: private     # package | private
+  unexported: private     # shared | private
 
 rules:
   naming:
