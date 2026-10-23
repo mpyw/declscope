@@ -60,6 +60,8 @@ declscope survey -format=json ./... | jq .totals.surplus.found
 
 An explicit `-config` replaces the repository's own config. Copy its keys in first when measuring a different mode.
 
+**Before `-fix`, read where its `//declscope:private` directives would land.** When most of them fall under one file-level `//declscope:shared`, the file should not be shared as a whole. Delete the file's directive instead, and share the few declarations other files use. See [Directives](../declscope-authoring/SKILL.md#directives).
+
 **Size the default `unused` findings too.** Under `loose`, a `//declscope:private` that names the scope `defaults.unexported` gives is kept, since another default could make it bind. The default `strict` reports it, and one `declscope -fix` run deletes it. When changing `defaults.unexported`, expect reports for directives that restate the new default. If the owner wants to keep those explicit decisions, set `unused: loose`.
 
 **If the goal is a tidier codebase, offer the naming rule on top.** It is a convention. It fires where nothing is wrong, and it costs real work. Size it before offering, with a throwaway config rather than by counting message fragments:
