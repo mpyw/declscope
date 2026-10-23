@@ -191,7 +191,7 @@ When another namespace uses a struct, give each field the smallest scope it need
 | Declaration | Directive |
 | --- | --- |
 | An unexported struct type, spelled from another namespace | `//declscope:shared`. Its fields inherit it |
-| An exported struct type | None. It is shared already, and its unexported fields stay private |
+| An exported struct type | None. It is shared already. Its unexported fields stay private, unless a file-level directive says otherwise |
 | A field no other namespace reads, under a `//declscope:shared` type | `//declscope:private`, after its doc comment and a `//` line |
 | A field another namespace reads, under a `//declscope:shared` type | None |
 | A field another namespace reads, under any other type | `//declscope:shared // <who reads it>` |
@@ -217,7 +217,7 @@ type callee struct {
 }
 ```
 
-Under `surplus: strict`, declscope reports each field no other namespace reads. Where `surplus` is off or stands down, find them by hand. Mark every field `//declscope:private`. Then delete the directive from each field reported as used from another namespace.
+Under a `//declscope:shared` type with `surplus: strict`, declscope reports each field no other namespace reads. Where `surplus` is off or stands down, find them by hand. Mark every field `//declscope:private`. Then delete the directive from each field reported as used from another namespace.
 
 **A type nobody else spells needs no directive.** If callers only get it from a constructor, `//declscope:shared` on it is reported:
 
@@ -225,7 +225,7 @@ Under `surplus: strict`, declscope reports each field no other namespace reads. 
 //declscope:shared on hidden, hidden.a: no use from another namespace is visible to declscope
 ```
 
-Keep that type and its fields private. Expose small shared functions that return what callers need.
+Keep that type private. Write `//declscope:shared // <who reads it>` on each field that another file reads, and nothing on the rest.
 
 ## Order by reach
 
