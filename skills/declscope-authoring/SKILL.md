@@ -65,6 +65,10 @@ Fields, interface methods, and methods written in their type's file are exempt. 
 
 **Prefer natural word order.** With a verb namespace, a prefix reads as a command: `collectAddFunc` is an instruction, and `addFuncToCollection` is a name. An entry point is the exception, since `collectFiles` already says what it does.
 
+**A verb prefix can promise a side effect the code does not have.** A name that starts with a verb reads as that action. In `delete.go`, a function that only checks whether a user may be deleted must not be called `deleteUser`. A reader expects it to delete the user. Name it for what it does, and fit the namespace in elsewhere: `canDeleteUser`, `usersToDelete`. Keep the verb first only for code that performs the action.
+
+A verb file name is still fine. Its regular noun and past forms often carry it already, since the namespace's right edge may fall inside a word. In `collect.go`, `collectedFiles`, `collectionKeys` and `addToCollection` all carry `collect`. Only a form that changes the verb's spelling, such as `deletion` for `delete`, needs another fit or a vocabulary entry.
+
 ### Fitting the namespace in
 
 A prefix is one fit, and often the right one: `userProfile` is a prefix. Do not use it by reflex, though. Choose the place where the namespace reads as part of the phrase:
@@ -169,6 +173,16 @@ Only the exact form `//declscope:name` is a directive: a line comment, no space 
 **Write the reason after `//`.** `//declscope:shared // rename.go reads it` and `//declscope:ignore boundary // why` are directives with reasons. Any other text after the name is read as an argument. `//declscope:ignore boundary because ...` is reported as an unknown rule.
 
 **A directive records a decision.** Write one only when it changes something, and say why. Under the default `unused: strict`, a directive that restates the scope already in force is reported.
+
+**Share a whole file only when the file exists to be shared.** A directive on a file, a block or a type reaches everything inside it. Each exception then needs a directive of its own. A file-level `//declscope:shared` also makes every new declaration in the file start shared. So it should describe what the file is, not who happens to use it today.
+
+| The file, block or type | Write |
+| --- | --- |
+| Is shared by nature, such as a utility file or the package's shared model, and a few declarations are its internals | `//declscope:shared` on the whole, and `//declscope:private` on each of the few internals |
+| Happens to have many declarations used from other files right now | `//declscope:shared` on each of them, and nothing on the whole |
+| Has only a few declarations used from other files | `//declscope:shared` on each of those few, and nothing on the whole |
+
+Do not share a whole file to share a few declarations, then mark the rest `//declscope:private`. The file then states the opposite of what it is. A struct that other files spell is the exception: its fields come with it. See [Shared structs: private fields](#shared-structs-private-fields).
 
 ## Shared structs: private fields
 
@@ -326,7 +340,7 @@ A bare `//declscope:ignore` does not reach `overexported`. Name the rule. Names 
 | Tempting | Why not |
 | --- | --- |
 | `rules.boundary: off` | Turns off the rule the tool exists for |
-| `//declscope:core`, or a file-level `//declscope:shared` on a file whose declarations are not all shared | Hides the boundaries instead of stating them |
+| `//declscope:core`, or a file-level `//declscope:shared` on a file that is not shared by nature | Hides the boundaries instead of stating them |
 | Exporting a name | Moves the problem to `shrink`, or into the public API |
 | A name bent to carry the namespace | Passes the check and misleads the reader |
 | Regenerating the baseline over new findings | Records your new crossing as if it were old |
