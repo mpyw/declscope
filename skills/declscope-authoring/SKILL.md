@@ -51,7 +51,7 @@ Which rules are on, and which config governs a package, is in [Check what is swi
 | Change | What declscope does | Do this |
 | --- | --- | --- |
 | Add a method to a type, in another file | The method takes its own file's namespace. Each private field it reads is reported at the field, in the type's file | Put the method in the type's file. If the two files are one unit, give the method's file the type's namespace with `//declscope:namespace`. Do not widen the fields |
-| Add a field that another file reads | Under a `//declscope:shared` type it is shared already. With nothing stated, the use is reported | When other files spell the type, write `//declscope:shared` on the type. See [Shared structs: private fields](#shared-structs-private-fields). Otherwise write `//declscope:shared // <who reads it>` on each field that is read, however many there are |
+| Add a field that another file reads | Under a `//declscope:shared` type it is shared already. With nothing stated, the use is reported | When the type is unexported and other files spell it, write `//declscope:shared` on the type. See [Shared structs: private fields](#shared-structs-private-fields). Otherwise, exported types included, write `//declscope:shared // <who reads it>` on each field that is read, however many there are |
 | Move code between files | Its namespace changes, and so does the name it must carry | Rename it, move its tests with it, and reread each `// reason` that names a file |
 | Split a file | Each new file is a new namespace, so calls between the halves are reported | Split along a real boundary. If the halves are one unit, give them one `//declscope:namespace` |
 | Export a name to get past a report | An exported name takes shared scope, so the report goes away | Do not. In `internal/`, `declscope shrink` reports it. Elsewhere it becomes public API |
@@ -182,7 +182,7 @@ Only the exact form `//declscope:name` is a directive: a line comment, no space 
 | Happens to have many declarations used from other files right now | `//declscope:shared` on each of them, and nothing on the whole |
 | Has only a few declarations used from other files | `//declscope:shared` on each of those few, and nothing on the whole |
 
-Do not share a whole file to share a few declarations, then mark the rest `//declscope:private`. The file then states the opposite of what it is. A type is decided differently. Whether other files spell the type decides its directive, not how many of its fields cross. See [Shared structs: private fields](#shared-structs-private-fields).
+Do not share a whole file to share a few declarations, then mark the rest `//declscope:private`. The file then states the opposite of what it is. A type is decided differently. An unexported type gets the directive when other files spell it, not by how many of its fields cross. An exported type is shared already, so it gets none. See [Shared structs: private fields](#shared-structs-private-fields).
 
 ## Shared structs: private fields
 
@@ -190,9 +190,11 @@ When another namespace uses a struct, give each field the smallest scope it need
 
 | Declaration | Directive |
 | --- | --- |
-| The struct type, spelled from another namespace | `//declscope:shared`. Its fields inherit it |
-| A field no other namespace reads | `//declscope:private`, after its doc comment and a `//` line |
-| A field another namespace reads | None |
+| An unexported struct type, spelled from another namespace | `//declscope:shared`. Its fields inherit it |
+| An exported struct type | None. It is shared already, and its unexported fields stay private |
+| A field no other namespace reads, under a `//declscope:shared` type | `//declscope:private`, after its doc comment and a `//` line |
+| A field another namespace reads, under a `//declscope:shared` type | None |
+| A field another namespace reads, under any other type | `//declscope:shared // <who reads it>` |
 | An embedded field | None. It is not a target, and a directive there is reported as unused |
 
 **Do not restate the type's scope on a field.** It binds nothing and is reported as unused.
