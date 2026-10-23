@@ -51,7 +51,7 @@ Which rules are on, and which config governs a package, is in [Check what is swi
 | Change | What declscope does | Do this |
 | --- | --- | --- |
 | Add a method to a type, in another file | The method takes its own file's namespace. Each private field it reads is reported at the field, in the type's file | Put the method in the type's file. If the two files are one unit, give the method's file the type's namespace with `//declscope:namespace`. Do not widen the fields |
-| Add a field that another file reads | Under a `//declscope:shared` type it is shared already. With nothing stated, the use is reported | Write `//declscope:shared // <who reads it>` on the field, or on the type when several fields cross |
+| Add a field that another file reads | Under a `//declscope:shared` type it is shared already. With nothing stated, the use is reported | When other files spell the type, write `//declscope:shared` on the type. See [Shared structs: private fields](#shared-structs-private-fields). Otherwise write `//declscope:shared // <who reads it>` on each field that is read, however many there are |
 | Move code between files | Its namespace changes, and so does the name it must carry | Rename it, move its tests with it, and reread each `// reason` that names a file |
 | Split a file | Each new file is a new namespace, so calls between the halves are reported | Split along a real boundary. If the halves are one unit, give them one `//declscope:namespace` |
 | Export a name to get past a report | An exported name takes shared scope, so the report goes away | Do not. In `internal/`, `declscope shrink` reports it. Elsewhere it becomes public API |
@@ -174,15 +174,15 @@ Only the exact form `//declscope:name` is a directive: a line comment, no space 
 
 **A directive records a decision.** Write one only when it changes something, and say why. Under the default `unused: strict`, a directive that restates the scope already in force is reported.
 
-**Share a whole file only when the file exists to be shared.** A directive on a file, a block or a type reaches everything inside it. Each exception then needs a directive of its own. A file-level `//declscope:shared` also makes every new declaration in the file start shared. So it should describe what the file is, not who happens to use it today.
+**Share a whole file only when the file exists to be shared.** A directive on a file or a block reaches everything inside it. Each exception then needs a directive of its own. A file-level `//declscope:shared` also makes every new declaration in the file start shared. So it should describe what the file is, not who happens to use it today.
 
-| The file, block or type | Write |
+| The file or block | Write |
 | --- | --- |
 | Is shared by nature, such as a utility file or the package's shared model, and a few declarations are its internals | `//declscope:shared` on the whole, and `//declscope:private` on each of the few internals |
 | Happens to have many declarations used from other files right now | `//declscope:shared` on each of them, and nothing on the whole |
 | Has only a few declarations used from other files | `//declscope:shared` on each of those few, and nothing on the whole |
 
-Do not share a whole file to share a few declarations, then mark the rest `//declscope:private`. The file then states the opposite of what it is. A struct that other files spell is the exception: its fields come with it. See [Shared structs: private fields](#shared-structs-private-fields).
+Do not share a whole file to share a few declarations, then mark the rest `//declscope:private`. The file then states the opposite of what it is. A type is decided differently. Whether other files spell the type decides its directive, not how many of its fields cross. See [Shared structs: private fields](#shared-structs-private-fields).
 
 ## Shared structs: private fields
 
