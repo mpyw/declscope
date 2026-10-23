@@ -219,13 +219,13 @@ type callee struct {
 
 Under a `//declscope:shared` type with `surplus: strict`, declscope reports each field no other namespace reads. Where `surplus` is off or stands down, find them by hand. Mark every field `//declscope:private`. Then delete the directive from each field reported as used from another namespace.
 
-**A type nobody else spells needs no directive.** If callers only get it from a constructor, `//declscope:shared` on it is reported:
+**A type nobody else spells needs no directive,** even when other files read its fields. Callers that only get it from a constructor do not spell it. Keep the type private. Write `//declscope:shared // <who reads it>` on each field that another file reads, and nothing on the rest.
+
+When no other file reads its fields either, `//declscope:shared` on the type is reported:
 
 ```text
 //declscope:shared on hidden, hidden.a: no use from another namespace is visible to declscope
 ```
-
-Keep that type private. Write `//declscope:shared // <who reads it>` on each field that another file reads, and nothing on the rest.
 
 ## Order by reach
 
