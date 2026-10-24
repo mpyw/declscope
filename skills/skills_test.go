@@ -1,4 +1,4 @@
-package declscope_test
+package skills_test
 
 import (
 	"os"
@@ -13,7 +13,7 @@ import (
 // unquoted description holding ": ", as in "//declscope: directive", is a
 // mapping key to YAML, and the skill then fails to load or render.
 func TestSkillFrontmatterParses(t *testing.T) {
-	paths, err := filepath.Glob(filepath.Join("skills", "*", "SKILL.md"))
+	paths, err := filepath.Glob(filepath.Join("*", "SKILL.md"))
 	if err != nil || len(paths) == 0 {
 		t.Fatalf("no skills found: %v", err)
 	}
