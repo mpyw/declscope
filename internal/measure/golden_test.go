@@ -138,6 +138,31 @@ func TestMostReachedHonoursItsLimit(t *testing.T) {
 	}
 }
 
+// TestMostReachedLeavesOutTheCore checks that the core's declarations are
+// counted under the table rather than ranked in it, and that a package whose
+// every reached declaration is the core's still says so.
+func TestMostReachedLeavesOutTheCore(t *testing.T) {
+	pkg := Package{
+		Path:       "example.com/reach",
+		Namespaces: []Namespace{{Name: "(core)", Core: true, Declarations: 1}, {Name: "a", Declarations: 1}, {Name: "b", Declarations: 1}},
+		Edges: []Edge{
+			{From: "a", To: "(core)", Declaration: "model", State: EdgeDeclared},
+			{From: "b", To: "(core)", Declaration: "model", State: EdgeDeclared},
+		},
+		Findings: map[rule.Rule]Count{rule.Boundary: {Asked: true, Keyable: true}},
+	}
+	if got := pkg.mostReached(10); len(got) != 0 {
+		t.Errorf("mostReached ranked the core: %+v", got)
+	}
+	var out bytes.Buffer
+	if err := pkg.writeMarkdown(&out); err != nil {
+		t.Fatal(err)
+	}
+	if want := "## Most-reached declarations except `(core)`\n\n1 declaration is further: the core's"; !bytes.Contains(out.Bytes(), []byte(want)) {
+		t.Errorf("want %q in:\n%s", want, out.String())
+	}
+}
+
 // TestMarkdownNamesOpenOnlyCrossings checks that filtering open crossings out
 // of the decision table does not turn them into "nothing crosses".
 func TestMarkdownNamesOpenOnlyCrossings(t *testing.T) {

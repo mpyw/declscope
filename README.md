@@ -1528,7 +1528,7 @@ $ declscope survey -config .declscope-strict.yaml ./internal/measure/...
 
 | package                                      | reported | baselined | declared | largest crossing                 |
 | -------------------------------------------- | -------: | --------: | -------: | -------------------------------- |
-| `github.com/mpyw/declscope/internal/measure` |        0 |         0 |       29 | markdown → cell (7 declarations) |
+| `github.com/mpyw/declscope/internal/measure` |        0 |         0 |       30 | markdown → cell (7 declarations) |
 
 ## Packages — qualify
 
@@ -1548,7 +1548,7 @@ That is one package of this repository. A codebase adopting declscope has number
 > [!TIP]
 > Look for the row with nothing reported, much baselined and nothing declared. Nothing was decided there, everything was deferred, and the analyzer alone calls it clean.
 
-`inspect` prints several sections. The excerpt below is its Crossings section, in full. The other sections list the namespaces, draw the crossings as a Mermaid diagram, rank the most-reached declarations, and give the naming rule per namespace.
+`inspect` prints several sections. The excerpt below is its Crossings section, in full. The other sections list the namespaces, draw the crossings as a Mermaid diagram, rank the most-reached declarations outside the core, and give the naming rule per namespace.
 
 ```console
 $ declscope inspect -config .declscope-strict.yaml ./internal/measure
@@ -1556,8 +1556,8 @@ $ declscope inspect -config .declscope-strict.yaml ./internal/measure
 
 | crossing            | mutual | declared | baselined | reported | clears |  reached | uses |
 | ------------------- | ------ | -------: | --------: | -------: | -----: | -------: | ---: |
-| markdown → cell     | yes    |        7 |         0 |        0 |      0 |  7 of 18 |   15 |
-| markdown → sink     |        |        5 |         0 |        0 |      0 |  5 of 18 |   29 |
+| markdown → cell     | yes    |        7 |         0 |        0 |      0 |  7 of 18 |   16 |
+| markdown → sink     |        |        5 |         0 |        0 |      0 |  5 of 18 |   31 |
 | golden → (core)     |        |        4 |         0 |        0 |      0 |  4 of 79 |    9 |
 | json → summary      | yes    |        3 |         0 |        0 |      0 |  3 of 27 |    9 |
 | markdown → summary  | yes    |        3 |         0 |        0 |      0 |  3 of 27 |    7 |
@@ -1565,20 +1565,20 @@ $ declscope inspect -config .declscope-strict.yaml ./internal/measure
 | cell → markdown     | yes    |        2 |         0 |        0 |      0 |   2 of 9 |    3 |
 | format → json       |        |        2 |         0 |        0 |      0 | 2 of 107 |    2 |
 | format → markdown   |        |        2 |         0 |        0 |      0 |   2 of 9 |    2 |
+| markdown → reach    |        |        2 |         0 |        0 |      0 |   2 of 9 |    2 |
 | summary → crossing  |        |        2 |         0 |        0 |      0 |  2 of 20 |    2 |
 | crossing → (core)   |        |        1 |         0 |        0 |      0 |  1 of 79 |    3 |
+| golden → markdown   |        |        1 |         0 |        0 |      0 |   1 of 9 |    3 |
+| golden → reach      |        |        1 |         0 |        0 |      0 |   1 of 9 |    3 |
 | cell → summary      |        |        1 |         0 |        0 |      0 |  1 of 27 |    2 |
 | golden → crossing   |        |        1 |         0 |        0 |      0 |  1 of 20 |    2 |
 | golden → format     |        |        1 |         0 |        0 |      0 |   1 of 9 |    2 |
-| golden → markdown   |        |        1 |         0 |        0 |      0 |   1 of 9 |    2 |
-| golden → reach      |        |        1 |         0 |        0 |      0 |   1 of 7 |    2 |
 | cell → (core)       |        |        1 |         0 |        0 |      0 |  1 of 79 |    1 |
 | cell → json         |        |        1 |         0 |        0 |      0 | 1 of 107 |    1 |
 | format → (core)     |        |        1 |         0 |        0 |      0 |  1 of 79 |    1 |
 | golden → json       |        |        1 |         0 |        0 |      0 | 1 of 107 |    1 |
 | json → crossing     |        |        1 |         0 |        0 |      0 |  1 of 20 |    1 |
 | markdown → qualify  |        |        1 |         0 |        0 |      0 |  1 of 15 |    1 |
-| markdown → reach    |        |        1 |         0 |        0 |      0 |   1 of 7 |    1 |
 | qualify → (core)    |        |        1 |         0 |        0 |      0 |  1 of 79 |    1 |
 | summary → json      | yes    |        1 |         0 |        0 |      0 | 1 of 107 |    1 |
 | summary → markdown  | yes    |        1 |         0 |        0 |      0 |   1 of 9 |    1 |
@@ -1586,7 +1586,7 @@ $ declscope inspect -config .declscope-strict.yaml ./internal/measure
 
 109 declarations are further: open, shared by default rather than by decision, so left out of the table and of the diagram.
 
-Declarations crossed: 0 reported, 0 baselined, 29 declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.
+Declarations crossed: 0 reported, 0 baselined, 30 declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.
 ```
 
 One row per directed edge, so a mutual pair is two rows. **`clears` is the number the decision turns on**: how many findings would go away if the two namespaces became one.

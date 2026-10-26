@@ -34,7 +34,7 @@ graph LR
   n1 -.->|1| n0
 ```
 
-## Most-reached declarations
+## Most-reached declarations except `(core)`
 
 | declaration    | namespace  | reached from | state     |
 | -------------- | ---------- | ------------ | --------- |

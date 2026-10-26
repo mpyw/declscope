@@ -20,7 +20,7 @@ graph LR
   n0 -.->|1| n1
 ```
 
-## Most-reached declarations
+## Most-reached declarations except `(core)`
 
 | declaration | namespace | reached from | state     |
 | ----------- | --------- | ------------ | --------- |
