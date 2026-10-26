@@ -450,6 +450,8 @@ Dependencies come from export data here too: `loadPackages` asks for no `NeedDep
 
 **`inspect`'s Most-reached table leaves out the core** (`mostReached`, `coreDeclarationsReached`). The core is the package's shared model, so being reached from everywhere is what it is for. Ranked with the rest, its declarations took the top rows: on this repository's `./internal`, 69 of them were reached from other namespaces. The table is for a type filed by concern and read from every corner, and the core cannot be that. A line under the table counts what it left out, and a finding on a core declaration still shows in the crossing table, on its row into the core.
 
+**`inspect` draws the Crossings diagram before the table, and folds the table under `<details>`** (`writeMarkdownFolded`). The diagram is the overview, and the table is where a row is looked up. With the table first, a package of any size pushed the diagram past a screen of rows. The README sample holds that Mermaid fence, so it is fenced with four backticks, and `readmeSamples` reads either fence.
+
 **The target is resolved per package, on the analyzer's lookup path.** The analyzer finds a baseline from each package's own directory (`config.Resolve`: the file the nearest config names, else `FindBaseline`'s upward search for a default-named file), so a baseline only suppresses what is written where that lookup ends. Resolving one output path from the working directory and pouring every package into it would leave a subtree with its own configured or default-named baseline reporting forever. `collect` therefore groups keys by target:
 
 | Situation | Where the package's entries go |

@@ -60,11 +60,15 @@ func TestReadmeMeasureSamplesMatchTheOutput(t *testing.T) {
 
 // readmeSamples returns each console block whose first line runs
 // `declscope survey` or `declscope inspect`.
+//
+// A block may be fenced with four backticks. An inspect sample holds a Mermaid
+// diagram, whose own three-backtick fence would otherwise end the block.
 func readmeSamples(readme string) []readmeSample {
 	var samples []readmeSample
 	lines := strings.Split(readme, "\n")
 	for i := 0; i+1 < len(lines); i++ {
-		if lines[i] != "```console" {
+		fence, ok := strings.CutSuffix(lines[i], "console")
+		if !ok || (fence != "```" && fence != "````") {
 			continue
 		}
 		command, ok := strings.CutPrefix(lines[i+1], "$ ")
@@ -75,7 +79,7 @@ func readmeSamples(readme string) []readmeSample {
 			continue
 		}
 		var output strings.Builder
-		for j := i + 2; j < len(lines) && lines[j] != "```"; j++ {
+		for j := i + 2; j < len(lines) && lines[j] != fence; j++ {
 			output.WriteString(lines[j] + "\n")
 		}
 		samples = append(samples, readmeSample{command: command, output: output.String()})
