@@ -1528,7 +1528,7 @@ $ declscope survey -config .declscope-strict.yaml ./internal/measure/...
 
 | package                                      | reported | baselined | declared | largest crossing                 |
 | -------------------------------------------- | -------: | --------: | -------: | -------------------------------- |
-| `github.com/mpyw/declscope/internal/measure` |        0 |         0 |       29 | markdown → cell (7 declarations) |
+| `github.com/mpyw/declscope/internal/measure` |        0 |         0 |       30 | markdown → cell (7 declarations) |
 
 ## Packages — qualify
 
@@ -1548,7 +1548,7 @@ That is one package of this repository. A codebase adopting declscope has number
 > [!TIP]
 > Look for the row with nothing reported, much baselined and nothing declared. Nothing was decided there, everything was deferred, and the analyzer alone calls it clean.
 
-`inspect` prints several sections. The excerpt below is its Crossings section, in full: a Mermaid diagram, then the same crossings as a table, folded under it. The other sections list the namespaces, rank the most-reached declarations, and give the naming rule per namespace.
+`inspect` prints several sections. The excerpt below is its Crossings section, in full: a Mermaid diagram, then the same crossings as a table, folded under it. The other sections list the namespaces, rank the most-reached declarations outside the core, and give the naming rule per namespace.
 
 ````console
 $ declscope inspect -config .declscope-strict.yaml ./internal/measure
@@ -1576,20 +1576,20 @@ graph LR
   n1 -.->|2| n0
   n8 -.->|2| n5
   n8 -.->|2| n0
+  n0 -.->|2| n9
   n6 -.->|2| n7
   n7 -.->|1| n4
+  n3 -.->|1| n0
+  n3 -.->|1| n9
   n1 -.->|1| n6
   n3 -.->|1| n7
   n3 -.->|1| n8
-  n3 -.->|1| n0
-  n3 -.->|1| n9
   n1 -.->|1| n4
   n1 -.->|1| n5
   n8 -.->|1| n4
   n3 -.->|1| n5
   n5 -.->|1| n7
   n0 -.->|1| n10
-  n0 -.->|1| n9
   n10 -.->|1| n4
   n6 -.->|1| n5
   n6 -.->|1| n0
@@ -1601,8 +1601,8 @@ graph LR
 
 | crossing            | mutual | declared | baselined | reported | clears |  reached | uses |
 | ------------------- | ------ | -------: | --------: | -------: | -----: | -------: | ---: |
-| markdown → cell     | yes    |        7 |         0 |        0 |      0 |  7 of 18 |   17 |
-| markdown → sink     |        |        5 |         0 |        0 |      0 |  5 of 18 |   34 |
+| markdown → cell     | yes    |        7 |         0 |        0 |      0 |  7 of 18 |   18 |
+| markdown → sink     |        |        5 |         0 |        0 |      0 |  5 of 18 |   36 |
 | golden → (core)     |        |        4 |         0 |        0 |      0 |  4 of 79 |    9 |
 | json → summary      | yes    |        3 |         0 |        0 |      0 |  3 of 27 |    9 |
 | markdown → summary  | yes    |        3 |         0 |        0 |      0 |  3 of 27 |    7 |
@@ -1610,20 +1610,20 @@ graph LR
 | cell → markdown     | yes    |        2 |         0 |        0 |      0 |  2 of 10 |    3 |
 | format → json       |        |        2 |         0 |        0 |      0 | 2 of 107 |    2 |
 | format → markdown   |        |        2 |         0 |        0 |      0 |  2 of 10 |    2 |
+| markdown → reach    |        |        2 |         0 |        0 |      0 |   2 of 9 |    2 |
 | summary → crossing  |        |        2 |         0 |        0 |      0 |  2 of 20 |    2 |
 | crossing → (core)   |        |        1 |         0 |        0 |      0 |  1 of 79 |    3 |
+| golden → markdown   |        |        1 |         0 |        0 |      0 |  1 of 10 |    3 |
+| golden → reach      |        |        1 |         0 |        0 |      0 |   1 of 9 |    3 |
 | cell → summary      |        |        1 |         0 |        0 |      0 |  1 of 27 |    2 |
 | golden → crossing   |        |        1 |         0 |        0 |      0 |  1 of 20 |    2 |
 | golden → format     |        |        1 |         0 |        0 |      0 |   1 of 9 |    2 |
-| golden → markdown   |        |        1 |         0 |        0 |      0 |  1 of 10 |    2 |
-| golden → reach      |        |        1 |         0 |        0 |      0 |   1 of 7 |    2 |
 | cell → (core)       |        |        1 |         0 |        0 |      0 |  1 of 79 |    1 |
 | cell → json         |        |        1 |         0 |        0 |      0 | 1 of 107 |    1 |
 | format → (core)     |        |        1 |         0 |        0 |      0 |  1 of 79 |    1 |
 | golden → json       |        |        1 |         0 |        0 |      0 | 1 of 107 |    1 |
 | json → crossing     |        |        1 |         0 |        0 |      0 |  1 of 20 |    1 |
 | markdown → qualify  |        |        1 |         0 |        0 |      0 |  1 of 15 |    1 |
-| markdown → reach    |        |        1 |         0 |        0 |      0 |   1 of 7 |    1 |
 | qualify → (core)    |        |        1 |         0 |        0 |      0 |  1 of 79 |    1 |
 | summary → json      | yes    |        1 |         0 |        0 |      0 | 1 of 107 |    1 |
 | summary → markdown  | yes    |        1 |         0 |        0 |      0 |  1 of 10 |    1 |
@@ -1633,7 +1633,7 @@ graph LR
 
 109 declarations are further: open, shared by default rather than by decision, so left out of the table and of the diagram.
 
-Declarations crossed: 0 reported, 0 baselined, 29 declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.
+Declarations crossed: 0 reported, 0 baselined, 30 declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.
 ````
 
 One row per directed edge, so a mutual pair is two rows. **`clears` is the number the decision turns on**: how many findings would go away if the two namespaces became one.

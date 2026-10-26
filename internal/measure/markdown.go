@@ -131,18 +131,30 @@ func markdownArrow(c Crossing) string {
 }
 
 func writeMarkdownReach(out *sink, p Package) {
+	const heading = "Most-reached declarations except `(core)`"
 	reached := p.mostReached(10)
-	if len(reached) == 0 {
+	core := p.coreDeclarationsReached()
+	switch {
+	case len(reached) > 0:
+		rows := [][]string{{"declaration", "namespace", "reached from", "state"}}
+		for _, r := range reached {
+			rows = append(rows, []string{
+				"`" + r.Declaration + "`", r.Namespace,
+				cellPlural(r.From, "namespace", "namespaces"), string(r.State),
+			})
+		}
+		writeMarkdownTable(out, heading, rows)
+	case core > 0:
+		// Every declaration reached is the core's. Dropping the section
+		// would read as nothing reached at all.
+		out.printf("## %s\n\n", heading)
+	default:
 		return
 	}
-	rows := [][]string{{"declaration", "namespace", "reached from", "state"}}
-	for _, r := range reached {
-		rows = append(rows, []string{
-			"`" + r.Declaration + "`", r.Namespace,
-			cellPlural(r.From, "namespace", "namespaces"), string(r.State),
-		})
+	if core > 0 {
+		out.printf("%s further: the core's, which is the shared model and reached from everywhere by design.\n\n",
+			cellPlural(core, "declaration is", "declarations are"))
 	}
-	writeMarkdownTable(out, "Most-reached declarations", rows)
 }
 
 func writeMarkdownQualify(out *sink, p Package, asked bool) {
