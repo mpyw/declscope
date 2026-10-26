@@ -65,7 +65,9 @@ func writeMarkdownCrossings(out *sink, p Package, asked bool) {
 			fmt.Sprint(c.Uses),
 		})
 	}
-	writeMarkdownTable(out, "Crossings", rows)
+	out.print("## Crossings\n\n")
+	writeMarkdownMermaid(out, crossings)
+	writeMarkdownFolded(out, "Table: "+cellPlural(len(crossings), "crossing", "crossings"), rows)
 	if open := p.declarationsCrossing(EdgeOpen); open > 0 {
 		out.printf("%s further: open, shared by default rather than by decision, so left out of the table and of the diagram.\n\n",
 			cellPlural(open, "declaration is", "declarations are"))
@@ -76,7 +78,6 @@ func writeMarkdownCrossings(out *sink, p Package, asked bool) {
 			p.declarationsCrossing(EdgeBaselined),
 			p.declarationsCrossing(EdgeDeclared))
 	}
-	writeMarkdownMermaid(out, crossings)
 }
 
 // writeMarkdownMermaid draws the same edges the table lists.
@@ -270,6 +271,18 @@ func writeMarkdownFailed(out *sink, failed []string) {
 		out.print("- `" + strings.ReplaceAll(f, "\n", " ") + "`\n")
 	}
 	out.print("\n")
+}
+
+// writeMarkdownFolded prints a padded table folded under a summary line, for a
+// section whose diagram above it is the overview and whose table is where a
+// row is looked up. GitHub renders a table inside details only after a blank
+// line, which is why one follows the summary.
+func writeMarkdownFolded(out *sink, summary string, rows [][]string) {
+	out.printf("<details>\n<summary>%s</summary>\n\n", summary)
+	for _, line := range cellTable(rows) {
+		out.print(line + "\n")
+	}
+	out.print("\n</details>\n\n")
 }
 
 // writeMarkdownTable prints one padded table under its heading. Every table in
