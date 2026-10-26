@@ -1,9 +1,11 @@
 package main_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -271,5 +273,159 @@ func TestInspectRefusesAPackageOfTestFilesAloneWithoutTests(t *testing.T) {
 	}
 	if strings.Contains(out, "packages") {
 		t.Errorf("the refusal speaks of many packages:\n%s", out)
+	}
+}
+
+// TestInspectSymbolsNamesTheReachingDeclaration checks which declaration a
+// reference is charged to: the package-level one it sits in, never a type or a
+// var a function body declares, with a member's references charged to its
+// type and each name of a var spec to its own value.
+func TestInspectSymbolsNamesTheReachingDeclaration(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, "p/user.go", "package p\n\nfunc userHelper() int { return 1 }\n\ntype userPoint struct{ x int }\n\ntype userKind int\n")
+	writeTree(t, dir, "p/order.go", `package p
+
+type orderBox struct {
+	pt userPoint
+}
+
+func (b orderBox) orderSum() int { return userHelper() + userHelper() + b.pt.x }
+
+var orderA, orderB = 2, userHelper()
+
+var orderC, orderD userKind
+
+func orderRun() int {
+	type local struct{ k userKind }
+	return int(local{}.k)
+}
+
+func init() { _ = userHelper() }
+`)
+
+	out, code := runIn(t, bin, dir, "inspect", "-format=json", "-symbols", "./p")
+	if code != 0 {
+		t.Fatalf("inspect exited %d\n%s", code, out)
+	}
+	var got struct {
+		Edges []struct {
+			Declaration string `json:"declaration"`
+			Uses        int    `json:"uses"`
+		} `json:"edges"`
+		SymbolEdges []struct {
+			From            string `json:"from"`
+			To              string `json:"to"`
+			FromDeclaration string `json:"fromDeclaration"`
+			FromKind        string `json:"fromKind"`
+			Declaration     string `json:"declaration"`
+			Uses            int    `json:"uses"`
+		} `json:"symbolEdges"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	var rows []string
+	for _, e := range got.SymbolEdges {
+		rows = append(rows, fmt.Sprintf("%s→%s %s %s→%s %d", e.From, e.To, e.FromKind, e.FromDeclaration, e.Declaration, e.Uses))
+	}
+	want := []string{
+		"order→user func init→userHelper 1",
+		"order→user var orderB→userHelper 1",
+		"order→user type orderBox→userPoint 1",
+		"order→user method orderBox.orderSum→userHelper 2",
+		"order→user var orderC→userKind 1",
+		"order→user func orderRun→userKind 1",
+	}
+	// userPoint.x is reached too, from orderSum. Its row proves a member is
+	// resolved on the reached side, so it is checked apart from the order.
+	member := "order→user method orderBox.orderSum→userPoint.x 1"
+	if !slices.Contains(rows, member) {
+		t.Errorf("missing %q in\n%s", member, strings.Join(rows, "\n"))
+	}
+	rows = slices.DeleteFunc(rows, func(r string) bool { return r == member })
+	if !slices.Equal(rows, want) {
+		t.Errorf("symbol edges:\n%s\nwant:\n%s", strings.Join(rows, "\n"), strings.Join(want, "\n"))
+	}
+
+	// Split by the reaching side, the uses still add up to each edge's.
+	sums := map[string]int{}
+	for _, e := range got.SymbolEdges {
+		sums[e.Declaration] += e.Uses
+	}
+	for _, e := range got.Edges {
+		if sums[e.Declaration] != e.Uses {
+			t.Errorf("%s: %d uses over its symbol edges, %d on its edge", e.Declaration, sums[e.Declaration], e.Uses)
+		}
+	}
+
+	// Without the flag the key is absent, not empty: nothing was resolved.
+	out, _ = runIn(t, bin, dir, "inspect", "-format=json", "./p")
+	if strings.Contains(out, "symbolEdges") {
+		t.Errorf("symbolEdges is reported without -symbols:\n%s", out)
+	}
+}
+
+// TestInspectSymbolNamespacesNarrowsTheSymbols checks that -symbol-namespaces
+// keeps the crossings into or out of any namespace it names, and refuses where
+// it would narrow nothing: without -symbols, or naming a namespace the package
+// does not have.
+func TestInspectSymbolNamespacesNarrowsTheSymbols(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, "go.mod", testModule)
+	writeTree(t, dir, "p/a.go", "package p\n\nfunc aRun() int { return bHelper() }\n")
+	writeTree(t, dir, "p/b.go", "package p\n\nfunc bHelper() int { return cHelper() }\n")
+	writeTree(t, dir, "p/c.go", "package p\n\nfunc cHelper() int { return 1 }\n\nfunc cRun() int { return aRun() + dRun() }\n")
+	writeTree(t, dir, "p/d.go", "package p\n\nfunc dRun() int { return bHelper() }\n")
+
+	for _, tc := range []struct {
+		flag string
+		want []string
+	}{
+		// b → c and c → d and d → b touch neither side of a.
+		{"a", []string{"aRun→bHelper", "cRun→aRun"}},
+		// Any of the names, not only the crossings between them: c → d
+		// touches d alone and stays.
+		{"a, d,", []string{"aRun→bHelper", "cRun→aRun", "cRun→dRun", "dRun→bHelper"}},
+		// A "!" leaves a namespace out, from everything when nothing is kept.
+		{"!a", []string{"bHelper→cHelper", "cRun→dRun", "dRun→bHelper"}},
+		// And from what is kept, whatever the kept name says: c → a touches
+		// a, but it touches c too.
+		{"a, !c", []string{"aRun→bHelper"}},
+	} {
+		out, code := runIn(t, bin, dir, "inspect", "-format=json", "-symbols", "-symbol-namespaces="+tc.flag, "./p")
+		if code != 0 {
+			t.Fatalf("inspect exited %d\n%s", code, out)
+		}
+		var got struct {
+			SymbolIncludedNamespaces []string `json:"symbolIncludedNamespaces"`
+			SymbolExcludedNamespaces []string `json:"symbolExcludedNamespaces"`
+			SymbolEdges              []struct {
+				FromDeclaration string `json:"fromDeclaration"`
+				Declaration     string `json:"declaration"`
+			} `json:"symbolEdges"`
+		}
+		if err := json.Unmarshal([]byte(out), &got); err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+		var rows []string
+		for _, e := range got.SymbolEdges {
+			rows = append(rows, e.FromDeclaration+"→"+e.Declaration)
+		}
+		if !slices.Equal(rows, tc.want) {
+			t.Errorf("-symbol-namespaces=%q: got %v, want %v", tc.flag, rows, tc.want)
+		}
+		if len(got.SymbolIncludedNamespaces)+len(got.SymbolExcludedNamespaces) == 0 {
+			t.Errorf("-symbol-namespaces=%q: the JSON does not say what narrowed it", tc.flag)
+		}
+	}
+
+	out, code := runIn(t, bin, dir, "inspect", "-symbol-namespaces=a", "./p")
+	if code != 1 || !strings.Contains(out, "add -symbols") {
+		t.Errorf("-symbol-namespaces without -symbols: exit %d\n%s", code, out)
+	}
+	out, code = runIn(t, bin, dir, "inspect", "-symbols", "-symbol-namespaces=a,x,!y", "./p")
+	if code != 1 || !strings.Contains(out, `no namespace "x", "y"`) || !strings.Contains(out, "\n  c") {
+		t.Errorf("unknown -symbol-namespaces: exit %d\n%s", code, out)
 	}
 }

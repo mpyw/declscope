@@ -1,8 +1,10 @@
 package measure
 
 import (
+	"cmp"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/mpyw/declscope/internal/rule"
@@ -38,6 +40,7 @@ func (p Package) writeMarkdown(w io.Writer) error {
 	writeMarkdownTable(out, "Namespaces", rows)
 
 	writeMarkdownCrossings(out, p, p.Findings[rule.Boundary].Asked)
+	writeMarkdownSymbols(out, p)
 	writeMarkdownReach(out, p)
 	writeMarkdownQualify(out, p, asked)
 	return out.flush()
@@ -65,7 +68,9 @@ func writeMarkdownCrossings(out *sink, p Package, asked bool) {
 			fmt.Sprint(c.Uses),
 		})
 	}
-	writeMarkdownTable(out, "Crossings", rows)
+	out.print("## Crossings\n\n")
+	writeMarkdownMermaid(out, crossings)
+	writeMarkdownFolded(out, "Table: "+cellPlural(len(crossings), "crossing", "crossings"), rows)
 	if open := p.declarationsCrossing(EdgeOpen); open > 0 {
 		out.printf("%s further: open, shared by default rather than by decision, so left out of the table and of the diagram.\n\n",
 			cellPlural(open, "declaration is", "declarations are"))
@@ -76,7 +81,6 @@ func writeMarkdownCrossings(out *sink, p Package, asked bool) {
 			p.declarationsCrossing(EdgeBaselined),
 			p.declarationsCrossing(EdgeDeclared))
 	}
-	writeMarkdownMermaid(out, crossings)
 }
 
 // writeMarkdownMermaid draws the same edges the table lists.
@@ -123,6 +127,125 @@ func markdownArrow(c Crossing) string {
 	case c.Reported > 0:
 		return "==>"
 	case c.Baselined > 0:
+		return "-->"
+	default:
+		return "-.->"
+	}
+}
+
+// writeMarkdownSymbols lists the crossings declaration to declaration. Pairs
+// come in the order the crossing table ranks them, so a row there and its rows
+// here are found in the same place. Open crossings are left out for the reason
+// they are left out of that table.
+func writeMarkdownSymbols(out *sink, p Package) {
+	if !p.SymbolsAsked {
+		return
+	}
+	rank := map[[2]string]int{}
+	for i, c := range p.crossings() {
+		rank[[2]string{c.From, c.To}] = i
+	}
+	var shown []SymbolEdge
+	open := 0
+	for _, e := range p.Symbols {
+		if e.State == EdgeOpen {
+			open++
+			continue
+		}
+		shown = append(shown, e)
+	}
+	// Stable, so within a pair the rows keep the order Sorted gave them.
+	slices.SortStableFunc(shown, func(a, b SymbolEdge) int {
+		return cmp.Compare(rank[[2]string{a.From, a.To}], rank[[2]string{b.From, b.To}])
+	})
+
+	if len(shown) == 0 {
+		out.print("## Symbol crossings\n\n")
+		writeMarkdownSymbolNamespace(out, p)
+		if open == 0 {
+			out.print("Nothing crosses a namespace here.\n\n")
+		} else {
+			out.printf("Open crossings only: %s, so there is nothing to put in the table or diagram.\n\n",
+				cellPlural(open, "pair of declarations", "pairs of declarations"))
+		}
+		return
+	}
+	rows := [][]string{{"crossing", "from", "to", "state", "uses"}}
+	for _, e := range shown {
+		rows = append(rows, []string{
+			e.From + " → " + e.To, "`" + e.FromDeclaration + "`", "`" + e.Declaration + "`",
+			string(e.State), fmt.Sprint(e.Uses),
+		})
+	}
+	out.print("## Symbol crossings\n\n")
+	writeMarkdownSymbolNamespace(out, p)
+	writeMarkdownSymbolMermaid(out, shown)
+	writeMarkdownFolded(out, "Table: "+cellPlural(len(shown), "pair of declarations", "pairs of declarations"), rows)
+	if open > 0 {
+		out.printf("%s further: open, so left out of the table and of the diagram.\n\n",
+			cellPlural(open, "pair of declarations is", "pairs of declarations are"))
+	}
+}
+
+// writeMarkdownSymbolNamespace says what -symbol-namespaces left out, so that
+// a narrowed section is not read as the whole package.
+func writeMarkdownSymbolNamespace(out *sink, p Package) {
+	f := p.SymbolsNamespaces
+	if len(f.Keep) > 0 {
+		out.printf("Only the crossings into or out of %s.\n\n", strings.Join(f.Keep, ", "))
+	}
+	if len(f.Drop) > 0 {
+		out.printf("Leaving out the crossings into or out of %s.\n\n", strings.Join(f.Drop, ", "))
+	}
+}
+
+// writeMarkdownSymbolMermaid draws the rows of the symbol table: a box per
+// namespace, a node per declaration, an arrow per row, labelled with its uses.
+//
+// Boxes and nodes are declared in the order the rows first name them, which is
+// stable for the same package. A declaration is keyed by its namespace too:
+// init and the blank declarations can be written in several files, so one
+// spelling can name a declaration in each of several namespaces.
+func writeMarkdownSymbolMermaid(out *sink, shown []SymbolEdge) {
+	type node struct{ ns, decl string }
+	ids := map[node]string{}
+	var nsOrder []string
+	byNamespace := map[string][]node{}
+	for _, e := range shown {
+		for _, n := range []node{{e.From, e.FromDeclaration}, {e.To, e.Declaration}} {
+			if _, ok := ids[n]; ok {
+				continue
+			}
+			ids[n] = fmt.Sprintf("s%d", len(ids))
+			if _, ok := byNamespace[n.ns]; !ok {
+				nsOrder = append(nsOrder, n.ns)
+			}
+			byNamespace[n.ns] = append(byNamespace[n.ns], n)
+		}
+	}
+
+	out.print("```mermaid\ngraph LR\n")
+	for i, ns := range nsOrder {
+		out.printf("  subgraph g%d[\"%s\"]\n", i, ns)
+		for _, n := range byNamespace[ns] {
+			out.printf("    %s[\"%s\"]\n", ids[n], n.decl)
+		}
+		out.print("  end\n")
+	}
+	for _, e := range shown {
+		out.printf("  %s %s|%d| %s\n",
+			ids[node{e.From, e.FromDeclaration}], markdownSymbolArrow(e.State), e.Uses, ids[node{e.To, e.Declaration}])
+	}
+	out.print("```\n\n")
+}
+
+// markdownSymbolArrow is markdownArrow for one declaration, which has one
+// state rather than a mix to take the worst of.
+func markdownSymbolArrow(state EdgeState) string {
+	switch state {
+	case EdgeReported:
+		return "==>"
+	case EdgeBaselined:
 		return "-->"
 	default:
 		return "-.->"
@@ -270,6 +393,18 @@ func writeMarkdownFailed(out *sink, failed []string) {
 		out.print("- `" + strings.ReplaceAll(f, "\n", " ") + "`\n")
 	}
 	out.print("\n")
+}
+
+// writeMarkdownFolded prints a padded table folded under a summary line, for a
+// section whose diagram above it is the overview and whose table is where a
+// row is looked up. GitHub renders a table inside details only after a blank
+// line, which is why one follows the summary.
+func writeMarkdownFolded(out *sink, summary string, rows [][]string) {
+	out.printf("<details>\n<summary>%s</summary>\n\n", summary)
+	for _, line := range cellTable(rows) {
+		out.print(line + "\n")
+	}
+	out.print("\n</details>\n\n")
 }
 
 // writeMarkdownTable prints one padded table under its heading. Every table in

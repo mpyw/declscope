@@ -12,17 +12,6 @@ Config: `.declscope.yaml`
 
 ## Crossings
 
-| crossing            | mutual | declared | baselined | reported | clears | reached | uses |
-| ------------------- | ------ | -------: | --------: | -------: | -----: | ------: | ---: |
-| completion → flags  | yes    |        0 |         1 |        1 |      2 |  3 of 5 |    6 |
-| (core) → flags      |        |        0 |         0 |        0 |      0 |  1 of 5 |    4 |
-| (core) → completion |        |        0 |         1 |        0 |      1 |  1 of 6 |    2 |
-| flags → completion  | yes    |        1 |         0 |        0 |      2 |  1 of 6 |    1 |
-
-1 declaration is further: open, shared by default rather than by decision, so left out of the table and of the diagram.
-
-Declarations crossed: 1 reported, 2 baselined, 1 declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.
-
 ```mermaid
 graph LR
   n0["completion"]
@@ -33,6 +22,22 @@ graph LR
   n2 -->|1| n0
   n1 -.->|1| n0
 ```
+
+<details>
+<summary>Table: 4 crossings</summary>
+
+| crossing            | mutual | declared | baselined | reported | clears | reached | uses |
+| ------------------- | ------ | -------: | --------: | -------: | -----: | ------: | ---: |
+| completion → flags  | yes    |        0 |         1 |        1 |      2 |  3 of 5 |    6 |
+| (core) → flags      |        |        0 |         0 |        0 |      0 |  1 of 5 |    4 |
+| (core) → completion |        |        0 |         1 |        0 |      1 |  1 of 6 |    2 |
+| flags → completion  | yes    |        1 |         0 |        0 |      2 |  1 of 6 |    1 |
+
+</details>
+
+1 declaration is further: open, shared by default rather than by decision, so left out of the table and of the diagram.
+
+Declarations crossed: 1 reported, 2 baselined, 1 declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.
 
 ## Most-reached declarations
 

@@ -172,6 +172,70 @@ type Edge struct {
 	State EdgeState
 }
 
+// SymbolEdge is one declaration of one namespace, reached from one
+// declaration of another namespace.
+//
+// It is Edge with the reaching side resolved too, kept apart from Edge rather
+// than folded into it: every count the crossing table prints is per declaration
+// reached, and an Edge split by the declaration doing the reaching would count
+// one reached declaration once per caller.
+type SymbolEdge struct {
+	// From is the namespace doing the reaching, To the one being reached.
+	From, To string
+
+	// FromDeclaration is the package-level declaration the reference sits in,
+	// spelled as Declaration is. A method is Type.method. A reference inside
+	// a field or an interface method is the type's: a member is written
+	// inside its type's declaration. A declaration declscope does not check,
+	// init or the blank one, is spelled as written.
+	FromDeclaration string
+	FromKind        string
+
+	// Declaration is the name reached, spelled as Edge spells it.
+	Declaration string
+	Kind        string
+
+	// Uses counts the reference sites in FromDeclaration.
+	Uses int
+
+	// State is the reached declaration's, the same as its Edge's: the
+	// analyzer judges the declaration, not each use.
+	State EdgeState
+}
+
+// Detail is what the caller asked to be measured beyond what every report
+// holds.
+type Detail struct {
+	// Symbols resolves the reaching side of each crossing to a declaration.
+	Symbols bool
+
+	// Namespaces narrows the symbol edges to some namespaces.
+	Namespaces SymbolFilter
+}
+
+// SymbolFilter is the namespaces -symbol-namespaces names, spelled as
+// Namespace.Name spells them.
+type SymbolFilter struct {
+	// Keep, when not empty, admits only an edge into or out of one of these.
+	Keep []string
+
+	// Drop refuses an edge into or out of any of these, whatever Keep says.
+	// It is what makes the core usable: nearly everything reaches it, so its
+	// edges bury the rest.
+	Drop []string
+}
+
+// Empty reports whether the filter admits every edge.
+func (f SymbolFilter) Empty() bool { return len(f.Keep) == 0 && len(f.Drop) == 0 }
+
+// Admits reports whether an edge from one namespace to another is kept.
+func (f SymbolFilter) Admits(from, to string) bool {
+	if slices.Contains(f.Drop, from) || slices.Contains(f.Drop, to) {
+		return false
+	}
+	return len(f.Keep) == 0 || slices.Contains(f.Keep, from) || slices.Contains(f.Keep, to)
+}
+
 // NameFinding is one declaration the naming rule examined and was not
 // satisfied by.
 type NameFinding struct {
@@ -235,6 +299,17 @@ type Package struct {
 
 	// Names are sorted by Namespace, then Declaration.
 	Names []NameFinding
+
+	// Symbols are sorted by From, To, FromDeclaration, then Declaration.
+	// They are held only where Detail.Symbols asked for them, which
+	// SymbolsAsked records: an empty list then says nothing crosses, where
+	// a list nobody asked for says nothing.
+	Symbols      []SymbolEdge
+	SymbolsAsked bool
+
+	// SymbolsNamespaces is Detail.Namespaces: what Symbols was narrowed
+	// by, empty when it holds the whole package.
+	SymbolsNamespaces SymbolFilter
 
 	// Findings is one Count per rule in rule.All.
 	Findings map[rule.Rule]Count
@@ -318,6 +393,7 @@ func (p Package) Sorted() Package {
 	p.Namespaces = slices.Clone(p.Namespaces)
 	p.Edges = slices.Clone(p.Edges)
 	p.Names = slices.Clone(p.Names)
+	p.Symbols = slices.Clone(p.Symbols)
 	// The map goes too. A copy that shared it would let a caller holding the
 	// original change what the copy reports, which is the surprise this
 	// method exists to avoid.
@@ -338,6 +414,14 @@ func (p Package) Sorted() Package {
 		return cmp.Or(
 			cmp.Compare(a.From, b.From),
 			cmp.Compare(a.To, b.To),
+			cmp.Compare(a.Declaration, b.Declaration),
+		)
+	})
+	slices.SortFunc(p.Symbols, func(a, b SymbolEdge) int {
+		return cmp.Or(
+			cmp.Compare(a.From, b.From),
+			cmp.Compare(a.To, b.To),
+			cmp.Compare(a.FromDeclaration, b.FromDeclaration),
 			cmp.Compare(a.Declaration, b.Declaration),
 		)
 	})

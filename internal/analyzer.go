@@ -43,9 +43,10 @@ func Collect(pass *analysis.Pass, opts Options) []baseline.Key {
 //
 // Unlike Collect it is given options with the baseline loaded — config.Resolve
 // rather than config.ResolveForBaseline — because what the baseline is
-// absorbing is one of the things being reported.
-func Survey(pass *analysis.Pass, opts Options) measure.Package {
-	return build(pass, opts).surveyed(pass, opts)
+// absorbing is one of the things being reported. detail asks for what only
+// inspect reports.
+func Survey(pass *analysis.Pass, opts Options, detail measure.Detail) measure.Package {
+	return build(pass, opts).surveyed(pass, opts, detail)
 }
 
 // build always returns a collection, empty or not. A package the filter left

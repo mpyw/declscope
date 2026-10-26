@@ -109,7 +109,7 @@ func surveyPackages(pkgs []*packages.Package, configPath string, failed []string
 			results[i].err = err
 			return
 		}
-		results[i] = measuredPackage{opts: opts, chain: chain, measured: internal.Survey(loadedPass(pkgs[i]), opts)}
+		results[i] = measuredPackage{opts: opts, chain: chain, measured: internal.Survey(loadedPass(pkgs[i]), opts, measure.Detail{})}
 	})
 
 	var measured []measure.Package

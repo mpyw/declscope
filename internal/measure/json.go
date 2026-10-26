@@ -39,6 +39,17 @@ type jsonPackage struct {
 
 	Edges []jsonEdge `json:"edges"`
 	Names []jsonName `json:"names"`
+
+	// SymbolEdges is absent unless inspect -symbols asked for it. An empty
+	// array would say nothing crosses, which a run that never resolved the
+	// reaching side cannot know.
+	SymbolEdges *[]jsonSymbolEdge `json:"symbolEdges,omitempty"`
+
+	// SymbolIncludedNamespaces and SymbolExcludedNamespaces are what
+	// -symbol-namespaces narrowed symbolEdges by: the names it kept and the
+	// ones it wrote with a "!". Each is absent when it named none.
+	SymbolIncludedNamespaces []string `json:"symbolIncludedNamespaces,omitempty"`
+	SymbolExcludedNamespaces []string `json:"symbolExcludedNamespaces,omitempty"`
 }
 
 type jsonCrossing struct {
@@ -73,6 +84,17 @@ type jsonEdge struct {
 	Kind        string `json:"kind"`
 	Uses        int    `json:"uses"`
 	State       string `json:"state"`
+}
+
+type jsonSymbolEdge struct {
+	From            string `json:"from"`
+	To              string `json:"to"`
+	FromDeclaration string `json:"fromDeclaration"`
+	FromKind        string `json:"fromKind"`
+	Declaration     string `json:"declaration"`
+	Kind            string `json:"kind"`
+	Uses            int    `json:"uses"`
+	State           string `json:"state"`
 }
 
 type jsonName struct {
@@ -133,6 +155,24 @@ func (p Package) writeJSON(w io.Writer) error {
 			State:       string(n.State),
 			Fixable:     n.Fixable,
 		})
+	}
+	if p.SymbolsAsked {
+		symbols := make([]jsonSymbolEdge, 0, len(p.Symbols))
+		for _, e := range p.Symbols {
+			symbols = append(symbols, jsonSymbolEdge{
+				From:            e.From,
+				To:              e.To,
+				FromDeclaration: e.FromDeclaration,
+				FromKind:        e.FromKind,
+				Declaration:     e.Declaration,
+				Kind:            e.Kind,
+				Uses:            e.Uses,
+				State:           string(e.State),
+			})
+		}
+		out.SymbolEdges = &symbols
+		out.SymbolIncludedNamespaces = p.SymbolsNamespaces.Keep
+		out.SymbolExcludedNamespaces = p.SymbolsNamespaces.Drop
 	}
 	return writeJSONValue(w, out)
 }

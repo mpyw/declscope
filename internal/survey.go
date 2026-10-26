@@ -1,8 +1,12 @@
 package internal
 
 import (
+	"cmp"
+	"go/ast"
+	"go/token"
 	"maps"
 	"path/filepath"
+	"slices"
 
 	"golang.org/x/tools/go/analysis"
 
@@ -30,10 +34,13 @@ import (
 // one.
 //
 //declscope:shared // the survey entry, driven from analyzer.go
-func (c *collection) surveyed(pass *analysis.Pass, opts Options) measure.Package {
+func (c *collection) surveyed(pass *analysis.Pass, opts Options, detail measure.Detail) measure.Package {
 	out := measure.Package{
-		Path:     pass.Pkg.Path(),
-		Findings: countsForSurvey(pass, c, opts),
+		Path:         pass.Pkg.Path(),
+		Findings:     countsForSurvey(pass, c, opts),
+		SymbolsAsked: detail.Symbols,
+
+		SymbolsNamespaces: detail.Namespaces,
 	}
 
 	for _, t := range c.targets {
@@ -47,7 +54,11 @@ func (c *collection) surveyed(pass *analysis.Pass, opts Options) measure.Package
 				out.Names = append(out.Names, nameFindingForSurvey(t, f))
 			}
 		}
-		out.Edges = append(out.Edges, edgesForSurvey(c, t, crossed)...)
+		state := crossingStateForSurvey(t, crossed)
+		out.Edges = append(out.Edges, edgesForSurvey(c, t, state)...)
+		if detail.Symbols {
+			out.Symbols = append(out.Symbols, c.symbolEdgesForSurvey(pass, t, state, detail.Namespaces)...)
+		}
 	}
 
 	// The unused, directive and filter rules are settled once every other
@@ -60,24 +71,12 @@ func (c *collection) surveyed(pass *analysis.Pass, opts Options) measure.Package
 
 // edgesForSurvey turns one declaration's references from other namespaces into
 // one edge per reaching namespace.
-//
-// The state comes from the boundary finding when there was one. When there was
-// none, the crossing is still real, and why nothing was reported is itself the
-// answer: a directive widened the declaration, the configured default did, or
-// the rule is switched off.
-func edgesForSurvey(c *collection, t *target, crossed measure.FindingState) []measure.Edge {
+func edgesForSurvey(c *collection, t *target, state measure.EdgeState) []measure.Edge {
 	uses := map[string]int{}
 	for _, r := range c.refs[t.obj] {
 		if r.file.key() != t.file.key() {
 			uses[r.file.spelledNamespace()]++
 		}
-	}
-	if len(uses) == 0 {
-		return nil
-	}
-	state := edgeStateForSurvey(crossed)
-	if crossed == "" {
-		state = stateOfUnreportedSurveyedEdge(t)
 	}
 	out := make([]measure.Edge, 0, len(uses))
 	for from, n := range uses {
@@ -91,6 +90,116 @@ func edgesForSurvey(c *collection, t *target, crossed measure.FindingState) []me
 		})
 	}
 	return out
+}
+
+// symbolEdgesForSurvey is edgesForSurvey with the reaching side resolved to
+// the declaration each reference sits in: one edge per reaching declaration.
+// Only the edges the filter admits are kept.
+func (c *collection) symbolEdgesForSurvey(pass *analysis.Pass, t *target, state measure.EdgeState, filter measure.SymbolFilter) []measure.SymbolEdge {
+	type reaching struct{ ns, decl, kind string }
+	uses := map[reaching]int{}
+	to := t.file.spelledNamespace()
+	for _, r := range c.refs[t.obj] {
+		if r.file.key() == t.file.key() {
+			continue
+		}
+		if !filter.Admits(r.file.spelledNamespace(), to) {
+			continue
+		}
+		decl, k := c.declarationSurveyedAt(pass, r)
+		uses[reaching{r.file.spelledNamespace(), decl, string(k)}]++
+	}
+	out := make([]measure.SymbolEdge, 0, len(uses))
+	for from, n := range uses {
+		out = append(out, measure.SymbolEdge{
+			From:            from.ns,
+			To:              to,
+			FromDeclaration: from.decl,
+			FromKind:        from.kind,
+			Declaration:     t.name(),
+			Kind:            string(t.kind),
+			Uses:            n,
+			State:           state,
+		})
+	}
+	return out
+}
+
+// declarationSurveyedAt names the package-level declaration a reference sits
+// in, spelled the way the reached side is.
+//
+// It searches the file's declarations by position rather than walking up from
+// the reference: they are in source order and do not overlap, so a binary
+// search finds the one holding it, where FindByPos scans every node before the
+// reference, once per reference. Only the outermost declaration is wanted, so
+// a type or var a function body declares is never the answer.
+//
+// A reference inside a field or an interface method is its type's: a member
+// is written inside its type's declaration, and naming the field would split
+// one type's dependencies across rows its reader has to add back up.
+func (c *collection) declarationSurveyedAt(pass *analysis.Pass, r ref) (string, kind) {
+	decls := r.file.file.Decls
+	pos := r.node.Pos()
+	i, _ := slices.BinarySearchFunc(decls, pos, func(d ast.Decl, pos token.Pos) int {
+		return cmp.Compare(d.End(), pos)
+	})
+	// Every reference recorded for a target lies inside some declaration of
+	// its file: an import names no target, and nothing else sits outside one.
+	name, k := surveyedDeclName(decls[i], pos)
+	if t := c.byObj[pass.TypesInfo.Defs[name]]; t != nil {
+		return t.name(), t.kind
+	}
+	// init and the blank declarations are not checked, so no target names
+	// them. They are spelled as written.
+	return name.Name, k
+}
+
+// surveyedDeclName finds the name a declaration gives to whatever sits at pos.
+func surveyedDeclName(d ast.Decl, pos token.Pos) (*ast.Ident, kind) {
+	if fn, ok := d.(*ast.FuncDecl); ok {
+		if fn.Recv != nil {
+			return fn.Name, kindMethod
+		}
+		return fn.Name, kindFunc
+	}
+	gen := d.(*ast.GenDecl)
+	i, _ := slices.BinarySearchFunc(gen.Specs, pos, func(s ast.Spec, pos token.Pos) int {
+		return cmp.Compare(s.End(), pos)
+	})
+	switch spec := gen.Specs[i].(type) {
+	case *ast.TypeSpec:
+		return spec.Name, kindType
+	case *ast.ValueSpec:
+		k := kindVar
+		if gen.Tok == token.CONST {
+			k = kindConst
+		}
+		// var a, b = x, y pairs each name with its value. Anything else, a
+		// type both names share or one call returning both, belongs to the
+		// spec as a whole, which the first name stands for.
+		if len(spec.Values) == len(spec.Names) {
+			for j, v := range spec.Values {
+				if v.Pos() <= pos && pos < v.End() {
+					return spec.Names[j], k
+				}
+			}
+		}
+		return spec.Names[0], k
+	}
+	panic("unreachable: a declaration holding a reference is a func, a type or a value")
+}
+
+// crossingStateForSurvey is what became of a crossing of t.
+//
+// The state comes from the boundary finding when there was one. When there was
+// none, the crossing is still real, and why nothing was reported is itself the
+// answer: a directive widened the declaration, the configured default did, or
+// the rule is switched off.
+func crossingStateForSurvey(t *target, crossed measure.FindingState) measure.EdgeState {
+	if crossed == "" {
+		return stateOfUnreportedSurveyedEdge(t)
+	}
+	return edgeStateForSurvey(crossed)
 }
 
 // stateOfUnreportedSurveyedEdge names why a crossing produced no finding.

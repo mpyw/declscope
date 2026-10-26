@@ -52,6 +52,31 @@ func fixturePackage() Package {
 	}
 }
 
+// fixtureSymbolsPackage is fixturePackage measured with -symbols. Its symbol
+// edges split the same edges by the declaration doing the reaching: writeFlag
+// is reached from two declarations of one namespace, which is one Edge and two
+// rows here, and the open crossing is held but not listed.
+//
+//declscope:shared // the goldens are rendered from it
+func fixtureSymbolsPackage() Package {
+	p := fixturePackage()
+	p.SymbolsAsked = true
+	// In the order Sorted gives, which is the order Survey hands them over
+	// in. The edges above are not, and sorting the whole package here would
+	// move them in this golden for no reason the symbols give.
+	p.Symbols = []SymbolEdge{
+		{From: "(core)", To: "completion", FromDeclaration: "Run", FromKind: "func", Declaration: "compBuf", Kind: "var", Uses: 2, State: EdgeBaselined},
+		{From: "(core)", To: "flags", FromDeclaration: "Run", FromKind: "func", Declaration: "flagSet", Kind: "var", Uses: 4, State: EdgeIgnored},
+		{From: "completion", To: "(core)", FromDeclaration: "compRun", FromKind: "func", Declaration: "Run", Kind: "func", Uses: 9, State: EdgeOpen},
+		{From: "completion", To: "flags", FromDeclaration: "Comp.write", FromKind: "method", Declaration: "writeFlag", Kind: "func", Uses: 1, State: EdgeReported},
+		{From: "completion", To: "flags", FromDeclaration: "compRun", FromKind: "func", Declaration: "Flags.parsed", Kind: "field", Uses: 2, State: EdgeBaselined},
+		{From: "completion", To: "flags", FromDeclaration: "compRun", FromKind: "func", Declaration: "flagSet", Kind: "var", Uses: 1, State: EdgeIgnored},
+		{From: "completion", To: "flags", FromDeclaration: "compRun", FromKind: "func", Declaration: "writeFlag", Kind: "func", Uses: 2, State: EdgeReported},
+		{From: "flags", To: "completion", FromDeclaration: "flagSet", FromKind: "var", Declaration: "compName", Kind: "func", Uses: 1, State: EdgeDeclared},
+	}
+	return p
+}
+
 //declscope:shared // the goldens are rendered from it
 func fixtureSummary() Summary {
 	return SummaryOf([]Package{fixturePackage(), {

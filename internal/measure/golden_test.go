@@ -28,6 +28,7 @@ func TestGoldens(t *testing.T) {
 	summary := fixtureSummary()
 	unchecked := fixtureUncheckedPackage()
 	quiet := fixtureQuietPackage()
+	symbols := fixtureSymbolsPackage()
 
 	for _, tc := range []struct {
 		name   string
@@ -35,6 +36,10 @@ func TestGoldens(t *testing.T) {
 	}{
 		{"inspect.json", func(b *bytes.Buffer) error { return pkg.WriteFormat(b, formatJSON) }},
 		{"inspect.md", func(b *bytes.Buffer) error { return pkg.WriteFormat(b, FormatMarkdown) }},
+		// Only the symbol sections differ from inspect's, and the goldens
+		// above show that without -symbols there are none.
+		{"inspect-symbols.json", func(b *bytes.Buffer) error { return symbols.WriteFormat(b, formatJSON) }},
+		{"inspect-symbols.md", func(b *bytes.Buffer) error { return symbols.WriteFormat(b, FormatMarkdown) }},
 		{"survey.json", func(b *bytes.Buffer) error { return summary.WriteFormat(b, formatJSON) }},
 		{"survey.md", func(b *bytes.Buffer) error { return summary.WriteFormat(b, FormatMarkdown) }},
 		// A package where both rules were switched off, and one where every
@@ -177,5 +182,33 @@ func TestSortedIsDeterministic(t *testing.T) {
 	}
 	if pkg.Namespaces[0].Core {
 		t.Error("Sorted reordered the value it was called on")
+	}
+}
+
+// TestMarkdownSymbolsSaysWhyItListsNothing checks the two ways the symbol
+// table can be empty once asked for, which no golden reaches.
+func TestMarkdownSymbolsSaysWhyItListsNothing(t *testing.T) {
+	for _, tc := range []struct {
+		symbols []SymbolEdge
+		want    string
+	}{
+		{nil, "## Symbol crossings\n\nNothing crosses a namespace here."},
+		{[]SymbolEdge{{From: "a", To: "b", FromDeclaration: "run", Declaration: "Exported", State: EdgeOpen}},
+			"## Symbol crossings\n\nOpen crossings only: 1 pair of declarations,"},
+	} {
+		pkg := Package{
+			Path:         "example.com/symbols",
+			Namespaces:   []Namespace{{Name: "a", Declarations: 1}, {Name: "b", Declarations: 1}},
+			Symbols:      tc.symbols,
+			SymbolsAsked: true,
+			Findings:     map[rule.Rule]Count{rule.Boundary: {Asked: true, Keyable: true}},
+		}
+		var out bytes.Buffer
+		if err := pkg.writeMarkdown(&out); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(out.Bytes(), []byte(tc.want)) {
+			t.Errorf("want %q in:\n%s", tc.want, out.String())
+		}
 	}
 }

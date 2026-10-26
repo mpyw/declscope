@@ -202,5 +202,5 @@ func surveyTestMeasure(t *testing.T, pass *analysis.Pass) measure.Package {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return internal.Survey(pass, opts)
+	return internal.Survey(pass, opts, measure.Detail{})
 }

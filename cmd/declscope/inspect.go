@@ -18,7 +18,10 @@ import (
 const inspectUsage = `Usage: declscope inspect [flags] <package>
 
 Reports the shape of one package: its namespaces, every crossing between them,
-what became of each crossing, and where the naming rule stands.
+what became of each crossing, and where the naming rule stands. With -symbols,
+each crossing is also listed declaration to declaration, and
+-symbol-namespaces narrows that list to the namespaces it names, or leaves
+out the ones it names with a leading !.
 
 Takes one package. A namespace is implicitly qualified by its package, so
 counts from two packages cannot be added up, and averaging them away silently
@@ -34,6 +37,8 @@ func inspectRun(args []string) {
 	configPath := fs.String("config", "", "path to a declscope YAML config file")
 	tests := fs.Bool("test", true, "measure *_test.go files as well")
 	format := fs.String("format", string(measure.FormatMarkdown), "output format: markdown or json")
+	symbols := fs.Bool("symbols", false, "resolve each crossing to the declaration doing the reaching")
+	symbolNamespaces := fs.String("symbol-namespaces", "", "with -symbols, list only the crossings into or out of these namespaces, comma-separated; a name with a leading ! is left out instead")
 	fs.Usage = func() {
 		_, _ = io.WriteString(fs.Output(), inspectUsage)
 		fs.PrintDefaults()
@@ -48,6 +53,13 @@ func inspectRun(args []string) {
 	chosen, err := measure.ParseFormat(*format)
 	if err != nil {
 		inspectFail(err)
+	}
+	narrowed := inspectSplitNamespaces(*symbolNamespaces)
+	if !narrowed.Empty() && !*symbols {
+		// Only the symbol section is narrowed. Without it the flag would
+		// change nothing, and doing nothing silently reads as a namespace
+		// with nothing to show.
+		inspectFail(fmt.Errorf("-symbol-namespaces narrows -symbols; add -symbols"))
 	}
 
 	if err := inspectRefuseManyBeforeLoad(patterns); err != nil {
@@ -76,7 +88,10 @@ func inspectRun(args []string) {
 	if err != nil {
 		inspectFail(err)
 	}
-	surveyed := internal.Survey(loadedPass(pkg), opts)
+	surveyed := internal.Survey(loadedPass(pkg), opts, measure.Detail{Symbols: *symbols, Namespaces: narrowed})
+	if err := inspectHasNamespaces(surveyed, narrowed); err != nil {
+		inspectFail(err)
+	}
 	// The chain, not the nearest file. Config files compose key by key, so
 	// the file next to the package can leave qualify at never while the one
 	// above it turned the rule on, and naming only the nearer one
@@ -86,6 +101,46 @@ func inspectRun(args []string) {
 	if err := surveyed.WriteFormat(os.Stdout, chosen); err != nil {
 		inspectFail(err)
 	}
+}
+
+// inspectSplitNamespaces reads -symbol-namespaces. A name written with a
+// leading "!" is left out rather than kept. Spaces around a name and empty
+// entries are dropped, so "a, !b," keeps a and leaves out b.
+func inspectSplitNamespaces(flag string) measure.SymbolFilter {
+	var out measure.SymbolFilter
+	for name := range strings.SplitSeq(flag, ",") {
+		name = strings.TrimSpace(name)
+		if dropped, ok := strings.CutPrefix(name, "!"); ok {
+			if dropped = strings.TrimSpace(dropped); dropped != "" {
+				out.Drop = append(out.Drop, dropped)
+			}
+			continue
+		}
+		if name != "" {
+			out.Keep = append(out.Keep, name)
+		}
+	}
+	return out
+}
+
+// inspectHasNamespaces refuses a -symbol-namespaces entry the package does not
+// have. A typo would otherwise narrow the section to fewer namespaces than
+// asked, or to none, which reads as namespaces nothing crosses.
+func inspectHasNamespaces(p measure.Package, f measure.SymbolFilter) error {
+	have := make([]string, 0, len(p.Namespaces))
+	for _, ns := range p.Namespaces {
+		have = append(have, ns.Name)
+	}
+	var missing []string
+	for _, name := range slices.Concat(f.Keep, f.Drop) {
+		if !slices.Contains(have, name) {
+			missing = append(missing, fmt.Sprintf("%q", name))
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s has no namespace %s; it has:\n  %s", p.Path, strings.Join(missing, ", "), strings.Join(have, "\n  "))
 }
 
 // inspectOnePackage picks the package to report, and refuses where the answer

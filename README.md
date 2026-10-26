@@ -233,7 +233,7 @@ tar xzf "declscope_${VERSION}_darwin_arm64.tar.gz"
 | Command | What it does | Flags of its own |
 | --- | --- | --- |
 | `declscope survey [packages]` | [Report what was checked and what it found](#measuring-what-is-there), one row per package | `-format`, `-test`, `-config`, `-allow-errors` |
-| `declscope inspect <package>` | [Report the shape of one package](#measuring-what-is-there): its namespaces and the crossings between them | `-format`, `-test`, `-config` |
+| `declscope inspect <package>` | [Report the shape of one package](#measuring-what-is-there): its namespaces and the crossings between them | `-format`, `-test`, `-config`, `-symbols`, `-symbol-namespaces` |
 | `declscope baseline [packages]` | [Record the violations a codebase already has](#adopting-on-an-existing-codebase), `shrink`'s included | `-config`, `-o`, `-shrink`, `-merge` |
 | `declscope shrink [packages]` | [Unexport what no importer uses](#unexporting-what-no-importer-uses), inside `internal/` | `-fix`, `-config` |
 | `declscope skill install` | Install the authoring and adoption skills for an AI agent | `--agent`, `--scope` |
@@ -1528,7 +1528,7 @@ $ declscope survey -config .declscope-strict.yaml ./internal/measure/...
 
 | package                                      | reported | baselined | declared | largest crossing                 |
 | -------------------------------------------- | -------: | --------: | -------: | -------------------------------- |
-| `github.com/mpyw/declscope/internal/measure` |        0 |         0 |       29 | markdown → cell (7 declarations) |
+| `github.com/mpyw/declscope/internal/measure` |        0 |         0 |       30 | markdown → cell (7 declarations) |
 
 ## Packages — qualify
 
@@ -1548,48 +1548,113 @@ That is one package of this repository. A codebase adopting declscope has number
 > [!TIP]
 > Look for the row with nothing reported, much baselined and nothing declared. Nothing was decided there, everything was deferred, and the analyzer alone calls it clean.
 
-`inspect` prints several sections. The excerpt below is its Crossings section, in full. The other sections list the namespaces, draw the crossings as a Mermaid diagram, rank the most-reached declarations, and give the naming rule per namespace.
+`inspect` prints several sections. The excerpt below is its Crossings section, in full: a Mermaid diagram, then the same crossings as a table, folded under it. The other sections list the namespaces, rank the most-reached declarations, and give the naming rule per namespace.
 
-```console
+````console
 $ declscope inspect -config .declscope-strict.yaml ./internal/measure
 ## Crossings
 
+```mermaid
+graph LR
+  n0["markdown"]
+  n1["cell"]
+  n2["sink"]
+  n3["golden"]
+  n4["(core)"]
+  n5["json"]
+  n6["summary"]
+  n7["crossing"]
+  n8["format"]
+  n9["reach"]
+  n10["qualify"]
+  n0 -.->|7| n1
+  n0 -.->|5| n2
+  n3 -.->|5| n4
+  n5 -.->|3| n6
+  n0 -.->|3| n6
+  n0 -.->|2| n7
+  n1 -.->|2| n0
+  n8 -.->|2| n5
+  n8 -.->|2| n0
+  n6 -.->|2| n7
+  n7 -.->|1| n4
+  n3 -.->|1| n8
+  n3 -.->|1| n0
+  n1 -.->|1| n6
+  n3 -.->|1| n7
+  n3 -.->|1| n9
+  n1 -.->|1| n4
+  n1 -.->|1| n5
+  n8 -.->|1| n4
+  n3 -.->|1| n5
+  n5 -.->|1| n7
+  n0 -.->|1| n10
+  n0 -.->|1| n9
+  n10 -.->|1| n4
+  n6 -.->|1| n5
+  n6 -.->|1| n0
+  n6 -.->|1| n10
+```
+
+<details>
+<summary>Table: 27 crossings</summary>
+
 | crossing            | mutual | declared | baselined | reported | clears |  reached | uses |
 | ------------------- | ------ | -------: | --------: | -------: | -----: | -------: | ---: |
-| markdown → cell     | yes    |        7 |         0 |        0 |      0 |  7 of 18 |   15 |
-| markdown → sink     |        |        5 |         0 |        0 |      0 |  5 of 18 |   29 |
-| golden → (core)     |        |        4 |         0 |        0 |      0 |  4 of 79 |    9 |
+| markdown → cell     | yes    |        7 |         0 |        0 |      0 |  7 of 18 |   20 |
+| markdown → sink     |        |        5 |         0 |        0 |      0 |  5 of 18 |   50 |
+| golden → (core)     |        |        5 |         0 |        0 |      0 | 5 of 100 |   10 |
 | json → summary      | yes    |        3 |         0 |        0 |      0 |  3 of 27 |    9 |
 | markdown → summary  | yes    |        3 |         0 |        0 |      0 |  3 of 27 |    7 |
-| markdown → crossing |        |        2 |         0 |        0 |      0 |  2 of 20 |    6 |
-| cell → markdown     | yes    |        2 |         0 |        0 |      0 |   2 of 9 |    3 |
-| format → json       |        |        2 |         0 |        0 |      0 | 2 of 107 |    2 |
-| format → markdown   |        |        2 |         0 |        0 |      0 |   2 of 9 |    2 |
+| markdown → crossing |        |        2 |         0 |        0 |      0 |  2 of 20 |    7 |
+| cell → markdown     | yes    |        2 |         0 |        0 |      0 |  2 of 14 |    3 |
+| format → json       |        |        2 |         0 |        0 |      0 | 2 of 119 |    2 |
+| format → markdown   |        |        2 |         0 |        0 |      0 |  2 of 14 |    2 |
 | summary → crossing  |        |        2 |         0 |        0 |      0 |  2 of 20 |    2 |
-| crossing → (core)   |        |        1 |         0 |        0 |      0 |  1 of 79 |    3 |
+| crossing → (core)   |        |        1 |         0 |        0 |      0 | 1 of 100 |    3 |
+| golden → format     |        |        1 |         0 |        0 |      0 |   1 of 9 |    3 |
+| golden → markdown   |        |        1 |         0 |        0 |      0 |  1 of 14 |    3 |
 | cell → summary      |        |        1 |         0 |        0 |      0 |  1 of 27 |    2 |
 | golden → crossing   |        |        1 |         0 |        0 |      0 |  1 of 20 |    2 |
-| golden → format     |        |        1 |         0 |        0 |      0 |   1 of 9 |    2 |
-| golden → markdown   |        |        1 |         0 |        0 |      0 |   1 of 9 |    2 |
 | golden → reach      |        |        1 |         0 |        0 |      0 |   1 of 7 |    2 |
-| cell → (core)       |        |        1 |         0 |        0 |      0 |  1 of 79 |    1 |
-| cell → json         |        |        1 |         0 |        0 |      0 | 1 of 107 |    1 |
-| format → (core)     |        |        1 |         0 |        0 |      0 |  1 of 79 |    1 |
-| golden → json       |        |        1 |         0 |        0 |      0 | 1 of 107 |    1 |
+| cell → (core)       |        |        1 |         0 |        0 |      0 | 1 of 100 |    1 |
+| cell → json         |        |        1 |         0 |        0 |      0 | 1 of 119 |    1 |
+| format → (core)     |        |        1 |         0 |        0 |      0 | 1 of 100 |    1 |
+| golden → json       |        |        1 |         0 |        0 |      0 | 1 of 119 |    1 |
 | json → crossing     |        |        1 |         0 |        0 |      0 |  1 of 20 |    1 |
 | markdown → qualify  |        |        1 |         0 |        0 |      0 |  1 of 15 |    1 |
 | markdown → reach    |        |        1 |         0 |        0 |      0 |   1 of 7 |    1 |
-| qualify → (core)    |        |        1 |         0 |        0 |      0 |  1 of 79 |    1 |
-| summary → json      | yes    |        1 |         0 |        0 |      0 | 1 of 107 |    1 |
-| summary → markdown  | yes    |        1 |         0 |        0 |      0 |   1 of 9 |    1 |
+| qualify → (core)    |        |        1 |         0 |        0 |      0 | 1 of 100 |    1 |
+| summary → json      | yes    |        1 |         0 |        0 |      0 | 1 of 119 |    1 |
+| summary → markdown  | yes    |        1 |         0 |        0 |      0 |  1 of 14 |    1 |
 | summary → qualify   |        |        1 |         0 |        0 |      0 |  1 of 15 |    1 |
 
-109 declarations are further: open, shared by default rather than by decision, so left out of the table and of the diagram.
+</details>
 
-Declarations crossed: 0 reported, 0 baselined, 29 declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.
-```
+123 declarations are further: open, shared by default rather than by decision, so left out of the table and of the diagram.
+
+Declarations crossed: 0 reported, 0 baselined, 30 declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.
+````
 
 One row per directed edge, so a mutual pair is two rows. **`clears` is the number the decision turns on**: how many findings would go away if the two namespaces became one.
+
+`-symbols` adds a Symbol crossings section, laid out the same way. It splits each crossing by the declaration doing the reaching, one row per pair of declarations:
+
+| crossing | from | to | state | uses |
+| --- | --- | --- | --- | ---: |
+| completion → flags | `compRun` | `writeFlag` | reported | 2 |
+
+- `from` is the package-level declaration the reference is written in. A method is `Type.method`. A reference in a field's type is charged to the type.
+- Open crossings are left out, as in the crossing table.
+- `-symbol-namespaces` narrows the rows by namespace. It needs `-symbols`, and a name the package does not have stops the run.
+
+| `-symbol-namespaces` | Keeps |
+| --- | --- |
+| `a,b` | The rows into or out of `a` or `b` |
+| `'!(core)'` | Every row but those into or out of the core, which nearly everything reaches |
+| `'a,!(core)'` | The rows into or out of `a`, except those that also touch the core |
+
+Names are spelled as the Namespaces section spells them, so the core is `(core)`. Quote the value for the shell.
 
 Both commands take `-test=false`. On a large package it changes the picture. In `net/http` the heaviest crossing is `export_test.go` reaching the transport internals, which is what that file is for.
 
@@ -1605,16 +1670,18 @@ Both commands take `-test=false`. On a large package it changes the picture. In 
 
 | `-format` | For |
 | --- | --- |
-| `markdown` *(default)* | A terminal **and** an issue or pull request. Cells are padded, so the output aligns in both. `inspect` adds a Mermaid diagram |
+| `markdown` *(default)* | A terminal **and** an issue or pull request. Cells are padded, so the output aligns in both. `inspect` adds a Mermaid diagram and folds the tables under it |
 | `json` | An agent, and anything scripted |
 
-The JSON carries four arrays.
+The JSON carries four arrays in every run.
 
 | Array | Holds |
 | --- | --- |
 | `edges`, `names` | One flat row each |
 | `crossings` | The fold the crossing table prints, `clears` included |
 | `namespaces` | The denominators every ratio divides by |
+
+With `-symbols`, it also carries `symbolEdges`, one flat row per pair of declarations, open ones included. `symbolIncludedNamespaces` and `symbolExcludedNamespaces` list what `-symbol-namespaces` kept and left out. Without `-symbols`, both keys are absent rather than empty.
 
 `findings` carries the same `asked` flag the tables print a dash for. Markdown is a rendering of the same data.
 
