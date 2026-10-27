@@ -1,0 +1,61 @@
+flowchart TD
+  start(["go vet / golangci-lint / declscope ./...<br>once per package"]) --> cfg["config.Resolve<br>-config, or the nearest .declscope.yaml above the package"]
+  cfg --> run["internal.Run"]
+
+  subgraph collect["build: index the package"]
+    direction TB
+    f0{{"each file"}} --> gen{"generated?"}
+    gen -- yes --> skip1["not read"]
+    gen -- no --> flt{"removed by<br>filter.only / exclude?"}
+    flt -- yes --> skip2["not read"]
+    flt -- no --> fdir["parse file-level directives<br>namespace / core / shared, private / ignore<br>malformed ones become problems"]
+    fdir --> nsr["namespace.Resolve<br>file name or directive → namespace"]
+    nsr --> nscount["count the namespaces<br>(qualify: ondemand reads this)"]
+    nscount --> tg["collectTargets<br>func / type / var / const / method / field"]
+    tg --> bind["resolve each scope<br>declaration's directive → type's → file's → default<br>default: exported = shared, unexported = private"]
+    bind --> refs["collectRefs<br>record each ident's object and file<br>and the fields an unkeyed literal writes"]
+  end
+
+  run --> f0
+  refs --> loop{{"each declaration (target), in source order"}}
+
+  subgraph judge["findingsOf: one declaration's findings"]
+    direction TB
+    b{"boundary on<br>and private?"} -- yes --> b2{"used from<br>another namespace?"}
+    b2 -- yes --> bf["boundary finding<br>fix: insert //declscope:shared,<br>only when private by default"]
+    q{"qualify applies?<br>mode, namespace count, exported setting"} -- yes --> q2{"name carries the namespace<br>(or a vocabulary word)?"}
+    q2 -- no --> qf["qualify finding<br>fix: rename, when safe"]
+    s{"surplus on?"} -- yes --> s2{"no use seen from outside<br>what a shared directive widens?"}
+    s2 -- yes --> sf["surplus finding, per directive<br>no fix"]
+    s2 -.-> st{"strict?"}
+    st -- yes --> stf["surplus finding, per declaration<br>fix: //declscope:private"]
+  end
+
+  loop --> b & q & s
+  bf & qf & sf & stf --> sup
+
+  subgraph suppress["suppression"]
+    direction TB
+    sup{"settled?<br>a strict finding covered by<br>the per-directive finding"} -- yes --> drop1["dropped"]
+    sup -- no --> ig{"silenced by<br>//declscope:ignore?"}
+    ig -- yes --> drop2["dropped<br>the ignore counts as used"]
+    ig -- no --> bl{"key in the baseline?"}
+    bl -- yes --> drop3["dropped"]
+    bl -- no --> pend["kept as pending<br>noted if its fix widens a type"]
+  end
+
+  pend --> emit["report the diagnostics<br>a member's fix is dropped when its type is widened"]
+
+  subgraph leftover["what is left: unused / directive / filter"]
+    direction TB
+    us["reportUnusedScopeSites<br>scope directives that decide nothing<br>strict: a removal fix for redundant ones"] --> fil1["drop problems a file-level<br>ignore silences"]
+    fil1 --> ui["reportUnusedIgnores<br>ignores that silenced nothing"]
+    ui --> fil2["drop them again"]
+    fil2 --> ep["report the problems<br>malformed and unused directives"]
+    ep --> fw{"did the filter remove<br>every file?"}
+    fw -- yes --> fwr["filter warning"]
+  end
+
+  emit --> us
+  fw -- no --> done(["done"])
+  fwr --> done

@@ -1,0 +1,68 @@
+flowchart TD
+  start(["declscope shrink [-fix] [-config] [packages]<br>1 回の実行で、モジュール全体を対象に"]) --> resolve["module.Resolve<br>パターンを go コマンドと同じように解釈"]
+  resolve -- "パターンが拒否された" --> fail(["エラー、exit 1"])
+  resolve --> load["module.Load<br>main モジュールの全パッケージを、テスト variant も含めて<br>パターン外の importer も数に入れる"]
+  load --> ev
+
+  subgraph evidence["evidenceCollect: モジュール全体で、誰が何を使っているか"]
+    direction TB
+    ev["他パッケージからの参照<br>外部テスト"] --> ev2["静的な interface の充足<br>他モジュールに渡る値"]
+    ev2 --> ev3["interface に逃げる値<br>変換や同一構造体で対になるフィールド"]
+    ev3 --> ev4["//go:linkname、生成コード、<br>Example 関数、ビルドから外れたファイル"]
+  end
+
+  ev4 --> pkg{{"パターンが指す各パッケージ"}}
+
+  subgraph skipping["スキップ"]
+    direction TB
+    sk{"package main、Go 以外のファイル、cgo?<br>internal/ の外、または importer を全部読めていない?"}
+  end
+
+  pkg --> sk
+  sk -- yes --> nj["判定しない<br>internal/ 配下なら stderr に出す"]
+  sk -- no --> cand["candidatesOf<br>exported な宣言・メソッド・フィールド<br>生成コード、TestXxx、interface のメソッドは除く"]
+
+  cand --> each{{"各候補"}}
+
+  subgraph single["候補ごとの判定"]
+    direction TB
+    each --> uo{"パッケージの外で使われている?<br>上の証拠のどれか"}
+    uo -- yes --> keep1["名前はそのまま、報告なし"]
+    uo -- no --> et{"外部テストだけが使っている?"}
+    et -- "yes、かつ _test.go で宣言" --> keep2["名前はそのまま、報告なし<br>（export_test.go の慣用句）"]
+    et -- yes --> to["報告、テスト専用<br>fix は出さない"]
+    et -- no --> wh{"あり得るが証明できない使用がある?<br>入れ子モジュールのコピー、型パラメータの推測、<br>ビルドから外れたファイル、生成コード、<br>Example、-ldflags -X"}
+    wh -- yes --> w1["報告、fix は出さない"]
+    wh -- no --> igb{"//declscope:ignore overexported?"}
+    igb -- yes --> sil["黙らせる"]
+    igb -- no --> blb{"baseline にキーがある?"}
+    blb -- yes --> bsl["baseline 済み"]
+    blb -- no --> plan["renamePlan<br>unexport 後の名前がどこでも空いている?"]
+    plan -- no --> w2["報告、fix は出さない"]
+  end
+
+  plan -- yes --> sets
+  to & w1 & sil & bsl & w2 --> sets["judgeSets<br>const の組は型と運命を共にする"]
+
+  subgraph settling["型を確定し、名前を取る。安定するまで繰り返す"]
+    direction TB
+    sets --> st["型を確定する。変化がなくなるまで<br>外で使われる API が運ぶ → 使用中、報告なし<br>名前を残す exported 宣言が運ぶ → fix は出さない"]
+    st --> claim["新しい名前を順に取る"]
+    claim --> clash{"名前がもう取られている?"}
+    clash -- yes --> lost["その fix は負け、出さない"] --> st
+    clash -- no --> rel{"名前が空いた負けがある?"}
+    rel -- yes --> release["それを戻し、以後は先に取らせる"] --> st
+  end
+
+  rel -- no --> out["候補ごとに<br>使用中: なし ・ 黙らせた: ignore を使用済みに<br>baseline 済み: なし ・ それ以外: finding（fix があれば付ける）"]
+  out --> ui["unusedIgnores<br>何も黙らせなかった overexported の ignore"]
+  ui --> pkg
+
+  pkg -- "すべて終わったら" --> warn["stderr: 何にも一致しなかったパターン、<br>判定しなかったパッケージ"]
+  warn --> fx{"-fix?"}
+  fx -- yes --> apply["Apply: すべての fix を書き込む<br>各ファイルで後ろの編集から"]
+  fx -- no --> print
+  apply --> print["残った finding を出す<br>-fix なら fix のないものだけ"]
+  print --> code{"何か出した?"}
+  code -- yes --> e3(["exit 3"])
+  code -- no --> e0(["exit 0"])

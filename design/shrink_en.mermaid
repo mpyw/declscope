@@ -1,0 +1,68 @@
+flowchart TD
+  start(["declscope shrink [-fix] [-config] [packages]<br>once per run, over the whole module"]) --> resolve["module.Resolve<br>the patterns, as the go command reads them"]
+  resolve -- "a pattern is rejected" --> fail(["error, exit 1"])
+  resolve --> load["module.Load<br>every package of the main modules, with every test variant<br>an importer outside the patterns still counts"]
+  load --> ev
+
+  subgraph evidence["evidenceCollect: who uses what, across the module"]
+    direction TB
+    ev["references from other packages<br>external tests"] --> ev2["static interface satisfactions<br>values handed to other modules"]
+    ev2 --> ev3["values that escape into an interface<br>fields paired by conversion or by an identical struct"]
+    ev3 --> ev4["//go:linkname, generated files,<br>example functions, build-excluded files"]
+  end
+
+  ev4 --> pkg{{"each package the patterns name"}}
+
+  subgraph skipping["skip"]
+    direction TB
+    sk{"package main, non-Go files or cgo?<br>outside internal/, or its importers not all loaded?"}
+  end
+
+  pkg --> sk
+  sk -- yes --> nj["not judged<br>stderr names it when under internal/"]
+  sk -- no --> cand["candidatesOf<br>exported declarations, methods and fields<br>not generated, not TestXxx, not interface methods"]
+
+  cand --> each{{"each candidate"}}
+
+  subgraph single["each candidate on its own"]
+    direction TB
+    each --> uo{"used outside its package?<br>by any evidence above"}
+    uo -- yes --> keep1["keeps its name, no report"]
+    uo -- no --> et{"only external tests use it?"}
+    et -- "yes, and declared in a _test.go file" --> keep2["keeps its name, no report<br>(the export_test.go idiom)"]
+    et -- yes --> to["report, test-only<br>fix withheld"]
+    et -- no --> wh{"a use that may exist but cannot be proved?<br>nested module copy, type-parameter guess,<br>build-excluded file, generated file,<br>example, -ldflags -X"}
+    wh -- yes --> w1["report, fix withheld"]
+    wh -- no --> igb{"//declscope:ignore overexported?"}
+    igb -- yes --> sil["silenced"]
+    igb -- no --> blb{"key in the baseline?"}
+    blb -- yes --> bsl["baselined"]
+    blb -- no --> plan["renamePlan<br>is the unexported name free everywhere?"]
+    plan -- no --> w2["report, fix withheld"]
+  end
+
+  plan -- yes --> sets
+  to & w1 & sil & bsl & w2 --> sets["judgeSets<br>a const set goes with its type"]
+
+  subgraph settling["settle, then claim names, repeated until stable"]
+    direction TB
+    sets --> st["settle the types, until nothing changes<br>carried by an API used outside → used, no report<br>carried by an exported declaration that keeps its name → fix withheld"]
+    st --> claim["claim each new name, in order"]
+    claim --> clash{"a name already claimed?"}
+    clash -- yes --> lost["that fix loses, withheld"] --> st
+    clash -- no --> rel{"a loser whose name<br>is free again?"}
+    rel -- yes --> release["release it, it claims first from now on"] --> st
+  end
+
+  rel -- no --> out["per candidate<br>used: nothing · silenced: the ignore is used<br>baselined: nothing · otherwise: a finding, with its fix if it has one"]
+  out --> ui["unusedIgnores<br>an ignore naming overexported that silenced nothing"]
+  ui --> pkg
+
+  pkg -- "all done" --> warn["stderr: patterns that matched nothing,<br>packages not judged"]
+  warn --> fx{"-fix?"}
+  fx -- yes --> apply["Apply: write every fix<br>later edits first in each file"]
+  fx -- no --> print
+  apply --> print["print every finding left<br>with -fix, only the ones without a fix"]
+  print --> code{"anything printed?"}
+  code -- yes --> e3(["exit 3"])
+  code -- no --> e0(["exit 0"])
