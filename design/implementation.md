@@ -199,6 +199,8 @@ cmd/declscope/            singlechecker entry point, the `baseline`, `survey`,
                           `inspect` and `shrink` subcommands, and -V
 ```
 
+Flowcharts of the two runs are beside this file: [the analyzer](analyzer_en.mermaid) and [`shrink`](shrink_en.mermaid), with Japanese versions in `analyzer_ja.mermaid` and `shrink_ja.mermaid`. They follow the code, so a change to a stage they draw changes them too.
+
 Each file of `internal/` is its own namespace, taken from its stem. `analyzer.go` and `subject.go` join the **core** instead: the model they hold is read by every stage, and in a named namespace each type would have to carry that namespace's prefix, so the builder's name would be spelled into the model every other file reads.
 
 Each stage's own working state is embedded into `collection` from a struct

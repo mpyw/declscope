@@ -1,0 +1,61 @@
+flowchart TD
+  start(["go vet / golangci-lint / declscope ./...<br>1 パッケージにつき 1 回"]) --> cfg["config.Resolve<br>-config か、パッケージから上に探した .declscope.yaml"]
+  cfg --> run["internal.Run"]
+
+  subgraph collect["build: 索引を作る"]
+    direction TB
+    f0{{"各ファイル"}} --> gen{"生成コード?"}
+    gen -- yes --> skip1["読まない"]
+    gen -- no --> flt{"filter.only / exclude<br>で外れる?"}
+    flt -- yes --> skip2["読まない"]
+    flt -- no --> fdir["ファイル単位の directive を解析<br>namespace / core / shared・private / ignore<br>書式の誤りは problem に積む"]
+    fdir --> nsr["namespace.Resolve<br>ファイル名 or directive → 名前空間"]
+    nsr --> nscount["名前空間を数える<br>（qualify: ondemand の判定に使う）"]
+    nscount --> tg["collectTargets<br>func / type / var / const / method / field"]
+    tg --> bind["スコープを決める<br>宣言の directive → 型 → ファイル → 既定値<br>既定値: exported = shared, unexported = private"]
+    bind --> refs["collectRefs<br>ident ごとに参照先とファイルを記録<br>キーなし複合リテラルのフィールドも"]
+  end
+
+  run --> f0
+  refs --> loop{{"各宣言 (target) をソース順に"}}
+
+  subgraph judge["findingsOf: 1 宣言の finding"]
+    direction TB
+    b{"boundary が on<br>かつ private?"} -- yes --> b2{"別の名前空間から<br>参照がある?"}
+    b2 -- yes --> bf["boundary finding<br>既定値で private のときだけ<br>fix: //declscope:shared を挿入"]
+    q{"qualify が適用される?<br>mode・名前空間数・exported 設定"} -- yes --> q2{"名前に名前空間<br>(または vocabulary) を含む?"}
+    q2 -- no --> qf["qualify finding<br>安全なら fix: リネーム"]
+    s{"surplus が on?"} -- yes --> s2{"shared directive の対象に<br>外からの使用が見えない?"}
+    s2 -- yes --> sf["surplus finding（directive 単位）<br>fix なし"]
+    s2 -.-> st{"strict?"}
+    st -- yes --> stf["surplus finding（宣言単位）<br>fix: //declscope:private"]
+  end
+
+  loop --> b & q & s
+  bf & qf & sf & stf --> sup
+
+  subgraph suppress["抑制"]
+    direction TB
+    sup{"settled?<br>strict の finding が<br>directive 単位の finding に含まれる"} -- yes --> drop1["捨てる"]
+    sup -- no --> ig{"//declscope:ignore が黙らせる?"}
+    ig -- yes --> drop2["捨てる<br>ignore を使用済みにする"]
+    ig -- no --> bl{"baseline にキーがある?"}
+    bl -- yes --> drop3["捨てる"]
+    bl -- no --> pend["保留リストへ<br>型を widen する fix なら記録"]
+  end
+
+  pend --> emit["diagnostic を出す<br>型の widen に含まれるメンバーの fix は外す"]
+
+  subgraph leftover["残りの問題（unused / directive / filter）"]
+    direction TB
+    us["reportUnusedScopeSites<br>何も決めていない scope directive<br>strict では冗長なものに削除 fix"] --> fil1["ファイル単位の ignore で<br>黙る problem を除く"]
+    fil1 --> ui["reportUnusedIgnores<br>何も黙らせなかった ignore"]
+    ui --> fil2["もう一度除く"]
+    fil2 --> ep["problem を出す<br>書式の誤り・unused"]
+    ep --> fw{"filter が全ファイルを<br>外してしまった?"}
+    fw -- yes --> fwr["filter の警告"]
+  end
+
+  emit --> us
+  fw -- no --> done(["終わり"])
+  fwr --> done
