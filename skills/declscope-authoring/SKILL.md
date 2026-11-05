@@ -52,7 +52,12 @@ A baseline is a file, usually `.declscope-baseline.yaml`, that records the findi
 
 This section is for changing a package whose findings are recorded in a baseline. Such a package was laid out before declscope. A baseline file alone does not say that: it covers a whole repository, and a package laid out for declscope may sit beside the recorded ones. To check a package, run `declscope survey ./path/to/pkg` and read its `baselined` column. Searching the baseline file for the package's import path also works.
 
-In this section, the owner is the user you are working for. Ask them in the chat before you finish.
+In this section, the owner is the user you are working for. A proposal to the owner takes one of two forms:
+
+| The proposal | Do this |
+| --- | --- |
+| Your change cannot pass the check without an answer | Ask in the chat, and wait. Do not finish with a failing check, a bent name or an ignore |
+| Your change passes without it | Write it in your report, and finish |
 
 What you do depends on what you were asked:
 
@@ -60,21 +65,21 @@ What you do depends on what you were asked:
 | --- | --- |
 | Add a feature, and nothing more | Keep the package's layout, as [Adding a feature](#adding-a-feature) explains |
 | Refactor some files, a part of the package, or the whole package, with or without a feature | Inside that scope, follow this skill as in a package laid out for declscope. Outside it, keep the layout. See [Refactoring a part of the package](#refactoring-a-part-of-the-package) |
-| Introduce declscope, or clear the baseline | Follow [declscope-adoption](../declscope-adoption/SKILL.md). Its order of work deletes the baseline file, which covers every package |
+| Introduce declscope, or clear the baseline of the whole repository | Follow [declscope-adoption](../declscope-adoption/SKILL.md). Its order of work deletes the baseline file, which covers every package |
 
-The refactoring needs a clear request from the user, such as "clean up `parser.go` while you are there" or "refactor this package". A report that a rename would silence is not one. When the user asks to refactor the whole package, the package is the scope. Do not delete the baseline file.
+The refactoring needs a clear request from the user, such as "clean up `parser.go` while you are there" or "refactor this package". A report that a rename would silence is not one. When the user asks to refactor the whole package, the package is the scope. Fix the findings that report again. Its other baselined findings may stay, and you mention them. To clear one package's findings, the request is a refactoring of the whole package that clears them all. In every case, do not delete the baseline file.
 
 ### Adding a feature
 
-The package's files may follow another plan. Some packages keep a layer in one file, such as every parse function in `parser.go`. Others follow a naming convention, such as an `ast_` prefix on each type's file. **Add new code the way the package already does it.** Reorganizing the package to suit the rules is a separate change. Propose it, and do not fold it into a feature unless the user asks. [A baseline is for arriving, not for staying](../declscope-adoption/SKILL.md#a-baseline-is-for-arriving-not-for-staying) covers that work.
+The package's files may follow another plan. Some packages keep a layer in one file, such as every parse function in `parser.go`. Others follow a naming convention, such as an `ast_` prefix on each type's file. **Add new code the way the package already does it.** Reorganizing the package to suit the rules is a separate change. Propose it, and do not fold it into a feature unless the user asks. When your change happens to remove a baselined finding, leave its entry. An entry that matches nothing is harmless. Mention it in your report. [A baseline is for arriving, not for staying](../declscope-adoption/SKILL.md#a-baseline-is-for-arriving-not-for-staying) covers that work.
 
 | The package | Do this |
 | --- | --- |
 | Names its files with a shared prefix, such as `ast_object_cons_expr.go` | Name the new file the same way. Set its namespace with `//declscope:namespace`, so the names carry it without the prefix |
-| Keeps one layer in one file, such as every parse function in `parser.go` | Put the new code in that file. Its names carry the file's namespace, as for any file. Write `//declscope:shared // parser.go builds these` on what it calls in the other files. When the names read badly with that namespace, propose `//declscope:namespace parse` to the owner. Until they answer, name the code the way the file's other declarations are named, and say so in your report |
-| Already has a file for the concept you add | Put the new code there, even when that file's existing declarations are baselined |
+| Keeps one layer in one file, such as every parse function in `parser.go` | Put the new code in that file. Its names carry the file's namespace, as for any file. When a report asks for it, write `//declscope:shared // parser.go builds these` on what it calls in the other files. Leave those declarations where they are. When no natural name carries the namespace, ask the owner for `//declscope:namespace parse`. The check fails without it, so wait for the answer |
+| Already has a file for the concept you add | Put the new code there, even when that file's existing declarations are baselined. Its names carry that file's namespace. When no natural name does, ask the owner as in the row above |
 
-For a new file in the first row. Its test file, `ast_function_call_expr_test.go`, takes the same directive:
+Here is a new file for the first row. Its test file, `ast_function_call_expr_test.go`, takes the same directive.
 
 ```go
 // ast_function_call_expr.go
@@ -98,24 +103,24 @@ Inside the scope the user named, the package's layout no longer binds you. Apply
 
 - Put each declaration in a file named for its concept, and move it there when it is not
 - Rename a file whose name does not match its contents, with its test files
-- Set `//declscope:namespace` on an existing file when its name must stay. The request is the owner's permission for the baseline keys it changes
+- Set `//declscope:namespace` on an existing file whose name reads well but makes poor names, such as `parser.go`. Give its test files the same directive. The request is the owner's permission for the baseline keys it changes
 - Widen only what is shared on purpose
 
 **Keep to the scope.** A file outside it keeps its name and its baselined findings, even when the same fix would apply there. Mention those files as candidates for a later change.
 
 **A file that receives moved code is in scope for that code only.** Keep its name, its namespace and its other declarations. Rename the moved code to carry that file's namespace. When no natural name does, leave the code where it was. Changing the receiving file's namespace would widen the scope.
 
-For example, the user asks to clean up `parser.go` in a package that names its other files `ast_*.go`:
+For example, the user asks to clean up `parser.go` in a package that names its other files `ast_*.go`. None of them has a namespace directive, so `ast_function_call_expr.go` has the namespace `astFunctionCallExpr`:
 
 | Change | Do it? |
 | --- | --- |
-| Set `//declscope:namespace parse` on `parser.go`, so `parseExpression` carries it | Yes. `parser.go` is the file named |
+| Set `//declscope:namespace parse` on `parser.go` and `parser_test.go`, so `parseExpression` carries it | Yes. `parser.go` is the file named |
 | Fix the findings that come back for `parser.go`'s declarations | Yes. They are inside the scope |
-| Move `parseFunctionCall` into `ast_function_call_expr.go`, beside the type it builds | Only when a natural name carries that file's namespace. Rename it as you move it. The file keeps its name and its other declarations |
+| Move `parseFunctionCall` into `ast_function_call_expr.go`, beside the type it builds | Only when a natural name carries `astFunctionCallExpr`, which is rare. Otherwise it stays in `parser.go` |
 | Set `//declscope:namespace functionCallExpr` on `ast_function_call_expr.go`, so that the moved function fits | No. That changes the receiving file's namespace |
-| Rename `ast_body.go` to `body.go` | No. Nothing moved there. Mention it as a later change |
+| Rename `ast_body.go` to `body.go` | No. It is outside the scope. Mention it as a later change |
 
-**Fix the findings your refactoring brings back.** Moving a declaration or renaming its file changes its baseline keys, so its baselined findings report again. They are inside the scope, so fix them as you would a new report. Do not regenerate the baseline to record them.
+**Fix the findings your refactoring brings back.** Moving a declaration or renaming its file changes its baseline keys, so its baselined findings report again. They are inside the scope, so fix them as you would a new report. Do not record them in the baseline again.
 
 Then drop the entries your refactoring settled. Run this only after both `declscope` and `declscope shrink` report nothing, since the baseline records `shrink`'s findings too:
 
@@ -375,7 +380,7 @@ Where the repository's linters fix an order, such as `decorder` or `funcorder`, 
 
 Test files and generated files are out of scope. `TestXxx` functions are exported but called by nobody.
 
-**When your change moves a declaration to another reach, move the declaration too.** That is the default, for a new `//declscope:shared`, a `//declscope:private` from `surplus`, or a name `shrink` unexported. Say in your report that you moved it: the move makes the diff larger, and the owner may prefer it in place. Do not reorder declarations your change does not touch.
+**When your change moves a declaration to another reach, move the declaration too.** That is the default, for a new `//declscope:shared`, a `//declscope:private` from `surplus`, or a name `shrink` unexported. Say in your report that you moved it: the move makes the diff larger, and the owner may prefer it in place. Do not reorder declarations your change does not touch. In a feature change to a package whose findings are baselined, leave it in place and mention the move.
 
 ## Acting on a diagnostic your change caused
 
