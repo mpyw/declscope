@@ -64,13 +64,15 @@ What you do depends on what you were asked:
 
 | The request | Do this |
 | --- | --- |
-| Add a feature, and nothing more | Keep the package's layout, as [Adding a feature](#adding-a-feature) explains |
+| Add a feature or fix a bug, and nothing more | Keep the package's layout, as [Adding a feature](#adding-a-feature) explains |
 | Refactor some files, a part of the package, or the whole package, with or without a feature | Inside that scope, follow this skill as in a package laid out for declscope. Outside it, keep the layout. See [Refactoring a part of the package](#refactoring-a-part-of-the-package) |
 | Introduce declscope, or clear the baseline of the whole repository | Follow [declscope-adoption](../declscope-adoption/SKILL.md). Its order of work deletes the baseline file, which covers every package |
 
-The refactoring needs a clear request from the user, such as "clean up `parser.go` while you are there" or "refactor this package". A declscope finding that a rename would silence is not one. When the user asks to refactor the whole package, the package is the scope. Fix the findings that report again. A declaration whose key did not change keeps its entry, and you mention it. A declaration whose file got a new namespace is not one of them. A request to clear one package's baseline is a refactoring of the whole package that fixes every finding of it. Its entries in the baseline file list those findings. It is done when `-merge` removes all of them. In these cases, do not delete the baseline file. When `-merge` leaves it empty, delete it.
+The refactoring needs a clear request from the user, such as "clean up `parser.go` while you are there" or "refactor this package". A declscope finding that a rename would silence is not one. Nor is a request to fix the reported findings, such as "fix the lint errors". When the request leaves the scope unclear, such as "tidy this up", ask which files it covers. When the user asks to refactor the whole package, the package is the scope. Fix the findings that report again. A declaration whose key did not change keeps its entry, and you mention it. A declaration whose file got a new namespace is not one of them. A request to clear one package's baseline is a refactoring of the whole package that fixes every finding of it. Its entries in the baseline file list those findings. It is done when `-merge` removes all of them. In these cases, do not delete the baseline file. When `-merge` leaves it empty, delete it.
 
 ### Adding a feature
+
+A bug fix follows the same rules as a feature. In this skill, a feature change means either.
 
 The package's files may follow another plan. Some packages keep a layer in one file, such as every parse function in `parser.go`. Others follow a naming convention, such as an `ast_` prefix on each type's file. **Add new code the way the package already does it.** Reorganizing the package to suit the rules is a separate change. Propose it, and do not fold it into a feature unless the user asks. When your change happens to remove a baselined finding, leave its entry. An entry that matches nothing is harmless. Mention it in your report. [A baseline is for arriving, not for staying](../declscope-adoption/SKILL.md#a-baseline-is-for-arriving-not-for-staying) covers that work.
 
@@ -103,7 +105,7 @@ func newFunctionCallExpr( /* ... */ ) *FunctionCallExpr { /* ... */ }
 Sometimes a new name cannot carry an existing file's namespace. `parseAttribute` in `parser.go` does not carry `parser`. A function in `ast_attribute.go` rarely carries `astAttribute`. Then propose to fix the file's namespace, such as `//declscope:namespace parse` on `parser.go`:
 
 1. Ask the owner. Say that every baselined finding of the file comes back, and that you will fix them. The check fails without the answer, so wait
-2. When the owner agrees, treat that file as a refactoring the user asked for. [Refactoring a part of the package](#refactoring-a-part-of-the-package) applies to it
+2. When the owner agrees, treat that file as a refactoring the user asked for. [Refactoring a part of the package](#refactoring-a-part-of-the-package) applies to it, `-merge` included. That run also drops the package's other entries that match nothing, which is fine. The diff still only removes lines
 3. When the owner declines, go to the declined row of the table above
 
 **A vocabulary entry is the exception, for a Go idiom.** Some names follow a convention that never spells the file's name. In `options.go`, the functional options `WithTimeout` and `WithRetry` carry `With`, not `options`. List that word, as in `options: [with]`. It changes no baseline keys. It applies to every package under that config, so say so when you propose it. Do not use a vocabulary entry for a name that could carry a fixed namespace, such as `parse` for `parser`.
