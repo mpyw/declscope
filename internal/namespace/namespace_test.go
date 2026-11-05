@@ -191,6 +191,25 @@ func TestQualify(t *testing.T) {
 
 		// An empty name gains the namespace alone, not a stray capital.
 		{"", "user", "user"},
+
+		// A name that opens with the words ending the namespace gains only the
+		// words it lacks, so a file named with a conventional prefix does not
+		// double the rest.
+		{"FunctionCallExpr", "astFunctionCallExpr", "AstFunctionCallExpr"},
+		{"callExprCache", "astFunctionCallExpr", "astFunctionCallExprCache"},
+		{"idCache", "userID", "userIDCache"},
+
+		// A name that opens with the words opening the namespace gains the
+		// rest after them.
+		{"userLoad", "userRepository", "userRepositoryLoad"},
+		{"UserLoad", "userRepository", "UserRepositoryLoad"},
+
+		// A word that is only a prefix of the namespace's word is a different
+		// word, so the name is prefixed whole: merging would change what it
+		// says (setValue would become settingsValue).
+		{"parseExpr", "parser", "parserParseExpr"},
+		{"setValue", "settings", "settingsSetValue"},
+		{"Load", "user", "UserLoad"},
 	}
 	for _, tt := range tests {
 		if got := Qualify(tt.name, tt.ns); got != tt.qualified {

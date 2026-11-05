@@ -1,0 +1,5 @@
+package fixqualify
+
+// The name opens with the word that opens the namespace, so the rest of the
+// namespace goes after it.
+func userLoad() int { return 6 } // want `func userLoad does not carry namespace "userRepository" anywhere in its name; rename it to userRepositoryLoad, or to another name that carries "userRepository"`

@@ -63,6 +63,12 @@ func CanPrefix(ns string) bool {
 // name that already carries it is left alone, so the fix can never double a
 // word the name already has.
 //
+// A name that holds part of the namespace already gains only the rest, so the
+// rename does not double those words either (see merge):
+//
+//	FunctionCallExpr in astFunctionCallExpr -> AstFunctionCallExpr
+//	userLoad in userRepository              -> userRepositoryLoad
+//
 // The first word of name is capitalized the way Go spells it, so id becomes
 // userID and urlPath becomes userURLPath rather than userId and userUrlPath.
 // A namespace that cannot be a prefix (see CanPrefix) leaves the name alone.
@@ -75,9 +81,73 @@ func Qualify(name, ns string) string {
 	if !CanPrefix(ns) || Contains(name, ns) {
 		return name
 	}
-	out := ns + capitalize(name)
+	out, ok := merge(name, ns)
+	if !ok {
+		out = ns + capitalize(name)
+	}
 	if ast.IsExported(name) {
 		return capitalize(out)
+	}
+	return out
+}
+
+// merge spells name with ns when the two share words at their seam, and
+// reports whether they do. Both overlaps it takes keep every word of the name:
+//
+//   - The name opens with the words that end ns. Only the leading words of ns
+//     are missing, so they are prepended: FunctionCallExpr in
+//     astFunctionCallExpr becomes astFunctionCallExpr. A file named with a
+//     prefix its package uses by convention gives this shape.
+//   - The name opens with the words that open ns. The rest of ns is inserted
+//     after them: userLoad in userRepository becomes userRepositoryLoad.
+//
+// The longest overlap wins. Words are compared under case folding, the way
+// Contains matches, and read at the boundaries wordStart opens.
+//
+// A word of the name that is only a prefix of a word of ns is not merged, so
+// parseExpr in parser still becomes parserParseExpr. Merging it would replace
+// the name's word with another: setValue in settings would become
+// settingsValue, which says something else. A rename that -fix applies must
+// not change what a name says.
+//
+// The result must carry ns by Contains, or merge reports no overlap and the
+// plain prefix is used.
+func merge(name, ns string) (string, bool) {
+	nsWords, nameWords := words(ns), words(name)
+	same := func(a, b []string) bool {
+		return slices.EqualFunc(a, b, strings.EqualFold)
+	}
+	var out string
+	for k := min(len(nsWords), len(nameWords)); k > 0 && out == ""; k-- {
+		if same(nsWords[len(nsWords)-k:], nameWords[:k]) {
+			out = strings.Join(nsWords[:len(nsWords)-k], "") + capitalize(name)
+		}
+	}
+	// The whole of ns opening the name is Contains, so only a shorter run of
+	// its opening words is asked here, and the name must go on past it.
+	for j := min(len(nsWords), len(nameWords)) - 1; j > 0 && out == ""; j-- {
+		if same(nsWords[:j], nameWords[:j]) {
+			out = ns + capitalize(strings.Join(nameWords[j:], ""))
+		}
+	}
+	if out == "" || !Contains(out, ns) {
+		return "", false
+	}
+	return out, true
+}
+
+// words splits a camelCase identifier at the boundaries wordStart opens.
+func words(s string) []string {
+	var out []string
+	start := 0
+	for i := range s {
+		if i > 0 && wordStart(s, i) {
+			out = append(out, s[start:i])
+			start = i
+		}
+	}
+	if start < len(s) {
+		out = append(out, s[start:])
 	}
 	return out
 }
