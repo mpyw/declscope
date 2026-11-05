@@ -206,6 +206,20 @@ func (c *collection) qualifyFinding(pass *analysis.Pass, opts Options, t *target
 	if slices.ContainsFunc(opts.Vocabulary[t.file.ns], func(word string) bool { return namespace.Contains(name, word) }) {
 		return finding{}, false
 	}
+	// The merged rename can be taken where the plain prefix is not: in
+	// userRepository, load and repositoryLoad both merge to userRepositoryLoad,
+	// and repository merges to the namespace, which often names a type of the
+	// file already. The plain prefix is then offered instead, so the
+	// declaration still gets a fix, and the message names the rename the fix
+	// makes. An exported name gets no fix either way, so its message names the
+	// merged form.
+	rename := namespace.Qualify(name, t.file.ns)
+	fix, fixed := c.renameFix(pass, t, rename, "make it carry its namespace")
+	if prefixed := namespace.Prefix(name, t.file.ns); !fixed && prefixed != rename {
+		if fix, fixed = c.renameFix(pass, t, prefixed, "prefix it with its namespace"); fixed {
+			rename = prefixed
+		}
+	}
 	f := finding{
 		rule: rule.Qualify,
 		// The key names a method with its receiver, as the other rules do:
@@ -218,7 +232,7 @@ func (c *collection) qualifyFinding(pass *analysis.Pass, opts Options, t *target
 		// userEmailFrom, which settle the rule just as well.
 		msg: fmt.Sprintf("%s %s does not carry %s anywhere in its name; rename it to %s, or to another name that carries %q",
 			t.kind, name, namespaceInFinding(t.file.ns, t.file.path),
-			namespace.Qualify(name, t.file.ns), t.file.ns),
+			rename, t.file.ns),
 	}
 	// An inflected namespace is not carried by its stem (see
 	// namespace.LooksInflected), and the rename would stutter: tracingTraceValue.
@@ -227,8 +241,7 @@ func (c *collection) qualifyFinding(pass *analysis.Pass, opts Options, t *target
 		f.msg += fmt.Sprintf("; if the name spells %q in another form, list that form under rules.naming.vocabulary.%s",
 			t.file.ns, t.file.ns)
 	}
-	if fix, ok := c.renameFix(pass, t, namespace.Qualify(name, t.file.ns),
-		"prefix it with its namespace"); ok {
+	if fixed {
 		f.fixes = append(f.fixes, fix)
 	}
 	return f, true

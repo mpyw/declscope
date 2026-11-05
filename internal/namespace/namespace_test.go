@@ -199,10 +199,17 @@ func TestQualify(t *testing.T) {
 		{"callExprCache", "astFunctionCallExpr", "astFunctionCallExprCache"},
 		{"idCache", "userID", "userIDCache"},
 
-		// A name that opens with the words opening the namespace gains the
-		// rest after them.
-		{"userLoad", "userRepository", "userRepositoryLoad"},
-		{"UserLoad", "userRepository", "UserRepositoryLoad"},
+		// A name that opens with the words opening the namespace is prefixed
+		// whole: putting the rest of the namespace after them would change
+		// what it says (httpServer would become httpClientServer).
+		{"userLoad", "userRepository", "userRepositoryUserLoad"},
+		{"UserLoad", "userRepository", "UserRepositoryUserLoad"},
+		{"httpServer", "httpClient", "httpClientHTTPServer"},
+		{"sha256Sum", "sha1", "sha1Sha256Sum"},
+		{"v2Handler", "v1", "v1V2Handler"},
+
+		// A name that is the namespace's last words becomes the namespace.
+		{"repository", "userRepository", "userRepository"},
 
 		// A word that is only a prefix of the namespace's word is a different
 		// word, so the name is prefixed whole: merging would change what it

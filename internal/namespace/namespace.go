@@ -63,11 +63,10 @@ func CanPrefix(ns string) bool {
 // name that already carries it is left alone, so the fix can never double a
 // word the name already has.
 //
-// A name that holds part of the namespace already gains only the rest, so the
-// rename does not double those words either (see merge):
-//
-//	FunctionCallExpr in astFunctionCallExpr -> AstFunctionCallExpr
-//	userLoad in userRepository              -> userRepositoryLoad
+// A name that opens with the words ending the namespace gains only the words
+// it lacks, so the rename does not double them either (see merge):
+// FunctionCallExpr in astFunctionCallExpr becomes AstFunctionCallExpr. Prefix
+// is the rename without that merge.
 //
 // The first word of name is capitalized the way Go spells it, so id becomes
 // userID and urlPath becomes userURLPath rather than userId and userUrlPath.
@@ -81,59 +80,66 @@ func Qualify(name, ns string) string {
 	if !CanPrefix(ns) || Contains(name, ns) {
 		return name
 	}
-	out, ok := merge(name, ns)
-	if !ok {
-		out = ns + capitalize(name)
+	if out, ok := merge(name, ns); ok {
+		return exportedAs(name, out)
 	}
+	return Prefix(name, ns)
+}
+
+// Prefix returns name with ns prepended whole, keeping name's exportedness:
+// Load in user becomes UserLoad. It is Qualify without the merge, and the
+// rename offered when the merged name is already taken. A namespace that
+// cannot be a prefix, or a name that already carries it, leaves the name
+// alone.
+func Prefix(name, ns string) string {
+	if !CanPrefix(ns) || Contains(name, ns) {
+		return name
+	}
+	return exportedAs(name, ns+capitalize(name))
+}
+
+// exportedAs raises out to an exported identifier when name is one.
+func exportedAs(name, out string) string {
 	if ast.IsExported(name) {
 		return capitalize(out)
 	}
 	return out
 }
 
-// merge spells name with ns when the two share words at their seam, and
-// reports whether they do. Both overlaps it takes keep every word of the name:
+// merge spells name after the words of ns it lacks, when name opens with the
+// words that end ns, and reports whether it does. FunctionCallExpr in
+// astFunctionCallExpr becomes astFunctionCallExpr. A file named with a prefix
+// its package uses by convention gives this shape. The longest overlap wins.
+// Words are compared under case folding, the way Contains matches, and read
+// at the boundaries wordStart opens.
 //
-//   - The name opens with the words that end ns. Only the leading words of ns
-//     are missing, so they are prepended: FunctionCallExpr in
-//     astFunctionCallExpr becomes astFunctionCallExpr. A file named with a
-//     prefix its package uses by convention gives this shape.
-//   - The name opens with the words that open ns. The rest of ns is inserted
-//     after them: userLoad in userRepository becomes userRepositoryLoad.
+// The name stays whole at the end, so the rename says what it said, and only
+// the owner in front of it grows. That is the one overlap merged. Two others
+// were rejected, since -fix applies the rename to an unexported name and must
+// not change what it says:
 //
-// The longest overlap wins. Words are compared under case folding, the way
-// Contains matches, and read at the boundaries wordStart opens.
+//   - A name opening with the words that open ns, with the rest of ns put
+//     after them: httpServer in httpClient would become httpClientServer.
+//   - A word of the name that is only a prefix of a word of ns: setValue in
+//     settings would become settingsValue.
 //
-// A word of the name that is only a prefix of a word of ns is not merged, so
-// parseExpr in parser still becomes parserParseExpr. Merging it would replace
-// the name's word with another: setValue in settings would become
-// settingsValue, which says something else. A rename that -fix applies must
-// not change what a name says.
-//
-// The result must carry ns by Contains, or merge reports no overlap and the
-// plain prefix is used.
+// The result must split back into the words it was built from, and carry ns
+// by Contains. Otherwise merge reports no overlap, and Prefix is used.
 func merge(name, ns string) (string, bool) {
 	nsWords, nameWords := words(ns), words(name)
-	same := func(a, b []string) bool {
-		return slices.EqualFunc(a, b, strings.EqualFold)
-	}
-	var out string
-	for k := min(len(nsWords), len(nameWords)); k > 0 && out == ""; k-- {
-		if same(nsWords[len(nsWords)-k:], nameWords[:k]) {
-			out = strings.Join(nsWords[:len(nsWords)-k], "") + capitalize(name)
+	same := func(a, b []string) bool { return slices.EqualFunc(a, b, strings.EqualFold) }
+	for k := min(len(nsWords), len(nameWords)); k > 0; k-- {
+		if !same(nsWords[len(nsWords)-k:], nameWords[:k]) {
+			continue
 		}
-	}
-	// The whole of ns opening the name is Contains, so only a shorter run of
-	// its opening words is asked here, and the name must go on past it.
-	for j := min(len(nsWords), len(nameWords)) - 1; j > 0 && out == ""; j-- {
-		if same(nsWords[:j], nameWords[:j]) {
-			out = ns + capitalize(strings.Join(nameWords[j:], ""))
+		lead := nsWords[:len(nsWords)-k]
+		out := strings.Join(lead, "") + capitalize(name)
+		if !same(words(out), append(slices.Clone(lead), nameWords...)) || !Contains(out, ns) {
+			return "", false
 		}
+		return out, true
 	}
-	if out == "" || !Contains(out, ns) {
-		return "", false
-	}
-	return out, true
+	return "", false
 }
 
 // words splits a camelCase identifier at the boundaries wordStart opens.

@@ -1012,12 +1012,13 @@ rules:
 
 #### The rename
 
-The fix prefixes, keeping Go's spelling of an initialism and the original exportedness.
+The fix prefixes, keeping Go's spelling of an initialism and the original exportedness. When the name opens with the namespace's last words, only the missing words are prefixed. When that name is taken, the fix prefixes the whole namespace.
 
 | Case | Example | Never |
 | --- | --- | --- |
 | Unexported | `id` → `userID` | `userId` |
 | Exported, under `rules.naming.exported` | `Load` → `UserLoad` | `userLoad` |
+| The name opens with the namespace's last words | `FunctionCallExpr` in `ast_function_call_expr.go` → `AstFunctionCallExpr` | `AstFunctionCallExprFunctionCallExpr` |
 
 The suggestion is one answer, not the only one. Any spelling that carries the namespace settles the rule. A rename never changes what a name is visible to.
 
