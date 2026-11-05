@@ -123,8 +123,12 @@ func exportedAs(name, out string) string {
 //   - A word of the name that is only a prefix of a word of ns: setValue in
 //     settings would become settingsValue.
 //
-// The result must split back into the words it was built from, and carry ns
-// by Contains. Otherwise merge reports no overlap, and Prefix is used.
+// The result carries ns by Contains without a check: it opens with the
+// leading words of ns, then the name, which opens with the rest of ns, and
+// capitalize changes only case. TestPluralInitialismIsOneWord pins it. Its
+// words may run together where an initialism meets another (idURL in userID
+// becomes userIDURL), as they do at the seam of Prefix, which would double the
+// ID besides.
 func merge(name, ns string) (string, bool) {
 	nsWords, nameWords := words(ns), words(name)
 	same := func(a, b []string) bool { return slices.EqualFunc(a, b, strings.EqualFold) }
@@ -132,12 +136,7 @@ func merge(name, ns string) (string, bool) {
 		if !same(nsWords[len(nsWords)-k:], nameWords[:k]) {
 			continue
 		}
-		lead := nsWords[:len(nsWords)-k]
-		out := strings.Join(lead, "") + capitalize(name)
-		if !same(words(out), append(slices.Clone(lead), nameWords...)) || !Contains(out, ns) {
-			return "", false
-		}
-		return out, true
+		return strings.Join(nsWords[:len(nsWords)-k], "") + capitalize(name), true
 	}
 	return "", false
 }

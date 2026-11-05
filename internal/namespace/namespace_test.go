@@ -151,6 +151,25 @@ func TestCanPrefix(t *testing.T) {
 	}
 }
 
+// TestPrefix pins the rename offered when the merged one is taken: the whole
+// namespace in front, the same guards as Qualify, and no merge.
+func TestPrefix(t *testing.T) {
+	tests := []struct {
+		name, ns, prefixed string
+	}{
+		{"expr", "astFunctionCallExpr", "astFunctionCallExprExpr"},
+		{"FunctionCallExpr", "astFunctionCallExpr", "AstFunctionCallExprFunctionCallExpr"},
+		{"Load", "user", "UserLoad"},
+		{"userHelper", "user", "userHelper"},
+		{"helper", "2faAuth", "helper"},
+	}
+	for _, tt := range tests {
+		if got := Prefix(tt.name, tt.ns); got != tt.prefixed {
+			t.Errorf("Prefix(%q, %q) = %q, want %q", tt.name, tt.ns, got, tt.prefixed)
+		}
+	}
+}
+
 func TestQualify(t *testing.T) {
 	tests := []struct {
 		name, ns, qualified string
@@ -207,6 +226,10 @@ func TestQualify(t *testing.T) {
 		{"httpServer", "httpClient", "httpClientHTTPServer"},
 		{"sha256Sum", "sha1", "sha1Sha256Sum"},
 		{"v2Handler", "v1", "v1V2Handler"},
+
+		// Where an initialism meets another, the words run together, as they
+		// do at the seam of the prefix. The merge still does not double them.
+		{"idURL", "userID", "userIDURL"},
 
 		// A name that is the namespace's last words becomes the namespace.
 		{"repository", "userRepository", "userRepository"},
