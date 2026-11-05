@@ -48,9 +48,21 @@ Which rules are on, and which config governs a package, is in [Check what is swi
 
 ## Adding to a package that has a baseline
 
-This section is for adding a feature to a package whose findings are recorded in a baseline. Such a package was laid out before declscope. A baseline file alone does not say that: it covers a whole repository, and a package laid out for declscope may sit beside the recorded ones. When the task is to reorganize the package or to clear its baseline, follow [declscope-adoption](../declscope-adoption/SKILL.md) instead. Renaming files and merging namespaces are its tools.
+This section is for changing a package whose findings are recorded in a baseline. Such a package was laid out before declscope. A baseline file alone does not say that: it covers a whole repository, and a package laid out for declscope may sit beside the recorded ones.
 
-The package's files may follow another plan. Some packages keep a layer in one file, such as every parse function in `parser.go`. Others follow a naming convention, such as an `ast_` prefix on each type's file. **Add new code the way the package already does it.** Reorganizing the package to suit the rules is a separate change. Propose it, and do not fold it into a feature. [A baseline is for arriving, not for staying](../declscope-adoption/SKILL.md#a-baseline-is-for-arriving-not-for-staying) covers that work.
+What you do depends on what you were asked:
+
+| The request | Do this |
+| --- | --- |
+| Add a feature, and nothing more | Keep the package's layout, as the rest of this section explains |
+| Refactor some existing files or a part of the package, with or without a feature | Inside that scope, follow this skill as in a package laid out for declscope. Outside it, keep the layout. See [Refactoring a part of the package](#refactoring-a-part-of-the-package) |
+| Reorganize the whole package, or clear its baseline | Follow [declscope-adoption](../declscope-adoption/SKILL.md). Renaming files and merging namespaces are its tools |
+
+The refactoring needs a clear request from the user, such as "clean up `parser.go` while you are there". A report that a rename would silence is not one.
+
+### Adding a feature
+
+The package's files may follow another plan. Some packages keep a layer in one file, such as every parse function in `parser.go`. Others follow a naming convention, such as an `ast_` prefix on each type's file. **Add new code the way the package already does it.** Reorganizing the package to suit the rules is a separate change. Propose it, and do not fold it into a feature unless the user asks. [A baseline is for arriving, not for staying](../declscope-adoption/SKILL.md#a-baseline-is-for-arriving-not-for-staying) covers that work.
 
 | The package | Do this |
 | --- | --- |
@@ -72,9 +84,31 @@ type FunctionCallExpr struct{ /* ... */ }
 func newFunctionCallExpr( /* ... */ ) *FunctionCallExpr { /* ... */ }
 ```
 
-**A namespace directive on an existing file changes its baseline keys.** A baseline entry names the declaration's namespace. So `//declscope:namespace parse` on an existing `parser.go` makes every baselined finding of that file new again. Ask the owner before you add one to an existing file: the baseline is theirs to regenerate. On a file you create, there is no such cost.
+**A namespace directive on an existing file changes its baseline keys.** A baseline entry names the declaration's namespace. So `//declscope:namespace parse` on an existing `parser.go` makes every baselined finding of that file new again. Ask the owner before you add one to an existing file: the baseline is theirs to regenerate. On a file you create, there is no such cost. In a refactoring the user asked for, the request is that permission for the files in its scope.
 
-**In a feature change, do not rename files only to satisfy a report.** Dropping the prefix from a new file name does make the report go away. It also leaves the package with two ways of naming its files. Renaming the package's files is a reorganization, which declscope-adoption covers.
+**In a feature change, do not rename files only to satisfy a report.** Dropping the prefix from a new file name does make the report go away. It also leaves the package with two ways of naming its files. Renaming the package's files is a reorganization. Do it when the user asks, as the next section explains.
+
+### Refactoring a part of the package
+
+Inside the scope the user named, the package's layout no longer binds you. Apply the rest of this skill there:
+
+- Put each declaration in a file named for its concept, and move it there when it is not
+- Rename a file whose name does not match its contents, with its test files
+- Set `//declscope:namespace` on an existing file when its name must stay
+- Widen only what is shared on purpose
+
+**Keep to the scope.** A file outside it keeps its name and its baselined findings, even when the same fix would apply there. Mention those files as candidates for a later change.
+
+**Fix the findings your refactoring brings back.** Moving a declaration or renaming its file changes its baseline keys, so its baselined findings report again. They are inside the scope, so fix them as you would a new report. Do not regenerate the baseline to record them.
+
+Then drop the entries your refactoring settled. Run this only after `declscope` reports nothing:
+
+```console
+declscope baseline -merge ./path/to/pkg
+git diff .declscope-baseline.yaml
+```
+
+`-merge` keeps the other packages' entries. The diff should remove lines and add none. An added line is a finding recorded instead of fixed. Show the diff to the user with the change.
 
 ## Common changes
 
@@ -167,7 +201,7 @@ Only the namespace's own spelling and two generated forms carry it: a final `e` 
 
 **Prefer the base form of a word for a new file name.** It is a recommendation, not a requirement. `trace.go` is carried by `traceValue`, `tracerType` and `tracingStart`. `tracing.go` is carried only by the last. Generated forms and the free right edge both run from the namespace to longer words, so the base form reaches every form the inflected file name reaches, and more. The same holds for `entry.go` over `entries.go`, `walk.go` over `walking.go`, and `user.go` over `users.go`. An inflected file name is allowed. It only fits declscope worse, so choose it when it reads clearly better.
 
-For an existing file, renaming it to the base form keeps every name that carried the old namespace. It still changes the namespace, so it is not free: rename its test files too, and update any `//declscope:namespace` that names it, baseline entries keyed by it, and each `// reason` that names the file. Do not rename an existing file only for this. Mention the rename as an option. When it is too wide, or the owner prefers the current name, a vocabulary entry is the smaller change.
+For an existing file, renaming it to the base form keeps every name that carried the old namespace. It still changes the namespace, so it is not free: rename its test files too, and update any `//declscope:namespace` that names it, baseline entries keyed by it, and each `// reason` that names the file. Do not rename an existing file only for this. Mention the rename as an option, unless the file is in a refactoring the user asked for. When it is too wide, or the owner prefers the current name, a vocabulary entry is the smaller change.
 
 `rules.naming.vocabulary` lists extra words that carry a namespace. A listed word goes through the same test as the namespace, so `trace` also covers `tracer`. When the namespace looks inflected, the diagnostic names the key: `list that form under rules.naming.vocabulary.tracing`.
 
