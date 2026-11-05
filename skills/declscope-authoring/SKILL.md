@@ -42,11 +42,11 @@ Which rules are on, and which config governs a package, is in [Check what is swi
 
 **A core file does not share its declarations by itself.** `//declscope:core` sets only the namespace, and exempts the file from the naming rule. Its unexported declarations are still private to the core. A core file whose declarations are shared also needs a file-level `//declscope:shared`.
 
-**Before widening, ask whether the code is in the wrong file.** A boundary report on your new use says a file reached into another namespace. Often the function you are writing belongs beside what it uses. When the declaration is shared on purpose, check that it sits in a file named for its concept before you write the directive. When you add a feature to a package whose findings are baselined, keep to its layout first. See [Adding to a package that has a baseline](#adding-to-a-package-that-has-a-baseline).
+**Before widening, ask whether the code is in the wrong file.** A boundary report on your new use says a file reached into another namespace. Often the function you are writing belongs beside what it uses. When the declaration is shared on purpose, check that it sits in a file named for its concept before you write the directive. When you add a feature to a package whose findings are baselined, keep to its layout first. See [Changing a package that has a baseline](#changing-a-package-that-has-a-baseline).
 
 **Do not create a file just to satisfy a name.** A new twenty-line file holding one declaration that only its old file uses is a warning sign. Rename the declaration where it was. A declaration that several parts share is different: move it, as the table above says.
 
-## Adding to a package that has a baseline
+## Changing a package that has a baseline
 
 This section is for changing a package whose findings are recorded in a baseline. Such a package was laid out before declscope. A baseline file alone does not say that: it covers a whole repository, and a package laid out for declscope may sit beside the recorded ones.
 
@@ -84,7 +84,7 @@ type FunctionCallExpr struct{ /* ... */ }
 func newFunctionCallExpr( /* ... */ ) *FunctionCallExpr { /* ... */ }
 ```
 
-**A namespace directive on an existing file changes its baseline keys.** A baseline entry names the declaration's namespace. So `//declscope:namespace parse` on an existing `parser.go` makes every baselined finding of that file new again. Ask the owner before you add one to an existing file: the baseline is theirs to regenerate. On a file you create, there is no such cost. In a refactoring the user asked for, the request is that permission for the files in its scope.
+**A namespace directive on an existing file changes its baseline keys.** A baseline entry names the declaration's namespace. So `//declscope:namespace parse` on an existing `parser.go` makes every baselined finding of that file new again. Ask the owner before you add one to an existing file: the baseline is theirs to regenerate. On a file you create, there is no such cost.
 
 **In a feature change, do not rename files only to satisfy a report.** Dropping the prefix from a new file name does make the report go away. It also leaves the package with two ways of naming its files. Renaming the package's files is a reorganization. Do it when the user asks, as the next section explains.
 
@@ -94,10 +94,22 @@ Inside the scope the user named, the package's layout no longer binds you. Apply
 
 - Put each declaration in a file named for its concept, and move it there when it is not
 - Rename a file whose name does not match its contents, with its test files
-- Set `//declscope:namespace` on an existing file when its name must stay
+- Set `//declscope:namespace` on an existing file when its name must stay. The request is the owner's permission for the baseline keys it changes
 - Widen only what is shared on purpose
 
 **Keep to the scope.** A file outside it keeps its name and its baselined findings, even when the same fix would apply there. Mention those files as candidates for a later change.
+
+**A file that receives moved code is in scope for that code only.** Keep its name, its namespace and its other declarations. When the moved code cannot carry that file's namespace, leave the code where it was. Changing the receiving file's namespace would widen the scope.
+
+For example, the user asks to clean up `parser.go` in a package that names its other files `ast_*.go`:
+
+| Change | Do it? |
+| --- | --- |
+| Set `//declscope:namespace parse` on `parser.go`, so `parseExpression` carries it | Yes. `parser.go` is the file named |
+| Fix the findings that come back for `parser.go`'s declarations | Yes. They are inside the scope |
+| Move `parseFunctionCall` into `ast_function_call_expr.go`, beside the type it builds | Only when it can carry that file's namespace there. The file keeps its name and its other declarations |
+| Set `//declscope:namespace functionCallExpr` on `ast_function_call_expr.go`, so that the moved function fits | No. That changes the receiving file's namespace |
+| Rename `ast_body.go` to `body.go` | No. Nothing moved there. Mention it as a later change |
 
 **Fix the findings your refactoring brings back.** Moving a declaration or renaming its file changes its baseline keys, so its baselined findings report again. They are inside the scope, so fix them as you would a new report. Do not regenerate the baseline to record them.
 
@@ -171,7 +183,7 @@ For example, a cache that two parts of a package read was placed in `surplus.go`
 | Belongs to one caller, but several parts use the thing | Move it to a file named for its concept, or to the shared-model file. A concept file often carries the name for free: `linknamed` carries `linkname` |
 | Reads badly for most names in the file | Often the file name is wrong. See [What each shape means](../declscope-adoption/SKILL.md#what-each-shape-means) |
 
-This reasoning holds in a package laid out for declscope. In a feature change to a package whose findings are baselined, the file name may follow the package's own convention instead. On a new file, keep that name and set the namespace. On an existing file, propose the namespace to the owner. [Adding to a package that has a baseline](#adding-to-a-package-that-has-a-baseline) explains both.
+This reasoning holds in a package laid out for declscope. In a feature change to a package whose findings are baselined, the file name may follow the package's own convention instead. On a new file, keep that name and set the namespace. On an existing file, propose the namespace to the owner. [Adding a feature](#adding-a-feature) explains both.
 
 ### Name a test file for the code it calls
 
