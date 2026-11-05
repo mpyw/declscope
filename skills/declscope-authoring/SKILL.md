@@ -56,8 +56,8 @@ In this skill, the owner is the user you are working for. Handle a proposal to t
 
 | The situation | Do this |
 | --- | --- |
-| Your change cannot pass the check without an answer | Ask in the chat, and wait. Do not finish with a failing check, a bent name or an ignore. When nobody can answer, as in a non-interactive run, leave that part undone. Finish the rest only when it works without it. Put the question in your report |
-| The owner declines | Ask the owner to choose between two, and wait as above. One is a new file named in the package's convention, with its own `//declscope:namespace`. Name the new file and its namespace in the question. The other is `//declscope:ignore qualify // <reason>` on the name. `qualify` is the naming rule's name. An ignore the owner chose is a decision |
+| Your change cannot pass the check without an answer | Ask in the chat, and wait. Do not finish with a failing check, a bent name or an ignore. When nobody can answer, as in a non-interactive run, leave that part undone. Finish the rest only when it works without it. When it does not, change nothing. Put the question in your report |
+| The owner declines | Ask the owner to choose between two, and wait as above. One is a new file named in the package's convention, with its own `//declscope:namespace`. In a package that keeps a layer in one file, name it after that file, such as `parser_function_call.go`. Name the new file and its namespace in the question. A file the owner chose is not one made just to satisfy a name. The other is `//declscope:ignore qualify // <reason>` on the name. `qualify` is the naming rule's name. An ignore the owner chose is a decision |
 | Your change passes without it | Write it in your report, and finish |
 
 What you do depends on what you were asked:
@@ -68,7 +68,7 @@ What you do depends on what you were asked:
 | Refactor some files, a part of the package, or the whole package, with or without a feature | Inside that scope, follow this skill as in a package laid out for declscope. Outside it, keep the layout. See [Refactoring a part of the package](#refactoring-a-part-of-the-package) |
 | Introduce declscope, or clear the baseline of the whole repository | Follow [declscope-adoption](../declscope-adoption/SKILL.md). Its order of work deletes the baseline file, which covers every package |
 
-The refactoring needs a clear request from the user, such as "clean up `parser.go` while you are there" or "refactor this package". A declscope finding that a rename would silence is not one. When the user asks to refactor the whole package, the package is the scope. Fix the findings that report again. A declaration you did not change keeps its entry, and you mention it. A request to clear one package's baseline is a refactoring of the whole package that fixes every finding of it. Its entries in the baseline file list those findings. It is done when `-merge` removes all of them. In these cases, do not delete the baseline file. When `-merge` leaves it empty, delete it.
+The refactoring needs a clear request from the user, such as "clean up `parser.go` while you are there" or "refactor this package". A declscope finding that a rename would silence is not one. When the user asks to refactor the whole package, the package is the scope. Fix the findings that report again. A declaration whose key did not change keeps its entry, and you mention it. A declaration whose file got a new namespace is not one of them. A request to clear one package's baseline is a refactoring of the whole package that fixes every finding of it. Its entries in the baseline file list those findings. It is done when `-merge` removes all of them. In these cases, do not delete the baseline file. When `-merge` leaves it empty, delete it.
 
 ### Adding a feature
 
@@ -77,8 +77,10 @@ The package's files may follow another plan. Some packages keep a layer in one f
 | The package | Do this |
 | --- | --- |
 | Names its files with a shared prefix, such as `ast_object_cons_expr.go`, and you add a new concept | Name the new file the same way. Set its namespace with `//declscope:namespace`, so the names carry it without the prefix |
-| Keeps one layer in one file, such as every parse function in `parser.go` | Put the new functions in that file. A method goes in its type's file, as [Common changes](#common-changes) says. The new names carry the file's namespace, as for any file. Say declscope reports that the new code uses a private declaration of another file. Write `//declscope:shared // parser.go builds these` on that declaration, and leave it where it is. When it states its own `//declscope:private`, ask the owner instead. When no natural name carries the namespace, propose a namespace for the file, as [Fixing an existing file's namespace](#fixing-an-existing-files-namespace) explains |
+| Keeps one layer in one file, such as every parse function in `parser.go` | Put the new functions in that file. A method goes in its type's file, as [Common changes](#common-changes) says. The new names carry the file's namespace, as for any file. When no natural name carries the namespace, propose a namespace for the file, as [Fixing an existing file's namespace](#fixing-an-existing-files-namespace) explains |
 | Already has a file for the concept you add | Put the new code there, even when that file's existing declarations are baselined. Its names carry that file's namespace. When no natural name does, propose a namespace for the file, as in the row above |
+
+In every row, the new code may use a private declaration of another file. When declscope reports that use, write `//declscope:shared // <who uses it>` on that declaration, such as `// parser.go builds these`. Leave the declaration where it is. When it states its own `//declscope:private`, ask the owner instead.
 
 Here is a new file for the first row. `parser.go` calls `newFunctionCallExpr`. Its test file, `ast_function_call_expr_test.go`, takes the same directive.
 
