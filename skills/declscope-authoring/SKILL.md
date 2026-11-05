@@ -57,7 +57,7 @@ In this skill, the owner is the user you are working for. Handle a proposal to t
 | The situation | Do this |
 | --- | --- |
 | Your change cannot pass the check without an answer | Ask in the chat, and wait. Do not finish with a failing check, a bent name or an ignore. When nobody can answer, as in a non-interactive run, leave that part undone. Finish the rest only when it works without it. Put the question in your report |
-| The owner declines, or no vocabulary entry fits | Ask the owner to choose between two, and wait as above. One is a new file named in the package's convention, with its own `//declscope:namespace`. Name both in the question. The other is `//declscope:ignore qualify // <reason>` on the name. `qualify` is the naming rule's name. An ignore the owner chose is a decision |
+| The owner declines | Ask the owner to choose between two, and wait as above. One is a new file named in the package's convention, with its own `//declscope:namespace`. Name the new file and its namespace in the question. The other is `//declscope:ignore qualify // <reason>` on the name. `qualify` is the naming rule's name. An ignore the owner chose is a decision |
 | Your change passes without it | Write it in your report, and finish |
 
 What you do depends on what you were asked:
@@ -77,8 +77,8 @@ The package's files may follow another plan. Some packages keep a layer in one f
 | The package | Do this |
 | --- | --- |
 | Names its files with a shared prefix, such as `ast_object_cons_expr.go`, and you add a new concept | Name the new file the same way. Set its namespace with `//declscope:namespace`, so the names carry it without the prefix |
-| Keeps one layer in one file, such as every parse function in `parser.go` | Put the new functions in that file. A method goes in its type's file, as [Common changes](#common-changes) says. The new names carry the file's namespace, as for any file. Say declscope reports that the new code uses a private declaration of another file. Write `//declscope:shared // parser.go builds these` on that declaration, and leave it where it is. When it states its own `//declscope:private`, ask the owner instead. When no natural name carries the namespace, propose a vocabulary entry for the word the names spell, such as `parser: [parse]`. It fits only a word for what the namespace names, as [the vocabulary rules](#when-the-name-spells-the-namespace-in-another-form) say. A name that spells another word may not belong in this file. Then go to the declined row of the table above. It changes no baseline keys. It applies to every package under that config, so say so. The check fails without it, so wait for the answer |
-| Already has a file for the concept you add | Put the new code there, even when that file's existing declarations are baselined. Its names carry that file's namespace. When no natural name does, propose a vocabulary entry as in the row above |
+| Keeps one layer in one file, such as every parse function in `parser.go` | Put the new functions in that file. A method goes in its type's file, as [Common changes](#common-changes) says. The new names carry the file's namespace, as for any file. Say declscope reports that the new code uses a private declaration of another file. Write `//declscope:shared // parser.go builds these` on that declaration, and leave it where it is. When it states its own `//declscope:private`, ask the owner instead. When no natural name carries the namespace, propose a namespace for the file, as [Fixing an existing file's namespace](#fixing-an-existing-files-namespace) explains |
+| Already has a file for the concept you add | Put the new code there, even when that file's existing declarations are baselined. Its names carry that file's namespace. When no natural name does, propose a namespace for the file, as in the row above |
 
 Here is a new file for the first row. `parser.go` calls `newFunctionCallExpr`. Its test file, `ast_function_call_expr_test.go`, takes the same directive.
 
@@ -94,7 +94,17 @@ type FunctionCallExpr struct{ /* ... */ }
 func newFunctionCallExpr( /* ... */ ) *FunctionCallExpr { /* ... */ }
 ```
 
-**A namespace directive on an existing file changes its baseline keys.** A baseline entry names the declaration's namespace and the declaration's name. Renaming an existing declaration changes its key in the same way, so in a feature change, leave baselined names as they are. So `//declscope:namespace parse` on an existing `parser.go` makes every baselined finding of that file new again. Adding one to an existing file is therefore a refactoring of that file, and its findings must be fixed. In a feature change, propose a vocabulary entry instead. On a file you create, there is no such cost.
+**A namespace directive on an existing file changes its baseline keys.** A baseline entry names the declaration's namespace and the declaration's name. Renaming an existing declaration changes its key in the same way, so in a feature change, leave baselined names as they are. So `//declscope:namespace parse` on an existing `parser.go` makes every baselined finding of that file new again. Adding one to an existing file is therefore a refactoring of that file, and its findings must be fixed. On a file you create, there is no such cost.
+
+#### Fixing an existing file's namespace
+
+Sometimes a new name cannot carry an existing file's namespace. `parseAttribute` in `parser.go` does not carry `parser`. A function in `ast_attribute.go` rarely carries `astAttribute`. Then propose to fix the file's namespace, such as `//declscope:namespace parse` on `parser.go`:
+
+1. Ask the owner. Say that every baselined finding of the file comes back, and that you will fix them. The check fails without the answer, so wait
+2. When the owner agrees, treat that file as a refactoring the user asked for. [Refactoring a part of the package](#refactoring-a-part-of-the-package) applies to it
+3. When the owner declines, go to the declined row of the table above
+
+**A vocabulary entry is the exception, for a Go idiom.** Some names follow a convention that never spells the file's name. In `options.go`, the functional options `WithTimeout` and `WithRetry` carry `With`, not `options`. List that word, as in `options: [with]`. It changes no baseline keys. It applies to every package under that config, so say so when you propose it. Do not use a vocabulary entry for a name that could carry a fixed namespace, such as `parse` for `parser`.
 
 **In a feature change, do not rename files only to satisfy a report.** Dropping the prefix from a new file name does make the report go away. It also leaves the package with two ways of naming its files. Renaming the package's files is a reorganization. Do it when the user asks, as the next section explains.
 
@@ -195,7 +205,7 @@ For example, a cache that two parts of a package read was placed in `surplus.go`
 | Belongs to one caller, but several parts use the thing | Move it to a file named for its concept, or to the shared-model file. A concept file often carries the name for free: `linknamed` carries `linkname` |
 | Reads badly for most names in the file | Often the file name is wrong. See [What each shape means](../declscope-adoption/SKILL.md#what-each-shape-means) |
 
-This reasoning holds in a package laid out for declscope. In a feature change to a package whose findings are baselined, the file name may follow the package's own convention instead. On a new file, keep that name and set the namespace. On an existing file, propose a vocabulary entry. [Adding a feature](#adding-a-feature) explains both.
+This reasoning holds in a package laid out for declscope. In a feature change to a package whose findings are baselined, the file name may follow the package's own convention instead. On a new file, keep that name and set the namespace. On an existing file, propose a namespace to the owner. [Adding a feature](#adding-a-feature) explains both.
 
 ### Name a test file for the code it calls
 
@@ -243,6 +253,7 @@ Use it for a word that names what the namespace names: another form of it, or th
 | --- | --- |
 | Spells the base form of an inflected file name | Propose a vocabulary entry, and mention renaming the file to the base form as an option |
 | Spells the namespace in another form the base form cannot reach (`indices`), or the domain's word for part of it | Propose a vocabulary entry |
+| Follows a Go idiom that never spells the file's name, such as `WithTimeout` in `options.go` | Propose a vocabulary entry: `options: [with]` |
 | Spells a different word, which describes the thing better | The file may be named wrong, or the declaration may be in the wrong file. See [An ill-fitting prefix](#an-ill-fitting-prefix-means-the-declaration-is-in-the-wrong-file) |
 | Would need a long list of words | Split the file. A long list means the file declares things it is not about |
 
