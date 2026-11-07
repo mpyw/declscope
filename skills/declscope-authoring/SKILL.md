@@ -99,7 +99,7 @@ When the new code uses a private declaration of another file, declscope reports 
 | --- | --- |
 | Has no directive | Write `//declscope:shared // <who uses it>` on it, such as `// parser.go builds these`. Leave it where it is |
 | Has a bare `//declscope:private`, such as `-fix` writes for `surplus` | It only records that nothing else read it yet. Delete it. That returns it to the scope above it, so add `//declscope:shared` only when nothing above shares it |
-| Has `//declscope:private` with a reason | That is a decision. Ask the owner whether it still holds |
+| Has `//declscope:private` with a reason | That is a decision. Ask the owner whether it still holds. If it does, or nobody can answer, put the new code in its file. When the use sits inside an existing function, write `//declscope:ignore boundary // <who uses it>` on the declaration instead |
 
 **When a new name cannot carry the file's namespace**, such as `parseAttribute` in `parser.go`, propose `//declscope:namespace parse` for the file. Say that the file's recorded findings come back, and that fixing them makes it a refactoring of that file. When the owner agrees, [Refactoring a part of the package](#refactoring-a-part-of-the-package) applies to the file. When the owner declines, offer a new file named in the package's convention, such as `parser_function_call.go`, with its own namespace. A file the owner chose is not one made just to satisfy a name.
 
@@ -143,14 +143,14 @@ Exported names cannot be renamed then. Where the naming rule reaches them, plan 
 
 #### Clearing one package's baseline
 
-Recorded findings are not reported, not even by `shrink`. To see them, delete the baseline file, and fix the package until `declscope` and `declscope shrink` report nothing for it. The request allows changing exported names under `internal/`, unless it keeps the API. Then regenerate the baseline, as below.
+Recorded findings are not reported, not even by `shrink`. To see them, move the baseline file aside, and fix the package until `declscope` and `declscope shrink` report nothing for it. The request allows changing exported names under `internal/`, unless it keeps the API. Then put the file back, and update it as below.
 
 #### Updating the baseline
 
 After a refactoring, drop the entries it settled. Run this only when `declscope` and `declscope shrink` report nothing for the package:
 
 ```console
-declscope baseline -merge ./path/to/pkg   # or ./... after deleting the file
+declscope baseline -merge ./path/to/pkg
 git diff -- '*baseline*'
 ```
 
@@ -164,10 +164,8 @@ In a non-interactive run, do not stop. Take the step this table gives, and say i
 | --- | --- |
 | The scope of a refactoring is unclear | Take the files the request names, or else the files your change touches |
 | In a feature change, a namespace on an existing file | Leave that file alone. Put the new code in a new file named in the package's convention, with its own namespace |
-| A declaration whose `//declscope:private` has a reason | Put the new code in its file. When the use sits inside an existing function, write `//declscope:ignore boundary // <who uses it>` on the declaration instead |
 | A vocabulary entry | Add it |
 | Any other config change | Do not make it |
-| `shrink -fix` on a name that existed before | Apply it only when the request allows changing exported names. Otherwise keep the name, as [When the request keeps the API](#when-the-request-keeps-the-api) says |
 | Anything else | Carry out the option you would recommend. When nothing else passes without a bent name, an ignore with its reason is the last resort |
 
 ## Common changes
@@ -428,7 +426,7 @@ Test files and generated files are out of scope. `TestXxx` functions are exporte
 
 | Report | First question | Usual answer |
 | --- | --- | --- |
-| `X is private to namespace "a"` (or `to the core namespace`), `but is used from namespace "b"`, or `X is declared private by ...` | Should your code live beside `X`? | Move your code beside `X`. If `X` is shared on purpose and sits in one caller's file, move it to a file named for its concept first. Then write `//declscope:shared // why` on `X`. When `X` has a `//declscope:private`, see the table in [Adding a feature](#adding-a-feature). Inside a refactoring the user asked for, you may change a decided one, and say why |
+| `X is private to namespace "a"` (or `to the core namespace`), `but is used from namespace "b"`, or `X is declared private by ...` | Should your code live beside `X`? | Move your code beside `X`. If `X` is shared on purpose and sits in one caller's file, move it to a file named for its concept first. Then write `//declscope:shared // why` on `X`. In a package whose findings are baselined, or when `X` has a `//declscope:private`, see the table in [Adding a feature](#adding-a-feature). Inside a refactoring the user asked for, you may change a decided one, and say why |
 | `//declscope:shared on X: no use from another namespace is visible` | Did the use that justified it go away? | Delete the directive |
 | `X takes shared scope from ..., but no use ...` | Does any other file read `X`? | Accept `-fix`'s `//declscope:private` on `X`, alone: take that edit from `declscope -fix -diff`, since a whole `-fix` run also widens every boundary report. Move `X` after the declarations of wider reach, except in a feature change to a package whose findings are baselined. See [Order by reach](#order-by-reach). When the directive is a file's or a block's, and most of its declarations get this report, it should not share the whole. Delete it, and write `//declscope:shared` on the few that other files use |
 | `unused //declscope:...` | Does the directive still change anything? | Delete it |
@@ -443,7 +441,7 @@ Test files and generated files are out of scope. `TestXxx` functions are exporte
 
 | Report | What to do |
 | --- | --- |
-| `... uses it` and nothing more | The fix is offered. Apply it with `declscope shrink -fix <that package>` to a name you added. For a name that existed before, see [When the request keeps the API](#when-the-request-keeps-the-api) |
+| `... uses it` and nothing more | The fix is offered. Apply it with `declscope shrink -fix <that package>` to a name you added. For a name that existed before, apply it when the request allows changing exported names. Otherwise see [When the request keeps the API](#when-the-request-keeps-the-api) |
 | `... (no fix: <reason>)` | A use may exist that `shrink` cannot prove, or the rename is unsafe. **Do not unexport an existing name by hand.** Read the reason first. For a name you added, choose another unexported name yourself. For an existing name, add `//declscope:ignore overexported // <the reason shown>`, and mention it |
 | `... only the external tests of <pkg> use it` | Keep it exported. Add `//declscope:ignore overexported // <why>` when the tests use it on purpose |
 | `... (no fix: a build-excluded file of another package may use it)`, where that file uses it under another build tag | Keep it exported. Add `//declscope:ignore overexported // <file, behind which tag>`. One ignore passes every configuration |
