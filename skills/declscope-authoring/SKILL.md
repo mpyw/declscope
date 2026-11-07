@@ -10,6 +10,8 @@ Written against **declscope 0.24.3**. Check the version first with `declscope -V
 
 This skill is for everyday work in a repository that already runs declscope. Introducing it, choosing its configuration, and clearing the whole repository's baseline are in [declscope-adoption](../declscope-adoption/SKILL.md), installed beside this one. Changing one package whose findings are baselined, including clearing its entries, is in [Changing a package that has a baseline](#changing-a-package-that-has-a-baseline). What each directive and config key means is in [the README](https://github.com/mpyw/declscope#readme).
 
+**Read each rule with its reason.** Most rules here are defaults for a situation, and say why. When your situation differs from the one a rule was written for, follow the reason, not the wording. For example, keeping existing code in place protects a feature change from turning into a reorganization. Inside a refactoring the user asked for, that reason is gone. The exceptions are in [Do not hide a report](#do-not-hide-a-report): they hold everywhere.
+
 ## The model
 
 A file is a namespace. Its name comes from the file name: `user_repository.go` is `userRepository`. A `//declscope:namespace` above the package clause names it instead.
@@ -98,7 +100,7 @@ type FunctionCallExpr struct{ /* ... */ }
 func newFunctionCallExpr( /* ... */ ) *FunctionCallExpr { /* ... */ }
 ```
 
-**A namespace directive on an existing file changes its baseline keys.** A baseline entry names the declaration's namespace and the declaration's name. Renaming an existing declaration changes its key in the same way, so in a feature change, leave baselined names as they are. So `//declscope:namespace parse` on an existing `parser.go` makes every baselined finding of that file new again. Adding one to an existing file is therefore a refactoring of that file, and its findings must be fixed. On a file you create, there is no such cost.
+**A namespace directive on an existing file changes its baseline keys.** A baseline entry names the declaration's namespace and the declaration's name. Renaming an existing declaration changes its key in the same way. In a feature change, leave baselined names as they are: fixing what comes back would turn the change into a refactoring. So `//declscope:namespace parse` on an existing `parser.go` makes every baselined finding of that file new again. Adding one to an existing file is therefore a refactoring of that file, and its findings must be fixed. On a file you create, there is no such cost.
 
 #### Fixing an existing file's namespace
 
@@ -139,7 +141,7 @@ For example, the user asks to clean up `parser.go` in a package that names its o
 
 **Fix the findings your refactoring brings back.** Moving a declaration, renaming it, or renaming its file changes its baseline keys, so its baselined findings report again. They are inside the scope, so fix them as you would a new report. Do not record them in the baseline again.
 
-**These findings are part of the refactoring.** They are no reason to skip it. Keep no declaration in place only to keep its baseline keys. Do not write `//declscope:shared` on it instead of moving it, either. That keeps the layout the user asked you to change. The caution of [Adding a feature](#adding-a-feature) applies outside the scope, not inside it.
+**These findings are part of the refactoring.** In a feature change, a changed key brings back findings nobody asked to fix, so existing code stays put. In a refactoring the user asked for, fixing those findings is the work. Keeping a declaration in place, or writing `//declscope:shared` on it instead of moving it, keeps the layout the user asked you to change.
 
 Then drop the entries your refactoring settled. Run this only after `declscope ./...` and `declscope shrink ./...` both report nothing, since the baseline records `shrink`'s findings too:
 
