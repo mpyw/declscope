@@ -50,7 +50,7 @@ Each file's patterns are read against **its own** directory, and anchor there wh
 
 **When introducing declscope, ask before any config change**, as [declscope-authoring](../declscope-authoring/SKILL.md#do-not-hide-a-report) says. That includes the first config file. Wait for an answer before changing code for the adoption, too.
 
-**When nobody can answer, as in a non-interactive run, do not wait.** Adopt the minimum below, with no config file, and make the changes this skill describes. Say in your report what you chose, and which settings the owner may still want to switch on.
+**When nobody can answer, as in a non-interactive run, do not wait.** Adopt the minimum below, with no new config file. Keep any config the repository already has. Make the changes this skill describes. Say in your report what you chose, and which settings the owner may still want to switch on.
 
 **An adoption may end with a baseline.** Drive the findings to zero only when the request asks for that. Otherwise run `declscope baseline ./...`, and report the counts `declscope survey ./...` gives.
 
