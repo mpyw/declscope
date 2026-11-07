@@ -46,7 +46,7 @@ Which rules are on, and which config governs a package, is in [Check what is swi
 
 **Before widening, ask whether the code is in the wrong file.** A boundary report on your new use says a file reached into another namespace. Often the function you are writing belongs beside what it uses. When the declaration is shared on purpose, check that it sits in a file named for its concept before you write the directive. When you add a feature to a package whose findings are baselined, keep to its layout instead. See [Changing a package that has a baseline](#changing-a-package-that-has-a-baseline).
 
-**Do not create a file just to satisfy a name.** A new twenty-line file holding one declaration that only its old file uses is a warning sign. Rename the declaration where it was. A new file for new code, named in the package's convention, is another matter. [Changing a package that has a baseline](#changing-a-package-that-has-a-baseline) uses one when an existing file's namespace cannot change. A declaration that several parts share is different: move it, as the table above says.
+**Do not create a file just to satisfy a name.** A new twenty-line file holding one declaration that only its old file uses is a warning sign. Rename the declaration where it was. A new file for new code, named in the package's convention, is another matter. It is the way forward when an existing file's namespace cannot change, as [Changing a package that has a baseline](#changing-a-package-that-has-a-baseline) explains. A declaration that several parts share is different: move it, as the table above says.
 
 ## Changing a package that has a baseline
 
