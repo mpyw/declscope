@@ -439,30 +439,39 @@ Test files and generated files are out of scope. `TestXxx` functions are exporte
 
 `declscope shrink` reports exported declarations of `internal/` packages that nothing outside their package uses. It is a subcommand, not a rule the analyzer runs, so a clean `declscope ./...` says nothing about it.
 
+**Each report names a declaration.** Decide per name, then fix:
+
 | Report | What to do |
 | --- | --- |
-| `... uses it` and nothing more | The fix is offered. `declscope shrink -fix <that package>` unexports every report of the package that is not ignored. Before running it, ignore each existing name you keep, as [When the request keeps the API](#when-the-request-keeps-the-api) says. Keep one when the request does not allow changing exported names |
+| `... uses it` and nothing more | A name you added: unexport it. An existing name: unexport it when the request allows changing exported names. Otherwise keep it, as [When the request keeps the API](#when-the-request-keeps-the-api) says |
 | `... only the external tests of <pkg> use it` | Keep it exported. Add `//declscope:ignore overexported // <why>` when the tests use it on purpose |
 | `... (no fix: a build-excluded file of another package may use it)`, where that file uses it under another build tag | Keep it exported. Add `//declscope:ignore overexported // <file, behind which tag>`. One ignore passes every configuration |
-| Any other `... (no fix: <reason>)` | A use may exist that `shrink` cannot prove, or the rename is unsafe. **Do not unexport an existing name by hand.** Read the reason first. For a name you added, choose another unexported name yourself. For an existing name, add `//declscope:ignore overexported // <the reason shown>`, and mention it |
-| `declscope shrink: not judged: <pkg>: <reason>` on stderr | That package was not checked. It is not clean |
-| `declscope shrink: warning: "<pattern>" matched no packages` on stderr | The pattern checked nothing. Fix the pattern, as you would for `go vet` |
-| `declscope shrink: not judged: <n> package(s) outside the main module` on stderr | The patterns named packages `shrink` never judges, such as `std`. Nothing to do |
+| Any other `... (no fix: <reason>)` | A use may exist that `shrink` cannot prove, or the rename is unsafe. Read the reason. Do not unexport an existing name by hand: add `//declscope:ignore overexported // <the reason shown>`, and mention it. For a name you added, choose another unexported name yourself |
 
-**A package not judged is not a package with nothing to report.** `shrink` stands down wherever an importer could be unseen:
+`declscope shrink -fix <pkg>` unexports every report of the package at once, except those ignored. So write the ignores for the names you keep first, then run it.
 
-- outside `internal/`, and in `package main`;
-- beside assembly or cgo;
-- under an `internal/` whose tree a nested module may import into, when that module fails to load or reads this one from elsewhere, such as a published version;
-- under an `internal/` whose tree a module of the build list may import into, when the build reads that module from elsewhere, such as a published version.
+Name the rule in each ignore: a bare `//declscope:ignore` does not reach `overexported`.
 
-A copy from elsewhere that a nested module builds keeps the reports in its range, but withholds their fixes, and the reason names the copy.
+**Some packages are not judged.** `shrink` stands down wherever an importer could be unseen. A package not judged is not a package with nothing to report.
 
-The exit status ignores those packages.
+| Where | Why |
+| --- | --- |
+| Outside `internal/`, and in `package main` | Any module may import it, or nothing can |
+| Beside assembly or cgo | Uses there are not visible |
+| Under an `internal/` that a nested module may import | The nested module fails to load, or reads this module from elsewhere, such as a published version |
+| Under an `internal/` that a module of the build list may import | The build reads that module from elsewhere, such as a published version |
 
-**The values of an enum are judged as one set.** A `const` block of 2 or more constants, all of one exported type of the package, is a set. While the type is not reported, or another package uses any of its values, no value is reported. Otherwise every value is reported with the type, and is fixed only where all of them are. A constant of the type outside such a block, such as a lone default, is judged on its own. To keep it with the set, put it in the block. A report on a block that mixes in another constant says to split the block. Do not add an ignore per value.
+When such a copy loads, the reports in its range stay, but their fixes are withheld, and the reason names the copy. The exit status ignores the packages not judged. They show on stderr:
 
-A bare `//declscope:ignore` does not reach `overexported`. Name the rule. Names written as strings, such as a template field or `reflect.Value.MethodByName`, are outside what `shrink` can see. When no interface carries the value there, add the ignore with the reason.
+| Message on stderr | What to do |
+| --- | --- |
+| `declscope shrink: not judged: <pkg>: <reason>` | That package was not checked. It is not clean |
+| `declscope shrink: warning: "<pattern>" matched no packages` | The pattern checked nothing. Fix the pattern, as you would for `go vet` |
+| `declscope shrink: not judged: <n> package(s) outside the main module` | The patterns named packages `shrink` never judges, such as `std`. Nothing to do |
+
+**The values of an enum are judged as one set.** A set is a `const` block of 2 or more constants of one exported type of the package. No value is reported while the type is not reported, or while another package uses any value. Otherwise every value is reported with the type, and fixed only where all of them are. A constant of the type outside the block, such as a lone default, is judged alone: put it in the block to keep it with the set. A report on a block that mixes in another constant says to split the block. Do not add an ignore per value.
+
+**Names written as strings are outside what `shrink` can see**, such as a template field or `reflect.Value.MethodByName`. When no interface carries the value there, add the ignore with the reason.
 
 ## Do not hide a report
 
