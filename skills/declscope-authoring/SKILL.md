@@ -33,7 +33,7 @@ Which rules are on, and which config governs a package, is in [Check what is swi
 
 ## Where a new declaration goes
 
-**Put it in the file whose concern it is.** That choice decides its namespace, so it decides who may use it and what its name must carry. The directive and the name follow from it.
+**Put it in the file whose concern it is.** That choice decides its namespace, so it decides who may use it. Under the naming rule, it also decides what the name must carry. The directive and the name follow from it.
 
 | The declaration is used by | Put it | Scope |
 | --- | --- | --- |
@@ -75,7 +75,7 @@ A bug fix follows the same rules. **Add new code the way the package already doe
 
 | The package | Do this |
 | --- | --- |
-| Names its files with a shared prefix, and you add a new concept | Name the new file the same way, and set its namespace with `//declscope:namespace` so the names carry it without the prefix |
+| Names its files with a shared prefix, and you add a new concept | Name the new file the same way. Under the naming rule, set its namespace with `//declscope:namespace` so the names carry it without the prefix |
 | Keeps one layer in one file | Put the new functions in that file. A method goes in its type's file, as [Common changes](#common-changes) says |
 | Already has a file for the concept you add | Put the new code there |
 
@@ -104,7 +104,7 @@ When the new code uses a private declaration of another file, declscope reports 
 | Is private through a directive on its file, block or type | That decides the whole, not this declaration. Write `//declscope:shared // <who uses it>` on it as a stated exception, as the first row does |
 | Has `//declscope:private` with a reason | That is a decision. Ask the owner whether it still holds. When it no longer does, replace it with `//declscope:shared // <who uses it>`. When it does, or nobody can answer, put the new code beside it after all. When the use sits inside an existing function, an ignore with its reason is the last resort |
 
-**When a new name cannot carry the file's namespace**, such as `parseAttribute` in `parser.go`, fix the file's namespace: `//declscope:namespace parse`. Do it when you can fix the file's recorded findings that come back, as [Refactoring a part of the package](#refactoring-a-part-of-the-package) does. Otherwise put the new code in a new file named in the package's convention, such as `parser_function_call.go`, with its own namespace. Propose the file's namespace in your report.
+**When the naming rule reports that a new name cannot carry the file's namespace**, such as `parseAttribute` in `parser.go`, fix the file's namespace: `//declscope:namespace parse`. Do it when you can fix the file's recorded findings that come back, as [Refactoring a part of the package](#refactoring-a-part-of-the-package) does. Otherwise put the new code in a new file named in the package's convention, such as `parser_function_call.go`, with its own namespace. Propose the file's namespace in your report.
 
 A vocabulary entry fits a word that names what the namespace names in another spelling, as [When the name spells the namespace in another form](#when-the-name-spells-the-namespace-in-another-form) explains. It reaches every package under the config. When fixing the file's namespace would let the names carry it, such as `parse` for `parser`, prefer that.
 
@@ -116,7 +116,7 @@ Inside the scope the user named, the package's layout no longer binds you. The g
 
 - Put each declaration in a file named for its concept, and move it there when it is not
 - Rename a file whose name does not match its contents, with its test files
-- When a file's name fits but the namespace it gives makes its names awkward, set a better one with `//declscope:namespace`, on its test files too
+- When a file's name fits but its namespace makes the names awkward under the naming rule, set a better one with `//declscope:namespace`. Do the same on its test files
 - Widen only what is shared on purpose
 
 **The findings that come back are the work.** Every move and rename above changes keys, so recorded findings report again. Fix them as you would a new report, and do not record them again. Keeping a declaration in place, or marking it `//declscope:shared` instead of moving it, keeps the layout the user asked you to change.
@@ -128,7 +128,7 @@ For example, the user asks to clean up `parser.go` in a package that names its o
 | Change | Do it? |
 | --- | --- |
 | Set `//declscope:namespace parse` on `parser.go` and `parser_test.go`, so `parseExpression` carries it | Yes, when its names read badly with `parser`. Fix the findings that come back |
-| Move `parseAttribute` into `ast_attribute.go`, beside the type it builds | Only when a natural name carries `astAttribute`, which is rare |
+| Move `parseAttribute` into `ast_attribute.go`, beside the type it builds | Yes without the naming rule. Under it, only when a natural name carries `astAttribute`, which is rare |
 | Set `//declscope:namespace attribute` on `ast_attribute.go`, so that the moved function fits | No. That file is outside the scope |
 | Rename `ast_body.go` to `body.go` | No. Mention it as a later change |
 
@@ -174,7 +174,7 @@ In a non-interactive run, do not stop. Take the step this table gives, and say i
 | --- | --- | --- |
 | Add a method to a type, in another file | The method takes its own file's namespace. Each private field it reads is reported at the field, in the type's file | Put the method in the type's file. If the two files are one unit, give the method's file the type's namespace with `//declscope:namespace`. Do not widen the fields |
 | Add a field that another file reads | Under a `//declscope:shared` type it is shared already. With nothing stated, the use is reported | When the type is unexported and other files spell it, write `//declscope:shared` on the type. See [Shared structs: private fields](#shared-structs-private-fields). Otherwise, exported types included, write `//declscope:shared // <who reads it>` on each field that is read, however many there are |
-| Move code between files | Its namespace changes, and so does the name it must carry | Rename it, move its tests with it, and reread each `// reason` that names a file |
+| Move code between files | Its namespace changes, and under the naming rule, so does the name it must carry | Move its tests with it, and reread each `// reason` that names a file. Under the naming rule, rename it to carry the new namespace |
 | Split a file | Each new file is a new namespace, so calls between the halves are reported | Split along a real boundary. If the halves are one unit, give them one `//declscope:namespace` |
 | Export a name to get past a report | An exported name takes shared scope, so the report goes away | Do not. In `internal/`, `declscope shrink` reports it. Elsewhere it becomes public API |
 | Add a helper used only by generated code | Generated files are not read. The `surplus` rule stands down in a package holding one, so nothing is reported | Nothing to write. Never put directives in generated files, since they are not read. An ignore would silence nothing |
