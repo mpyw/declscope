@@ -122,7 +122,7 @@ This happened when declscope held itself to `shrink`. The fix unexported twelve 
 | 4. Read what the analyzer now reports | `declscope ./...` |
 | 5. State or move each new crossing | See [What each shape means](#what-each-shape-means) |
 
-Ask before step 2, the same as any other change. When nobody can answer, apply the fix if the request allows changing exported names, as a request to clear the findings or to refactor does. `shrink` judges only under `internal/`, so no importer outside the module breaks. Otherwise, baseline what it reports, as the next paragraph says. The fix renames every identifier naming the declaration, all inside its own package, and the doc comment that opens with the name.
+Ask before step 2, the same as any other change. When nobody can answer, apply the fix if the request allows changing exported names, as a request to clear the findings does. A refactoring allows it only when the request says the API may change. `shrink` judges only under `internal/`, so no importer outside the module breaks. Otherwise, baseline what it reports, as the next paragraph says. The fix renames every identifier naming the declaration, all inside its own package, and the doc comment that opens with the name.
 
 **When the owner cannot settle `shrink` yet, baseline it.** `declscope baseline ./...` records `shrink`'s reports with the analyzer's, and `shrink` then passes on them in CI. It is the same deferral as any baseline, and [the same rules](#a-baseline-is-for-arriving-not-for-staying) apply. A repository that does not run `shrink` passes `-shrink=false`, which skips the extra load.
 
@@ -278,7 +278,7 @@ These cost real time. Each was measured, not guessed.
 
 **A zero from `boundary` may be the switch, not the code.** `rules.boundary: off` silences the rule entirely, and the run looks like a clean repository. Read every config before reporting a count, the same way you would for `qualify`.
 
-**`-fix` widens**, as [declscope-authoring](../declscope-authoring/SKILL.md#acting-on-a-diagnostic-your-change-caused) explains. Over a whole codebase that is the wholesale widening step 3 of the order of work exists to avoid. In an adoption, use it only for renames after the structure is settled, where `names[].fixable` is true.
+**`-fix` widens**, as [declscope-authoring](../declscope-authoring/SKILL.md#acting-on-a-diagnostic-your-change-caused) explains. Over a whole codebase that is the wholesale widening step 3 of the order of work exists to avoid. In an adoption, run it only after step 3 has cleared `boundary`. Then it inserts or deletes the `surplus` and `unused` directives, and makes the renames where `names[].fixable` is true.
 
 **A dirty working tree poisons a comparison.** Measuring option A, then option B without reverting, measures A and B together. `git stash` leaves untracked files behind, so a new file from the previous attempt stays. Copy the tree instead:
 

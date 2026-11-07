@@ -46,7 +46,7 @@ Which rules are on, and which config governs a package, is in [Check what is swi
 
 **Before widening, ask whether the code is in the wrong file.** A boundary report on your new use says a file reached into another namespace. Often the function you are writing belongs beside what it uses. When the declaration is shared on purpose, check that it sits in a file named for its concept before you write the directive. When you add a feature to a package whose findings are baselined, keep to its layout instead. See [Changing a package that has a baseline](#changing-a-package-that-has-a-baseline).
 
-**Do not create a file just to satisfy a name.** A new twenty-line file holding one declaration that only its old file uses is a warning sign. Rename the declaration where it was. A declaration that several parts share is different: move it, as the table above says.
+**Do not create a file just to satisfy a name.** A new twenty-line file holding one declaration that only its old file uses is a warning sign. Rename the declaration where it was. A new file for new code, named in the package's convention, is another matter. [Changing a package that has a baseline](#changing-a-package-that-has-a-baseline) uses one when an existing file's namespace cannot change. A declaration that several parts share is different: move it, as the table above says.
 
 ## Changing a package that has a baseline
 
@@ -84,7 +84,7 @@ The package's files may follow another plan. Some packages keep a layer in one f
 | Keeps one layer in one file, such as every parse function in `parser.go` | Put the new functions in that file. A method goes in its type's file, as [Common changes](#common-changes) says. The new names carry the file's namespace, as for any file. When no natural name carries the namespace, propose a namespace for the file, as [Fixing an existing file's namespace](#fixing-an-existing-files-namespace) explains |
 | Already has a file for the concept you add | Put the new code there, even when that file's existing declarations are baselined. Its names carry that file's namespace. When no natural name does, propose a namespace for the file, as in the row above |
 
-In every row, the new code may use a private declaration of another file. When declscope reports that use, write `//declscope:shared // <who uses it>` on that declaration, such as `// parser.go builds these`. Leave the declaration where it is. When it states its own `//declscope:private`, ask the owner instead. When nobody can answer, the table at the top of this section applies. A directive a declaration states is a decision, so the option you recommend never flips it.
+In every row, the new code may use a private declaration of another file. When declscope reports that use, write `//declscope:shared // <who uses it>` on that declaration, such as `// parser.go builds these`. Leave the declaration where it is. When it states its own `//declscope:private`, ask the owner instead. A directive a declaration states is a decision, so the option you recommend never flips it. When nobody can answer, move the new code that uses it into its file, and say so in your report.
 
 Here is a new file for the first row. `parser.go` calls `newFunctionCallExpr`. Its test file, `ast_function_call_expr_test.go`, takes the same directive.
 
@@ -106,7 +106,7 @@ func newFunctionCallExpr( /* ... */ ) *FunctionCallExpr { /* ... */ }
 
 Sometimes a new name cannot carry an existing file's namespace. `parseAttribute` in `parser.go` does not carry `parser`. A function in `ast_attribute.go` rarely carries `astAttribute`. Then propose to fix the file's namespace, such as `//declscope:namespace parse` on `parser.go`:
 
-1. Ask the owner. Say that every baselined finding of the file comes back, and that you will fix them. The check fails without the answer, so wait. When nobody can answer, the table at the top of this section applies
+1. Ask the owner. Say that every baselined finding of the file comes back, and that you will fix them. The check fails without the answer, so wait. When nobody can answer in a feature change, leave the existing file's namespace alone. Put the new code in a new file named in the package's convention, with its own `//declscope:namespace`, and say so in your report
 2. When the owner agrees, treat that file as a refactoring the user asked for. [Refactoring a part of the package](#refactoring-a-part-of-the-package) applies to it, `-merge` included. That run also drops the package's other entries that match nothing, which is fine. The diff still only removes lines
 3. When the owner declines, go to the declined row of the table above
 
@@ -425,7 +425,7 @@ Test files and generated files are out of scope. `TestXxx` functions are exporte
 
 | Report | What to do |
 | --- | --- |
-| `... uses it` and nothing more | The fix is offered. Apply it with `declscope shrink -fix <that package>` |
+| `... uses it` and nothing more | The fix is offered. Apply it with `declscope shrink -fix <that package>` to a name you added. For a name that existed before, apply it only when the request allows changing exported names. Otherwise leave the name, and mention the report |
 | `... (no fix: <reason>)` | A use may exist that `shrink` cannot prove, or the rename is unsafe. **Do not unexport it by hand.** Read the reason first |
 | `... only the external tests of <pkg> use it` | Keep it exported. Add `//declscope:ignore overexported // <why>` when the tests use it on purpose |
 | `... (no fix: a build-excluded file of another package may use it)`, where that file uses it under another build tag | Keep it exported. Add `//declscope:ignore overexported // <file, behind which tag>`. One ignore passes every configuration |
