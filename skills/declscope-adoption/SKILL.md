@@ -128,7 +128,7 @@ Ask before step 2, the same as any other change. When nobody can answer, apply i
 
 What each report asks of you, and where `shrink` stands down, is in [Reading what shrink reports](../declscope-authoring/SKILL.md#reading-what-shrink-reports). It is not a rule the analyzer runs, so `go vet` and golangci-lint never report it.
 
-**Deleting unused code is not `shrink`'s job.** Once a declaration is unexported, staticcheck's `unused` and gopls' `unusedfunc` report it when nothing uses it. Run them after `shrink`, not before.
+**Deleting unused code is not `shrink`'s job.** Once a declaration is unexported, a dead-code check finds it when nothing uses it. Use the one the repository already runs, usually the `unused` linter of golangci-lint, and run it after `shrink`. When the repository runs none, name staticcheck's `unused` or gopls' `unusedfunc` in your report instead of installing one.
 
 ### Keep it in CI
 
