@@ -96,7 +96,7 @@ for q in never ondemand always; do
 done
 ```
 
-Some reports will be names that spell the namespace in another form, such as `traceValue` in `tracing.go`. The message names a `rules.naming.vocabulary` key for those. Propose the entries in the same question as the naming rule, and do not count them as renames. When to list a word and when to move code instead is in [When the name spells the namespace in another form](../declscope-authoring/SKILL.md#when-the-name-spells-the-namespace-in-another-form).
+Some reports will be names that spell the namespace in another form, such as `traceValue` in `tracing.go`. The message names a `rules.naming.vocabulary` key for those. Propose the entries in the same question as the naming rule, and do not count them as renames. When to list a word and when to move code instead is in [When the name spells the namespace in another form](../declscope-authoring/naming.md#when-the-name-spells-the-namespace-in-another-form).
 
 Every count in the rest of this skill assumes `qualify: ondemand` with `exported: true`. That is what the numbers were taken under, not a recommendation.
 
@@ -234,7 +234,7 @@ A type whose fields many files read is the package's shared model: those files s
 
 ## Scopes and names of single declarations
 
-Once the structure is settled, what is left is per declaration. Field scopes are in [Shared structs](../declscope-authoring/SKILL.md#shared-structs-private-fields), and names in [Naming](../declscope-authoring/SKILL.md#naming). During an adoption, one `declscope -fix` run under `surplus: strict` adds every field directive the structs need. Moving those fields to the end stays manual.
+Once the structure is settled, what is left is per declaration. Field scopes are in [Shared structs](../declscope-authoring/SKILL.md#shared-structs-private-fields), and names in [Naming](../declscope-authoring/naming.md). During an adoption, one `declscope -fix` run under `surplus: strict` adds every field directive the structs need. Moving those fields to the end stays manual.
 
 ## Do not turn the check off
 
@@ -285,6 +285,6 @@ cp -r repo /tmp/try-a   # and measure there
 3. Clear `boundary` by moving the boundary, not by widening everything
 4. Re-measure with `survey`. Naming often falls with it, since merging two namespaces into one takes `ondemand` out of force
 5. Fix the file names that do not match their contents
-6. Rename what is left, following [Naming](../declscope-authoring/SKILL.md#naming)
+6. Rename what is left, following [Naming](../declscope-authoring/naming.md)
 7. Delete the baseline. When findings remain, put it back, record only those with `declscope baseline ./...`, and report them
 8. Check the core count, and `go vet`, `go test`, `declscope shrink` and `declscope` in that order
