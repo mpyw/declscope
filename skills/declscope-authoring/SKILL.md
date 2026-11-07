@@ -56,7 +56,7 @@ In this skill, the owner is the user you are working for. Handle a proposal to t
 
 | The situation | Do this |
 | --- | --- |
-| Your change cannot pass the check without an answer | Ask in the chat, and wait. Do not finish with a failing check, a bent name or an ignore. When nobody can answer, as in a non-interactive run, do not stop. Carry out the option you would recommend, and say in your report what you chose and why. That is still never a bent name or an ignore |
+| Your change cannot pass the check without an answer | Ask in the chat, and wait. Do not finish with a failing check, a bent name or an ignore. When nobody can answer, as in a non-interactive run, do not stop. Carry out the option you would recommend, and say in your report what you chose and why. That is still never a bent name, an ignore, or a config change other than a vocabulary entry |
 | The owner declines | Ask the owner to choose between two, and wait as above. One is a new file named in the package's convention, with its own `//declscope:namespace`. In a package that keeps a layer in one file, name it after that file, such as `parser_function_call.go`. Name the new file and its namespace in the question. A file the owner chose is not one made just to satisfy a name. The other is `//declscope:ignore qualify // <reason>` on the name. `qualify` is the naming rule's name. An ignore the owner chose is a decision |
 | Your change passes without it | Write it in your report, and finish |
 
@@ -82,7 +82,7 @@ The package's files may follow another plan. Some packages keep a layer in one f
 | Keeps one layer in one file, such as every parse function in `parser.go` | Put the new functions in that file. A method goes in its type's file, as [Common changes](#common-changes) says. The new names carry the file's namespace, as for any file. When no natural name carries the namespace, propose a namespace for the file, as [Fixing an existing file's namespace](#fixing-an-existing-files-namespace) explains |
 | Already has a file for the concept you add | Put the new code there, even when that file's existing declarations are baselined. Its names carry that file's namespace. When no natural name does, propose a namespace for the file, as in the row above |
 
-In every row, the new code may use a private declaration of another file. When declscope reports that use, write `//declscope:shared // <who uses it>` on that declaration, such as `// parser.go builds these`. Leave the declaration where it is. When it states its own `//declscope:private`, ask the owner instead.
+In every row, the new code may use a private declaration of another file. When declscope reports that use, write `//declscope:shared // <who uses it>` on that declaration, such as `// parser.go builds these`. Leave the declaration where it is. When it states its own `//declscope:private`, ask the owner instead. When nobody can answer, the table at the top of this section applies. A directive a declaration states is a decision, so the option you recommend never flips it.
 
 Here is a new file for the first row. `parser.go` calls `newFunctionCallExpr`. Its test file, `ast_function_call_expr_test.go`, takes the same directive.
 
@@ -261,7 +261,7 @@ Use it for a word that names what the namespace names: another form of it, or th
 | Spells a different word, which describes the thing better | The file may be named wrong, or the declaration may be in the wrong file. See [An ill-fitting prefix](#an-ill-fitting-prefix-means-the-declaration-is-in-the-wrong-file) |
 | Would need a long list of words | Split the file. A long list means the file declares things it is not about |
 
-A vocabulary entry is a config change, so ask first. List the word the name actually spells. Do not list a stem you guessed: `trac` would also carry `track`.
+A vocabulary entry is a config change, so ask first. When nobody can answer, add it and say so in your report: it only widens what carries one namespace. List the word the name actually spells. Do not list a stem you guessed: `trac` would also carry `track`.
 
 ## Directives
 
@@ -453,7 +453,7 @@ A bare `//declscope:ignore` does not reach `overexported`. Name the rule. Names 
 | Regenerating the baseline over new findings | Records your new crossing as if it were old |
 | `//declscope:ignore` without a reason | The next reader cannot tell a decision from a shortcut |
 
-**Config changes are the owner's decision.** Ask before writing or changing one.
+**Config changes are the owner's decision.** Ask before writing or changing one. When nobody can answer, a vocabulary entry is the only config change to make. Never change a rule's mode, the filter or the baseline path on your own.
 
 ## Traps
 

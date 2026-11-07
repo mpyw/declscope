@@ -50,6 +50,8 @@ Each file's patterns are read against **its own** directory, and anchor there wh
 
 **Ask before any config change**, as [declscope-authoring](../declscope-authoring/SKILL.md#do-not-hide-a-report) says. That includes the first config file. Wait for an answer before changing any code, too.
 
+**When nobody can answer, as in a non-interactive run, do not wait.** Adopt the minimum below, with no config file, and make the changes this skill describes. Say in your report what you chose, and which settings the owner may still want to switch on.
+
 **The minimum is no config file at all.** `boundary`, `surplus: strict` and `unused: strict` are on. They check reach and whether directives still change anything; the naming rule checks a convention. Adopting this much is a complete adoption.
 
 **Size the default `surplus` findings before changing code.** `loose` judges a `//declscope:shared` as a whole, so one reached declaration keeps the whole directive quiet. The default `strict` also reports each declaration the directive widens for nothing, and one `declscope -fix` run inserts every `//declscope:private` it asks for. If the owner wants the narrower check, set `surplus: loose` explicitly.
@@ -118,7 +120,7 @@ This happened when declscope held itself to `shrink`. The fix unexported twelve 
 | 4. Read what the analyzer now reports | `declscope ./...` |
 | 5. State or move each new crossing | See [What each shape means](#what-each-shape-means) |
 
-Ask before step 2, the same as any other change. The fix renames every identifier naming the declaration, all inside its own package, and the doc comment that opens with the name.
+Ask before step 2, the same as any other change. When nobody can answer, stop after step 1 and baseline what `shrink` reports, as the next paragraph says. Unexporting changes the API, which is the owner's to accept. The fix renames every identifier naming the declaration, all inside its own package, and the doc comment that opens with the name.
 
 **When the owner cannot settle `shrink` yet, baseline it.** `declscope baseline ./...` records `shrink`'s reports with the analyzer's, and `shrink` then passes on them in CI. It is the same deferral as any baseline, and [the same rules](#a-baseline-is-for-arriving-not-for-staying) apply. A repository that does not run `shrink` passes `-shrink=false`, which skips the extra load.
 
