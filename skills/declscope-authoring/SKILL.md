@@ -222,15 +222,15 @@ When the accurate name reads badly with the namespace in it, do not bend the wor
 
 Sometimes the namespace a name must carry does not describe the thing. Then the declaration sits in the wrong file, and renaming it hides that.
 
-For example, a cache that two parts of a package read was placed in `surplus.go`. So it had to be called `surplusLinknamed`, and the other part's call read `c.surplusLinknamed(pass)`, as if it asked the surplus code. It belonged in the package's shared-model file, which is core and shared as a whole. There it is just `linknamed`.
+For example, a tax rate table that `invoice.go` and `refund.go` both read was placed in `invoice.go`. So it had to be called `invoiceTaxRates`, and `refund.go` read `invoiceTaxRates` as if it borrowed something of the invoice's. It belongs in `tax.go`, where it is just `taxRates`.
 
 | The prefix you must add | Do this |
 | --- | --- |
 | Describes what the thing is | Keep it |
-| Belongs to one caller, but several parts use the thing | Move it to a file named for its concept, or to the shared-model file. A concept file often carries the name for free: `linknamed` carries `linkname` |
+| Belongs to one caller, but several parts use the thing | Move it to a file named for its concept, or to the shared-model file. A concept file often carries the name for free: `taxRates` carries `tax` |
 | Reads badly for most names in the file | Often the file name is wrong. See [What each shape means](../declscope-adoption/SKILL.md#what-each-shape-means) |
 
-This reasoning holds in a package laid out for declscope. In a feature change to a package whose findings are baselined, the file name may follow the package's own convention instead. On a new file, keep that name and set the namespace. On an existing file, propose a namespace to the owner. [Adding a feature](#adding-a-feature) explains both.
+This reasoning holds in a package laid out for declscope. In a feature change to a package whose findings are baselined, the file name may follow the package's own convention instead. On a new file, keep that name and set the namespace. On an existing file, set one when you can finish what it brings back. [Adding a feature](#adding-a-feature) explains both.
 
 ### Name a test file for the code it calls
 
