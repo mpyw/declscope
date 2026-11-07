@@ -46,8 +46,6 @@ Which rules are on, and which config governs a package, is in [Check what is swi
 
 **Before widening, ask whether the code is in the wrong file.** A boundary report on your new use says a file reached into another namespace. Often the function you are writing belongs beside what it uses. When the declaration is shared on purpose, check that it sits in a file named for its concept before you write the directive. When you add a feature to a package whose findings are baselined, keep to its layout unless you can finish the restructuring. See [Changing a package that has a baseline](#changing-a-package-that-has-a-baseline).
 
-**Do not create a file just to satisfy a name.** A new twenty-line file holding one declaration that only its old file uses is a warning sign. Rename the declaration where it was. A new file for new code, named in the package's convention, is another matter. A declaration that several parts share is different: move it, as the table above says.
-
 ## Changing a package that has a baseline
 
 A baseline is a file, usually `.declscope-baseline.yaml`, that records the findings a repository had when it adopted declscope. declscope does not report what it records. Only new findings fail the check: `declscope` and `declscope shrink`, as CI runs them.
@@ -79,7 +77,7 @@ A bug fix follows the same rules. **Add new code the way the package already doe
 | Keeps one layer in one file | Put the new functions in that file. A method goes in its type's file, as [Common changes](#common-changes) says |
 | Already has a file for the concept you add | Put the new code there |
 
-Here is a new file for the first row. `parser.go` calls `newFunctionCallExpr`. Its test file, `ast_function_call_expr_test.go`, takes the same directive.
+Here is a new file for the first row, under the naming rule. `parser.go` calls `newFunctionCallExpr`. Its test file, `ast_function_call_expr_test.go`, takes the same directive.
 
 ```go
 // ast_function_call_expr.go
@@ -119,7 +117,7 @@ Inside the scope the user named, the package's layout no longer binds you. The g
 
 **The findings that come back are the work.** Every move and rename above changes keys, so recorded findings report again. Fix them as you would a new report, and do not record them again. Keeping a declaration in place, or marking it `//declscope:shared` instead of moving it, keeps the layout the user asked you to change.
 
-**Keep to the scope.** A file outside it keeps its name, its namespace and its recorded findings. Update its uses of what you renamed, and mention it as a candidate for a later change. When you move code into such a file, rename the code to carry its namespace. When no natural name does, leave the code where it was, or give it a new file. A new file is in the scope, so choose its name and namespace to fit what it receives.
+**Keep to the scope.** A file outside it keeps its name, its namespace and its recorded findings. Update its uses of what you renamed, and mention it as a candidate for a later change. Under the naming rule, code you move into such a file must carry its namespace. When no natural name does, leave the code where it was, or give it a new file. A new file is in the scope, so choose its name and namespace to fit what it receives.
 
 For example, the user asks to clean up `parser.go` in a package that names its other files `ast_*.go`. None has a namespace directive, so `ast_attribute.go` has the namespace `astAttribute`:
 

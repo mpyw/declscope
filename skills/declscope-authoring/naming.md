@@ -50,6 +50,8 @@ For example, a tax rate table that `invoice.go` and `refund.go` both read was pl
 
 This reasoning holds in a package laid out for declscope. In a feature change to a package whose findings are baselined, the file name may follow the package's own convention instead. On a new file, keep that name and set the namespace. On an existing file, set one when you can finish what it brings back. [Adding a feature](SKILL.md#adding-a-feature) explains both.
 
+**Do not create a file just to satisfy a name.** A new twenty-line file holding one declaration that only its old file uses is a warning sign. Rename the declaration where it was. A new file for new code, named in the package's convention, is another matter. A declaration that several parts share is different: move it, as the table above says.
+
 ## When the name spells the namespace in another form
 
 Only the namespace's own spelling and two generated forms carry it: a final `e` dropped before `ing` (`store` → `storing`) and `y` turned to `i` (`apply` → `applies`, `applied`). Generation only makes the namespace longer. Nothing else is guessed:
