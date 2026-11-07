@@ -10,7 +10,7 @@ Written against **declscope 0.24.3**. Check the version first with `declscope -V
 
 This skill is for everyday work in a repository that already runs declscope. Introducing it, choosing its configuration, and clearing the whole repository's baseline are in [declscope-adoption](../declscope-adoption/SKILL.md), installed beside this one. Changing one package whose findings are baselined, including clearing its entries, is in [Changing a package that has a baseline](#changing-a-package-that-has-a-baseline). What each directive and config key means is in [the README](https://github.com/mpyw/declscope#readme).
 
-**Read each rule with its reason.** Most rules here are defaults for a situation, and say why. When your situation differs from the one a rule was written for, follow the reason, not the wording. For example, keeping existing code in place protects a feature change from turning into a reorganization. Inside a refactoring the user asked for, that reason is gone. The exceptions are in [Do not hide a report](#do-not-hide-a-report): they hold everywhere.
+**Read each rule with its reason.** Most rules here are defaults for a situation, and say why. When your situation differs from the one a rule was written for, follow the reason, not the wording. For example, keeping existing code in place protects a feature change from a half-done reorganization. When you can finish the reorganization, that reason is gone. The exceptions are in [Do not hide a report](#do-not-hide-a-report): they hold everywhere.
 
 ## The model
 
@@ -58,18 +58,20 @@ What you do depends on what you were asked:
 
 | The request | Do this |
 | --- | --- |
-| Add a feature or fix a bug, and nothing more | Keep the package's layout, as [Adding a feature](#adding-a-feature) explains |
+| Add a feature or fix a bug | Keep the package's layout, or restructure what you touch when you can finish it, as [Adding a feature](#adding-a-feature) explains |
 | Refactor some files, a part of the package, or the whole package | Inside that scope, follow this skill as in a package laid out for declscope. See [Refactoring a part of the package](#refactoring-a-part-of-the-package) |
 | Clear one package's baseline | A refactoring of the whole package that fixes all its findings. See [Clearing one package's baseline](#clearing-one-packages-baseline) |
 | Introduce declscope, or clear the whole repository's baseline | Follow [declscope-adoption](../declscope-adoption/SKILL.md) |
 
-A refactoring needs a clear request, such as "clean up `parser.go` while you are there" or "refactor this package". A finding that a rename would silence is not one. Nor is "fix the lint errors". When the scope is unclear, such as "tidy this up", ask which files it covers.
+A request to refactor widens how far you may restructure. Read it from what the user wants changed, however it is worded: "clean up `parser.go` while you are there", "refactor this package", or "this function is hard to read". "Fix the lint errors" asks for those fixes, moves included, and no more. When the scope is unclear, such as "tidy this up", ask which files it covers.
 
 The owner is the user you are working for. When a step needs the owner's answer, ask and wait. Never finish with a failing check, a bent name or an unexplained ignore. When nobody can answer, as in a non-interactive run, [When nobody can answer](#when-nobody-can-answer) says what to do.
 
 ### Adding a feature
 
-A bug fix follows the same rules. **Add new code the way the package already does it.** Some packages keep a layer in one file, such as every parse function in `parser.go`. Others name files with a prefix, such as `ast_object_cons_expr.go`. Reorganizing the package is a separate change: propose it, unless the user asks for it.
+A bug fix follows the same rules. **Add new code the way the package already does it.** Some packages keep a layer in one file, such as every parse function in `parser.go`. Others name files with a prefix, such as `ast_object_cons_expr.go`.
+
+**Restructure only as far as you can finish.** You may move or rename the code you touch when the result is whole. Every finding that comes back is fixed. The package does not end up mixing two conventions. The diff stays small enough to review with the feature. Renaming one `ast_*.go` file without its prefix, or moving some of `parser.go`'s parse functions but not the rest, mixes two. A half-done reorganization is worse than none. When the change would not be whole, keep the layout, and propose the reorganization instead.
 
 | The package | Do this |
 | --- | --- |
@@ -91,7 +93,7 @@ type FunctionCallExpr struct{ /* ... */ }
 func newFunctionCallExpr( /* ... */ ) *FunctionCallExpr { /* ... */ }
 ```
 
-**A baseline key is the declaration's namespace and name.** Moving a declaration, renaming it or its file, or setting a namespace on the file changes the key. Its recorded findings come back. In a feature change, nobody asked to fix those, so existing declarations stay where they are, under their names. A rename the user asks for covers that declaration only: write `//declscope:shared // <who uses it>` on it where its uses cross, and propose any move. On a file you create, there is no such cost.
+**A baseline key is the declaration's namespace and name.** Moving a declaration, renaming it or its file, or setting a namespace on the file changes the key. Its recorded findings come back. Fixing them is part of the move. Move or rename an existing declaration only when you can fix what comes back, as above. On a file you create, there is no such cost.
 
 When the new code uses a private declaration of another file, declscope reports it on that declaration:
 
@@ -101,7 +103,7 @@ When the new code uses a private declaration of another file, declscope reports 
 | Has a bare `//declscope:private`, such as `-fix` writes for `surplus` | It only records that nothing else read it yet. Delete it. That returns it to the scope above it, so add `//declscope:shared` only when nothing above shares it |
 | Has `//declscope:private` with a reason | That is a decision. Ask the owner whether it still holds. If it does, or nobody can answer, put the new code in its file. When the use sits inside an existing function, write `//declscope:ignore boundary // <who uses it>` on the declaration instead |
 
-**When a new name cannot carry the file's namespace**, such as `parseAttribute` in `parser.go`, propose `//declscope:namespace parse` for the file. Say that the file's recorded findings come back, and that fixing them makes it a refactoring of that file. When the owner agrees, [Refactoring a part of the package](#refactoring-a-part-of-the-package) applies to the file. When the owner declines, offer a new file named in the package's convention, such as `parser_function_call.go`, with its own namespace. A file the owner chose is not one made just to satisfy a name.
+**When a new name cannot carry the file's namespace**, such as `parseAttribute` in `parser.go`, fix the file's namespace: `//declscope:namespace parse`. Do it when you can fix the file's recorded findings that come back, as [Refactoring a part of the package](#refactoring-a-part-of-the-package) does. Otherwise put the new code in a new file named in the package's convention, such as `parser_function_call.go`, with its own namespace. Propose the file's namespace in your report.
 
 A vocabulary entry is for a Go idiom that never spells the file's name: the functional options `WithTimeout` and `WithRetry` in `options.go` take `options: [with]`. It reaches every package under the config. Do not use one for a name a fixed namespace would carry, such as `parse` for `parser`.
 
@@ -163,7 +165,6 @@ In a non-interactive run, do not stop. Take the step this table gives, and say i
 | The step that needs an answer | Do this |
 | --- | --- |
 | The scope of a refactoring is unclear | Take the files the request names, or else the files your change touches |
-| In a feature change, a namespace on an existing file | Leave that file alone. Put the new code in a new file named in the package's convention, with its own namespace |
 | A vocabulary entry | Add it |
 | Any other config change | Do not make it |
 | Anything else | Carry out the option you would recommend. When nothing else passes without a bent name, an ignore with its reason is the last resort |
