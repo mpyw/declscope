@@ -107,9 +107,7 @@ When the new code uses a private declaration of another file, declscope reports 
 
 A vocabulary entry fits a word that names what the namespace names in another spelling, as [When the name spells the namespace in another form](#when-the-name-spells-the-namespace-in-another-form) explains. It reaches every package under the config. When fixing the file's namespace would let the names carry it, such as `parse` for `parser`, prefer that.
 
-**Do not rename files only to satisfy a report.** Dropping the prefix from a new file name silences the report. It also leaves the package with two ways of naming its files.
-
-When your change happens to remove a recorded finding, leave its entry. An entry that matches nothing is harmless. Mention it in your report.
+When your change happens to remove a recorded finding, its entry now matches nothing and does no harm. Drop it as [Updating the baseline](#updating-the-baseline) says, or leave it and mention it in your report.
 
 ### Refactoring a part of the package
 
