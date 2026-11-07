@@ -48,13 +48,15 @@ Each file's patterns are read against **its own** directory, and anchor there wh
 
 ### Start at the default, and offer the rest
 
-**Ask before any config change**, as [declscope-authoring](../declscope-authoring/SKILL.md#do-not-hide-a-report) says. That includes the first config file. Wait for an answer before changing any code, too.
+**When introducing declscope, ask before any config change**, as [declscope-authoring](../declscope-authoring/SKILL.md#do-not-hide-a-report) says. That includes the first config file. Wait for an answer before changing code for the adoption, too.
 
 **When nobody can answer, as in a non-interactive run, do not wait.** Adopt the minimum below, with no config file, and make the changes this skill describes. Say in your report what you chose, and which settings the owner may still want to switch on.
 
+**An adoption may end with a baseline.** Drive the findings to zero only when the request asks for that. Otherwise run `declscope baseline ./...`, and report the counts `declscope survey ./...` gives.
+
 **The minimum is no config file at all.** `boundary`, `surplus: strict` and `unused: strict` are on. They check reach and whether directives still change anything; the naming rule checks a convention. Adopting this much is a complete adoption.
 
-**Size the default `surplus` findings before changing code.** `loose` judges a `//declscope:shared` as a whole, so one reached declaration keeps the whole directive quiet. The default `strict` also reports each declaration the directive widens for nothing, and one `declscope -fix` run inserts every `//declscope:private` it asks for. If the owner wants the narrower check, set `surplus: loose` explicitly.
+**Size the default `surplus` findings before changing code.** `loose` judges a `//declscope:shared` as a whole, so one reached declaration keeps the whole directive quiet. The default `strict` also reports each declaration the directive widens for nothing, and one `declscope -fix` run inserts every `//declscope:private` it asks for. A whole `-fix` run also inserts `//declscope:shared` for every boundary report. Run it only after step 3 of the [order of work](#order-of-work) has cleared `boundary`. If the owner wants the narrower check, set `surplus: loose` explicitly.
 
 ```bash
 declscope survey -format=json ./... | jq .totals.surplus.found
@@ -64,7 +66,7 @@ An explicit `-config` replaces the repository's own config. Copy its keys in fir
 
 **Before `-fix`, read where its `//declscope:private` directives would land.** When most of them fall under one file-level `//declscope:shared`, the file should not be shared as a whole. Delete the file's directive instead, and share the few declarations other files use. See [Directives](../declscope-authoring/SKILL.md#directives).
 
-**Size the default `unused` findings too.** Under `loose`, a `//declscope:private` that names the scope `defaults.unexported` gives is kept, since another default could make it bind. The default `strict` reports it, and one `declscope -fix` run deletes it. When changing `defaults.unexported`, expect reports for directives that restate the new default. If the owner wants to keep those explicit decisions, set `unused: loose`.
+**Size the default `unused` findings too.** Under `loose`, a `//declscope:private` that names the scope `defaults.unexported` gives is kept, since another default could make it bind. The default `strict` reports it, and one `declscope -fix` run deletes it, under the same order. When changing `defaults.unexported`, expect reports for directives that restate the new default. If the owner wants to keep those explicit decisions, set `unused: loose`.
 
 **If the goal is a tidier codebase, offer the naming rule on top.** It is a convention. It fires where nothing is wrong, and it costs real work. Size it before offering, with a throwaway config rather than by counting message fragments:
 
