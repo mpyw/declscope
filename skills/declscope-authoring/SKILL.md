@@ -44,7 +44,7 @@ Which rules are on, and which config governs a package, is in [Check what is swi
 
 **A core file does not share its declarations by itself.** `//declscope:core` sets only the namespace, and exempts the file from the naming rule. Its unexported declarations are still private to the core. A core file whose declarations are shared also needs a file-level `//declscope:shared`.
 
-**Before widening, ask whether the code is in the wrong file.** A boundary report on your new use says a file reached into another namespace. Often the function you are writing belongs beside what it uses. When the declaration is shared on purpose, check that it sits in a file named for its concept before you write the directive. When you add a feature to a package whose findings are baselined, keep to its layout instead. See [Changing a package that has a baseline](#changing-a-package-that-has-a-baseline).
+**Before widening, ask whether the code is in the wrong file.** A boundary report on your new use says a file reached into another namespace. Often the function you are writing belongs beside what it uses. When the declaration is shared on purpose, check that it sits in a file named for its concept before you write the directive. When you add a feature to a package whose findings are baselined, keep to its layout unless you can finish the restructuring. See [Changing a package that has a baseline](#changing-a-package-that-has-a-baseline).
 
 **Do not create a file just to satisfy a name.** A new twenty-line file holding one declaration that only its old file uses is a warning sign. Rename the declaration where it was. A new file for new code, named in the package's convention, is another matter. A declaration that several parts share is different: move it, as the table above says.
 
@@ -52,7 +52,7 @@ Which rules are on, and which config governs a package, is in [Check what is swi
 
 A baseline is a file, usually `.declscope-baseline.yaml`, that records the findings a repository had when it adopted declscope. declscope does not report what it records. Only new findings fail the check: `declscope` and `declscope shrink`, as CI runs them.
 
-This section is for a package whose findings are recorded in a baseline. Such a package was laid out before declscope. One baseline file covers a whole repository, so check the package itself: `declscope survey ./path/to/pkg` shows a `baselined` count above zero.
+This section is for a package whose findings are recorded in a baseline. Such a package was laid out before declscope. A baseline file usually covers a whole repository, so check the package itself: `declscope survey ./path/to/pkg` shows a `baselined` count above zero.
 
 What you do depends on what you were asked:
 
@@ -101,8 +101,8 @@ When the new code uses a private declaration of another file, declscope reports 
 | --- | --- |
 | Has no directive | Ask whose concept it is. When it belongs to its file's concept, such as `parseExpr` in `parser.go`, write `//declscope:shared // <who uses it>` on it and leave it. When its file was only its first caller, such as a general helper now used twice, move it to a file named for its concept. That file may exist already, or be new. Then share it. Moving it changes its baseline key, so do it only when you can finish, as above |
 | Has a bare `//declscope:private` of its own, such as `-fix` writes for `surplus` | It only records that nothing else read it yet. Delete it, and treat the declaration as in the row above |
-| Is private through a directive on its file, block or type | That decides the whole, not this declaration. Treat it as the next row does |
-| Has `//declscope:private` with a reason | That is a decision. Ask the owner whether it still holds. If it does, or nobody can answer, put the new code beside it after all. When the use sits inside an existing function, write `//declscope:ignore boundary // <who uses it>` on the declaration instead |
+| Is private through a directive on its file, block or type | That decides the whole, not this declaration. Write `//declscope:shared // <who uses it>` on it as a stated exception, as the first row does |
+| Has `//declscope:private` with a reason | That is a decision. Ask the owner whether it still holds. When it no longer does, replace it with `//declscope:shared // <who uses it>`. When it does, or nobody can answer, put the new code beside it after all. When the use sits inside an existing function, an ignore with its reason is the last resort |
 
 **When a new name cannot carry the file's namespace**, such as `parseAttribute` in `parser.go`, fix the file's namespace: `//declscope:namespace parse`. Do it when you can fix the file's recorded findings that come back, as [Refactoring a part of the package](#refactoring-a-part-of-the-package) does. Otherwise put the new code in a new file named in the package's convention, such as `parser_function_call.go`, with its own namespace. Propose the file's namespace in your report.
 
@@ -144,7 +144,7 @@ Exported names cannot be renamed then. The same holds outside `internal/` unless
 
 #### Clearing one package's baseline
 
-Recorded findings are not reported, not even by `shrink`. To see them, move the baseline file aside, and fix the package until `declscope` and `declscope shrink` report nothing for it. The request allows changing exported names under `internal/`, unless it keeps the API. Then put the file back, and update it as below.
+Recorded findings are not reported, not even by `shrink`. To see them, move aside the baseline file that records the package, and fix the package until `declscope` and `declscope shrink` report nothing for it. The request allows changing exported names under `internal/`, unless it keeps the API. Then put the file back, and update it as below.
 
 #### Updating the baseline
 
@@ -179,7 +179,7 @@ In a non-interactive run, do not stop. Take the step this table gives, and say i
 | Export a name to get past a report | An exported name takes shared scope, so the report goes away | Do not. In `internal/`, `declscope shrink` reports it. Elsewhere it becomes public API |
 | Add a helper used only by generated code | Generated files are not read. The `surplus` rule stands down in a package holding one, so nothing is reported | Nothing to write. Never put directives in generated files, since they are not read. An ignore would silence nothing |
 
-In a package whose findings are baselined, a `//declscope:namespace` on an existing file changes its baseline keys. Outside a refactoring the user asked for, propose it instead. Moving or splitting existing code there is a refactoring too. See [Changing a package that has a baseline](#changing-a-package-that-has-a-baseline).
+In a package whose findings are baselined, a `//declscope:namespace` on an existing file, or moving or splitting existing code, changes baseline keys. Do it only when you can finish what comes back. See [Changing a package that has a baseline](#changing-a-package-that-has-a-baseline).
 
 ## Naming
 
@@ -229,7 +229,7 @@ For example, a tax rate table that `invoice.go` and `refund.go` both read was pl
 | --- | --- |
 | Describes what the thing is | Keep it |
 | Belongs to one caller, but several parts use the thing | Move it to a file named for its concept, or to the shared-model file. A concept file often carries the name for free: `taxRates` carries `tax` |
-| Reads badly for most names in the file | Often the file name is wrong. See [What each shape means](../declscope-adoption/SKILL.md#what-each-shape-means) |
+| Reads badly for most names in the file | Often the file name is wrong. See [Reading a saturation](../declscope-adoption/SKILL.md#reading-a-saturation) |
 
 This reasoning holds in a package laid out for declscope. In a feature change to a package whose findings are baselined, the file name may follow the package's own convention instead. On a new file, keep that name and set the namespace. On an existing file, set one when you can finish what it brings back. [Adding a feature](#adding-a-feature) explains both.
 
@@ -427,7 +427,7 @@ Test files and generated files are out of scope. `TestXxx` functions are exporte
 | Report | First question | Usual answer |
 | --- | --- | --- |
 | `X is private to namespace "a"` (or `to the core namespace`), `but is used from namespace "b"`, or `X is declared private by ...` | Should your code live beside `X`? | Move your code beside `X` when it belongs there. Otherwise act on `X`'s directive as the table in [Adding a feature](#adding-a-feature) says, with or without a baseline. Inside a refactoring the user asked for, you may change a decided one, and say why |
-| `//declscope:shared on X: no use from another namespace is visible` | Did the use that justified it go away? | Delete the directive |
+| `//declscope:shared on X: no use from another namespace is visible`, or `the file's //declscope:shared: no use ...` | Did the use that justified it go away? | Delete the directive |
 | `X takes shared scope from ..., but no use ...` | Does any other file read `X`? | When the directive is a file's or a block's, and most of its declarations get this report, it should not share the whole. Delete it, and write `//declscope:shared` on the few that other files use. Otherwise accept `-fix`'s `//declscope:private` on `X`, alone: take that edit from `declscope -fix -diff`, since a whole `-fix` run also widens every boundary report. When the file is ordered by reach, move `X` after the declarations of wider reach. See [Order by reach](#order-by-reach) |
 | `unused //declscope:...` | Does the directive still change anything? | Delete it |
 | `X does not carry namespace "a"` | Is the name accurate, and is `X` in the right file? | See [Naming](#naming). Rename only when both answers are yes |
