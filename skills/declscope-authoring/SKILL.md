@@ -95,13 +95,13 @@ func newFunctionCallExpr( /* ... */ ) *FunctionCallExpr { /* ... */ }
 
 **A baseline key is the declaration's namespace and name.** Moving a declaration, renaming it or its file, or setting a namespace on the file changes the key. Its recorded findings come back. Fixing them is part of the move. Move or rename an existing declaration only when you can fix what comes back, as above. On a file you create, there is no such cost.
 
-When the new code uses a private declaration of another file, declscope reports it on that declaration:
+When the new code uses a private declaration of another file, declscope reports it on that declaration. First ask whether the new code belongs beside it. New code costs nothing to place, so put it in that file when it does. Otherwise:
 
 | The declaration | Do this |
 | --- | --- |
-| Has no directive | Write `//declscope:shared // <who uses it>` on it, such as `// parser.go builds these`. Leave it where it is |
-| Has a bare `//declscope:private`, such as `-fix` writes for `surplus` | It only records that nothing else read it yet. Delete it. That returns it to the scope above it, so add `//declscope:shared` only when nothing above shares it |
-| Has `//declscope:private` with a reason | That is a decision. Ask the owner whether it still holds. If it does, or nobody can answer, put the new code in its file. When the use sits inside an existing function, write `//declscope:ignore boundary // <who uses it>` on the declaration instead |
+| Has no directive | Ask whose concept it is. When it belongs to its file's concept, such as `parseExpr` in `parser.go`, write `//declscope:shared // <who uses it>` on it and leave it. When its file was only its first caller, such as a general helper now used twice, move it to a file named for its concept, an existing one or a new one, then share it. Moving it changes its baseline key, so do it only when you can finish, as above |
+| Has a bare `//declscope:private`, such as `-fix` writes for `surplus` | It only records that nothing else read it yet. Delete it, and treat the declaration as in the row above |
+| Has `//declscope:private` with a reason | That is a decision. Ask the owner whether it still holds. If it does, or nobody can answer, put the new code beside it after all. When the use sits inside an existing function, write `//declscope:ignore boundary // <who uses it>` on the declaration instead |
 
 **When a new name cannot carry the file's namespace**, such as `parseAttribute` in `parser.go`, fix the file's namespace: `//declscope:namespace parse`. Do it when you can fix the file's recorded findings that come back, as [Refactoring a part of the package](#refactoring-a-part-of-the-package) does. Otherwise put the new code in a new file named in the package's convention, such as `parser_function_call.go`, with its own namespace. Propose the file's namespace in your report.
 
