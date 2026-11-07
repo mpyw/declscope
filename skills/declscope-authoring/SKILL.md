@@ -125,6 +125,8 @@ Inside the scope the user named, the package's layout no longer binds you. The g
 
 **A file that receives moved code is in scope for that code only.** Keep its name, its namespace and its other declarations. Rename the moved code to carry that file's namespace. When no natural name does, leave the code where it was. Changing the receiving file's namespace would widen the scope.
 
+**A new file can take a namespace that fits what it receives.** It is in the scope, so its name and its `//declscope:namespace` are yours to choose. Choose them so the moved names carry the namespace as they are. This matters for exported names when the refactoring keeps the package's API: they cannot be renamed. For example, to move `RequiredParam`, `OptionalParam` and `OptionalIntParam` out of `server.go`, create `params.go` with `//declscope:namespace param`. Each name carries `param` unchanged.
+
 For example, the user asks to clean up `parser.go` in a package that names its other files `ast_*.go`. None of them has a namespace directive, so `ast_attribute.go` has the namespace `astAttribute`:
 
 | Change | Do it? |
@@ -136,6 +138,8 @@ For example, the user asks to clean up `parser.go` in a package that names its o
 | Rename `ast_body.go` to `body.go` | No. It is outside the scope. Mention it as a later change |
 
 **Fix the findings your refactoring brings back.** Moving a declaration, renaming it, or renaming its file changes its baseline keys, so its baselined findings report again. They are inside the scope, so fix them as you would a new report. Do not record them in the baseline again.
+
+**These findings are part of the refactoring.** They are no reason to skip it. Keep no declaration in place only to keep its baseline keys. Do not write `//declscope:shared` on it instead of moving it, either. That keeps the layout the user asked you to change. The caution of [Adding a feature](#adding-a-feature) applies outside the scope, not inside it.
 
 Then drop the entries your refactoring settled. Run this only after `declscope ./...` and `declscope shrink ./...` both report nothing, since the baseline records `shrink`'s findings too:
 
