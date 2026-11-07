@@ -115,7 +115,7 @@ Inside the scope the user named, the package's layout no longer binds you. The g
 
 - Put each declaration in a file named for its concept, and move it there when it is not
 - Rename a file whose name does not match its contents, with its test files
-- Set `//declscope:namespace` on an existing file whose name reads well but makes poor names, such as `parser.go`, and on its test files
+- When a file's name fits but the namespace it gives makes its names awkward, set a better one with `//declscope:namespace`, on its test files too
 - Widen only what is shared on purpose
 
 **The findings that come back are the work.** Every move and rename above changes keys, so recorded findings report again. Fix them as you would a new report, and do not record them again. Keeping a declaration in place, or marking it `//declscope:shared` instead of moving it, keeps the layout the user asked you to change.
