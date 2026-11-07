@@ -91,7 +91,7 @@ type FunctionCallExpr struct{ /* ... */ }
 func newFunctionCallExpr( /* ... */ ) *FunctionCallExpr { /* ... */ }
 ```
 
-**A baseline key is the declaration's namespace and name.** Moving a declaration, renaming it or its file, or setting a namespace on the file changes the key. Its recorded findings come back. In a feature change, nobody asked to fix those, so existing declarations stay where they are, under their names. A rename the user asks for is a refactoring of that declaration. On a file you create, there is no such cost.
+**A baseline key is the declaration's namespace and name.** Moving a declaration, renaming it or its file, or setting a namespace on the file changes the key. Its recorded findings come back. In a feature change, nobody asked to fix those, so existing declarations stay where they are, under their names. A rename the user asks for covers that declaration only: write `//declscope:shared // <who uses it>` on it where its uses cross, and propose any move. On a file you create, there is no such cost.
 
 When the new code uses a private declaration of another file, declscope reports it on that declaration:
 
@@ -441,10 +441,10 @@ Test files and generated files are out of scope. `TestXxx` functions are exporte
 
 | Report | What to do |
 | --- | --- |
-| `... uses it` and nothing more | The fix is offered. Apply it with `declscope shrink -fix <that package>` to a name you added. For a name that existed before, apply it when the request allows changing exported names. Otherwise see [When the request keeps the API](#when-the-request-keeps-the-api) |
-| `... (no fix: <reason>)` | A use may exist that `shrink` cannot prove, or the rename is unsafe. **Do not unexport an existing name by hand.** Read the reason first. For a name you added, choose another unexported name yourself. For an existing name, add `//declscope:ignore overexported // <the reason shown>`, and mention it |
+| `... uses it` and nothing more | The fix is offered. `declscope shrink -fix <that package>` unexports every report of the package that is not ignored. Before running it, ignore each existing name you keep, as [When the request keeps the API](#when-the-request-keeps-the-api) says. Keep one when the request does not allow changing exported names |
 | `... only the external tests of <pkg> use it` | Keep it exported. Add `//declscope:ignore overexported // <why>` when the tests use it on purpose |
 | `... (no fix: a build-excluded file of another package may use it)`, where that file uses it under another build tag | Keep it exported. Add `//declscope:ignore overexported // <file, behind which tag>`. One ignore passes every configuration |
+| Any other `... (no fix: <reason>)` | A use may exist that `shrink` cannot prove, or the rename is unsafe. **Do not unexport an existing name by hand.** Read the reason first. For a name you added, choose another unexported name yourself. For an existing name, add `//declscope:ignore overexported // <the reason shown>`, and mention it |
 | `declscope shrink: not judged: <pkg>: <reason>` on stderr | That package was not checked. It is not clean |
 | `declscope shrink: warning: "<pattern>" matched no packages` on stderr | The pattern checked nothing. Fix the pattern, as you would for `go vet` |
 | `declscope shrink: not judged: <n> package(s) outside the main module` on stderr | The patterns named packages `shrink` never judges, such as `std`. Nothing to do |

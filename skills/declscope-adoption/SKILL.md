@@ -50,7 +50,7 @@ Each file's patterns are read against **its own** directory, and anchor there wh
 
 **When introducing declscope, ask before any config change**, as [declscope-authoring](../declscope-authoring/SKILL.md#do-not-hide-a-report) says. That includes the first config file. Wait for an answer before changing code for the adoption, too.
 
-**When nobody can answer, as in a non-interactive run, do not wait.** Keep any config the repository has, and add none. Follow the [order of work](#order-of-work), which stops at a baseline unless the request is to clear the findings. Report which settings the owner may still want.
+**When nobody can answer, as in a non-interactive run, do not wait.** Keep any config the repository has. Add no config file and change no setting, except a vocabulary entry. Follow the [order of work](#order-of-work), which stops at a baseline unless the request is to clear the findings. Report which settings the owner may still want.
 
 **The minimum is no config file at all.** `boundary`, `surplus: strict` and `unused: strict` are on. They check reach and whether directives still change anything; the naming rule checks a convention. Adopting this much is a complete adoption.
 
@@ -286,11 +286,11 @@ cp -r repo /tmp/try-a   # and measure there
 
 ## Order of work
 
-1. `declscope survey ./...`, and read Checks in force before any count. Without a request to clear the findings, record a baseline here and stop. With one, delete any existing baseline: it hides every finding it records
+1. `declscope survey ./...`, and read Checks in force before any count. Without a request to clear the findings, record a baseline here and stop. With one, move any existing baseline aside: it hides every finding it records
 2. If the repository has `internal/` packages, run `declscope shrink ./...` and settle it before anything else. Its fixes add boundary reports, and nothing that follows adds reports back
 3. Clear `boundary` by moving the boundary, not by widening everything
 4. Re-measure with `survey`. Naming often falls with it, since merging two namespaces into one takes `ondemand` out of force
 5. Fix the file names that do not match their contents
 6. Rename what is left, following [Naming](../declscope-authoring/SKILL.md#naming)
-7. Delete the baseline
+7. Delete the baseline. When findings remain, put it back, record only those with `declscope baseline ./...`, and report them
 8. Check the core count, and `go vet`, `go test`, `declscope shrink` and `declscope` in that order
