@@ -99,7 +99,7 @@ When the new code uses a private declaration of another file, declscope reports 
 
 | The declaration | Do this |
 | --- | --- |
-| Has no directive | Ask whose concept it is. When it belongs to its file's concept, such as `parseExpr` in `parser.go`, write `//declscope:shared // <who uses it>` on it and leave it. When its file was only its first caller, such as a general helper now used twice, move it to a file named for its concept, an existing one or a new one, then share it. Moving it changes its baseline key, so do it only when you can finish, as above |
+| Has no directive | Ask whose concept it is. When it belongs to its file's concept, such as `parseExpr` in `parser.go`, write `//declscope:shared // <who uses it>` on it and leave it. When its file was only its first caller, such as a general helper now used twice, move it to a file named for its concept. That file may exist already, or be new. Then share it. Moving it changes its baseline key, so do it only when you can finish, as above |
 | Has a bare `//declscope:private`, such as `-fix` writes for `surplus` | It only records that nothing else read it yet. Delete it, and treat the declaration as in the row above |
 | Has `//declscope:private` with a reason | That is a decision. Ask the owner whether it still holds. If it does, or nobody can answer, put the new code beside it after all. When the use sits inside an existing function, write `//declscope:ignore boundary // <who uses it>` on the declaration instead |
 
