@@ -31,6 +31,8 @@ Which rules are on, and which config governs a package, is in [Check what is swi
 
 **A count of zero may mean nothing is checked.** The naming rule is off unless a config turns it on. Under `qualify: ondemand` it applies once a package has a second namespace. It skips exported names unless `rules.naming.exported` is on.
 
+**The naming rule asks a name to carry its file's namespace**: `loadUser` in `user.go` carries `user`. Advice in this skill that depends on the rule says "under the naming rule". When the rule is on, read [naming.md](naming.md) too, before you name a declaration or write `//declscope:namespace`. It covers how a name carries its namespace, what to do when it cannot, and vocabulary entries.
+
 ## Where a new declaration goes
 
 **Put it in the file whose concern it is.** That choice decides its namespace, so it decides who may use it. Under the naming rule, it also decides what the name must carry. The directive and the name follow from it.
@@ -176,10 +178,6 @@ In a non-interactive run, do not stop. Take the step this table gives, and say i
 | Add a helper used only by generated code | Generated files are not read. The `surplus` rule stands down in a package holding one, so nothing is reported | Nothing to write. Never put directives in generated files, since they are not read. An ignore would silence nothing |
 
 In a package whose findings are baselined, a `//declscope:namespace` on an existing file, or moving or splitting existing code, changes baseline keys. Do it only when you can finish what comes back. See [Changing a package that has a baseline](#changing-a-package-that-has-a-baseline).
-
-## Naming
-
-The naming rule is off unless a config turns it on, as [Check what is switched on](../declscope-adoption/SKILL.md#check-what-is-switched-on) says. When it is on, read [naming.md](naming.md) before you name a declaration or write `//declscope:namespace`. It covers how a name carries its namespace, what to do when it cannot, and vocabulary entries.
 
 ## Name a test file for the code it calls
 
