@@ -122,7 +122,7 @@ This happened when declscope held itself to `shrink`. The fix unexported twelve 
 | 4. Read what the analyzer now reports | `declscope ./...` |
 | 5. State or move each new crossing | See [What each shape means](#what-each-shape-means) |
 
-Ask before step 2, the same as any other change. When nobody can answer, apply the fix if the request allows changing exported names, as a request to clear the findings does. A refactoring allows it only when the request says the API may change. `shrink` judges only under `internal/`, so no importer outside the module breaks. Otherwise, baseline what it reports, as the next paragraph says. The fix renames every identifier naming the declaration, all inside its own package, and the doc comment that opens with the name.
+Ask before step 2, the same as any other change. When nobody can answer, apply the fix if the request allows changing exported names. A request to clear the findings allows it under `internal/`, unless it keeps the API. A refactoring allows it only when the request says the API may change. `shrink` judges only under `internal/`, so no importer outside the module breaks. Otherwise, baseline what it reports, as the next paragraph says. The fix renames every identifier naming the declaration, all inside its own package, and the doc comment that opens with the name.
 
 **When the owner cannot settle `shrink` yet, baseline it.** `declscope baseline ./...` records `shrink`'s reports with the analyzer's, and `shrink` then passes on them in CI. It is the same deferral as any baseline, and [the same rules](#a-baseline-is-for-arriving-not-for-staying) apply. A repository that does not run `shrink` passes `-shrink=false`, which skips the extra load.
 

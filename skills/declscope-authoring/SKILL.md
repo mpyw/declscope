@@ -58,7 +58,7 @@ In this skill, the owner is the user you are working for. Handle a proposal to t
 
 | The situation | Do this |
 | --- | --- |
-| Your change cannot pass the check without an answer | Ask in the chat, and wait. Do not finish with a failing check, a bent name or an ignore. When nobody can answer, as in a non-interactive run, do not stop. Carry out the option you would recommend, and say in your report what you chose and why. That is still never a bent name, an ignore, or a config change other than a vocabulary entry |
+| Your change cannot pass the check without an answer | Ask in the chat, and wait. Do not finish with a failing check, a bent name or an ignore. When nobody can answer, as in a non-interactive run, do not stop. When the section that sent you here says what to do without an answer, do that. Otherwise carry out the option you would recommend, and say in your report what you chose and why. That is never a bent name, or a config change other than a vocabulary entry. When no other option passes, an ignore with its reason is the last resort. Name it in your report |
 | The owner declines | Ask the owner to choose between two, and wait as above. One is a new file named in the package's convention, with its own `//declscope:namespace`. In a package that keeps a layer in one file, name it after that file, such as `parser_function_call.go`. Name the new file and its namespace in the question. A file the owner chose is not one made just to satisfy a name. The other is `//declscope:ignore qualify // <reason>` on the name. `qualify` is the naming rule's name. An ignore the owner chose is a decision |
 | Your change passes without it | Write it in your report, and finish |
 
@@ -70,7 +70,7 @@ What you do depends on what you were asked:
 | Refactor some files, a part of the package, or the whole package, with or without a feature | Inside that scope, follow this skill as in a package laid out for declscope. Outside it, keep the layout. See [Refactoring a part of the package](#refactoring-a-part-of-the-package) |
 | Introduce declscope, or clear the baseline of the whole repository | Follow [declscope-adoption](../declscope-adoption/SKILL.md). Its order of work ends by deleting the baseline file, which covers every package. Go that far only when the request is to clear it |
 
-The refactoring needs a clear request from the user, such as "clean up `parser.go` while you are there" or "refactor this package". A declscope finding that a rename would silence is not one. Nor is a request to fix the reported findings, such as "fix the lint errors". When the request leaves the scope unclear, such as "tidy this up", ask which files it covers. When nobody can answer, take the files the request names, or else the files your change touches. Say so in your report. When the user asks to refactor the whole package, the package is the scope. Fix the findings that report again. A declaration whose key did not change keeps its entry, and you mention it. A declaration whose file got a new namespace is not one of them. A request to clear one package's baseline is a refactoring of the whole package that fixes every finding of it. Its entries in the baseline file list those findings. It is done when `-merge` removes all of them. In these cases, do not delete the baseline file. When `-merge` leaves it empty, delete it.
+The refactoring needs a clear request from the user, such as "clean up `parser.go` while you are there" or "refactor this package". A declscope finding that a rename would silence is not one. Nor is a request to fix the reported findings, such as "fix the lint errors". When the request leaves the scope unclear, such as "tidy this up", ask which files it covers. When nobody can answer, take the files the request names, or else the files your change touches. Say so in your report. When the user asks to refactor the whole package, the package is the scope. Fix the findings that report again. A declaration whose key did not change keeps its entry, and you mention it. A declaration whose file got a new namespace is not one of them. A request to clear one package's baseline is a refactoring of the whole package that fixes every finding of it. Its entries in the baseline file list those findings. It is done when `-merge` removes all of them. It allows changing the package's exported names under `internal/`, unless the request keeps the API. In these cases, do not delete the baseline file. When `-merge` leaves it empty, delete it.
 
 ### Adding a feature
 
@@ -119,7 +119,7 @@ Sometimes a new name cannot carry an existing file's namespace. `parseAttribute`
 Inside the scope the user named, the package's layout no longer binds you. The goal of the refactoring decides what you change. The findings your changes bring back are yours to fix. Clearing the findings you did not touch is a separate request, even for a whole package. Apply the rest of this skill to what you change:
 
 - Put each declaration in a file named for its concept, and move it there when it is not
-- Rename a file whose name does not match its contents, with its test files
+- Rename a file whose name does not match its contents, with its test files. When the request keeps the API, first check that the file's exported names carry the new namespace. When they cannot, leave that file
 - Set `//declscope:namespace` on an existing file whose name reads well but makes poor names, such as `parser.go`. Give its test files the same directive. The request is the owner's permission for the baseline keys it changes
 - Widen only what is shared on purpose
 
@@ -426,7 +426,7 @@ Test files and generated files are out of scope. `TestXxx` functions are exporte
 | Report | What to do |
 | --- | --- |
 | `... uses it` and nothing more | The fix is offered. Apply it with `declscope shrink -fix <that package>` to a name you added. For a name that existed before, apply it only when the request allows changing exported names. Otherwise leave the name, and mention the report |
-| `... (no fix: <reason>)` | A use may exist that `shrink` cannot prove, or the rename is unsafe. **Do not unexport it by hand.** Read the reason first |
+| `... (no fix: <reason>)` | A use may exist that `shrink` cannot prove, or the rename is unsafe. **Do not unexport an existing name by hand.** Read the reason first. For a name you added, choose another unexported name yourself. For an existing name, add `//declscope:ignore overexported // <the reason shown>`, and mention it |
 | `... only the external tests of <pkg> use it` | Keep it exported. Add `//declscope:ignore overexported // <why>` when the tests use it on purpose |
 | `... (no fix: a build-excluded file of another package may use it)`, where that file uses it under another build tag | Keep it exported. Add `//declscope:ignore overexported // <file, behind which tag>`. One ignore passes every configuration |
 | `declscope shrink: not judged: <pkg>: <reason>` on stderr | That package was not checked. It is not clean |
