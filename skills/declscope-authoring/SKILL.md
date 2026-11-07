@@ -133,7 +133,7 @@ For example, the user asks to clean up `parser.go` in a package that names its o
 
 #### When the request keeps the API
 
-Exported names cannot be renamed then. Where the naming rule reaches them, plan moves around their names:
+Exported names cannot be renamed then. The same holds outside `internal/` unless the request says the API may change, since importers you cannot see use those names. Where the naming rule reaches them, plan moves around their names:
 
 | Change | Do this |
 | --- | --- |
@@ -147,10 +147,10 @@ Recorded findings are not reported, not even by `shrink`. To see them, move the 
 
 #### Updating the baseline
 
-After a refactoring, drop the entries it settled. Run this only when `declscope` and `declscope shrink` report nothing for the package:
+After a refactoring, drop the entries it settled. Run this only when `declscope` reports nothing for the package, and `declscope shrink` too where the repository runs it:
 
 ```console
-declscope baseline -merge ./path/to/pkg
+declscope baseline -merge ./path/to/pkg   # add -shrink=false where shrink does not run
 git diff -- '*baseline*'
 ```
 
@@ -305,7 +305,7 @@ Only the exact form `//declscope:name` is a directive: a line comment, no space 
 
 | The file or block | Write |
 | --- | --- |
-| Is shared by nature, such as a utility file or the package's shared model, and a few declarations are its internals | `//declscope:shared` on the whole, and `//declscope:private` on each of the few internals |
+| Is shared by nature, such as a utility file or the package's shared model, and a few declarations are its internals | `//declscope:shared` on the whole, and `//declscope:private // <why it stays inside>` on each of the few internals |
 | Happens to have many declarations used from other files right now | `//declscope:shared` on each of them, and nothing on the whole |
 | Has only a few declarations used from other files | `//declscope:shared` on each of those few, and nothing on the whole |
 
@@ -487,7 +487,7 @@ A bare `//declscope:ignore` does not reach `overexported`. Name the rule. Names 
 
 ```bash
 go vet ./... && go test ./...
-declscope shrink ./...   # when the repository has internal/ packages
+declscope shrink ./...   # when the repository runs it
 declscope ./...
 ```
 
