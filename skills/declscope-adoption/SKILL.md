@@ -224,19 +224,13 @@ A baselined finding counts toward it: the baseline defers a decision rather than
 
 ## What each shape means
 
-| The diagnostics say | The code is | Do this |
-| --- | --- | --- |
-| File A's declarations are nearly all used from B, and nothing goes back | A is B's working parts, not a layer under it | `//declscope:namespace <B>` on A |
-| A and B reference each other both ways | One device split across two files | Give both the same namespace and rename to say so |
-| A type's fields are read from four files | One type filed by concern | The files share a namespace, or join the core |
-| Calls run one way through three files | A pipeline, and the layers are real | Keep the files. Declare only what crosses, with the reason |
-| `pkg.Foo` is asked to become `pkg.PkgFoo` | The file is the package's API | `//declscope:core` |
-| One helper is used from several files | Shared on purpose | Move it to a file named for its concept, then `//declscope:shared // why`. See [Where a new declaration goes](../declscope-authoring/SKILL.md#where-a-new-declaration-goes) |
-| A name reads badly with its namespace in it | Often the file name, not the declaration | Rename the file |
+A cluster of boundary findings shows where the file boundaries disagree with the code. Ask whether the files are one unit or two. Two files that reach into each other are one unit. So is a file whose internals another file uses almost whole. Give them one namespace, and rename to say so. A file with a concept of its own, such as `retry.go`, is a layer, even when one file uses all of it. Keep it, and share what crosses with the reason. The direction of the calls does not decide it.
 
-**Two rows can fire on one cluster.** A mutual pair whose declarations four other namespaces also read matches both the second row and the third. Take the one with the larger `clears`. Merging two namespaces settles only what no third namespace reaches. So the fan-in case is usually the smaller change, and the core case the larger.
+A type whose fields many files read is the package's shared model: those files share its namespace, or it joins the core. A file whose names are the package's API, such as `pkg.Foo` asked to become `pkg.PkgFoo`, is `//declscope:core`.
 
-That last row is worth its own note. In one repository a single file held three concerns, and splitting it into three cleared every entry in that cluster **without renaming a single declaration**. The file name was the thing that was wrong.
+**A cluster can fit both.** A pair that reaches into each other, whose declarations other namespaces also read, can be merged or made the shared model. Take the one with the larger `clears`. Merging two namespaces settles only what no third namespace reaches.
+
+**Sometimes the file is what is wrong.** In one repository a single file held three concerns. Splitting it into three cleared every entry in that cluster **without renaming a single declaration**.
 
 ## Scopes and names of single declarations
 
