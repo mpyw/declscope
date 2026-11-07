@@ -105,7 +105,7 @@ When the new code uses a private declaration of another file, declscope reports 
 
 **When a new name cannot carry the file's namespace**, such as `parseAttribute` in `parser.go`, fix the file's namespace: `//declscope:namespace parse`. Do it when you can fix the file's recorded findings that come back, as [Refactoring a part of the package](#refactoring-a-part-of-the-package) does. Otherwise put the new code in a new file named in the package's convention, such as `parser_function_call.go`, with its own namespace. Propose the file's namespace in your report.
 
-A vocabulary entry is for a Go idiom that never spells the file's name: the functional options `WithTimeout` and `WithRetry` in `options.go` take `options: [with]`. It reaches every package under the config. Do not use one for a name a fixed namespace would carry, such as `parse` for `parser`.
+A vocabulary entry fits a word that names what the namespace names in another spelling, as [When the name spells the namespace in another form](#when-the-name-spells-the-namespace-in-another-form) explains. It reaches every package under the config. When fixing the file's namespace would let the names carry it, such as `parse` for `parser`, prefer that.
 
 **Do not rename files only to satisfy a report.** Dropping the prefix from a new file name silences the report. It also leaves the package with two ways of naming its files.
 
