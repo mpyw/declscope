@@ -56,7 +56,7 @@ In this skill, the owner is the user you are working for. Handle a proposal to t
 
 | The situation | Do this |
 | --- | --- |
-| Your change cannot pass the check without an answer | Ask in the chat, and wait. Do not finish with a failing check, a bent name or an ignore. When nobody can answer, as in a non-interactive run, leave that part undone. Finish the rest only when it works without it. When it does not, change nothing. Put the question in your report |
+| Your change cannot pass the check without an answer | Ask in the chat, and wait. Do not finish with a failing check, a bent name or an ignore. When nobody can answer, as in a non-interactive run, do not stop. Carry out the option you would recommend, and say in your report what you chose and why. That is still never a bent name or an ignore |
 | The owner declines | Ask the owner to choose between two, and wait as above. One is a new file named in the package's convention, with its own `//declscope:namespace`. In a package that keeps a layer in one file, name it after that file, such as `parser_function_call.go`. Name the new file and its namespace in the question. A file the owner chose is not one made just to satisfy a name. The other is `//declscope:ignore qualify // <reason>` on the name. `qualify` is the naming rule's name. An ignore the owner chose is a decision |
 | Your change passes without it | Write it in your report, and finish |
 
@@ -104,7 +104,7 @@ func newFunctionCallExpr( /* ... */ ) *FunctionCallExpr { /* ... */ }
 
 Sometimes a new name cannot carry an existing file's namespace. `parseAttribute` in `parser.go` does not carry `parser`. A function in `ast_attribute.go` rarely carries `astAttribute`. Then propose to fix the file's namespace, such as `//declscope:namespace parse` on `parser.go`:
 
-1. Ask the owner. Say that every baselined finding of the file comes back, and that you will fix them. The check fails without the answer, so wait
+1. Ask the owner. Say that every baselined finding of the file comes back, and that you will fix them. The check fails without the answer, so wait. When nobody can answer, the table at the top of this section applies
 2. When the owner agrees, treat that file as a refactoring the user asked for. [Refactoring a part of the package](#refactoring-a-part-of-the-package) applies to it, `-merge` included. That run also drops the package's other entries that match nothing, which is fine. The diff still only removes lines
 3. When the owner declines, go to the declined row of the table above
 
