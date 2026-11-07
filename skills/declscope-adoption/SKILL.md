@@ -50,13 +50,11 @@ Each file's patterns are read against **its own** directory, and anchor there wh
 
 **When introducing declscope, ask before any config change**, as [declscope-authoring](../declscope-authoring/SKILL.md#do-not-hide-a-report) says. That includes the first config file. Wait for an answer before changing code for the adoption, too.
 
-**When nobody can answer, as in a non-interactive run, do not wait.** Adopt the minimum below, with no new config file. Keep any config the repository already has. Make the changes this skill describes. Say in your report what you chose, and which settings the owner may still want to switch on.
-
-**An adoption may end with a baseline.** Drive the findings to zero only when the request asks for that. Otherwise run `declscope baseline ./...`, and report the counts `declscope survey ./...` gives.
+**When nobody can answer, as in a non-interactive run, do not wait.** Keep any config the repository has, and add none. Follow the [order of work](#order-of-work), which stops at a baseline unless the request is to clear the findings. Report which settings the owner may still want.
 
 **The minimum is no config file at all.** `boundary`, `surplus: strict` and `unused: strict` are on. They check reach and whether directives still change anything; the naming rule checks a convention. Adopting this much is a complete adoption.
 
-**Size the default `surplus` findings before changing code.** `loose` judges a `//declscope:shared` as a whole, so one reached declaration keeps the whole directive quiet. The default `strict` also reports each declaration the directive widens for nothing, and one `declscope -fix` run inserts every `//declscope:private` it asks for. A whole `-fix` run also inserts `//declscope:shared` for every boundary report. Run it only after step 3 of the [order of work](#order-of-work) has cleared `boundary`. If the owner wants the narrower check, set `surplus: loose` explicitly.
+**Size the default `surplus` findings before changing code.** `loose` judges a `//declscope:shared` as a whole, so one reached declaration keeps the whole directive quiet. The default `strict` also reports each declaration the directive widens for nothing, and one `declscope -fix` run inserts every `//declscope:private` it asks for. If the owner wants the narrower check, set `surplus: loose` explicitly.
 
 ```bash
 declscope survey -format=json ./... | jq .totals.surplus.found
@@ -66,7 +64,7 @@ An explicit `-config` replaces the repository's own config. Copy its keys in fir
 
 **Before `-fix`, read where its `//declscope:private` directives would land.** When most of them fall under one file-level `//declscope:shared`, the file should not be shared as a whole. Delete the file's directive instead, and share the few declarations other files use. See [Directives](../declscope-authoring/SKILL.md#directives).
 
-**Size the default `unused` findings too.** Under `loose`, a `//declscope:private` that names the scope `defaults.unexported` gives is kept, since another default could make it bind. The default `strict` reports it, and one `declscope -fix` run deletes it, under the same order. When changing `defaults.unexported`, expect reports for directives that restate the new default. If the owner wants to keep those explicit decisions, set `unused: loose`.
+**Size the default `unused` findings too.** Under `loose`, a `//declscope:private` that names the scope `defaults.unexported` gives is kept, since another default could make it bind. The default `strict` reports it, and one `declscope -fix` run deletes it. When changing `defaults.unexported`, expect reports for directives that restate the new default. If the owner wants to keep those explicit decisions, set `unused: loose`.
 
 **If the goal is a tidier codebase, offer the naming rule on top.** It is a convention. It fires where nothing is wrong, and it costs real work. Size it before offering, with a throwaway config rather than by counting message fragments:
 
@@ -122,7 +120,7 @@ This happened when declscope held itself to `shrink`. The fix unexported twelve 
 | 4. Read what the analyzer now reports | `declscope ./...` |
 | 5. State or move each new crossing | See [What each shape means](#what-each-shape-means) |
 
-Ask before step 2, the same as any other change. When nobody can answer, apply the fix if the request allows changing exported names. A request to clear the findings allows it under `internal/`, unless it keeps the API. A refactoring allows it only when the request says the API may change. `shrink` judges only under `internal/`, so no importer outside the module breaks. Otherwise, baseline what it reports, as the next paragraph says. The fix renames every identifier naming the declaration, all inside its own package, and the doc comment that opens with the name.
+Ask before step 2, the same as any other change. When nobody can answer, apply it if the request allows changing exported names, as a request to clear the findings does unless it keeps the API. Otherwise, baseline what it reports, as the next paragraph says. The fix renames every identifier naming the declaration, all inside its own package, and the doc comment that opens with the name.
 
 **When the owner cannot settle `shrink` yet, baseline it.** `declscope baseline ./...` records `shrink`'s reports with the analyzer's, and `shrink` then passes on them in CI. It is the same deferral as any baseline, and [the same rules](#a-baseline-is-for-arriving-not-for-staying) apply. A repository that does not run `shrink` passes `-shrink=false`, which skips the extra load.
 
@@ -288,7 +286,7 @@ cp -r repo /tmp/try-a   # and measure there
 
 ## Order of work
 
-1. `declscope survey ./...`, and read Checks in force before any count
+1. `declscope survey ./...`, and read Checks in force before any count. Without a request to clear the findings, record a baseline here and stop. With one, delete any existing baseline: it hides every finding it records
 2. If the repository has `internal/` packages, run `declscope shrink ./...` and settle it before anything else. Its fixes add boundary reports, and nothing that follows adds reports back
 3. Clear `boundary` by moving the boundary, not by widening everything
 4. Re-measure with `survey`. Naming often falls with it, since merging two namespaces into one takes `ondemand` out of force
