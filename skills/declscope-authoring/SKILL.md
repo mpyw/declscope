@@ -418,7 +418,7 @@ Where the repository's linters fix an order, such as `decorder` or `funcorder`, 
 
 Test files and generated files are out of scope. `TestXxx` functions are exported but called by nobody.
 
-**When your change moves a declaration to another reach, move the declaration too.** That is the default, for a new `//declscope:shared`, a `//declscope:private` from `surplus`, or a name `shrink` unexported. Say in your report that you moved it: the move makes the diff larger, and the owner may prefer it in place. Do not reorder declarations your change does not touch. In a feature change to a package whose findings are baselined, leave it in place and mention the move.
+**When your change moves a declaration to another reach, move the declaration too.** That is the default, for a new `//declscope:shared`, a `//declscope:private` from `surplus`, or a name `shrink` unexported. Say in your report that you moved it: the move makes the diff larger, and the owner may prefer it in place. Do not reorder declarations your change does not touch. In a file not ordered by reach, such as many laid out before declscope, leave it in place and mention the move.
 
 ## Acting on a diagnostic your change caused
 
@@ -428,7 +428,7 @@ Test files and generated files are out of scope. `TestXxx` functions are exporte
 | --- | --- | --- |
 | `X is private to namespace "a"` (or `to the core namespace`), `but is used from namespace "b"`, or `X is declared private by ...` | Should your code live beside `X`? | Move your code beside `X` when it belongs there. Otherwise act on `X`'s directive as the table in [Adding a feature](#adding-a-feature) says, with or without a baseline. Inside a refactoring the user asked for, you may change a decided one, and say why |
 | `//declscope:shared on X: no use from another namespace is visible` | Did the use that justified it go away? | Delete the directive |
-| `X takes shared scope from ..., but no use ...` | Does any other file read `X`? | Accept `-fix`'s `//declscope:private` on `X`, alone: take that edit from `declscope -fix -diff`, since a whole `-fix` run also widens every boundary report. Move `X` after the declarations of wider reach, except in a feature change to a package whose findings are baselined. See [Order by reach](#order-by-reach). When the directive is a file's or a block's, and most of its declarations get this report, it should not share the whole. Delete it, and write `//declscope:shared` on the few that other files use |
+| `X takes shared scope from ..., but no use ...` | Does any other file read `X`? | When the directive is a file's or a block's, and most of its declarations get this report, it should not share the whole. Delete it, and write `//declscope:shared` on the few that other files use. Otherwise accept `-fix`'s `//declscope:private` on `X`, alone: take that edit from `declscope -fix -diff`, since a whole `-fix` run also widens every boundary report. When the file is ordered by reach, move `X` after the declarations of wider reach. See [Order by reach](#order-by-reach) |
 | `unused //declscope:...` | Does the directive still change anything? | Delete it |
 | `X does not carry namespace "a"` | Is the name accurate, and is `X` in the right file? | See [Naming](#naming). Rename only when both answers are yes |
 | `X is exported, but nothing outside ... uses it` (`declscope shrink`) | Does another package really need it? | See [Reading what shrink reports](#reading-what-shrink-reports) |
