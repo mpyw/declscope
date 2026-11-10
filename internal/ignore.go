@@ -281,7 +281,7 @@ func (c *collection) ignoreCrossingNames(pass *analysis.Pass, t *target) []strin
 			if !ok {
 				continue
 			}
-			for _, f := range c.literalFields(pass, tn) {
+			for _, f := range c.ignoreLiteralFields(pass, tn) {
 				c.literalNames[f] = append(c.literalNames[f], name)
 			}
 		}
@@ -289,11 +289,11 @@ func (c *collection) ignoreCrossingNames(pass *analysis.Pass, t *target) []strin
 	return append(append(out, t.ownerObj.Name()), c.literalNames[origin(v)]...)
 }
 
-// literalFields returns the fields an unkeyed literal fills when the only
+// ignoreLiteralFields returns the fields an unkeyed literal fills when the only
 // type name it writes is tn. A constraint is read as the type parameter it
 // constrains would be. A guessed type set counts: keeping an ignore a file
 // might need is the safe side.
-func (c *collection) literalFields(pass *analysis.Pass, tn *types.TypeName) []types.Object {
+func (c *collection) ignoreLiteralFields(pass *analysis.Pass, tn *types.TypeName) []types.Object {
 	typ := tn.Type()
 	if _, ok := typ.Underlying().(*types.Interface); ok {
 		typ = types.NewTypeParam(types.NewTypeName(tn.Pos(), pass.Pkg, "P", nil), typ)
