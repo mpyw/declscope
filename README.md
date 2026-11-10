@@ -1049,7 +1049,7 @@ A rename is offered only when it provably changes nothing but the spelling. The 
 > func Add(fooCount int) int { return fooCount + fooCount } // Add(1) == 2
 > ```
 
-A method, or a type that is embedded, is renamed only when the new name is free on every type that holds it. A method is also not renamed when an interface of the package asks for its old or new name, since a type assertion would change its answer.
+A method, or a type that is embedded, is renamed only when the new name is free on every type that holds it. A method is also not renamed when an interface of the package asks for its old or new name, since a type assertion would change its answer. An embedded type is not renamed when an interface of the package asks for its old name: the embedded field may hide a method of that name, and the rename would uncover it.
 
 A package that holds a non-Go source file, such as assembly (`.s`) for any architecture, gets no rename fix. Assembly names Go functions by text, which the rename cannot follow, and the build would fail at link time. Rename by hand, or add `//declscope:ignore qualify`.
 

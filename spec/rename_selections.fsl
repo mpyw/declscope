@@ -1,0 +1,163 @@
+// Selections: a rename of a member keeps every selector selecting what it did,
+// and every type assertion answering what it did.
+//
+// rename_guarded.fsl and rename_reach.fsl cover names resolved through scopes.
+// A method's name, and the field name an embedded type gives, are resolved
+// through types instead: x.name selects the shallowest member of that name on
+// x's type, and fails when two are equally shallow. No scope lookup sees them.
+// This is selectionsFree in internal/rename.go.
+//
+// The renamed member sits on a holder type at some depth: a method on its
+// receiver at depth 0, or promoted from an embedded type at depth 1 or more;
+// the field an embedded type gives at depth 0 in the struct embedding it, or
+// deeper in one embedding that. Two other members can matter: one already
+// named the new name, and one sharing the old name. Either can be shallower or
+// deeper than the renamed one, or as deep.
+//
+// ASSUME-1: one holder type is enough. The guard asks every holder alike, so
+//   soundness over the package is the conjunction over each (modelling
+//   assumption)
+// ASSUME-2: two selector sites are modeled on the holder: one that selected
+//   the renamed member, which the fix rewrites, and one that already wrote
+//   the new name, which it does not (modelling assumption)
+// ASSUME-3: one interface asking for the old name and one asking for the new
+//   name stand for every interface of the package. An unexported method name
+//   is qualified by its package, so no interface elsewhere can ask for it
+//   (Go spec, method sets; modelling assumption that one of each suffices)
+spec RenameSelections {
+  enum NameId  { OldName, NewName }
+  enum Renamed { Method, EmbeddedType }
+  // What a selector of one name selects on the holder.
+  enum Sel     { SelRenamed, SelNewMember, SelOldMember, Ambiguous, NoSel }
+  type Depth = 0..2
+
+  state {
+    configured: Bool = false,
+    what:       Renamed = Method,
+    // The renamed member's depth on the holder.
+    depth:      Depth = 0,
+    // Another member already named the new name.
+    hasNew:     Bool = false,  newDepth: Depth = 0,  newIsMethod: Bool = false,
+    // Another member sharing the old name, hidden by the renamed one or
+    // hiding it.
+    hasOld:     Bool = false,  oldDepth: Depth = 0,  oldIsMethod: Bool = false,
+    // An interface of the package asks for the old name, or the new one.
+    askOld:     Bool = false,
+    askNew:     Bool = false,
+    renamed:    Bool = false,
+    // Captured before the rename, from the pre-fix state.
+    oldSiteBefore: Sel = NoSel,   // What x.Old selected, so what the fix rewrites
+    newSiteBefore: Sel = NoSel,   // What x.New selected, left as written
+    satOldBefore:  Bool = false,  // The holder satisfied the interface asking Old
+    satNewBefore:  Bool = false   // ... and the one asking New
+  }
+
+  // Configured in two steps, so that no one action carries every parameter.
+  action configureMembers(w: Renamed, d: Depth, hn: Bool, nd: Depth, nm: Bool,
+                          ho: Bool, od: Depth, om: Bool) {
+    requires not configured
+    // Two members of one name at depth 0 do not compile today.
+    requires not (ho and od == 0 and d == 0)
+    configured = true  what = w  depth = d
+    hasNew = hn  newDepth = nd  newIsMethod = nm
+    hasOld = ho  oldDepth = od  oldIsMethod = om
+  }
+
+  action configureInterfaces(ao: Bool, an: Bool) {
+    requires configured
+    requires not renamed
+    askOld = ao  askNew = an
+  }
+
+  // The renamed member's current name.
+  def renamedIs(n: NameId) = (renamed and n == NewName) or (not renamed and n == OldName)
+  def newIs(n: NameId) = hasNew and n == NewName
+  def oldIs(n: NameId) = hasOld and n == OldName
+
+  // Go's selection: the unique shallowest member of the name, if any.
+  def sel(n: NameId) =
+    if renamedIs(n) and (not newIs(n) or depth < newDepth)
+                    and (not oldIs(n) or depth < oldDepth) then SelRenamed
+    else if newIs(n) and (not renamedIs(n) or newDepth < depth) then SelNewMember
+    else if oldIs(n) and (not renamedIs(n) or oldDepth < depth) then SelOldMember
+    else if renamedIs(n) or newIs(n) or oldIs(n) then Ambiguous
+    else NoSel
+
+  // The holder's method set holds the name, so it satisfies an interface
+  // asking for it alone. A field never does.
+  def satisfies(n: NameId) =
+    (sel(n) == SelRenamed and what == Method)
+    or (sel(n) == SelNewMember and newIsMethod)
+    or (sel(n) == SelOldMember and oldIsMethod)
+
+  // Two members of one name declared at depth 0: redeclared.
+  def declaredTwice(n: NameId) =
+    (renamedIs(n) and depth == 0 and ((newIs(n) and newDepth == 0) or (oldIs(n) and oldDepth == 0)))
+
+  // The guard as implemented (selectionsFree).
+  def guardAsImplemented() =
+    // selects(holder, newName): LookupFieldOrMethod finds nothing of the new
+    // name, ambiguous or not, on every holder at every depth, and also where
+    // the old name is hidden today
+    not hasNew
+    // A method: no interface of the package asks for the old or new name
+    and (what != Method or (not askOld and not askNew))
+    // An embedded type: no interface of the package asks for the old name,
+    // since the field stops hiding a deeper method of that name
+    and (what != EmbeddedType or not askOld)
+
+  fair action rename() {
+    requires configured
+    requires not renamed
+    requires guardAsImplemented()
+    renamed = true
+    oldSiteBefore = sel(OldName)
+    newSiteBefore = sel(NewName)
+    satOldBefore  = satisfies(OldName)
+    satNewBefore  = satisfies(NewName)
+  }
+
+  // A site that selected the renamed member is rewritten, and still selects it.
+  invariant RewrittenSiteSelectsTheMember {
+    renamed and oldSiteBefore == SelRenamed => sel(NewName) == SelRenamed
+  }
+
+  // A site that already wrote the new name, and compiled, selects what it did.
+  invariant WrittenNewNameUnchanged {
+    renamed and (newSiteBefore == SelNewMember or newSiteBefore == SelOldMember)
+      => sel(NewName) == newSiteBefore
+  }
+
+  // A site of the old name that the fix leaves alone selects what it did.
+  invariant LeftOldNameUnchanged {
+    renamed and oldSiteBefore == SelOldMember => sel(OldName) == SelOldMember
+  }
+
+  // No type assertion changes its answer.
+  invariant AssertionsUnchanged {
+    renamed => (askOld => satisfies(OldName) == satOldBefore)
+           and (askNew => satisfies(NewName) == satNewBefore)
+  }
+
+  // The rename never declares a name twice on one type.
+  invariant NothingRedeclared { not declaredTwice(OldName) and not declaredTwice(NewName) }
+
+  invariant RenameImpliesConfigured { renamed => configured }
+  // Under the full guard the new name selected nothing before, which is why
+  // WrittenNewNameUnchanged reports a vacuous antecedent: the guard removes
+  // the states that would have exercised it.
+  invariant NothingSelectedNewName { renamed => newSiteBefore == NoSel }
+
+  reachable RenameHappens { renamed }
+  // Through a type that promotes the method, or embeds the type one level up.
+  reachable RenameThroughEmbedder { renamed and depth == 1 }
+  // Where the old name is hidden today, by a shallower member sharing it.
+  reachable RenameWhereOldIsHidden { renamed and hasOld and oldDepth < depth }
+  // A deeper method sharing the old name surfaces, with no interface asking.
+  reachable RenameSurfacesUnasked {
+    renamed and what == EmbeddedType and hasOld and oldIsMethod and depth < oldDepth
+  }
+  // A field is in no method set, so an interface asking for the new name does
+  // not withhold the rename of an embedded type: the guard is no broader.
+  reachable RenameEmbeddedDespiteAskedNewName { renamed and what == EmbeddedType and askNew }
+}

@@ -282,6 +282,15 @@ func (rs *renameState) selectionsFree(pass *analysis.Pass, t *target, newName st
 		// The field takes the new name only where it is spelled with this
 		// one, so an alias is not resolved.
 		holders = rs.embedding[obj]
+		// The field hides every deeper member of its old name. Renamed, it
+		// stops hiding them, and a method among them joins the holder's
+		// method set: the holder would start satisfying an interface that
+		// asks for the name, and a type assertion would change its answer.
+		// The name is unexported, so only an interface of the package can
+		// ask for it.
+		if len(holders) > 0 && rs.asked[obj.Name()] {
+			return false
+		}
 	default:
 		return true
 	}

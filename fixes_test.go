@@ -80,6 +80,15 @@ func TestSuggestedFixEmbedder(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixembedder")
 }
 
+// TestSuggestedFixEmbeddedSurface checks that a type is not renamed when an
+// interface of the package asks for its name and the field embedding it may
+// hide a method of that name. Renamed, the field would stop hiding it, and the
+// embedding struct would start satisfying the interface: a type assertion
+// would change its answer without any error.
+func TestSuggestedFixEmbeddedSurface(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixembeddedsurface")
+}
+
 // TestSuggestedFixSiblings checks that two fixes in one pass cannot rename
 // two declarations to the same name: the first claims it, the second is
 // reported without a fix.

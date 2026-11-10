@@ -28,7 +28,7 @@ field() {
 }
 
 ## These must verify, and must be inductive rather than true only to a depth.
-proving=(boundary_fix boundary_off config_inherit filter filter_chain fix_members knobs naming_rules rename_guarded rename_reach shrink shrink_claim shrink_ignore shrink_settle surplus surplus_strict type_fix_members unused_bind unused_ignore unused_ignore_unseen unused_modes)
+proving=(boundary_fix boundary_off config_inherit filter filter_chain fix_members knobs naming_rules rename_guarded rename_reach rename_reserved rename_selections shrink shrink_claim shrink_ignore shrink_settle surplus surplus_strict type_fix_members unused_bind unused_ignore unused_ignore_unseen unused_modes)
 ## These must NOT verify, and must break on the named invariant.
 failing_specs=(rename_sound rename_siblings)
 failing_invariants=(RenameKeepsReferenceOnTarget NamesStayDistinct)
