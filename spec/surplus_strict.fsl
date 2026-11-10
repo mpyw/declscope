@@ -6,16 +6,28 @@
 //
 // The property is surplus.fsl's. NeverReportsReachable says neither finding
 // is made of a declaration reached from another namespace by any path the
-// rule counts. surplus.fsl enumerates those paths for loose; here they are one
-// variable, because no property reads two at once:
+// rule counts. Both modes ask one function, surplusState.reachesOutside, so the
+// paths are surplus.fsl's too, less exportedness, which strict never judges
+// (source == Exported). Here they are one variable, because no property reads
+// two at once:
 //
 //   Spelled    another namespace spells it, a composite literal without keys
-//              writes it, or a selection through an embedding or on an
-//              instantiation names it — all of them are in the reference index
+//              whose type is exact writes it, or a selection through an
+//              embedding or on an instantiation names it. All of them are in
+//              the reference index
+//   Satisfied  a method participates in an interface contract in the package
+//   Carried    an exported type carries an unexported method out of the
+//              package, where an importer may complete the satisfaction
 //   Converted  a struct conversion pairs it by name and spells nothing
+//   Guessed    a composite literal without keys may write the field through a
+//              type parameter's type set, which had to be guessed. It is kept
+//              out of the reference index, since it reports no crossing
 //   Linknamed  //go:linkname or //export names it as text
-//   Opaque     generated files, cgo or assembly hold reference sites the
-//              analysis never reads
+//
+// A source the analysis never reads (a generated or filtered-out file, cgo,
+// assembly or another non-Go file in the folder, an unread test file, a
+// build-excluded file of this package) is not a reach path. It switches the
+// rule off for the whole package, which is seesAllFiles, as in surplus.fsl.
 //
 // The two findings are about one directive and one declaration under it.
 // otherLive is whether anything else under the directive keeps it alive. When
@@ -24,14 +36,16 @@
 // same thing again. So strict reports a superset of loose, and the two never
 // both land on the declaration.
 //
-// Four more suppressors are strict's alone. entryMixed: another name in the
+// Five more suppressors are strict's alone. entryMixed: another name in the
 // same entry (a, b int, or var x, y) is reached, and the only directive that
 // could narrow this one narrows that one too. membersKeep: the declaration is
 // a type, and a member that would take the narrowed scope through it is
 // reached or exported. ownerNarrowed: the declaration is a member of a type
-// strict already narrows, whose fix settles it. And the scope must be the
-// enclosing directive's doing: not the declaration's own directive, not
-// exportedness, and not defaults.unexported.
+// strict already narrows, whose fix settles it. toolchainNamed: it is main in
+// package main, which the toolchain finds by name, so a directive on it says
+// nothing. loose has no such exemption: main keeps no directive alive. And
+// the scope must be the enclosing directive's doing: not the declaration's own
+// directive, not exportedness, and not defaults.unexported.
 //
 // The fix must bind, settle the report, start no boundary report on the
 // declaration or on a member it narrows, never make loose fire, and never
@@ -64,37 +78,43 @@ spec SurplusStrict {
   // The reach paths are one variable: reach is a disjunction, so no property
   // reads two of them at once, and flags would multiply the states the checker
   // holds where an enum adds to them.
-  enum Reach { Unreached, Spelled, Converted, Linknamed, Opaque }
+  enum Reach { Unreached, Spelled, Satisfied, Carried, Converted, Guessed, Linknamed }
   // The shape of the entry, by the same reasoning: each value is one strict
   // suppressor, or a type whose members are all quiet.
-  enum Shape { Plain, MixedEntry, MembersQuiet, MembersKeep, OwnerNarrowed }
+  enum Shape { Plain, MixedEntry, MembersQuiet, MembersKeep, OwnerNarrowed, ToolchainNamed }
 
   state {
-    phase: 0..2 = 0,
+    phase: 0..3 = 0,
     mode: Mode = Loose, source: Source = Enclosed, level: Level = OnFile,
     seesAllFiles: Bool = true, reach: Reach = Unreached, shape: Shape = Plain,
     otherLive: Bool = false, otherDecided: Bool = false, restated: Bool = false, rewords: Bool = false,
     looseReported: Bool = false, strictReported: Bool = false, fixed: Bool = false, stalled: Bool = false
   }
 
-  // Two steps rather than one: one action with every parameter is the product
-  // of all of them at every step, which is what the checker holds.
+  // Three steps rather than one: one action with every parameter is the
+  // product of all of them at every step, which is what the checker holds.
   action configureScope(m: Mode, src: Source, l: Level, sa: Bool) {
     requires phase == 0
     phase = 1  mode = m  source = src  level = l  seesAllFiles = sa
   }
-  action configureReach(r: Reach, sh: Shape, live: Bool, decided: Bool, rs: Bool, rw: Bool) {
+  action configureReach(r: Reach, sh: Shape) {
     requires phase == 1
+    // main is a function with an unexported name, so no type's directive
+    // reaches it and exportedness never gives it its scope.
+    requires not (sh == ToolchainNamed and (level == OnType or source == Exported))
+    phase = 2  reach = r  shape = sh
+  }
+  action configureDirective(live: Bool, decided: Bool, rs: Bool, rw: Bool) {
+    requires phase == 2
     // A restated directive has something enclosing it to restate, so it is
     // never the file's, and nothing under it decides. Only its report can be
     // reworded.
     requires not (rs and (level == OnFile or source == NoEnclosing or decided))
     requires not (rw and not rs)
-    phase = 2  reach = r  shape = sh
-    otherLive = live  otherDecided = decided  restated = rs  rewords = rw
+    phase = 3  otherLive = live  otherDecided = decided  restated = rs  rewords = rw
   }
 
-  def configured() = phase == 2
+  def configured() = phase == 3
 
   def exported() = source == Exported
   def ownDir() = source == Own
@@ -103,6 +123,7 @@ spec SurplusStrict {
   def carriesMembers() = shape == MembersQuiet or shape == MembersKeep
   def membersKeep() = shape == MembersKeep
   def ownerNarrowed() = shape == OwnerNarrowed
+  def toolchainNamed() = shape == ToolchainNamed
 
   // A pass that ran and neither reported nor fixed, which may repeat forever.
   action pass() { requires configured()  stalled = true }
@@ -126,6 +147,7 @@ spec SurplusStrict {
   def strictFires() =
     mode == Strict and widened() and seesAllFiles and not reachable()
     and not entryMixed() and not (carriesMembers() and membersKeep()) and not ownerNarrowed()
+    and not toolchainNamed()
     and not looseCondition()
   def fixable() = strictFires() and (otherDecided or restated and not rewords)
 
@@ -159,6 +181,7 @@ spec SurplusStrict {
   def strictAfter() =
     mode == Strict and widenedAfter() and seesAllFiles and not reachable()
     and not entryMixed() and not (carriesMembers() and membersKeep()) and not ownerNarrowed()
+    and not toolchainNamed()
     and not looseCondition()
   def crossesAfter() = scopeAfter() == Private and usedOutside()
   // A member narrowed with the type crosses when it was reached.
@@ -189,6 +212,7 @@ spec SurplusStrict {
   invariant NeverReportsMixedEntry          { strictReported => not entryMixed() }
   invariant NeverNarrowsAReachedMember      { strictReported => not (carriesMembers() and membersKeep()) }
   invariant NeverRepeatsTheOwnersFinding    { strictReported => not ownerNarrowed() }
+  invariant NeverReportsMain                { strictReported => not toolchainNamed() }
 
   // A pass that did not read every file reports nothing.
   invariant SilentWhenBlind { (strictReported or looseReported) => seesAllFiles }
@@ -234,7 +258,7 @@ spec SurplusStrict {
   // Under loose, a declaration strict would report goes unreported.
   reachable LooseLeavesTheDeclaration {
     configured() and mode == Loose and widened() and seesAllFiles and otherLive
-    and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
+    and not reachable() and shape == Plain
     and not looseFires() and not strictFires()
   }
 
@@ -242,28 +266,31 @@ spec SurplusStrict {
   // other one off.
   reachable SilentOnUseOutside {
     configured() and mode == Strict and widened() and seesAllFiles and otherLive
-    and reach == Spelled and not entryMixed() and not carriesMembers() and not ownerNarrowed()
-    and not strictFires()
+    and reach == Spelled and shape == Plain and not strictFires()
+  }
+  reachable SilentOnInterfaceSatisfaction {
+    configured() and mode == Strict and widened() and seesAllFiles and otherLive
+    and reach == Satisfied and shape == Plain and not strictFires()
+  }
+  reachable SilentOnExportedCarrier {
+    configured() and mode == Strict and widened() and seesAllFiles and otherLive
+    and reach == Carried and shape == Plain and not strictFires()
   }
   reachable SilentOnConversion {
     configured() and mode == Strict and widened() and seesAllFiles and otherLive
-    and reach == Converted and not entryMixed() and not carriesMembers() and not ownerNarrowed()
-    and not strictFires()
+    and reach == Converted and shape == Plain and not strictFires()
+  }
+  reachable SilentOnGuessedLiteral {
+    configured() and mode == Strict and widened() and seesAllFiles and otherLive
+    and reach == Guessed and shape == Plain and not strictFires()
   }
   reachable SilentOnLinkname {
     configured() and mode == Strict and widened() and seesAllFiles and otherLive
-    and reach == Linknamed and not entryMixed() and not carriesMembers() and not ownerNarrowed()
-    and not strictFires()
-  }
-  reachable SilentOnOpaqueSource {
-    configured() and mode == Strict and widened() and seesAllFiles and otherLive
-    and reach == Opaque and not entryMixed() and not carriesMembers() and not ownerNarrowed()
-    and not strictFires()
+    and reach == Linknamed and shape == Plain and not strictFires()
   }
   reachable SilentOnMixedEntry {
     configured() and mode == Strict and widened() and seesAllFiles and otherLive
-    and not reachable() and entryMixed() and not carriesMembers() and not ownerNarrowed()
-    and not strictFires()
+    and not reachable() and entryMixed() and not strictFires()
   }
   reachable SilentOnAReachedMember {
     configured() and mode == Strict and widened() and seesAllFiles and otherLive
@@ -271,22 +298,24 @@ spec SurplusStrict {
   }
   reachable SilentUnderANarrowedOwner {
     configured() and mode == Strict and widened() and seesAllFiles and otherLive
-    and not reachable() and not entryMixed() and not carriesMembers() and ownerNarrowed()
-    and not strictFires()
+    and not reachable() and ownerNarrowed() and not strictFires()
+  }
+  reachable SilentOnMain {
+    configured() and mode == Strict and widened() and seesAllFiles and otherLive
+    and not reachable() and toolchainNamed() and not strictFires()
   }
   reachable SilentWhereLooseReports {
     configured() and mode == Strict and widened() and seesAllFiles and not otherLive
-    and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
+    and not reachable() and shape == Plain
     and not strictFires() and looseFires()
   }
   reachable SilentWhenNotEveryFileIsRead {
     configured() and mode == Strict and widened() and not seesAllFiles and otherLive
-    and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
-    and not strictFires()
+    and not reachable() and shape == Plain and not strictFires()
   }
   reachable SilentWhenOff {
     configured() and mode == Off and widened() and seesAllFiles
-    and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
+    and not reachable() and shape == Plain
     and not strictFires() and not looseFires()
   }
 
@@ -294,26 +323,22 @@ spec SurplusStrict {
   reachable SilentOnOwnDirective {
     configured() and mode == Strict and source == Own
     and cfgUnexported() == Private and seesAllFiles and otherLive
-    and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
-    and not strictFires()
+    and not reachable() and shape == Plain and not strictFires()
   }
   reachable SilentOnExported {
     configured() and mode == Strict and source == Exported
     and cfgUnexported() == Private and seesAllFiles and otherLive
-    and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
-    and not strictFires()
+    and not reachable() and shape == Plain and not strictFires()
   }
   reachable SilentUnderSharedDefault {
     configured() and mode == Strict and enclosing() and not ownDir() and not exported()
     and cfgUnexported() == Shared and seesAllFiles and otherLive
-    and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
-    and not strictFires()
+    and not reachable() and shape == Plain and not strictFires()
   }
   reachable SilentWithoutEnclosing {
     configured() and mode == Strict and source == NoEnclosing
     and cfgUnexported() == Private and seesAllFiles and otherLive
-    and not reachable() and not entryMixed() and not carriesMembers() and not ownerNarrowed()
-    and not strictFires()
+    and not reachable() and shape == Plain and not strictFires()
   }
 
   // The rule reporting nothing for a pass, which is what the leadsTo escapes.
