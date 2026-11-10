@@ -291,6 +291,10 @@ type ConfigUse struct {
 
 	// Exported says whether the naming rule reached exported declarations.
 	Exported bool
+
+	// Fix says whether -fix applies the rename the naming rule offers. Without
+	// it the rule still reports, and moving the declaration is left to a person.
+	Fix bool
 }
 
 // BaselineUse is one baseline file and what it holds.

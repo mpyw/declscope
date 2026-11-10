@@ -16,6 +16,7 @@
           "boundary": true,
           "qualify": "ondemand",
           "exported": true,
+          "fix": true,
           "surplus": "loose",
           "unused": "strict"
         }
