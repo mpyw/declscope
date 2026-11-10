@@ -95,19 +95,6 @@
 				"posn": "$ROOT/p/user.go:7:6",
 				"end": "$ROOT/p/user.go:7:6",
 				"message": "type userA is private to namespace \"user\", but is used from namespace \"order\"",
-				"suggested_fixes": [
-					{
-						"message": "add //declscope:shared to userA",
-						"edits": [
-							{
-								"filename": "$ROOT/p/user.go",
-								"start": 78,
-								"end": 78,
-								"new": "//declscope:shared\n"
-							}
-						]
-					}
-				],
 				"related": [
 					{
 						"posn": "$ROOT/p/order.go:8:18",
