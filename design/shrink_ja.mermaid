@@ -4,7 +4,7 @@ flowchart TD
   resolve --> load["module.Load<br>main モジュールの全パッケージを、テスト variant も含めて<br>パターン外の importer も数に入れる"]
   load --> ev
 
-  subgraph evidence["evidenceCollect: モジュール全体で、誰が何を使っているか"]
+  subgraph evidence["collectEvidence: モジュール全体で、誰が何を使っているか"]
     direction TB
     ev["他パッケージからの参照<br>外部テスト"] --> ev2["静的な interface の充足<br>他モジュールに渡る値"]
     ev2 --> ev3["interface に逃げる値<br>変換や同一構造体で対になるフィールド"]

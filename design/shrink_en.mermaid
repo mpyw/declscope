@@ -4,7 +4,7 @@ flowchart TD
   resolve --> load["module.Load<br>every package of the main modules, with every test variant<br>an importer outside the patterns still counts"]
   load --> ev
 
-  subgraph evidence["evidenceCollect: who uses what, across the module"]
+  subgraph evidence["collectEvidence: who uses what, across the module"]
     direction TB
     ev["references from other packages<br>external tests"] --> ev2["static interface satisfactions<br>values handed to other modules"]
     ev2 --> ev3["values that escape into an interface<br>fields paired by conversion or by an identical struct"]

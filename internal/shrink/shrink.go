@@ -156,7 +156,7 @@ func Run(dir string, patterns []string, baselined Baselined) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	ev, err := evidenceCollect(mod)
+	ev, err := collectEvidence(mod)
 	if err != nil {
 		return Result{}, err
 	}
