@@ -47,3 +47,34 @@ type aPair struct {
 }
 
 func B() int { return aPoint{x: 1}.x + aAlias{y: 2}.y + aPair{z: 3}.z }
+
+// tagged.go writes an aSlot through a named pointer type, as []aPSlot{{1}},
+// which crosses into w by position and names only aPSlot.
+type aSlot struct {
+	//declscope:ignore boundary // tagged.go writes it by position, through aPSlot
+	w int
+}
+
+type aPSlot *aSlot
+
+// tagged.go writes an aBase through a type defined over it, which shares its
+// fields and names only aDerived.
+type aBase struct {
+	//declscope:ignore boundary // tagged.go writes it by position, through aDerived
+	v int
+}
+
+type aDerived aBase
+
+// tagged.go writes an aBox through a type parameter whose constraint is
+// declared here, and names only the constraint.
+type aBox struct {
+	//declscope:ignore boundary // tagged.go writes it by position, through aBoxes
+	u int
+}
+
+type aBoxes interface{ aBox }
+
+func C() int { return aSlot{w: 1}.w + aDerived{v: 2}.v + aBox{u: 3}.u + len([]aPSlot{}) + boxed[aBox]() }
+
+func boxed[P aBoxes]() int { return 0 }

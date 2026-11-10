@@ -23,19 +23,22 @@
 //                 declaration's name. Only In sees it
 //   unseenUnkeyed a crossing in the constrained file into a field, by an
 //                 unkeyed literal that fills it by position. The literal
-//                 writes its type's name, or an alias's, and not the field's
+//                 writes a type name it fills the field through, and not the
+//                 field's
 //   names         the constrained file writes the declaration's name. Out
 //                 reads that much. A crossing by name needs it, and a name
 //                 alone may be no crossing at all (a local of that name, or a
 //                 use from the declaration's own namespace)
 //   field         the declaration is a struct field
-//   typeNames     the constrained file writes the name of the field's type, or
-//                 of an alias of that type declared in the package
+//   typeNames     the constrained file writes a type name of the package that
+//                 an unkeyed literal fills the field through: its struct, an
+//                 alias of it, a type defined over it, a named pointer to it,
+//                 or a constraint whose type set holds it
 //   fires         the Other finding fires
 //
 // Out keeps a Boundary ignore the unseen file may answer
 // (collection.ignoreMayCrossUnseen): the file writes the declaration's name,
-// or, for a field, its type's or an alias's. In reads that file, and may find
+// or, for a field, one of the typeNames. In reads that file, and may find
 // the crossing the ignore answers there. Those names alone decide, so a name
 // written from the declaration's own namespace, or a keyed literal of the
 // type, keeps it too, and In, which reads every file, reports it where nothing
@@ -67,7 +70,7 @@ spec UnusedIgnoreUnseen {
   action configure(r: Rule, sc: Bool, un: Bool, uu: Bool, n: Bool, fd: Bool, tn: Bool, f: Bool) {
     requires phase == 0
     // A crossing by name writes the declaration's name there. An unkeyed one
-    // fills a field, and writes its type's name or an alias's.
+    // fills a field, and writes one of its typeNames.
     requires not un or n
     requires not uu or (fd and tn)
     phase = 1  rule = r  seenCross = sc  unseenNamed = un  unseenUnkeyed = uu

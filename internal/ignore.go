@@ -3,7 +3,6 @@ package internal
 import (
 	"fmt"
 	"go/token"
-	"go/types"
 	"slices"
 	"strings"
 
@@ -229,8 +228,8 @@ func (c *collection) reportUnusedIgnores(pass *analysis.Pass, opts Options) {
 // the crossing, and the ignore answers it there, so it is not unused here.
 // A file-level ignore reaches every declaration of its file.
 //
-// A field is crossed into by position too, by an unkeyed literal of its
-// type, so the name of the type, or of an alias of it, counts for a field.
+// What counts as writing a declaration's name is mayCrossUnseen's, which a
+// field reaches through the types an unkeyed literal fills it by.
 //
 // The name is all an unseen file is read for, so a name it writes from the
 // declaration's own namespace counts too. Such an ignore is still reported by
@@ -241,8 +240,7 @@ func (c *collection) ignoreMayCrossUnseen(pass *analysis.Pass, s *ignoreSite) bo
 	if !s.ig.Covers(rule.Boundary) {
 		return false
 	}
-	names := c.unseen(pass).names
-	if len(names) == 0 {
+	if len(c.unseen(pass).names) == 0 {
 		return false
 	}
 	targets := s.targets
@@ -255,35 +253,7 @@ func (c *collection) ignoreMayCrossUnseen(pass *analysis.Pass, s *ignoreSite) bo
 			}
 		}
 	}
-	return slices.ContainsFunc(targets, func(t *target) bool {
-		return slices.ContainsFunc(c.ignoreCrossingNames(pass, t), func(n string) bool { return names[n] })
-	})
-}
-
-// ignoreCrossingNames returns the names a file writes when it crosses into
-// t: its own, and for a field the name of its type or of an alias of it. An
-// unkeyed literal fills the fields by position and names only the type. The
-// aliases are found once per pass.
-func (c *collection) ignoreCrossingNames(pass *analysis.Pass, t *target) []string {
-	out := []string{t.obj.Name()}
-	v, ok := t.obj.(*types.Var)
-	if !ok || !v.IsField() || t.ownerObj == nil {
-		return out
-	}
-	if c.aliasNames == nil {
-		c.aliasNames = map[types.Object][]string{}
-		scope := pass.Pkg.Scope()
-		for _, name := range scope.Names() {
-			tn, ok := scope.Lookup(name).(*types.TypeName)
-			if !ok || !tn.IsAlias() {
-				continue
-			}
-			if named, ok := types.Unalias(tn.Type()).(*types.Named); ok {
-				c.aliasNames[named.Obj()] = append(c.aliasNames[named.Obj()], name)
-			}
-		}
-	}
-	return append(append(out, t.ownerObj.Name()), c.aliasNames[t.ownerObj]...)
+	return slices.ContainsFunc(targets, func(t *target) bool { return c.mayCrossUnseen(pass, t) })
 }
 
 // problemsLeftByIgnores drops the problems a file-level ignore stands
