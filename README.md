@@ -338,7 +338,7 @@ A pattern is read against the directory of **the config file that states it**. A
 
 A leading `./` anchors the same way as a leading `/`. A trailing `/` names a directory and everything in it. Without one, a pattern names a file, so `./vendor` matches only a file called `vendor`. Write `./vendor/` or `./vendor/**` for the directory.
 
-One report comes from the configuration rather than from the code. It fires when a file's `only` matches files, but an `only` above it removes them all, so the package is read as empty.
+One report comes from the configuration rather than from the code. It fires when a file's `only` matches files, but an `only` above it removes them all, so the package is read as empty. Files the same config's `omit` removes are not counted, since that is a choice rather than a mistake.
 
 ```console
 sub/a.go:1:1: filter.only stated in /repo/sub matches 1 file(s) here, but an only above it removes them all, so this package is read as empty

@@ -1,0 +1,7 @@
+# The omit removes the only file the only matches. No only stands above this
+# config, and the omit is the author's own choice, so nothing is reported.
+filter:
+  only:
+    - "a.go"
+  omit:
+    - "a.go"

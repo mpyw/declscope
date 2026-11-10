@@ -41,6 +41,20 @@ func TestFilterCancelled(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "filtercancelled/sub")
 }
 
+// TestFilterOmitted checks that an omit emptying a package is not reported.
+// The report says an only above the config removed the files, and here the
+// config's own omit did, with no only above it.
+func TestFilterOmitted(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "filteromitted/sub")
+}
+
+// TestFilterCancelledOmit checks that the report counts only the files the
+// omit leaves. The only matches two files, the omit takes one back out, and
+// the only above removes the other, so the report names one file.
+func TestFilterCancelledOmit(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "filtercancelledomit/sub")
+}
+
 // TestIgnoreFilter checks that an ignore naming the filter rule silences
 // nothing. Fixing filter.only in the config chain is what resolves that
 // report, so the ignore is reported as unused.

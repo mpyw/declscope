@@ -53,8 +53,8 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 	// it, and an omit naming a directory empties it. Neither is worth saying.
 	//
 	// One shape is worth saying. When the config beside the package states an
-	// only, and the files it matches are all removed by an only above it, that
-	// config can never take effect. Nobody writes a filter for a subtree they
+	// only, and the files it matches and its omit leaves are all removed by an
+	// only above it, that config can never take effect. Nobody writes a filter for a subtree they
 	// meant to exclude, so it is a mistake rather than a choice.
 	var considered, cancelled int
 	var kept []*ast.File
@@ -69,7 +69,7 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		}
 		considered++
 		if opts.Skips(path) {
-			if opts.NearestOnlyAdmits(path) {
+			if opts.CancelledAbove(path) {
 				cancelled++
 			}
 			continue

@@ -147,11 +147,33 @@ func TestFilterCancelledByDirectoryPattern(t *testing.T) {
 	if !opts.Skips(path) {
 		t.Errorf("Skips(%q) = false, want true", path)
 	}
-	if !opts.NearestOnlyAdmits(path) {
-		t.Errorf("NearestOnlyAdmits(%q) = false, want true", path)
+	if !opts.CancelledAbove(path) {
+		t.Errorf("CancelledAbove(%q) = false, want true", path)
 	}
-	if opts.NearestOnlyAdmits("/repo/sub/a.go") {
+	if opts.CancelledAbove("/repo/sub/a.go") {
 		t.Error("the nearest only admitted a file outside its directory")
+	}
+}
+
+// TestFilterOmitIsNotCancelled checks that a file an omit removes is not
+// counted as cancelled. The report names an only above as the cause, and an
+// omit is the author's own choice, even where an only above removes the file
+// too.
+func TestFilterOmitIsNotCancelled(t *testing.T) {
+	opts := DefaultOptions()
+	opts.Only = [][]FilterPattern{
+		filterPatternsAt("/repo", "/keep/"),
+		filterPatternsAt("/repo/sub", "*.go"),
+	}
+	opts.Omit = filterPatternsAt("/repo/sub", "b.go")
+	if err := opts.Compile(); err != nil {
+		t.Fatal(err)
+	}
+	if !opts.CancelledAbove("/repo/sub/a.go") {
+		t.Error("CancelledAbove(a.go) = false, want true")
+	}
+	if opts.CancelledAbove("/repo/sub/b.go") {
+		t.Error("CancelledAbove(b.go) = true for a file the omit removes")
 	}
 }
 
