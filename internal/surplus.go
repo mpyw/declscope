@@ -264,9 +264,9 @@ func (c *collection) surplusSeesUseOutside(t *target) bool {
 func (c *collection) surplusReached(pass *analysis.Pass) map[types.Object]bool {
 	reached := make(map[types.Object]bool)
 	interfaces, satisfiers := surplusTypes(pass)
-	surplusSatisfies(pass, reached, c.surplusTrackedMethodNames(), interfaces, satisfiers)
-	surplusCarried(pass, reached)
-	c.surplusConversions(pass, reached)
+	markContractMethodsForSurplus(pass, reached, c.surplusTrackedMethodNames(), interfaces, satisfiers)
+	markCarriedMethodsForSurplus(pass, reached)
+	c.markConvertedFieldsForSurplus(pass, reached)
 	// A field an unkeyed literal may write, through a type set that had to
 	// be guessed, is reached too.
 	for f := range c.unkeyedGuessed {
@@ -318,7 +318,7 @@ func surplusTypes(pass *analysis.Pass) (interfaces []*types.Interface, satisfier
 
 // surplusTrackedMethodNames returns the name of every tracked method,
 // interface methods included. Only these can be read back from what
-// surplusSatisfies marks: it marks methods alone, found by the name of a
+// markContractMethodsForSurplus marks: it marks methods alone, found by the name of a
 // requirement, and reached is asked only of tracked objects. A function of
 // the same name is never marked, so its name would only let more pairs by.
 func (c *collection) surplusTrackedMethodNames() map[string]bool {
@@ -331,7 +331,7 @@ func (c *collection) surplusTrackedMethodNames() map[string]bool {
 	return names
 }
 
-// surplusSatisfies marks every method that participates in an interface
+// markContractMethodsForSurplus marks every method that participates in an interface
 // contract of the package: an interface value built from the type reaches the
 // method with the interface's name, not the method's, so the reference index
 // holds nothing.
@@ -366,7 +366,7 @@ func (c *collection) surplusTrackedMethodNames() map[string]bool {
 //     is tested only against the candidates holding its rarest name. Without
 //     the index every interface meets every type the package spells, which
 //     is most of the time a large package spends in this rule.
-func surplusSatisfies(pass *analysis.Pass, reached map[types.Object]bool, tracked map[string]bool, interfaces []*types.Interface, satisfiers []types.Type) {
+func markContractMethodsForSurplus(pass *analysis.Pass, reached map[types.Object]bool, tracked map[string]bool, interfaces []*types.Interface, satisfiers []types.Type) {
 	var asking []*types.Interface
 	for _, iface := range interfaces {
 		for want := range iface.Methods() {
@@ -438,7 +438,7 @@ func surplusSatisfies(pass *analysis.Pass, reached map[types.Object]bool, tracke
 	}
 }
 
-// surplusCarried marks every unexported method an exported type carries out
+// markCarriedMethodsForSurplus marks every unexported method an exported type carries out
 // of the package. An importer that embeds the type inherits the method — or,
 // for an interface, the requirement — and can complete an interface
 // satisfaction this analysis never sees, so such a method keeps its directive.
@@ -447,7 +447,7 @@ func surplusSatisfies(pass *analysis.Pass, reached map[types.Object]bool, tracke
 // in package scope. A method promoted into it from an unexported embedded type
 // travels with it, which is why the whole method set is read rather than the
 // declared methods.
-func surplusCarried(pass *analysis.Pass, reached map[types.Object]bool) {
+func markCarriedMethodsForSurplus(pass *analysis.Pass, reached map[types.Object]bool) {
 	pkgScope := pass.Pkg.Scope()
 	for _, name := range pkgScope.Names() {
 		if !isExported(name) {
@@ -469,14 +469,14 @@ func surplusCarried(pass *analysis.Pass, reached map[types.Object]bool) {
 	}
 }
 
-// surplusConversions marks the unexported fields a struct conversion writes.
+// markConvertedFieldsForSurplus marks the unexported fields a struct conversion writes.
 // snapshot(user) pairs every field of both types by name and spells none of
 // them, so a field reached only this way looks unused to the reference index.
 // Both sides are marked: the conversion reads one and writes the other, and
 // either type's fields may be the ones another namespace declared. An
 // instantiated generic struct holds the instantiated fields, which origin maps
 // back to the declared ones byObj is keyed by.
-func (c *collection) surplusConversions(pass *analysis.Pass, reached map[types.Object]bool) {
+func (c *collection) markConvertedFieldsForSurplus(pass *analysis.Pass, reached map[types.Object]bool) {
 	mark := func(t types.Type, fi *fileInfo) {
 		// (*snapshot)(&user) converts between pointers to the two struct
 		// types, and pairs their fields the same way. So does P(&user) with

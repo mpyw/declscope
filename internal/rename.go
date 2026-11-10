@@ -58,7 +58,7 @@ type renameState struct {
 	embedding map[types.Object][]types.Type
 
 	// members holds, for each type a guard has asked about, every field and
-	// method name declared on it or on anything it embeds (renameMembersOf).
+	// method name declared on it or on anything it embeds (addMemberNamesForRename).
 	members map[types.Type]map[string]bool
 }
 
@@ -270,7 +270,7 @@ func (rs *renameState) selectionsFree(pass *analysis.Pass, t *target, newName st
 		rs.gatherTyped(pass)
 		// An interface method is asked for by its own interface, so a
 		// receiver that names no type is never reached in practice.
-		owner := renameNamedOf(recv.Type())
+		owner := namedOriginForRename(recv.Type())
 		if rs.asked[obj.Name()] || rs.asked[newName] || owner == nil || rs.selects(owner, pass.Pkg, newName) {
 			return false
 		}
@@ -352,8 +352,8 @@ func (rs *renameState) indexHolders() {
 	rs.embedding = make(map[types.Object][]types.Type)
 	for _, typ := range rs.typed {
 		promoted, spelled := map[*types.Named]bool{}, map[types.Object]bool{}
-		renameEmbeds(typ, map[types.Type]bool{}, func(f *types.Var) {
-			if named := renameNamedOf(f.Type()); named != nil {
+		walkEmbedsForRename(typ, map[types.Type]bool{}, func(f *types.Var) {
+			if named := namedOriginForRename(f.Type()); named != nil {
 				promoted[named] = true
 			}
 			if tn := embeddedTypeName(f); tn != nil {
@@ -369,9 +369,9 @@ func (rs *renameState) indexHolders() {
 	}
 }
 
-// renameNamedOf returns the generic origin of the named type t denotes, or
+// namedOriginForRename returns the generic origin of the named type t denotes, or
 // that a pointer to it does, and nil for any other type.
-func renameNamedOf(t types.Type) *types.Named {
+func namedOriginForRename(t types.Type) *types.Named {
 	if ptr, ok := types.Unalias(t).(*types.Pointer); ok {
 		t = ptr.Elem()
 	}
@@ -381,11 +381,11 @@ func renameNamedOf(t types.Type) *types.Named {
 	return nil
 }
 
-// renameEmbeds calls embed with every field t embeds, at any depth.
-func renameEmbeds(t types.Type, seen map[types.Type]bool, embed func(*types.Var)) {
+// walkEmbedsForRename calls embed with every field t embeds, at any depth.
+func walkEmbedsForRename(t types.Type, seen map[types.Type]bool, embed func(*types.Var)) {
 	// An embedded field is a named type or a pointer to one, and a type
 	// gathered for the guard is a named type or a struct.
-	if named := renameNamedOf(t); named != nil {
+	if named := namedOriginForRename(t); named != nil {
 		t = named
 	}
 	if seen[t] {
@@ -399,7 +399,7 @@ func renameEmbeds(t types.Type, seen map[types.Type]bool, embed func(*types.Var)
 	for f := range st.Fields() {
 		if f.Embedded() {
 			embed(f)
-			renameEmbeds(f.Type(), seen, embed)
+			walkEmbedsForRename(f.Type(), seen, embed)
 		}
 	}
 }
@@ -414,7 +414,7 @@ func (rs *renameState) selects(t types.Type, pkg *types.Package, name string) bo
 	members, ok := rs.members[t]
 	if !ok {
 		members = make(map[string]bool)
-		renameMembersOf(t, members, map[types.Type]bool{})
+		addMemberNamesForRename(t, members, map[types.Type]bool{})
 		rs.members[t] = members
 	}
 	if !members[name] {
@@ -424,13 +424,13 @@ func (rs *renameState) selects(t types.Type, pkg *types.Package, name string) bo
 	return found != nil || index != nil
 }
 
-// renameMembersOf adds to names every field and method name declared on t or
+// addMemberNamesForRename adds to names every field and method name declared on t or
 // on any type it embeds, at any depth. That is every name
 // types.LookupFieldOrMethod can find on t: it looks through one pointer, also
 // one a defined type is (reporting only a field there), at the methods of a
 // named type, the fields of a struct and the method set of an interface, and
 // into each embedded field. An instance has its origin's member names.
-func renameMembersOf(t types.Type, names map[string]bool, seen map[types.Type]bool) {
+func addMemberNamesForRename(t types.Type, names map[string]bool, seen map[types.Type]bool) {
 	t = types.Unalias(t)
 	if named, ok := t.(*types.Named); ok {
 		t = named.Origin()
@@ -446,7 +446,7 @@ func renameMembersOf(t types.Type, names map[string]bool, seen map[types.Type]bo
 	}
 	switch u := t.Underlying().(type) {
 	case *types.Pointer:
-		renameMembersOf(u.Elem(), names, seen)
+		addMemberNamesForRename(u.Elem(), names, seen)
 	case *types.Interface:
 		for fn := range u.Methods() {
 			names[fn.Name()] = true
@@ -455,7 +455,7 @@ func renameMembersOf(t types.Type, names map[string]bool, seen map[types.Type]bo
 		for f := range u.Fields() {
 			names[f.Name()] = true
 			if f.Embedded() {
-				renameMembersOf(f.Type(), names, seen)
+				addMemberNamesForRename(f.Type(), names, seen)
 			}
 		}
 	}

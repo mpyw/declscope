@@ -254,7 +254,7 @@ func (c *collection) addGenDeclToCollection(pass *analysis.Pass, opts Options, f
 	specTarget := func(spec ast.Spec, specDoc *ast.CommentGroup) target {
 		own := c.parseCollectedDecl(slices.Concat(lead, fi.binder.Spec(spec))...)
 		t := target{file: fi, dir: outer.Merge(own), anchor: d.Pos(), doc: d.Doc}
-		c.shadowedAtScopeSite(outer, t.dir)
+		c.markScopeSiteShadowed(outer, t.dir)
 		if grouped {
 			t.anchor, t.doc, t.fromBlock = spec.Pos(), specDoc, outer.HasScope && !own.HasScope
 		}

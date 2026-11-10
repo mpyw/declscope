@@ -38,7 +38,7 @@ type scopesiteBook struct {
 // in a tree when one line of YAML changes, or when a config file appears two
 // directories up, and reports a directive recording a deliberate private.
 // rules.unused: strict is the default that makes that comparison
-// (redundantAtScopeSite) and accepts the trade.
+// (judgeAtScopeSite) and accepts the trade.
 //
 // Quantified, the answer cannot depend on configuration at all:
 //
@@ -79,7 +79,7 @@ type scopeSite struct {
 	// reached and needed are the strict judgment, made over everything in the
 	// directive's reach, shadowed or not. reached records that anything was
 	// judged; needed that something would take another scope without the
-	// directive, under the configuration in force. See redundantAtScopeSite.
+	// directive, under the configuration in force. See judgeAtScopeSite.
 	reached bool
 	needed  bool
 
@@ -107,12 +107,12 @@ func (c *collection) scopeSite(d directive.Decl) *scopeSite {
 	return s
 }
 
-// shadowedAtScopeSite records that a nearer directive supplied the scope of something outer
+// markScopeSiteShadowed records that a nearer directive supplied the scope of something outer
 // reaches. Called where the two are merged, since after the merge only the
 // winner's position survives.
 //
 //declscope:shared // the collector merges directives, so it reports these
-func (c *collection) shadowedAtScopeSite(outer, merged directive.Decl) {
+func (c *collection) markScopeSiteShadowed(outer, merged directive.Decl) {
 	if outer.HasScope && merged.HasScope && merged.ScopePos != outer.ScopePos {
 		c.scopeSite(outer).shadowed = true
 	}
@@ -134,7 +134,7 @@ func (c *collection) bindAtScopeSite(opts Options, name string, dir, container, 
 	// spec. Resolution is unaffected: a hidden directive is never the first.
 	chain := []directive.Decl{dir, dir.BeneathScope(), container, container.BeneathScope(), file}
 	levels := []boundLevel{boundAtDecl, boundAtDecl, boundAtContainer, boundAtContainer, boundAtFile}
-	c.redundantAtScopeSite(opts, name, chain)
+	c.judgeAtScopeSite(opts, name, chain)
 	for i, d := range chain {
 		if !d.HasScope {
 			continue
@@ -184,7 +184,7 @@ func isInertScopeSite(opts Options, name string, stated scope.Scope, rest []dire
 	return fixed && stated == outer
 }
 
-// redundantAtScopeSite makes the strict judgment for one declaration: each
+// judgeAtScopeSite makes the strict judgment for one declaration: each
 // directive in its chain, the one that decided and every one it shadows, is
 // asked whether it names the scope the declaration would take without it,
 // under the configuration in force. The resolution is bindAtScopeSite's: the
@@ -201,7 +201,7 @@ func isInertScopeSite(opts Options, name string, stated scope.Scope, rest []dire
 // directive. The nearer directive that shadows it is judged against this one's
 // scope today and against those levels once this one is deleted, so the two
 // must agree for the deletion to leave that judgment where it was.
-func (c *collection) redundantAtScopeSite(opts Options, name string, chain []directive.Decl) {
+func (c *collection) judgeAtScopeSite(opts Options, name string, chain []directive.Decl) {
 	var first *directive.Decl
 	for i, d := range chain {
 		if !d.HasScope {
@@ -251,7 +251,7 @@ func (s *scopeSite) redundant() bool { return s.reached && !s.needed }
 // file.
 //
 // Under rules.unused: strict it also reports a directive that is redundant
-// today (redundantAtScopeSite), and offers to delete it. Under off it reports
+// today (judgeAtScopeSite), and offers to delete it. Under off it reports
 // nothing, and so offers nothing. widened names the types a boundary fix in
 // this run widens; nil when no fix is made.
 //
@@ -411,7 +411,7 @@ func (c *collection) unboundAtScopeSite(opts Options, typ *target) bool {
 // the directive, once per run, and builds it.
 //
 // Deleting a redundant directive leaves every declaration's scope where it was
-// (redundantAtScopeSite), and deleting several in one run does too: each names
+// (judgeAtScopeSite), and deleting several in one run does too: each names
 // the scope the levels beyond it give, and those levels keep giving it. What
 // can still move is another report, and the fix is withheld wherever one
 // would, since -fix must not produce a diagnostic the run did not start with:
