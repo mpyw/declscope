@@ -37,6 +37,12 @@
 // is one, plus what it encloses. One binding is enough. Two enclosed
 // declarations are modelled because one cannot distinguish "nothing to bind"
 // from "this one had nothing to bind".
+//
+// The judgment is one deterministic step, and UsedExactlyWhenSomethingBinds
+// pins both directions. A binding that is only allowed to happen would prove
+// that nothing bindable is never called used, and nothing about the reverse:
+// a design in which an enclosed declaration never binds would still verify,
+// and that design reports a directive that decides something.
 spec UnusedBind {
   enum Scope { Shared, Private }
   enum Dir   { NoDir, DirShared, DirPrivate }
@@ -50,7 +56,7 @@ spec UnusedBind {
     // two declarations within its reach, each possibly shadowed by a nearer one
     aPresent: Bool = false, aExported: Bool = false, aShadowed: Bool = false,
     bPresent: Bool = false, bExported: Bool = false, bShadowed: Bool = false,
-    bound: Bool = false
+    judged: Bool = false, bound: Bool = false
   }
   action configure(st: Scope, od: Dir, cu: Scope,
                    ht: Bool, tx: Bool,
@@ -72,36 +78,32 @@ spec UnusedBind {
     else cfgUnexported
   def inert(x: Bool) = outerFixed(x) and stated == outerScope(x)
 
-  action bindTarget() {
-    requires configured  requires hasTarget  requires not inert(targetExported)
-    bound = true
-  }
-  action bindA() {
-    requires configured  requires aPresent  requires not aShadowed
-    requires not inert(aExported)
-    bound = true
-  }
-  action bindB() {
-    requires configured  requires bPresent  requires not bShadowed
-    requires not inert(bExported)
-    bound = true
-  }
-  def reported() = configured and not bound
+  // What binds: the declaration the directive sits on, or an enclosed one that
+  // no nearer directive shadows, whose scope the directive decides.
+  def targetBinds() = hasTarget and not inert(targetExported)
+  def aBinds() = aPresent and not aShadowed and not inert(aExported)
+  def bBinds() = bPresent and not bShadowed and not inert(bExported)
 
-  invariant BoundImpliesConfigured { bound => configured }
-  // Expanded rather than routed through a helper, so that mutating inert moves
-  // only one side of the implication and the invariant can actually fail.
-  invariant NothingBindableNeverUsed {
-    bound => (hasTarget and not (outerFixed(targetExported) and stated == outerScope(targetExported)))
-             or (aPresent and not (outerFixed(aExported) and stated == outerScope(aExported)))
-             or (bPresent and not (outerFixed(bExported) and stated == outerScope(bExported)))
+  action judge() {
+    requires configured  requires not judged
+    judged = true
+    bound = targetBinds() or aBinds() or bBinds()
   }
-  invariant AllShadowedNeverUsed {
-    bound => (hasTarget and not (outerFixed(targetExported) and stated == outerScope(targetExported)))
-             or (aPresent and not aShadowed
-                 and not (outerFixed(aExported) and stated == outerScope(aExported)))
-             or (bPresent and not bShadowed
-                 and not (outerFixed(bExported) and stated == outerScope(bExported)))
+  def reported() = judged and not bound
+
+  invariant JudgedOnlyOnceConfigured { judged => configured }
+  invariant BoundOnlyOnceJudged { bound => judged }
+  // Expanded rather than routed through the defs above, so that mutating inert
+  // or a reach moves only one side and the invariant can actually fail. Both
+  // directions: a directive is used when anything in its reach binds, and
+  // reported when nothing does, a shadowed declaration included.
+  invariant UsedExactlyWhenSomethingBinds {
+    judged => bound ==
+      ((hasTarget and not (outerFixed(targetExported) and stated == outerScope(targetExported)))
+       or (aPresent and not aShadowed
+           and not (outerFixed(aExported) and stated == outerScope(aExported)))
+       or (bPresent and not bShadowed
+           and not (outerFixed(bExported) and stated == outerScope(bExported))))
   }
 
   // --- the two quantifiers -------------------------------------------------
