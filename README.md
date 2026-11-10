@@ -1018,13 +1018,7 @@ rules:
 
 **`-fix` renames only with `rules.naming.fix: true`.** By default the report carries no fix.
 
-| Why the rename is opt-in | |
-| --- | --- |
-| A rename can choose a name, but not a place | The tool sees the file a declaration is in, not the file it belongs to |
-| A prefix added mechanically is often a smell | `collectAddFunc` carries `collect`, and reads as a command |
-| A prefix that fits badly usually means the wrong file | Moving the declaration fixes the name and the boundary together |
-
-So the message offers both ways, and names one rename as an example.
+The tool sees the file a declaration is in, not the file it belongs to. A prefix that reads badly usually means the declaration is in the wrong file. Moving it then fixes the name and the boundary together. So the message offers both ways, and names one rename as an example.
 
 ```console
 user.go:3:6: func helper does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" (userHelper is one candidate, not necessarily the best)
