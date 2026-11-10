@@ -11,20 +11,28 @@
 // holding something up breaks a package the analysis never saw. Every check
 // below therefore silences the rule on a doubt, and there is no fix.
 //
-// Reach the reference index cannot see, and what answers for it:
+// Every way a declaration is reached, and what answers for it (the spec's
+// names in parentheses, surplus.fsl's then surplus_strict.fsl's):
 //
-//   - another namespace spells the name        -> c.refs (usedOutside)
-//   - a struct conversion writes fields pairwise, spelling none of them
-//   - a method set satisfies an interface contract in the package (satisfies)
+//   - another namespace spells the name, or an unkeyed literal of an exact
+//     type writes it -> c.refs (usedOutside, Spelled)
+//   - a method set satisfies an interface contract in the package
+//     (satisfaction, Satisfied)
 //   - an exported type carries an unexported method out of the package, where
-//     an importer completes the satisfaction (carrierExposed)
-//   - //go:linkname or //export names the declaration as text (linkname)
-//   - generated files, cgo and assembly hold reference sites the analysis
-//     never reads (opaqueSource) — the rule switches off for the package
+//     an importer completes the satisfaction (carrierExposed, Carried)
+//   - a struct conversion writes fields pairwise, spelling none of them
+//     (conversion, Converted)
+//   - an unkeyed literal may write a field through a guessed type set
+//     -> c.unkeyedGuessed (guessed, Guessed)
+//   - //go:linkname or //export names the declaration as text (linkname,
+//     Linknamed)
+//   - an importer reaches an exported name (exported; strict never judges one)
 //
-// seesAllFiles is separate: with -test=false, in the non-test variant of a
-// package with in-package tests, or with build-excluded files, some file that
-// may hold the use was never read, and the rule switches off rather than guess.
+// seesAllFiles is separate, and not per declaration: an unread in-package
+// test file, a build-excluded file of this package, a generated or
+// filtered-out file, cgo, or a non-Go file such as assembly holds reference
+// sites the analysis never reads, and the rule switches off for the whole
+// package rather than guess (surplusSeesEveryFile).
 //
 // Under rules.surplus: strict the rule also judges one declaration at a time.
 // A directive stays quiet as a whole when any one thing under it is reached,

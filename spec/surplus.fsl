@@ -16,21 +16,46 @@
 // rule stays silent whenever the declaration is reachable at all, by any of the
 // paths below. Everything else here exists to make that property bite.
 //
-//   usedOutside     another namespace spells the name
-//   satisfaction    a method participates in an interface contract in the package
-//   carrierExposed  an exported type carries an unexported method out of the
-//                   package, where an importer completes the satisfaction. No
-//                   go/analysis pass can see that, so the rule only detects the
-//                   shape and stays quiet
-//   linkname        //go:linkname or //export names it as text
-//   opaqueSource    the package holds generated files, cgo, or assembly, none
-//                   of which the analysis reads as reference sites
+// The paths are the ones surplusState.reachesOutside tests, plus exportedness,
+// which computeSurplus tests beside it. strict asks the same function, so
+// surplus_strict.fsl names the same paths, as the values of its Reach:
+//
+//   usedOutside     Spelled: another namespace spells the name, or a
+//                   composite literal without keys whose type is exact writes
+//                   it. Both are in the reference index
+//   satisfaction    Satisfied: a method participates in an interface contract
+//                   in the package
+//   carrierExposed  Carried: an exported type carries an unexported method out
+//                   of the package, where an importer completes the
+//                   satisfaction. No go/analysis pass can see that, so the rule
+//                   only detects the shape and stays quiet
+//   conversion      Converted: a struct conversion pairs a field by name and
+//                   spells nothing
+//   guessed         Guessed: a composite literal without keys may write a
+//                   field through a type parameter's type set, which had to be
+//                   guessed. The guess reports no crossing, so it is kept
+//                   apart from the reference index, and it still counts here
+//   linkname        Linknamed: //go:linkname or //export names it as text
+//   exported        an importer reaches it, which no single-package analysis
+//                   sees. strict never judges an exported declaration, so its
+//                   Reach has no value for this
 //
 // seesAllFiles is separate. It is not a way to be reached but a statement about
-// this pass: with -test=false, or with a test variant this pass is not, some
-// file that may hold the use was never read. The rule switches off rather than
-// guess.
+// this pass: some file that may hold the use was never read, and the rule
+// switches off for the whole package rather than guess. That is so when
 //
+//   - this pass does not collect an in-package _test.go file (-test=false, or
+//     a test variant this pass is not)
+//   - a build-excluded .go file of this package exists. A build-excluded file
+//     of another package, such as a //go:build ignore generator declaring
+//     package main, names nothing here and does not switch it off (#253)
+//   - a generated or filtered-out file is in the package but not read as a
+//     reference site
+//   - the package imports "C", or a non-Go file (assembly, C) is in either
+//     build list or in the folder
+//
+// None of these is per declaration, so they are not a reach path either.
+
 // There is no fix. Every remaining false positive would be an automatic edit
 // that deletes a load-bearing directive.
 //
@@ -42,16 +67,17 @@ spec Surplus {
     configured: Bool = false, ruleOn: Bool = false,
     widened: Bool = false, seesAllFiles: Bool = true,
     usedOutside: Bool = false, satisfaction: Bool = false, carrierExposed: Bool = false,
-    linkname: Bool = false, opaqueSource: Bool = false,
+    conversion: Bool = false, guessed: Bool = false, linkname: Bool = false,
+    exported: Bool = false,
     reported: Bool = false, stalled: Bool = false
   }
 
-  action configure(on: Bool, w: Bool, sa: Bool, uo: Bool,
-                   sat: Bool, ce: Bool, ln: Bool, op: Bool) {
+  action configure(on: Bool, w: Bool, sa: Bool, uo: Bool, sat: Bool,
+                   ce: Bool, cv: Bool, gu: Bool, ln: Bool, ex: Bool) {
     requires not configured
     configured = true  ruleOn = on  widened = w  seesAllFiles = sa
     usedOutside = uo  satisfaction = sat  carrierExposed = ce
-    linkname = ln  opaqueSource = op
+    conversion = cv  guessed = gu  linkname = ln  exported = ex
   }
 
   // A pass that ran and reported nothing, which may repeat forever.
@@ -60,7 +86,7 @@ spec Surplus {
   // Every way the declaration is reached from outside its namespace, whether or
   // not this pass can see it.
   def reachable() = usedOutside or satisfaction or carrierExposed
-                    or linkname or opaqueSource
+                    or conversion or guessed or linkname or exported
   def fires() = ruleOn and widened and seesAllFiles and not reachable()
 
   fair action report() {
@@ -90,28 +116,38 @@ spec Surplus {
   // none of them is dead weight satisfied by another.
   reachable SilentOnUseOutside {
     configured and ruleOn and widened and seesAllFiles
-    and usedOutside and not satisfaction and not carrierExposed
-    and not linkname and not opaqueSource and not fires()
+    and usedOutside and not satisfaction and not carrierExposed and not conversion
+    and not guessed and not linkname and not exported and not fires()
   }
   reachable SilentOnInterfaceSatisfaction {
     configured and ruleOn and widened and seesAllFiles
-    and not usedOutside and satisfaction and not carrierExposed
-    and not linkname and not opaqueSource and not fires()
+    and not usedOutside and satisfaction and not carrierExposed and not conversion
+    and not guessed and not linkname and not exported and not fires()
   }
   reachable SilentOnExportedCarrier {
     configured and ruleOn and widened and seesAllFiles
-    and not usedOutside and not satisfaction and carrierExposed
-    and not linkname and not opaqueSource and not fires()
+    and not usedOutside and not satisfaction and carrierExposed and not conversion
+    and not guessed and not linkname and not exported and not fires()
+  }
+  reachable SilentOnConversion {
+    configured and ruleOn and widened and seesAllFiles
+    and not usedOutside and not satisfaction and not carrierExposed and conversion
+    and not guessed and not linkname and not exported and not fires()
+  }
+  reachable SilentOnGuessedLiteral {
+    configured and ruleOn and widened and seesAllFiles
+    and not usedOutside and not satisfaction and not carrierExposed and not conversion
+    and guessed and not linkname and not exported and not fires()
   }
   reachable SilentOnLinkname {
     configured and ruleOn and widened and seesAllFiles
-    and not usedOutside and not satisfaction and not carrierExposed
-    and linkname and not opaqueSource and not fires()
+    and not usedOutside and not satisfaction and not carrierExposed and not conversion
+    and not guessed and linkname and not exported and not fires()
   }
-  reachable SilentOnOpaqueSource {
+  reachable SilentOnExported {
     configured and ruleOn and widened and seesAllFiles
-    and not usedOutside and not satisfaction and not carrierExposed
-    and not linkname and opaqueSource and not fires()
+    and not usedOutside and not satisfaction and not carrierExposed and not conversion
+    and not guessed and not linkname and exported and not fires()
   }
   reachable SilentWhenNotEveryFileIsRead {
     configured and ruleOn and widened and not seesAllFiles

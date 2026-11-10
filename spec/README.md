@@ -53,10 +53,10 @@ the binary.
 | `rename_guarded.fsl` | The guard `safeToRename` applies — every scope Go resolves through — makes the rename sound, and dropping any one of the four checks breaks it | Every binding environment at the reference site |
 | `rename_reach.fsl` | Nothing the fix leaves unedited still writes the old name, and the new name is never left declared twice — over every reason a file of the package can sit outside what the fix edits | Generated and `exclude`d files, unseen in-package tests, and build-excluded files, against both names |
 | `rename_reach.fsl` | The build-excluded guard is no broader than it needs to be: a rename beside an excluded file that writes neither name is still offered | As above |
-| `surplus.fsl` | `surplus` never reports a declaration reachable by any path: a spelled use, an interface satisfaction, an exported carrier, a linkname, or an opaque source | Every combination of the rule switch, the directive, the five reach paths, and whether the pass read every file |
+| `surplus.fsl` | `surplus` never reports a declaration reachable by any path: a spelled use, an interface satisfaction, an exported carrier, a struct conversion, an unkeyed literal through a guessed type set, a linkname, or exportedness | Every combination of the rule switch, the directive, the seven reach paths, and whether the pass read every file (an opaque source — generated, filtered-out, cgo, assembly or other non-Go files, unread tests, build-excluded files of the package — is that last input, not a reach path) |
 | `surplus.fsl` | A pass that did not read every file reports nothing, and each suppressor is witnessed alone, with every other one off | As above |
-| `surplus_strict.fsl` | Neither `surplus` finding is made of a declaration reachable by any path the rule counts: a spelled use, a struct conversion, a linkname, or an opaque source | Every combination of `rules.surplus`, why the declaration has its scope (the enclosing directive, its own, exportedness, `defaults.unexported`, no enclosing directive), the level the directive is written at, the reach path, the shape of the entry, what else the directive reaches, and whether the pass read every file |
-| `surplus_strict.fsl` | `strict` reports a superset of `loose` and never lands on the declaration `loose` already covers. It reports only where an enclosing directive widened the declaration, at the file, block and type level alike, and never a type whose narrowing would narrow a reached member | As above |
+| `surplus_strict.fsl` | Neither `surplus` finding is made of a declaration reachable by any path the rule counts: the paths of `surplus.fsl` less exportedness, which `strict` never judges | Every combination of `rules.surplus`, why the declaration has its scope (the enclosing directive, its own, exportedness, `defaults.unexported`, no enclosing directive), the level the directive is written at, the reach path, the shape of the entry (`main` in package `main` included), what else the directive reaches, and whether the pass read every file |
+| `surplus_strict.fsl` | `strict` reports a superset of `loose` and never lands on the declaration `loose` already covers. It reports only where an enclosing directive widened the declaration, at the file, block and type level alike, never a type whose narrowing would narrow a reached member, and never `main` in package `main` | As above |
 | `surplus_strict.fsl` | The inserted `//declscope:private` binds, settles the report, starts no boundary report on the declaration or a member it narrows, never makes `loose` fire, and never leaves the enclosing directive binding nothing. Where it would, the fix is withheld and the report is not. Under a directive that already binds nothing, the fix is withheld only where it would reword that directive's `unused` report | As above |
 | `shrink.fsl` | `declscope shrink` (#112) never unexports a declaration that anything outside its package uses, by any path: a spelled use, an external test, a static interface satisfaction, an importer no loaded package shows, a value of its type that the exported API of an importable package hands out, or a use through reflection. Nor does it unexport one whose rename something inside the package would break | Every combination of the kind of declaration, where it sits, what the loaded code shows about a use from another package, the doubts the tool can raise but not settle, and the three reasons a rename is unsafe inside the package |
 | `shrink.fsl` | The report and the fix are held to different standards. The report may be wrong where a use is possible but not provable, and each such doubt withholds the fix and leaves the report. An escape into an interface is a use, and silences the report. Where a nested module builds a copy of other source that imports the range, or its build list cannot be read, every fix in the range is withheld and the reports stay. Outside `internal/`, in package main, where a module the build reads could not be loaded, or after a load error, nothing is said at all | As above |
@@ -141,7 +141,7 @@ fslc verify knobs.fsl            --depth 4
 fslc verify rename_guarded.fsl   --depth 4
 fslc verify rename_reach.fsl     --depth 3
 fslc verify surplus.fsl         --depth 2
-fslc verify surplus_strict.fsl  --depth 4
+fslc verify surplus_strict.fsl  --depth 5
 fslc verify unused_bind.fsl     --depth 4
 fslc verify unused_ignore.fsl   --depth 2
 fslc verify unused_ignore_unseen.fsl --depth 3
@@ -157,8 +157,8 @@ fslc verify rename_siblings.fsl  --depth 3   # expected: violated
 `knobs.fsl`, `unused_bind.fsl`, `surplus.fsl` and `unused_ignore.fsl` configure once and then
 have only the actions that record a report, so their reachables are witnessed at
 step 1 or 2; the others add a fix action and witness at step 2.
-`surplus_strict.fsl` configures in two steps, so that no one action carries the
-product of every parameter, and witnesses by step 4. `unused_modes.fsl`
+`surplus_strict.fsl` configures in three steps, so that no one action carries the
+product of every parameter, reports and fixes, so it witnesses by step 5. `unused_modes.fsl`
 configures in four steps for the same reason, judges, and fixes, so it witnesses
 by step 6. `shrink.fsl` configures in three steps, reports, and fixes, so it
 witnesses by step 5. `shrink_ignore.fsl` and `unused_ignore_unseen.fsl`
@@ -218,7 +218,10 @@ is a semantics that contradicts the documented one; each was run:
 | An unseen in-package test file does not withhold the rename | `violated` |
 | Both directive insertions fire, so a member is fixed under a type fixed in the same run | `violated` (`InsertedMemberDirectiveBinds`) |
 | The narrower insertion wins, so the type's fix is dropped instead of the member's | `reachable_failed` (`OnlyTheWiderFixIsWritten`) |
+| `surplus` ignores one reach path: a spelled use, an interface satisfaction, an exported carrier, a struct conversion, an unkeyed literal through a guessed type set, a linkname, or exportedness (seven controls, one path each) | `violated` (`NeverReportsReachable`) |
 | `strict` reports without checking reach | `violated` (`NeverReportsReachable`) |
+| `strict` ignores one reach path: `Spelled`, `Satisfied`, `Carried`, `Converted`, `Guessed` or `Linknamed` (six controls, one path each) | `violated` (`NeverReportsReachable`) |
+| `strict` reports `main` in package `main` | `violated` (`NeverReportsMain`) |
 | `strict` also reports where `loose` already reports the directive | `violated` (`NeverTwiceOnOneDeclaration`) |
 | `strict` reports under `loose` | `violated` (`StrictOnlyUnderStrict`) |
 | `strict` ignores `defaults.unexported` | `violated` (`NeverReportsUnderSharedDefault`) |
