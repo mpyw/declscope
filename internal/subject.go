@@ -291,9 +291,9 @@ type collection struct {
 	// declare, which is how many boundaries there are to enforce.
 	namespaces int
 
-	// aliasNames maps a type of the package to the names of its aliases in
-	// the package scope. It is filled on first use.
-	aliasNames map[types.Object][]string
+	// literalNames maps a field to the type names of the package scope an
+	// unkeyed literal can fill it through. It is filled on first use.
+	literalNames map[types.Object][]string
 
 	// unseenScan is what the package directory holds that this pass does not
 	// see: in-package _test.go files under the non-test variant, and files the
