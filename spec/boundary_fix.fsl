@@ -2,9 +2,13 @@
 // offered only where one exists, and it never overwrites a scope the author
 // stated on the declaration itself.
 //
-// The declaration's own directive is the top of the resolution order, so the fix
-// must win over the containing type's directive and the file's alike — a `private`
-// inherited from either is a default, not a decision.
+// The fix is offered only where the configured default decided the scope. A
+// `private` inherited from a block, the containing type or the file is a default
+// rather than a decision, and a directive on the declaration would outrank it.
+// But it would leave the outer directive reaching one declaration fewer, which
+// can make that directive unused: a report the fix created. So the fix is
+// withheld at every level that stated a scope, as FixNeverClobbersDirective and
+// the FixWithheldUnder* witnesses pin.
 spec BoundaryFix {
   enum Scope { Shared, Private }
   // Member is anything written inside a type's declaration: a struct field,
