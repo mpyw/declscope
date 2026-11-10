@@ -76,7 +76,7 @@ func (r *run) renamePlan(c *candidate) (*renamePlanned, string) {
 	}
 	plan := &renamePlanned{newName: newName}
 	// The guards and the claim ask of the same types, found once.
-	held := renameReach(r.mod, facts, c)
+	held := facts.holding(r.mod.Fset, c)
 	if c.kind.member() {
 		plan.taken = "the unexported name is taken on its type"
 		if !renameMemberFree(r.mod, facts, c, held, newName) {
@@ -219,89 +219,6 @@ type renameClaim struct {
 	holds []renameTyped
 }
 
-// renameReach returns every type of facts.typed that holds c, under its
-// current name or not: for a method or field, the type is c's owner or embeds
-// it at any depth, and for a type, it embeds c at any depth. A selection the
-// name makes today does not decide it: a shallower member of that name hides
-// c, and an ambiguous one finds nothing, yet c takes its new name in that type
-// all the same, where it can hide another member or make a selector
-// ambiguous. The guards and the claims ask this one answer, so a name the
-// claims call taken is one the guards of the next run find taken too.
-func renameReach(m *module.Module, facts *renameFacts, c *candidate) []renameTyped {
-	switch {
-	case c.kind.member():
-		return facts.promoting[keyOf(m.Fset, c.owner)]
-	case c.kind == kindType:
-		return facts.embedding[c.key]
-	}
-	return nil
-}
-
-// renameHolders indexes facts.typed by what each type holds, so that
-// renameReach looks a candidate up rather than walks every type for each.
-// A field of an embedded type is spelled with the type's name, alias or not,
-// and indexes embedding. A member is promoted from the named type behind it,
-// and indexes promoting, as does a named type itself.
-func renameHolders(fset *token.FileSet, facts *renameFacts) {
-	facts.embedding, facts.promoting = map[string][]renameTyped{}, map[string][]renameTyped{}
-	for _, t := range facts.typed {
-		spelled, promoted := map[string]bool{}, map[string]bool{}
-		if named, ok := types.Unalias(t.typ).(*types.Named); ok {
-			promoted[keyOf(fset, named.Origin().Obj())] = true
-		}
-		renameEmbeds(t.typ, map[types.Type]bool{}, func(tn *types.TypeName) {
-			spelled[keyOf(fset, tn)] = true
-			if named, ok := types.Unalias(tn.Type()).(*types.Named); ok {
-				tn = named.Origin().Obj()
-			}
-			promoted[keyOf(fset, tn)] = true
-		})
-		for key := range spelled {
-			facts.embedding[key] = append(facts.embedding[key], t)
-		}
-		for key := range promoted {
-			facts.promoting[key] = append(facts.promoting[key], t)
-		}
-	}
-}
-
-// renameEmbeds calls embed with the type name of every field t embeds, at any
-// depth: the name the field is spelled with, an alias or not.
-func renameEmbeds(t types.Type, seen map[types.Type]bool, embed func(*types.TypeName)) {
-	if ptr, ok := types.Unalias(t).(*types.Pointer); ok {
-		t = ptr.Elem()
-	}
-	t = types.Unalias(t)
-	if named, ok := t.(*types.Named); ok {
-		t = named.Origin()
-	}
-	if seen[t] {
-		return
-	}
-	seen[t] = true
-	st, ok := t.Underlying().(*types.Struct)
-	if !ok {
-		return
-	}
-	for i := range st.NumFields() {
-		f := st.Field(i)
-		if !f.Embedded() {
-			continue
-		}
-		if tn := embeddedTypeName(f); tn != nil {
-			embed(tn)
-		}
-		renameEmbeds(f.Type(), seen, embed)
-	}
-}
-
-// renameNameIn reports whether newName selects anything on t, ambiguously
-// or not.
-func renameNameIn(t renameTyped, newName string) bool {
-	found, index, _ := types.LookupFieldOrMethod(t.typ, true, t.pkg, newName)
-	return found != nil || index != nil
-}
-
 // renameFacts is what the guards ask of one package, gathered once over all
 // of its variants rather than once per candidate.
 //
@@ -324,7 +241,7 @@ type renameFacts struct {
 	typed []renameTyped
 	// embedding maps a type, by keyOf, to every type in typed that embeds it
 	// at any depth, and promoting maps one to every type in typed that is it
-	// or embeds it, so holds its members (renameHolders).
+	// or embeds it, so holds its members (indexHolders).
 	//
 	//declscope:private // the core holds the cache, not what is in it
 	embedding, promoting map[string][]renameTyped
@@ -334,6 +251,12 @@ type renameFacts struct {
 type renameTyped struct {
 	pkg *types.Package
 	typ types.Type
+}
+
+// selects reports whether name selects anything on t, ambiguously or not.
+func (t renameTyped) selects(name string) bool {
+	found, index, _ := types.LookupFieldOrMethod(t.typ, true, t.pkg, name)
+	return found != nil || index != nil
 }
 
 func (r *run) renameFactsOf(path string) *renameFacts {
@@ -360,7 +283,7 @@ func (r *run) renameFactsOf(path string) *renameFacts {
 				continue
 			}
 			if iface, ok := tn.Type().Underlying().(*types.Interface); ok {
-				renameAsk(f.asked, iface)
+				f.addAsked(iface)
 				continue
 			}
 			add(renameTyped{p.Types, tn.Type()})
@@ -368,21 +291,98 @@ func (r *run) renameFactsOf(path string) *renameFacts {
 		for _, tv := range p.TypesInfo.Types {
 			switch t := types.Unalias(tv.Type).(type) {
 			case *types.Interface:
-				renameAsk(f.asked, t)
+				f.addAsked(t)
 			case *types.Struct:
 				add(renameTyped{p.Types, t})
 			}
 		}
 	}
-	renameHolders(r.mod.Fset, f)
+	f.indexHolders(r.mod.Fset)
 	r.facts[path] = f
 	return f
 }
 
-func renameAsk(asked map[string]bool, iface *types.Interface) {
+// addAsked records every method name iface asks for.
+func (facts *renameFacts) addAsked(iface *types.Interface) {
 	for fn := range iface.Methods() {
-		asked[fn.Name()] = true
+		facts.asked[fn.Name()] = true
 	}
+}
+
+// indexHolders indexes facts.typed by what each type holds, so that holding
+// looks a candidate up rather than walks every type for each. A field of an
+// embedded type is spelled with the type's name, alias or not, and indexes
+// embedding. A member is promoted from the named type behind it, and indexes
+// promoting, as does a named type itself.
+func (facts *renameFacts) indexHolders(fset *token.FileSet) {
+	// walkEmbedded calls embed with the type name of every field t embeds, at
+	// any depth: the name the field is spelled with, an alias or not.
+	var walkEmbedded func(t types.Type, seen map[types.Type]bool, embed func(*types.TypeName))
+	walkEmbedded = func(t types.Type, seen map[types.Type]bool, embed func(*types.TypeName)) {
+		if ptr, ok := types.Unalias(t).(*types.Pointer); ok {
+			t = ptr.Elem()
+		}
+		t = types.Unalias(t)
+		if named, ok := t.(*types.Named); ok {
+			t = named.Origin()
+		}
+		if seen[t] {
+			return
+		}
+		seen[t] = true
+		st, ok := t.Underlying().(*types.Struct)
+		if !ok {
+			return
+		}
+		for i := range st.NumFields() {
+			f := st.Field(i)
+			if !f.Embedded() {
+				continue
+			}
+			if tn := embeddedTypeName(f); tn != nil {
+				embed(tn)
+			}
+			walkEmbedded(f.Type(), seen, embed)
+		}
+	}
+	facts.embedding, facts.promoting = map[string][]renameTyped{}, map[string][]renameTyped{}
+	for _, t := range facts.typed {
+		spelled, promoted := map[string]bool{}, map[string]bool{}
+		if named, ok := types.Unalias(t.typ).(*types.Named); ok {
+			promoted[keyOf(fset, named.Origin().Obj())] = true
+		}
+		walkEmbedded(t.typ, map[types.Type]bool{}, func(tn *types.TypeName) {
+			spelled[keyOf(fset, tn)] = true
+			if named, ok := types.Unalias(tn.Type()).(*types.Named); ok {
+				tn = named.Origin().Obj()
+			}
+			promoted[keyOf(fset, tn)] = true
+		})
+		for key := range spelled {
+			facts.embedding[key] = append(facts.embedding[key], t)
+		}
+		for key := range promoted {
+			facts.promoting[key] = append(facts.promoting[key], t)
+		}
+	}
+}
+
+// holding returns every type of facts.typed that holds c, under its current
+// name or not: for a method or field, the type is c's owner or embeds it at
+// any depth, and for a type, it embeds c at any depth. A selection the name
+// makes today does not decide it: a shallower member of that name hides c,
+// and an ambiguous one finds nothing, yet c takes its new name in that type
+// all the same, where it can hide another member or make a selector
+// ambiguous. The guards and the claims ask this one answer, so a name the
+// claims call taken is one the guards of the next run find taken too.
+func (facts *renameFacts) holding(fset *token.FileSet, c *candidate) []renameTyped {
+	switch {
+	case c.kind.member():
+		return facts.promoting[keyOf(fset, c.owner)]
+	case c.kind == kindType:
+		return facts.embedding[c.key]
+	}
+	return nil
 }
 
 // renamePackageFree reports whether newName can replace a package-level name
@@ -417,7 +417,7 @@ func renamePackageFree(variants []*packages.Package, sites []evidenceSite, newNa
 // takes the type's new name, and would collide with a field or method already
 // called that, or make a selector of it ambiguous.
 func renameEmbeddingFree(held []renameTyped, newName string) bool {
-	return !slices.ContainsFunc(held, func(t renameTyped) bool { return renameNameIn(t, newName) })
+	return !slices.ContainsFunc(held, func(t renameTyped) bool { return t.selects(newName) })
 }
 
 // renameMemberFree reports whether newName can replace a method or field
@@ -437,5 +437,5 @@ func renameMemberFree(m *module.Module, facts *renameFacts, c *candidate, held [
 	// Every type holding the member takes the new name, including one where
 	// the old name is hidden or ambiguous. An unnamed struct promotes members
 	// too: struct{ Named; size int }.
-	return !slices.ContainsFunc(held, func(t renameTyped) bool { return renameNameIn(t, newName) })
+	return !slices.ContainsFunc(held, func(t renameTyped) bool { return t.selects(newName) })
 }
