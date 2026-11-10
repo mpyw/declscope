@@ -222,7 +222,7 @@ func loadedExternalTest(pkg *packages.Package) bool {
 // because it is a different package, with its own namespaces and its own
 // scope, and folding it into its subject would mix two packages' counts.
 //
-//declscope:shared // survey measures one row per package, not per variant
+//declscope:shared // survey and inspect measure one row per package, not per variant
 func loadedWidestVariants(pkgs []*packages.Package) []*packages.Package {
 	widest := map[string]*packages.Package{}
 	var paths []string
@@ -277,7 +277,7 @@ func loadedPass(pkg *packages.Package) *analysis.Pass {
 // loadedPackageDir is the directory a package's config and baseline are looked
 // up from.
 //
-//declscope:shared // both subcommands resolve options per package
+//declscope:shared // baseline, inspect and survey resolve options per package
 func loadedPackageDir(pkg *packages.Package) string {
 	for _, f := range slices.Concat(pkg.GoFiles, pkg.CompiledGoFiles) {
 		return filepath.Dir(f)
