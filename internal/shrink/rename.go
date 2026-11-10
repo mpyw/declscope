@@ -71,7 +71,7 @@ func (r *run) renamePlan(c *candidate) (*renamePlanned, string) {
 		return nil, "the unexported name is predeclared"
 	case !c.kind.member() && (newName == "init" || newName == "main"):
 		return nil, "the unexported name means something to the toolchain"
-	case r.writtenInOwn(c, newName):
+	case r.exclusionsOf(c.pkg).ownWrites(newName):
 		return nil, "a build-excluded file of its package writes the unexported name"
 	}
 	plan := &renamePlanned{newName: newName}
@@ -90,7 +90,7 @@ func (r *run) renamePlan(c *candidate) (*renamePlanned, string) {
 		if c.kind == kindType && !renameEmbeddingFree(held, newName) {
 			return nil, plan.taken
 		}
-		if facts.linknamed[c.obj.Name()] || r.linknamedInOwn(c) {
+		if facts.linknamed[c.obj.Name()] || r.exclusionsOf(c.pkg).ownLinknames(c.obj.Name()) {
 			return nil, "a //go:linkname or //export names it"
 		}
 		plan.pkgKey = newName
