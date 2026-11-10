@@ -185,7 +185,7 @@ Do **not** move the baseline aside to measure: `survey` reports `baselined` as i
 | Is this deferred or decided | `boundary.baselined` against `boundary.declared` |
 | Which two namespaces to merge | `inspect`'s `crossings[]`, one row per ordered pair, with `clears` |
 | Where the structure is | `inspect`'s `edges[]`, one row per declaration **and reaching namespace** |
-| Where a name is wrong | `inspect`'s `names[]`, with `fixable` saying whether `-fix` would rename it |
+| Where a name is wrong | `inspect`'s `names[]`, with `fixable` saying whether the rename is safe. `-fix` makes it only under `rules.naming.fix: true` |
 
 **`clears` is the number the decision turns on.** A crossing's `reached` says how much of a namespace it touches. `clears` says how many findings would go away if the two became one namespace. It is smaller whenever a third namespace reaches the same declaration. Rank the work by `clears`, not by `reached` or `uses`.
 
@@ -270,7 +270,7 @@ These cost real time. Each was measured, not guessed.
 
 **A zero from `boundary` may be the switch, not the code.** `rules.boundary: off` silences the rule entirely, and the run looks like a clean repository. Read every config before reporting a count, the same way you would for `qualify`.
 
-**`-fix` widens**, as [declscope-authoring](../declscope-authoring/SKILL.md#acting-on-a-diagnostic-your-change-caused) explains. Over a whole codebase that is the wholesale widening step 3 of the order of work exists to avoid. In an adoption, run it only after step 3 has cleared `boundary`. Then it inserts or deletes the `surplus` and `unused` directives, and makes the renames where `names[].fixable` is true.
+**`-fix` widens**, as [declscope-authoring](../declscope-authoring/SKILL.md#acting-on-a-diagnostic-your-change-caused) explains. Over a whole codebase that is the wholesale widening step 3 of the order of work exists to avoid. In an adoption, run it only after step 3 has cleared `boundary`. Then it inserts or deletes the `surplus` and `unused` directives. It renames only in a repository that sets `rules.naming.fix: true`. Do not set it in an adoption to rename in bulk. Rename by reading each name, as [When `-fix` renames](../declscope-authoring/SKILL.md#when--fix-renames) explains.
 
 **A dirty working tree poisons a comparison.** Measuring option A, then option B without reverting, measures A and B together. `git stash` leaves untracked files behind, so a new file from the previous attempt stays. Copy the tree instead:
 

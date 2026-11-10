@@ -1,0 +1,5 @@
+# The naming rule is on, and rules.naming.fix is left at its default, false.
+# The report stays and carries no rename.
+rules:
+  naming:
+    qualify: always

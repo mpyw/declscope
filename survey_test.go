@@ -181,6 +181,20 @@ func TestSurveyNamesEveryCrossingItsNamespaces(t *testing.T) {
 	}
 }
 
+// TestSurveyFixableIgnoresTheSwitch checks that names[].fixable says whether
+// the rename passed its guard, not whether rules.naming.fix is on. A
+// repository deciding whether to opt in needs the answer before it does.
+func TestSurveyFixableIgnoresTheSwitch(t *testing.T) {
+	for _, pkg := range []string{"qualifyfixoptin", "qualifyfixoptin/on", "qualifyfixoptin/on/off"} {
+		for _, res := range surveyTestRun(t, pkg) {
+			names := surveyTestMeasure(t, res.Pass).Names
+			if len(names) != 1 || !names[0].Fixable {
+				t.Errorf("%s: names = %+v, want helper with fixable true", pkg, names)
+			}
+		}
+	}
+}
+
 func surveyTestRun(t *testing.T, pkg string) []*analysistest.Result {
 	t.Helper()
 	var out []*analysistest.Result

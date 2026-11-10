@@ -31,7 +31,7 @@
 				"category": "qualify",
 				"posn": "$ROOT/p/user.go:3:6",
 				"end": "$ROOT/p/user.go:3:6",
-				"message": "func helper does not carry namespace \"user\" anywhere in its name; rename it to userHelper, or to another name that carries \"user\""
+				"message": "func helper does not carry namespace \"user\" anywhere in its name; move it to the file it belongs to, or give it a name that carries \"user\" (userHelper is one candidate, not necessarily the best)"
 			},
 			{
 				"category": "boundary",

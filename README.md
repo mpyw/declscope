@@ -252,6 +252,7 @@ rules:
   naming:
     qualify: never        # always | never | ondemand
     exported: false       # true | false
+    fix: false            # true | false
     vocabulary:
       mouse: [wheel]
   boundary: on           # off | on
@@ -271,6 +272,7 @@ baseline: .declscope-baseline.yaml
 | `defaults.unexported` | `shared`, `private` | `private` | Scope of a declaration that carries no directive and inherits none |
 | `rules.naming.qualify` | `always`, `never`, `ondemand` | `never` | When a name must carry its namespace. See [the naming rule](#when-it-applies) |
 | `rules.naming.exported` | `true`, `false` | `false` | Whether the naming rule also reaches exported declarations. The rename is never offered there |
+| `rules.naming.fix` | `true`, `false` | `false` | Whether `-fix` applies the naming rule's rename. Off because a rename can choose a name but not a place. See [the rename](#the-rename) |
 | `rules.naming.vocabulary` | Namespace to a list of words | None | Extra words that carry a namespace. See [what carries a namespace](#what-carries-a-namespace) |
 | `rules.boundary` | `off`, `on` | `on` | Whether the [`boundary`](#boundary) rule reports. See [reach without a boundary](#reach-without-a-boundary) |
 | `rules.surplus` | `off`, `loose`, `strict` | `strict` | How much the [`surplus`](#surplus) rule reports. See [strict](#strict) |
@@ -780,7 +782,7 @@ query.go:4:22: 	used here, in namespace "query"
 The naming rule asks the method to carry `query`. A method is read through its receiver, and `s.Where` points the reader at `Statement`'s unit, which does not hold it.
 
 ```console
-query.go:3:21: method Where does not carry namespace "query" anywhere in its name; rename it to QueryWhere, or to another name that carries "query"
+query.go:3:21: method Where does not carry namespace "query" anywhere in its name; move it to the file it belongs to, or give it a name that carries "query" (QueryWhere is one candidate, not necessarily the best)
 ```
 
 Neither report asks for a rename here. The two files are one unit split in two, and `//declscope:namespace statement` on `query.go` settles both.
@@ -802,7 +804,7 @@ A **rule** is one check. A rule's name is the diagnostic's category, its [baseli
 | Rule | Reports | Fix | Configured by | Default |
 | --- | --- | --- | --- | --- |
 | [`boundary`](#boundary) | A declaration used from outside the namespace it is private to | Insert `//declscope:shared` | `rules.boundary` | `on` |
-| [`qualify`](#the-naming-rule) | A name that does not carry its namespace | Rename to prefix it | `rules.naming.*` | Off |
+| [`qualify`](#the-naming-rule) | A name that does not carry its namespace | Rename to carry it, with [`rules.naming.fix: true`](#the-rename) | `rules.naming.*` | Off |
 | [`surplus`](#surplus) | Shared scope with no visible use from another namespace | Under `strict`, insert `//declscope:private` | `rules.surplus` | `strict` |
 | [`unused`](#unused-directives) | An ignore that silenced nothing, or a scope directive that changes no scope | Under `strict`, delete a redundant scope directive | `rules.unused` | `strict` |
 | [`directive`](#malformed-directives) | A directive that is malformed, unknown, conflicting or misplaced | None | No | On |
@@ -1014,6 +1016,25 @@ rules:
 
 #### The rename
 
+**`-fix` renames only with `rules.naming.fix: true`.** By default the report carries no fix.
+
+| Why the rename is opt-in | |
+| --- | --- |
+| A rename can choose a name, but not a place | The tool sees the file a declaration is in, not the file it belongs to |
+| A prefix added mechanically is often a smell | `collectAddFunc` carries `collect`, and reads as a command |
+| A prefix that fits badly usually means the wrong file | Moving the declaration fixes the name and the boundary together |
+
+So the message offers both ways, and names one rename as an example.
+
+```console
+user.go:3:6: func helper does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" (userHelper is one candidate, not necessarily the best)
+```
+
+The switch changes only the fix. The report, its message and its [baseline](#adopting-on-an-existing-codebase) key are the same either way. `declscope inspect` reports `names[].fixable` as whether the rename is safe, so you can see what turning it on would rename before you do.
+
+> [!TIP]
+> To take some renames and not others, turn the key on, run `declscope -fix -diff`, and apply only the edits you accept.
+
 The fix prefixes, keeping Go's spelling of an initialism and the original exportedness. When the name opens with the namespace's last words, only the missing words are prefixed. When that name is taken, the fix prefixes the whole namespace.
 
 | Case | Example | Never |
@@ -1028,7 +1049,7 @@ The suggestion is one answer, not the only one. Any spelling that carries the na
 > Sometimes the namespace is what is wrong, not the name. A file name may hold words that name no unit.
 >
 > ```console
-> user_repository.go:18:6: func scanUser does not carry namespace "userRepository" anywhere in its name; rename it to userRepositoryScanUser, or to another name that carries "userRepository"
+> user_repository.go:18:6: func scanUser does not carry namespace "userRepository" anywhere in its name; move it to the file it belongs to, or give it a name that carries "userRepository" (userRepositoryScanUser is one candidate, not necessarily the best)
 > ```
 >
 > The unit here is `user`, not `userRepository`. `//declscope:namespace user` on the file settles the rule and leaves every name alone.

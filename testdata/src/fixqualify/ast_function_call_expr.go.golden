@@ -4,8 +4,8 @@ type astFunctionCallExpr struct{}
 
 // The name opens with the words that end the namespace, so the rename gains
 // only the missing leading word rather than doubling the rest.
-func astFunctionCallExprCache() int { return 5 } // want `func callExprCache does not carry namespace "astFunctionCallExpr" anywhere in its name; rename it to astFunctionCallExprCache, or to another name that carries "astFunctionCallExpr"`
+func astFunctionCallExprCache() int { return 5 } // want `func callExprCache does not carry namespace "astFunctionCallExpr" anywhere in its name; move it to the file it belongs to, or give it a name that carries "astFunctionCallExpr" \(astFunctionCallExprCache is one candidate, not necessarily the best\)`
 
 // The name merges to the namespace, which the type above already holds, so
 // the plain prefix is offered.
-func astFunctionCallExprExpr() astFunctionCallExpr { return astFunctionCallExpr{} } // want `func expr does not carry namespace "astFunctionCallExpr" anywhere in its name; rename it to astFunctionCallExprExpr, or to another name that carries "astFunctionCallExpr"`
+func astFunctionCallExprExpr() astFunctionCallExpr { return astFunctionCallExpr{} } // want `func expr does not carry namespace "astFunctionCallExpr" anywhere in its name; move it to the file it belongs to, or give it a name that carries "astFunctionCallExpr" \(astFunctionCallExprExpr is one candidate, not necessarily the best\)`

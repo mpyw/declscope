@@ -12,9 +12,9 @@ var userId = 4
 
 // The suggestion spells the namespace and the first word of the name the way
 // Go does: not userIdLookup, and not userIDUrlPath.
-func lookup() int { return 5 } // want `func lookup does not carry namespace "userID" anywhere in its name; rename it to userIDLookup, or to another name that carries "userID"`
+func lookup() int { return 5 } // want `func lookup does not carry namespace "userID" anywhere in its name; move it to the file it belongs to, or give it a name that carries "userID" \(userIDLookup is one candidate, not necessarily the best\)`
 
-func urlPath() string { return "" } // want `func urlPath does not carry namespace "userID" anywhere in its name; rename it to userIDURLPath, or to another name that carries "userID"`
+func urlPath() string { return "" } // want `func urlPath does not carry namespace "userID" anywhere in its name; move it to the file it belongs to, or give it a name that carries "userID" \(userIDURLPath is one candidate, not necessarily the best\)`
 
 // The namespace opens the name and the match may run on into the rest of the
 // word, so this carries userID even though userid is one word here.

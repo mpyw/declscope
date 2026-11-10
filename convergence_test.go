@@ -40,7 +40,7 @@ type fixCase struct {
 var fixCases = []fixCase{
 	{
 		name:   "boundary and qualify on the same declaration",
-		config: "rules:\n  naming:\n    qualify: ondemand\n",
+		config: "rules:\n  naming:\n    qualify: ondemand\n    fix: true\n",
 		files: map[string]string{
 			"user.go":  "package x\n\nfunc helper() int { return 1 }\n",
 			"order.go": "package x\n\nfunc orderRun() int { return helper() }\n\nvar _ = orderRun\n",
@@ -50,7 +50,7 @@ var fixCases = []fixCase{
 		// Renamed to userHelp, the method would no longer satisfy the
 		// interface, and would collide with the field (#196).
 		name:   "foreign method an interface asks for",
-		config: "rules:\n  naming:\n    qualify: ondemand\n",
+		config: "rules:\n  naming:\n    qualify: ondemand\n    fix: true\n",
 		files: map[string]string{
 			"order.go": "package x\n\ntype orderT struct{ userHelp int }\n\ntype orderHelper interface{ help() int }\n\nvar _ orderHelper = orderT{}\n\nvar _ = orderT{}.userHelp\n",
 			"user.go":  "package x\n\nfunc (o orderT) help() int { return 1 }\n",
@@ -59,7 +59,7 @@ var fixCases = []fixCase{
 	{
 		// Renamed to userItem, the embedded field would be redeclared (#197).
 		name:   "embedded type beside a field of its new name",
-		config: "rules:\n  naming:\n    qualify: ondemand\n",
+		config: "rules:\n  naming:\n    qualify: ondemand\n    fix: true\n",
 		files: map[string]string{
 			"user.go":  "package x\n\ntype item struct{ n int }\n\ntype userHolder struct {\n\titem\n\tuserItem int\n}\n\nvar _ = userHolder{}.item.n\n",
 			"order.go": "package x\n\nfunc orderRun() int { return 1 }\n\nvar _ = orderRun\n",
@@ -81,7 +81,7 @@ var fixCases = []fixCase{
 	},
 	{
 		name:   "grouped var and const blocks",
-		config: "rules:\n  naming:\n    qualify: ondemand\n",
+		config: "rules:\n  naming:\n    qualify: ondemand\n    fix: true\n",
 		files: map[string]string{
 			"user.go":  "package x\n\nvar (\n\tseed  = 1\n\tother = 2\n)\n\nconst (\n\tlimit = 3\n)\n",
 			"order.go": "package x\n\nfunc orderRun() int { return seed + other + limit }\n\nvar _ = orderRun\n",
@@ -99,7 +99,7 @@ var fixCases = []fixCase{
 	},
 	{
 		name:   "rename target already taken",
-		config: "rules:\n  naming:\n    qualify: ondemand\n",
+		config: "rules:\n  naming:\n    qualify: ondemand\n    fix: true\n",
 		files: map[string]string{
 			"user.go":  "package x\n\nfunc taken() int { return 1 }\n\nfunc userTaken() int { return 2 }\n",
 			"order.go": "package x\n\nfunc orderRun() int { return taken() + userTaken() }\n\nvar _ = orderRun\n",
@@ -114,14 +114,14 @@ var fixCases = []fixCase{
 	},
 	{
 		name:   "qualify required in a single-namespace package",
-		config: "rules:\n  naming:\n    qualify: always\n",
+		config: "rules:\n  naming:\n    qualify: always\n    fix: true\n",
 		files: map[string]string{
 			"only.go": "package x\n\nfunc helper() int { return 1 }\n\ntype shape struct{ side int }\n\nfunc Exported() int { return helper() + shape{}.side }\n",
 		},
 	},
 	{
 		name:   "type embedded, and selected through the embedding, in its own namespace",
-		config: "rules:\n  naming:\n    qualify: ondemand\n",
+		config: "rules:\n  naming:\n    qualify: ondemand\n    fix: true\n",
 		files: map[string]string{
 			"user.go":  "package x\n\ntype count struct{ n int }\n\ntype User struct{ *count }\n\nfunc (u *User) Total() int { return u.count.n }\n",
 			"order.go": "package x\n\nfunc OrderRun() {}\n",
@@ -405,7 +405,7 @@ var fixCases = []fixCase{
 	// type.
 	{
 		name:   "rename captured by a parameter or a local at a reference",
-		config: "rules:\n  naming:\n    qualify: always\n",
+		config: "rules:\n  naming:\n    qualify: always\n    fix: true\n",
 		files: map[string]string{
 			"foo.go": "package x\n\nvar count = 10\n\n" +
 				"func Add(fooCount string) int { return len(fooCount) + count }\n\n" +
@@ -414,7 +414,7 @@ var fixCases = []fixCase{
 	},
 	{
 		name:   "rename colliding with an import in another file",
-		config: "rules:\n  naming:\n    qualify: always\n",
+		config: "rules:\n  naming:\n    qualify: always\n    fix: true\n",
 		files: map[string]string{
 			"foo.go": "package x\n\nvar count = 10\n\nfunc Add(x int) int { return x + count }\n",
 			"bar.go": "package x\n\nimport fooCount \"strings\"\n\nfunc Bar(s string) string { return fooCount.ToUpper(s) }\n",
@@ -422,7 +422,7 @@ var fixCases = []fixCase{
 	},
 	{
 		name:   "two qualify renames converging through a non-injective prefix",
-		config: "rules:\n  naming:\n    qualify: ondemand\n",
+		config: "rules:\n  naming:\n    qualify: ondemand\n    fix: true\n",
 		files: map[string]string{
 			"a.go":   "package x\n\nfunc bX() int { return 1 }\n\nvar _ = bX\n",
 			"a_b.go": "package x\n\nfunc x() int { return 2 }\n\nvar _ = x\n",
@@ -430,7 +430,7 @@ var fixCases = []fixCase{
 	},
 	{
 		name:   "reference in a generated file",
-		config: "rules:\n  naming:\n    qualify: ondemand\n",
+		config: "rules:\n  naming:\n    qualify: ondemand\n    fix: true\n",
 		files: map[string]string{
 			"user.go":   "package x\n\n//declscope:shared\nfunc helper() int { return 1 }\n",
 			"order.go":  "package x\n\nfunc OrderRun() int { return helper() }\n",
@@ -439,7 +439,7 @@ var fixCases = []fixCase{
 	},
 	{
 		name:   "reference in an omitted file",
-		config: "rules:\n  naming:\n    qualify: ondemand\nfilter:\n  omit:\n    - \"**/ext.go\"\n",
+		config: "rules:\n  naming:\n    qualify: ondemand\n    fix: true\nfilter:\n  omit:\n    - \"**/ext.go\"\n",
 		files: map[string]string{
 			"user.go":  "package x\n\n//declscope:shared\nfunc helper() int { return 1 }\n",
 			"order.go": "package x\n\nfunc OrderRun() int { return helper() }\n",
@@ -448,14 +448,14 @@ var fixCases = []fixCase{
 	},
 	{
 		name:   "declaration named by a go:linkname directive",
-		config: "rules:\n  naming:\n    qualify: always\n",
+		config: "rules:\n  naming:\n    qualify: always\n    fix: true\n",
 		files: map[string]string{
 			"foo.go": "package x\n\nimport _ \"unsafe\"\n\n//go:linkname helper\nfunc helper() int { return 1 }\n\nfunc Exported() int { return helper() }\n",
 		},
 	},
 	{
 		name:   "rename target declared only in the test variant",
-		config: "rules:\n  naming:\n    qualify: always\n",
+		config: "rules:\n  naming:\n    qualify: always\n    fix: true\n",
 		files: map[string]string{
 			"foo.go":      "package x\n\nvar count = 10\n\nfunc Add(x int) int { return x + count }\n",
 			"foo_test.go": "package x\n\nvar fooCount = 1\n\nvar _ = fooCount\n",
@@ -465,7 +465,7 @@ var fixCases = []fixCase{
 		// The positive counterpart: with tests present the rename must still
 		// happen, and reach the test file, through the variant that sees it.
 		name:   "rename referenced from a test file",
-		config: "rules:\n  naming:\n    qualify: always\n",
+		config: "rules:\n  naming:\n    qualify: always\n    fix: true\n",
 		files: map[string]string{
 			"foo.go": "package x\n\nvar count = 10\n\nfunc Add(x int) int { return x + count }\n",
 			"foo_test.go": "package x\n\nimport \"testing\"\n\n" +

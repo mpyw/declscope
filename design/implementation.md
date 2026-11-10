@@ -267,7 +267,7 @@ Two walks stay on `ast.Inspect`: `unseen`, over files parsed from disk that the 
 | Rule | Reports | Fix |
 | --- | --- | --- |
 | `boundary` | A declaration used from outside the namespace it is private to | Insert `//declscope:shared`, unless the **declaration's own** directive states the scope |
-| `qualify` | A package-level declaration whose name does not carry its namespace | Rename via `namespace.Qualify`, when provably safe and not exported |
+| `qualify` | A package-level declaration whose name does not carry its namespace | Rename via `namespace.Qualify`, when provably safe and not exported, and only under `rules.naming.fix: true` |
 | `surplus` | Shared scope wider than any use visible to declscope. `rules.surplus: loose` reports a `//declscope:shared` none of whose dependents is reached; `strict` (the default) also reports each unreached dependent of a directive otherwise in use; `off` reports nothing | None under `loose` — a false positive would be an automatic edit deleting a load-bearing directive. Under `strict`, insert `//declscope:private` on the dependent |
 | `unused` | A directive that decides nothing: an ignore that silenced nothing, or a scope directive that binds nothing. `rules.unused: strict` also reports a scope directive naming the scope everything it reaches would have without it under the configuration in force; `off` reports nothing | None under `loose`. Under `strict`, delete the redundant directive |
 | `directive` | A directive that is malformed, unknown, conflicting or misplaced. It has no configuration key and is always on | None |
@@ -402,7 +402,7 @@ Unused ignore directives are reported, matching the convention in `mpyw/gormreus
 Every diagnostic carries **at most one** fix, which is what makes `-fix` unambiguous:
 
 - A boundary crossing is fixed by inserting `//declscope:shared`.
-- A missing prefix is fixed by renaming.
+- A missing prefix is fixed by renaming, under `rules.naming.fix: true` only.
 
 They can never conflict, because a rename does not change reach. (`x/tools`' `ApplyFixes` applies only the first fix of a diagnostic and logs `ignoring alternative fix` for the rest, so carrying alternatives is a liability.)
 
@@ -411,6 +411,14 @@ They can never conflict, because a rename does not change reach. (`x/tools`' `Ap
 The decision cannot be taken while reporting one target at a time, which is why `report` collects every surviving finding first. Ordering the targets instead would only decide which of the two fixes is written, never whether both are.
 
 There is no equivalent for a `var`/`const`/`type` block. A fix is anchored on the spec, never on the block, so two specs each get their own directive and each one binds.
+
+### Why the rename is opt-in
+
+**`rules.naming.fix` is off by default, and only then does `-fix` leave names alone.** A rename can choose a name but not a place. A prefix added mechanically is what the authoring skill's `naming.md` calls a smell (`collectAddFunc`). A prefix that fits badly usually means the declaration is in the wrong file, and the tool cannot see which file is right. So the report stays, and the message offers both ways: a name that carries the namespace, with the rename as an example, or a move. The message does not read the switch, so turning it on changes no output but the fix. The baseline key is the package, rule, namespace and declaration, never the message, so changing the wording brings back no recorded finding.
+
+The guard still runs with the switch off, and still claims its name in `reserved`. That keeps the names claimed, and so every other rename's answer, the same either way. `inspect`'s `names[].fixable` reports the guard's answer (`finding.renamable`), not the switch, so a repository can see what opting in would rename before it does.
+
+Two alternatives were rejected. An analyzer flag such as `-rename` does not reach golangci-lint, and under `go vet -vettool` it would have to be on every command line. A config key reaches every driver through `.declscope.yaml`. Keeping the fix on by default makes `-fix` over a whole package write a prefix on every reported name, which is the bulk rename the adoption skill warns against. `spec/naming_rules.fsl` models the switch (`fixOn`, `FixOnlyWhenOn`), and `testdata/src/qualifyfixoptin` pins the default and a nearer config turning it on and off.
 
 ### Why the rename fix withholds
 
