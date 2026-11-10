@@ -1,0 +1,5 @@
+# Stating false counts: it turns the rename off again below a file that
+# turned it on.
+rules:
+  naming:
+    fix: false

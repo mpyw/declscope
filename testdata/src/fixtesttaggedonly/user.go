@@ -5,9 +5,9 @@ package fixtesttaggedonly
 // ignored files that no variant sees it, and reads it for its names.
 
 // load is named from user_tagged_test.go, so it is not renamed.
-func load() int { return 1 } // want `func load does not carry namespace "user" anywhere in its name; rename it to userLoad, or to another name that carries "user"`
+func load() int { return 1 } // want `func load does not carry namespace "user" anywhere in its name; give it a name that carries "user", such as userLoad, or move it to the file it belongs to`
 
 // Named only in this file, so it is renamed.
-func free() int { return 3 } // want `func free does not carry namespace "user" anywhere in its name; rename it to userFree, or to another name that carries "user"`
+func free() int { return 3 } // want `func free does not carry namespace "user" anywhere in its name; give it a name that carries "user", such as userFree, or move it to the file it belongs to`
 
 func Exported() int { return load() + free() }

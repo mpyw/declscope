@@ -1,8 +1,14 @@
 // One rule, one fix: a declaration must carry its namespace somewhere in its
-// name, and the fix offered renames it so that the namespace leads. The rename
-// merges the words the name already opens with (FunctionCallExpr in
-// ast_function_call_expr.go becomes AstFunctionCallExpr) and falls back to the
-// whole prefix where the merged name is taken. Either way the namespace ends up
+// name, and the fix renames it so that the namespace leads. The fix is offered
+// only under rules.naming.fix, which is off by default: a rename can choose a
+// name but not a place, and a prefix that reads badly usually means the
+// declaration belongs in another file. fixOn is that switch. The report does
+// not read it, and neither does fixable(), which is the guard alone and what
+// inspect's names[].fixable reports.
+//
+// The rename merges the words the name already opens with (FunctionCallExpr
+// in ast_function_call_expr.go becomes AstFunctionCallExpr) and falls back to
+// the whole prefix where the merged name is taken. Either way the namespace ends up
 // at the start, which is what fixQualify models.
 //
 // The namespace need not lead the name. Go names a type for what it is and puts
@@ -69,6 +75,8 @@ spec NamingRules {
     kind: Kind = Decl, exported: Bool = false,
     canPrefix: Bool = true, isCore: Bool = false,
     carry: Carry = Absent, fixed: Bool = false,
+    // fixOn is rules.naming.fix. Off by default, as in internal/options.go.
+    fixOn: Bool = false,
     // renameOffered stands for everything internal/rename.go safeToRename
     // withholds beyond exportedness: a collision in any scope or on a type that
     // holds the method, a name a directive or an assembly or cgo file spells as
@@ -76,20 +84,21 @@ spec NamingRules {
     // has already taken. The violation is reported either way; only the fix is
     // withheld.
     renameOffered: Bool = true,
-    // stalled records a pass that reported without fixing — -fix off, or the
-    // rename withheld. It is what lets a run go on forever with a violation
-    // pending, which is what makes `fair` on fixQualify a claim rather than
-    // decoration.
+    // stalled records a pass that reported without fixing — -fix off,
+    // rules.naming.fix off, or the rename withheld. It is what lets a run go
+    // on forever with a violation pending, which is what makes `fair` on
+    // fixQualify a claim rather than decoration.
     stalled: Bool = false
   }
 
   action configure(q: Qualify, e: Bool, m: Bool,
-                   k: Kind, x: Bool, p: Bool, c: Bool, y: Carry, ro: Bool) {
+                   k: Kind, x: Bool, p: Bool, c: Bool, y: Carry, ro: Bool,
+                   f: Bool) {
     requires not configured
     configured = true  cfgQualify = q
     cfgExportedNames = e  manyNs = m
     kind = k  exported = x  canPrefix = p  isCore = c  carry = y
-    renameOffered = ro
+    renameOffered = ro  fixOn = f
   }
 
   // A pass that reports and does not fix, which may repeat forever.
@@ -102,9 +111,11 @@ spec NamingRules {
   def carries() = carry != Absent
   def qualifyFires() = named() and qualifyRequired() and not carries()
   def fixable() = not exported and renameOffered
+  // What -fix applies: the guard's rename, and only under rules.naming.fix.
+  def fixOffered() = fixOn and fixable()
 
   fair action fixQualify() {
-    requires configured  requires qualifyFires()  requires fixable()
+    requires configured  requires qualifyFires()  requires fixOffered()
     carry = AtStart  fixed = true
   }
 
@@ -118,6 +129,9 @@ spec NamingRules {
   invariant FixLandsAtStart      { fixed => carry == AtStart }
   invariant FixSettles           { fixed => not qualifyFires() }
   invariant ExportedNeverFixed   { fixed => not exported }
+  // The switch gates the fix: a rename is applied only under
+  // rules.naming.fix. Dropping `requires fixOffered()` for fixable() breaks it.
+  invariant FixOnlyWhenOn        { fixed => fixOn }
   invariant FixLeavesNothingAbsent { fixed => carries() }
 
   trans FixOnlyWhereNeeded {
@@ -238,18 +252,29 @@ spec NamingRules {
   // what a fix settles is satisfied by a model where none is applied.
   reachable FixApplied { fixed }
 
+  // The default: the rule fires, the guard would allow the rename, and the
+  // switch is off. The report stands with no fix offered.
+  reachable ReportedWithFixOff {
+    configured and not fixOn and qualifyFires() and fixable()
+    and not fixOffered()
+  }
+  // A pass under the default leaves the violation in place, and nothing is
+  // renamed.
+  reachable FixOffLeavesTheReport {
+    stalled and not fixOn and qualifyFires() and fixable() and not fixed
+  }
   // The stall itself, which is the state the leadsTo below has to escape.
   // Without these nothing reads `stalled`, and the assignment recording it
   // could be deleted with no verdict moving.
   reachable ViolationSurvivesAPassWithoutFix {
-    stalled and qualifyFires() and fixable()
+    stalled and qualifyFires() and fixOffered()
   }
   reachable WithheldRenameSurvivesAPass {
     stalled and qualifyFires() and not fixable()
   }
 
   leadsTo QualifyEventuallyFixed {
-    configured and qualifyFires() and fixable() ~> not qualifyFires()
+    configured and qualifyFires() and fixOffered() ~> not qualifyFires()
     helpful fixQualify()
     decreases if qualifyFires() then 1 else 0
   }

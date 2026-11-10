@@ -67,6 +67,15 @@ type Options struct {
 	// offered, since the uses outside the package cannot be seen.
 	NameExported bool
 
+	// NamingFix lets -fix apply the rename the naming rule offers. It is off by
+	// default: the rename can choose a name but not a place. A prefix added
+	// mechanically is the smell the naming guidance warns of, and a prefix that
+	// fits badly usually means the declaration is in the wrong file, which no
+	// rename can see. The report is the same either way, and so is the guard:
+	// the rename is still checked, so the survey can say where -fix would take
+	// it once a repository opts in.
+	NamingFix bool
+
 	// Only narrows the analysis, one group per config file that stated it. A
 	// file is read when it matches at least one pattern in EVERY group, so the
 	// groups intersect and a nested config can narrow further but never widen.

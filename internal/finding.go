@@ -30,6 +30,10 @@ type finding struct {
 	msg     string
 	related []analysis.RelatedInformation
 	fixes   []analysis.SuggestedFix
+	// renamable records that the naming rule's rename passed its guard, whether
+	// or not rules.naming.fix lets -fix apply it. The survey reports it, so a
+	// repository can see what opting in would rename before it does.
+	renamable bool
 	// settledBy is the type whose own finding stands in for this one, when
 	// that finding is not absorbed by the baseline. See settled.
 	//
@@ -193,7 +197,9 @@ func (c *collection) boundaryFinding(pass *analysis.Pass, opts Options, t *targe
 }
 
 // qualifyFinding requires a package-level declaration to carry its namespace
-// somewhere in its name, and offers a prefix when it does not.
+// somewhere in its name. It offers a prefix as a fix only under
+// rules.naming.fix, since a rename can choose a name but not a place: a prefix
+// that reads badly usually means the declaration belongs in another file.
 //
 // The namespace grants nothing — reach is stated with a directive — so this is
 // purely an ownership mark, making the owning unit legible at every use site
@@ -238,13 +244,17 @@ func (c *collection) qualifyFinding(pass *analysis.Pass, opts Options, t *target
 		// two types' help methods in one namespace are two findings.
 		decl: t.name(),
 		pos:  t.ident.Pos(),
-		// The rename is one answer, not the requirement. Naming only the
-		// prefixed form would restate the prefix rule that containment
-		// replaced, and push the author away from normalizeUserEmail and
-		// userEmailFrom, which settle the rule just as well.
-		msg: fmt.Sprintf("%s %s does not carry %s anywhere in its name; rename it to %s, or to another name that carries %q",
+		// The rename is one example, not the requirement, and moving the
+		// declaration is the other answer. Naming only the prefixed form as
+		// the answer would restate the prefix rule that containment replaced,
+		// and push the author away from normalizeUserEmail and userEmailFrom,
+		// which settle the rule just as well, and from the file the
+		// declaration belongs in. The wording is the same whether or not the
+		// fix is on, so turning it on changes no message.
+		msg: fmt.Sprintf("%s %s does not carry %s anywhere in its name; give it a name that carries %q, such as %s, or move it to the file it belongs to",
 			t.kind, name, namespaceInFinding(t.file.ns, t.file.path),
-			rename, t.file.ns),
+			t.file.ns, rename),
+		renamable: fixed,
 	}
 	// An inflected namespace is not carried by its stem (see
 	// namespace.LooksInflected), and the rename would stutter: tracingTraceValue.
@@ -253,7 +263,9 @@ func (c *collection) qualifyFinding(pass *analysis.Pass, opts Options, t *target
 		f.msg += fmt.Sprintf("; if the name spells %q in another form, list that form under rules.naming.vocabulary.%s",
 			t.file.ns, t.file.ns)
 	}
-	if fixed {
+	// The guard runs, and claims its name, whether or not the fix is on, so
+	// the names claimed and the survey's answer do not depend on the switch.
+	if fixed && opts.NamingFix {
 		f.fixes = append(f.fixes, fix)
 	}
 	return f, true

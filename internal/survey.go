@@ -259,8 +259,10 @@ func (c *collection) surveyedFindings(pass *analysis.Pass, opts Options, t *targ
 			State:       state,
 			// The fix the analyzer decided on, not a rerun of the decision:
 			// renameFix reserves the name it claims, so asking again would
-			// answer about a package that already contains this fix.
-			Fixable: len(f.fixes) > 0,
+			// answer about a package that already contains this fix. A rename
+			// that passed its guard counts while rules.naming.fix is off, so
+			// the answer says what opting in would rename.
+			Fixable: len(f.fixes) > 0 || f.renamable,
 		})
 	}
 	return out

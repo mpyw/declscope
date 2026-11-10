@@ -118,11 +118,11 @@ func TestLoadRejectsUnknownKey(t *testing.T) {
 		// The directive rule has no setting, so rules.directive is refused the
 		// same way. The unused rule's is rules.unused.
 		{"rules:\n  directive: strict\n", `unknown key "rules.directive" (this section takes naming, boundary, surplus, unused)`},
-		{"rules:\n  naming:\n    unqualifyy: always\n", `unknown key "rules.naming.unqualifyy" (this section takes qualify, exported, vocabulary)`},
+		{"rules:\n  naming:\n    unqualifyy: always\n", `unknown key "rules.naming.unqualifyy" (this section takes qualify, exported, fix, vocabulary)`},
 		// The removed rule is refused through the same path as any typo, so a
 		// config written for the release that had it fails loudly rather than
 		// silently dropping the setting.
-		{"rules:\n  naming:\n    unqualify: true\n", `unknown key "rules.naming.unqualify" (this section takes qualify, exported, vocabulary)`},
+		{"rules:\n  naming:\n    unqualify: true\n", `unknown key "rules.naming.unqualify" (this section takes qualify, exported, fix, vocabulary)`},
 		{"defaults:\n  unexpected: private\n", `unknown key "defaults.unexpected" (this section takes unexported)`},
 		// exclude was replaced by only and omit, and is refused the same way.
 		{"filter:\n  exclude: [gen]\n", `unknown key "filter.exclude" (this section takes only, omit)`},
@@ -385,6 +385,8 @@ func TestBoolSettings(t *testing.T) {
 	}{
 		{"rules:\n  naming:\n    exported: true\n", func(o internal.Options) bool { return o.NameExported }, true},
 		{"rules:\n  naming:\n    exported: false\n", func(o internal.Options) bool { return o.NameExported }, false},
+		{"rules:\n  naming:\n    fix: true\n", func(o internal.Options) bool { return o.NamingFix }, true},
+		{"rules:\n  naming:\n    fix: false\n", func(o internal.Options) bool { return o.NamingFix }, false},
 	}
 	for _, tt := range tests {
 		opts, err := apply(t, tt.yaml)
@@ -407,6 +409,9 @@ func TestDefaultModes(t *testing.T) {
 	}
 	if opts.NameExported {
 		t.Error("default NameExported should be off")
+	}
+	if opts.NamingFix {
+		t.Error("default NamingFix should be off: a rename chooses a name, never a place")
 	}
 	if opts.Boundary != rule.BoundaryModeOn {
 		t.Errorf("default Boundary = %v, want on: it is the rule this tool exists for", opts.Boundary)
@@ -464,6 +469,7 @@ func TestApplyRejectsUnknownMode(t *testing.T) {
 func TestBoolSettingRejectsAWord(t *testing.T) {
 	for _, yaml := range []string{
 		"rules:\n  naming:\n    exported: ondemand\n",
+		"rules:\n  naming:\n    fix: always\n",
 	} {
 		err := settingErr(t, yaml)
 		if err == nil {
@@ -724,6 +730,37 @@ func TestSurplusModeComposes(t *testing.T) {
 	}
 	if opts.Surplus != rule.SurplusModeOff {
 		t.Errorf("Surplus = %v: a nested file that states it should win", opts.Surplus)
+	}
+}
+
+// TestNamingFixComposes checks rules.naming.fix down the chain: a nested file
+// that is silent keeps the root's value, and one that states false turns it
+// off, since stating false counts.
+func TestNamingFixComposes(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "go.mod", "module example.com/m\n")
+	write(t, root, ".declscope.yaml", "rules:\n  naming:\n    qualify: always\n    fix: true\n")
+	silent := filepath.Join(root, "silent")
+	write(t, silent, ".declscope.yaml", "rules:\n  surplus: off\n")
+	stated := filepath.Join(silent, "stated")
+	write(t, stated, ".declscope.yaml", "rules:\n  naming:\n    fix: false\n")
+
+	opts, _, err := config.Resolve(silent, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !opts.NamingFix {
+		t.Error("NamingFix is off: a nested file that does not state it should keep the root's")
+	}
+	opts, _, err = config.Resolve(stated, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.NamingFix {
+		t.Error("NamingFix is on: a nested file that states false should win")
+	}
+	if opts.Qualify != rule.QualifyModeAlways {
+		t.Errorf("Qualify = %v: rules.naming.fix must not move the mode the root set", opts.Qualify)
 	}
 }
 

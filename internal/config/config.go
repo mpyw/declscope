@@ -11,6 +11,7 @@
 //	rules:
 //	  naming:
 //	    qualify: ondemand    # always | never | ondemand (only once a package has two namespaces)
+//	    fix: false           # true lets -fix apply the rename the rule offers
 //	    vocabulary:          # per-namespace words that carry the namespace
 //	      mouse: [wheel]
 //	  boundary: on          # off | on (off stops checking reach, leaving only the naming rule)
@@ -20,8 +21,9 @@
 // rules.naming.qualify reads an rule.QualifyMode; rules.boundary reads an
 // rule.BoundaryMode; rules.surplus reads an rule.SurplusMode;
 // rules.unused reads an rule.UnusedMode;
-// rules.naming.exported is true/false; rules.naming.vocabulary maps a
-// namespace to the extra words that satisfy the naming rule for it.
+// rules.naming.exported and rules.naming.fix are true/false;
+// rules.naming.vocabulary maps a namespace to the extra words that satisfy the
+// naming rule for it.
 //
 // Unknown keys are an error, and the message names the key and the keys the
 // section does take.
@@ -139,6 +141,10 @@ type rulesSection struct {
 type namingSection struct {
 	Qualify  string      `yaml:"qualify"`
 	Exported boolSetting `yaml:"exported"`
+
+	// Fix lets -fix apply the rename the rule offers. Off unless stated, since
+	// a rename chooses a name and never a place.
+	Fix boolSetting `yaml:"fix"`
 
 	// Vocabulary maps a namespace to extra words that carry it. The words are
 	// spellings, matched exactly as the namespace is, and meant for the
@@ -433,6 +439,9 @@ func (f *File) Apply(opts *internal.Options) error {
 	}
 	if f.Rules.Naming.Exported.set {
 		opts.NameExported = f.Rules.Naming.Exported.value
+	}
+	if f.Rules.Naming.Fix.set {
+		opts.NamingFix = f.Rules.Naming.Fix.value
 	}
 	// The map merges per namespace rather than replacing: adding one word in a
 	// nested config should not cost restating every other.

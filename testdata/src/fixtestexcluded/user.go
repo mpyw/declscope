@@ -6,10 +6,10 @@ package fixtestexcluded
 // excluded one, so only a rename that file does not disturb is offered.
 
 // load is named from zz_excluded.go, so neither variant renames it.
-func load() int { return 1 } // want `func load does not carry namespace "user" anywhere in its name; rename it to userLoad, or to another name that carries "user"`
+func load() int { return 1 } // want `func load does not carry namespace "user" anywhere in its name; give it a name that carries "user", such as userLoad, or move it to the file it belongs to`
 
 // Named only in files the fix rewrites, so the test variant renames it here
 // and in user_test.go.
-func free() int { return 3 } // want `func free does not carry namespace "user" anywhere in its name; rename it to userFree, or to another name that carries "user"`
+func free() int { return 3 } // want `func free does not carry namespace "user" anywhere in its name; give it a name that carries "user", such as userFree, or move it to the file it belongs to`
 
 func Exported() int { return load() + free() }

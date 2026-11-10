@@ -1,0 +1,4 @@
+# A nearer file turns the rename on and keeps the rule the file above set.
+rules:
+  naming:
+    fix: true

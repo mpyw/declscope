@@ -339,10 +339,22 @@ Test files and generated files are out of scope. `TestXxx` functions are exporte
 | `//declscope:shared on X: no use from another namespace is visible`, or `the file's //declscope:shared: no use ...` | Did the use that justified it go away? | Delete the directive |
 | `X takes shared scope from ..., but no use ...` | Does any other file read `X`? | When the directive is a file's or a block's, and most of its declarations get this report, it should not share the whole. Delete it, and write `//declscope:shared` on the few that other files use. Otherwise accept `-fix`'s `//declscope:private` on `X`, alone: take that edit from `declscope -fix -diff`, since a whole `-fix` run also widens every boundary report. When the file is ordered by reach, move `X` after the declarations of wider reach. See [Order by reach](#order-by-reach) |
 | `unused //declscope:...` | Does the directive still change anything? | Delete it |
-| `X does not carry namespace "a"` | Is the name accurate, and is `X` in the right file? | See [naming.md](naming.md). Rename only when both answers are yes |
+| `X does not carry namespace "a"` | Is the name accurate, and is `X` in the right file? | See [naming.md](naming.md). Rename only when both answers are yes. The name the message suggests is one option, not the answer. See [When `-fix` renames](#when--fix-renames) |
 | `X is exported, but nothing outside ... uses it` (`declscope shrink`) | Does another package really need it? | See [Reading what shrink reports](#reading-what-shrink-reports) |
 
-**`-fix` widens. It does not draw boundaries.** On a boundary report, `-fix` inserts `//declscope:shared` instead of moving code. That also leaves the declaration in its first caller's file, with that caller's prefix. Read `-fix -diff` before `-fix`. Its rename is offered only when it is proven safe, but it cannot tell whether the name was accurate.
+**`-fix` widens. It does not draw boundaries.** On a boundary report, `-fix` inserts `//declscope:shared` instead of moving code. That also leaves the declaration in its first caller's file, with that caller's prefix. Read `-fix -diff` before `-fix`. It renames only under `rules.naming.fix: true`. See [When `-fix` renames](#when--fix-renames).
+
+### When `-fix` renames
+
+With `rules.naming.fix: true`, `-fix` renames every reported name at once. Do not apply it wholesale. The rename is proven safe, but nothing checks that the new name is accurate or that the file is right.
+
+| Step | Do this |
+| --- | --- |
+| 1 | Read `declscope -fix -diff` |
+| 2 | Judge each rename by [naming.md](naming.md). Is the name accurate? Is the declaration in the right file? |
+| 3 | Take only the edits you accept. Name or move the rest yourself |
+
+The name the message suggests is one option, not the answer. Without the key, the report carries no fix, and you choose the name.
 
 ### Reading what shrink reports
 

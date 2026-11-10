@@ -26,6 +26,7 @@ the binary.
 | `naming_rules.fsl` | Each naming key bites, and a method filed away from its type is reported. Each silence is witnessed with every other reason for silence pinned: exportedness, the core, a member, a method written beside its type, `func main` and a test function, an unprefixable namespace, `ondemand` with one namespace, `never`, and a name that carries the namespace | As above |
 | `naming_rules.fsl` | The core namespace is outside the rule, whatever is configured | As above |
 | `naming_rules.fsl` | A fix is eventually applied wherever one is offered, which is what the `fair` on the fix actions claims | As above, plus whether a rename is offered at all |
+| `naming_rules.fsl` | A rename is applied only under `rules.naming.fix`. With it off, which is the default, the report still fires and nothing is renamed | As above, plus `rules.naming.fix` |
 | `boundary_off.fsl` | `rules.boundary: off` silences `boundary` and nothing else. `qualify` and `surplus` still fire with it on, and `rules.surplus: off` still gates only `surplus` | Every combination of the two switches, the resolved scope, where the declaration is referenced from (nowhere, its own namespace, another namespace), the naming mode and its inputs, and the two surplus inputs |
 | `boundary_off.fsl` | Each of the three rules keeps its own guards, witnessed by the report each one records rather than by a restatement of its definition | As above |
 | `filter.fsl` | `filter.only` narrows and `filter.omit` subtracts. Either list admits or rejects on any one of its patterns, an empty `only` places no restriction, and `omit` still bites inside `only` | Every combination of which of three patterns each list holds and which of them the file matches |
@@ -231,6 +232,7 @@ is a semantics that contradicts the documented one; each was run:
 | Containment is narrowed back to a prefix requirement | `reachable_failed` (`InsideSilentUnderAlways`, `InsideWouldHaveFiredBefore`) |
 | The core namespace is named like any other | `reachable_failed` |
 | A prefix fix does not record itself | `reachable_failed` |
+| The rename is applied whether or not `rules.naming.fix` is on | `violated` (`FixOnlyWhenOn`) |
 | A fix is applied to an exported declaration | `violated` |
 | `fair` is dropped from a fix action | `violated` (`leadsTo`); under induction, `unknown_cti` (`progress_action_not_fair`) |
 | A fix is offered where no violation exists, or over the author's own directive | `violated` |

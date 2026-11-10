@@ -1,3 +1,4 @@
 rules:
   naming:
     qualify: always
+    fix: true

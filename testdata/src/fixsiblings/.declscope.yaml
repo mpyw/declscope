@@ -3,3 +3,4 @@
 rules:
   naming:
     qualify: ondemand
+    fix: true

@@ -1,6 +1,7 @@
 rules:
   naming:
     qualify: always
+    fix: true
 filter:
   omit:
     - "**/ext.go"

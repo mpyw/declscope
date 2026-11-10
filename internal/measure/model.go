@@ -113,9 +113,11 @@ type Finding struct {
 	// its job.
 	State FindingState
 
-	// Fixable records whether the analyzer offered a fix for this finding.
-	// It is the analyzer's own answer, not a second opinion: the reasons a
-	// rename is withheld are recorded nowhere, so only the outcome is known.
+	// Fixable records whether the analyzer has a fix for this finding. For a
+	// naming finding that is a rename that passed its guard, which -fix applies
+	// only under rules.naming.fix. It is the analyzer's own answer, not a
+	// second opinion: the reasons a rename is withheld are recorded nowhere,
+	// so only the outcome is known.
 	Fixable bool
 }
 
@@ -188,10 +190,12 @@ type NameFinding struct {
 
 	State NameState
 
-	// Fixable records whether -fix would actually offer the rename, which is
-	// the analyzer's own answer rather than a second judgment: the reasons a
-	// rename is withheld are not recorded anywhere, so only the outcome is
-	// reported.
+	// Fixable records whether the rename passed its guard, so that -fix would
+	// make it once rules.naming.fix is on. It does not read the switch: a
+	// repository deciding whether to opt in needs the answer before it does.
+	// It is the analyzer's own answer rather than a second judgment: the
+	// reasons a rename is withheld are not recorded anywhere, so only the
+	// outcome is reported.
 	Fixable bool
 }
 

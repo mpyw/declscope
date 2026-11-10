@@ -32,6 +32,52 @@ func TestSuggestedFixQualify(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixqualify")
 }
 
+// TestSuggestedFixQualifyOptIn checks that the rename is applied only under
+// rules.naming.fix. With the key left out the report stays and carries no fix.
+// A nearer config turns it on, and stating false below that turns it off.
+func TestSuggestedFixQualifyOptIn(t *testing.T) {
+	for pkg, want := range map[string]int{
+		"qualifyfixoptin":        0,
+		"qualifyfixoptin/on":     1,
+		"qualifyfixoptin/on/off": 0,
+	} {
+		results := analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, pkg)
+		if got := qualifyFixCount(results); got != want {
+			t.Errorf("%s: %d qualify fixes offered, want %d", pkg, got, want)
+		}
+	}
+}
+
+// TestSuggestedFixQualifyFixturesOptIn checks that every fixture pinning a
+// rename still offers one. A golden file is compared only where a fix exists,
+// so a fixture that lost rules.naming.fix: true would pass with no rename.
+func TestSuggestedFixQualifyFixturesOptIn(t *testing.T) {
+	for _, pkg := range []string{
+		"fixqualify", "fixembedded", "fixembeddedgeneric", "fixcapture", "fixforeignmethod",
+		"fixembedder", "fixembeddedsurface", "fixsiblings", "fixoutside", "fixlinkname",
+		"fixtestvariant", "fixexcluded", "fixtestexcluded",
+	} {
+		results := analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, pkg)
+		if qualifyFixCount(results) == 0 {
+			t.Errorf("%s offers no qualify fix; its .declscope.yaml needs rules.naming.fix: true", pkg)
+		}
+	}
+}
+
+// qualifyFixCount counts the qualify diagnostics that carry a fix, over every
+// pass.
+func qualifyFixCount(results []*analysistest.Result) int {
+	n := 0
+	for _, r := range results {
+		for _, d := range r.Diagnostics {
+			if d.Category == string(rule.Qualify) && len(d.SuggestedFixes) > 0 {
+				n++
+			}
+		}
+	}
+	return n
+}
+
 // TestSuggestedFixEmbedded checks that renaming a type also rewrites the
 // idents that embed it, and the selections that reach the embedded field by
 // the type's name.
