@@ -50,6 +50,14 @@
 //   assumption, encoded as a requirement of configure)
 // ASSUME-3: a declaration other than a member is used from a constrained file
 //   by writing pkg.Name there, so Out reads that use (qualifiedIn)
+//
+// An embedded type sits between the two kinds. It is a Member here, as
+// run.usedImplicitly makes it, but qualifiedIn asks only that it is no field
+// or method, so Out reads pkg.T in the constrained file as a use, as for
+// Other. A use as x.T stays unread, as for a Member. Where the file writes
+// pkg.T, In sees that use too, so neither run reports the type, Out calls
+// the ignore unused, and the properties hold: the model's Member reports in
+// Out where the tool does not, and never the reverse.
 spec ShrinkIgnore {
   enum Kind { Member, Other }
 
