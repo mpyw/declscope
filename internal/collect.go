@@ -443,7 +443,7 @@ func (c *collection) collectUnkeyedFields(pass *analysis.Pass, fi *fileInfo, lit
 	}
 	// The literal's type may be a pointer the literal leaves out, as in
 	// []*T{{1}}, or a type parameter, whose type set may hold several structs
-	// (pointer.Sets.Literal).
+	// (implicitfield.Sets.Literal).
 	holders, exact := c.typeSets.Literal(pass.TypesInfo.TypeOf(lit))
 	for _, h := range holders {
 		st := h.Underlying().(*types.Struct)

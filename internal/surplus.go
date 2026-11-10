@@ -471,7 +471,7 @@ func (c *collection) markConvertedFieldsForSurplus(pass *analysis.Pass, reached 
 		// (*snapshot)(&user) converts between pointers to the two struct
 		// types, and pairs their fields the same way. So does P(&user) with
 		// P ~*snapshot, for every struct in the type set of P
-		// (pointer.Sets.Conversion). A guessed set only marks more.
+		// (implicitfield.Sets.Conversion). A guessed set only marks more.
 		holders, _ := c.typeSets.Conversion(t)
 		for _, h := range holders {
 			for field := range h.Underlying().(*types.Struct).Fields() {

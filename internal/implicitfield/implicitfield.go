@@ -1,9 +1,9 @@
-// Package pointer finds the structs whose fields a composite literal or a
+// Package implicitfield finds the structs whose fields a composite literal or a
 // conversion writes without naming them, through a pointer in every form Go
 // writes one and through the type set of a type parameter. The analyzer and
 // declscope shrink both ask it, where an unkeyed literal fills fields by
 // position and where a conversion pairs the fields of two structs by name.
-package pointer
+package implicitfield
 
 import (
 	"go/token"
