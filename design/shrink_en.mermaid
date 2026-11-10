@@ -1,10 +1,10 @@
 flowchart TD
-  start(["declscope shrink [-fix] [-config] [packages]<br>once per run, over the whole module"]) --> resolve["module.Resolve<br>the patterns, as the go command reads them"]
+  start(["declscope shrink [-fix] [-config] [packages]<br>once per run, over the whole module"]) --> resolve["pattern.Resolve<br>the patterns, as the go command reads them"]
   resolve -- "a pattern is rejected" --> fail(["error, exit 1"])
   resolve --> load["module.Load<br>every package of the main modules, with every test variant<br>an importer outside the patterns still counts"]
   load --> ev
 
-  subgraph evidence["evidenceCollect: who uses what, across the module"]
+  subgraph evidence["collectEvidence: who uses what, across the module"]
     direction TB
     ev["references from other packages<br>external tests"] --> ev2["static interface satisfactions<br>values handed to other modules"]
     ev2 --> ev3["values that escape into an interface<br>fields paired by conversion or by an identical struct"]

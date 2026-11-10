@@ -8,6 +8,7 @@ package reach
 
 import (
 	"go/types"
+	"strings"
 
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
@@ -47,6 +48,51 @@ func Conversions(pkgs []*packages.Package) []types.Type {
 		}
 	}
 	return out
+}
+
+// Tagged returns every struct type declared in pkgs with a field tag in the
+// key:"value" form, its own or one on a struct it holds without naming. The
+// tag says a marshaller reads the struct through reflection, whether or not
+// a value of it reaches one in pkgs yet, so the type is a root for Reflect,
+// as a type Conversions returns is: all of its fields, tagged or not, and
+// what they hold. go vet also rejects a json or xml tag on an unexported
+// field, so declscope shrink's rename would not pass vet.
+func Tagged(pkgs []*packages.Package) []types.Type {
+	var out []types.Type
+	for _, p := range pkgs {
+		for _, obj := range p.TypesInfo.Defs {
+			if tn, ok := obj.(*types.TypeName); ok && !tn.IsAlias() && taggedIn(tn.Type().Underlying()) {
+				out = append(out, tn.Type())
+			}
+		}
+	}
+	return out
+}
+
+// taggedIn reports whether t is a struct with a tag in the key:"value"
+// form, or holds one without naming it. A named type is judged on its own,
+// and an alias is not a name of its own: type Conf = struct{ ... } is held
+// unnamed wherever it is written.
+func taggedIn(t types.Type) bool {
+	switch t := types.Unalias(t).(type) {
+	case *types.Struct:
+		for i := range t.NumFields() {
+			if strings.Contains(t.Tag(i), `:"`) || taggedIn(t.Field(i).Type()) {
+				return true
+			}
+		}
+	case *types.Pointer:
+		return taggedIn(t.Elem())
+	case *types.Slice:
+		return taggedIn(t.Elem())
+	case *types.Array:
+		return taggedIn(t.Elem())
+	case *types.Chan:
+		return taggedIn(t.Elem())
+	case *types.Map:
+		return taggedIn(t.Key()) || taggedIn(t.Elem())
+	}
+	return false
 }
 
 // Reflect calls mark with every named type and every struct field that

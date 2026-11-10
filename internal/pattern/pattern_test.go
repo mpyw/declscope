@@ -34,3 +34,20 @@ func TestUnmatchedLoadsOnlyWhenAsked(t *testing.T) {
 		t.Errorf("err = %v, want the driver's failure", err)
 	}
 }
+
+// TestResolveLoaderFailure pins that a failure of the loader stops the run
+// with its error, rather than reading as patterns that named nothing.
+func TestResolveLoaderFailure(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/m\n\ngo 1.25\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	driver := filepath.Join(t.TempDir(), "driver")
+	if err := os.WriteFile(driver, []byte("#!/bin/sh\necho driver refused >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOPACKAGESDRIVER", driver)
+	if _, err := Resolve(root, nil); err == nil || !strings.Contains(err.Error(), "driver refused") {
+		t.Errorf("err = %v, want the driver's failure", err)
+	}
+}

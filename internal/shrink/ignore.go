@@ -22,11 +22,11 @@ func ignoreCovers(c *candidate) bool {
 	})
 }
 
-// ignoreSilenced records every ignore naming overexported that covers the
+// markIgnoresUsed marks every ignore naming overexported that covers the
 // candidate as used: it silenced the candidate's report.
 //
 //declscope:shared // the core calls it once the report stands
-func (r *run) ignoreSilenced(c *candidate) {
+func (r *run) markIgnoresUsed(c *candidate) {
 	for _, ig := range c.ignores {
 		if slices.Contains(ig.Rules, rule.Overexported) {
 			r.usedIgnores[ig.Pos] = true

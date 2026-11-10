@@ -47,12 +47,6 @@ func failingDriver(t *testing.T) {
 // in it.
 func TestLoadFailures(t *testing.T) {
 	root := moduleTree(t)
-	t.Run("the loader fails in Resolve", func(t *testing.T) {
-		failingDriver(t)
-		if _, err := Resolve(root, nil); err == nil || !strings.Contains(err.Error(), "driver refused") {
-			t.Errorf("err = %v, want the driver's failure", err)
-		}
-	})
 	t.Run("the loader fails in Load", func(t *testing.T) {
 		failingDriver(t)
 		if _, err := Load(root); err == nil || !strings.Contains(err.Error(), "driver refused") {

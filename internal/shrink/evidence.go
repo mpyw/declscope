@@ -92,10 +92,10 @@ type evidenceSite struct {
 	ident *ast.Ident
 }
 
-// evidenceCollect gathers the evidence over every package of the module.
+// collectEvidence gathers the evidence over every package of the module.
 //
 //declscope:shared // the core collects it once per run
-func evidenceCollect(m *module.Module) (ev *evidence, err error) {
+func collectEvidence(m *module.Module) (ev *evidence, err error) {
 	ev = &evidence{
 		outside: map[string]bool{}, everywhere: map[string]bool{}, extTest: map[string]bool{}, generated: map[string]bool{}, example: map[string]bool{},
 		satisfied: map[string]bool{}, paired: map[string]bool{}, escaped: map[string]bool{}, guessed: map[string]bool{},
@@ -129,7 +129,7 @@ func evidenceCollect(m *module.Module) (ev *evidence, err error) {
 	// is where its types and the ones it imports are the same objects.
 	for _, imp := range m.Importers {
 		roots = append(roots, reach.Conversions(imp.Pkgs)...)
-		roots = append(roots, evidenceTagged(imp.Pkgs)...)
+		roots = append(roots, reach.Tagged(imp.Pkgs)...)
 		ev.unnamedStructs(m, slices.Concat(imp.Pkgs, imp.Imported))
 	}
 	ev.linknames(m)
@@ -138,7 +138,7 @@ func evidenceCollect(m *module.Module) (ev *evidence, err error) {
 	// argument of a generic whose body it cannot see, and every struct type a
 	// tag declares reflection reads.
 	roots = append(roots, reach.Conversions(m.Widest())...)
-	roots = append(roots, evidenceTagged(m.Widest())...)
+	roots = append(roots, reach.Tagged(m.Widest())...)
 	reach.Reflect(roots, func(obj types.Object) { ev.escaped[keyOf(m.Fset, obj)] = true })
 	ev.exposure(m)
 	return ev, nil
@@ -162,7 +162,9 @@ const (
 	evidenceOutside
 )
 
-func evidenceClassify(p *packages.Package, declPath string) evidenceClass {
+// evidenceClassOf returns where a reference in p stands relative to the
+// package at declPath.
+func evidenceClassOf(p *packages.Package, declPath string) evidenceClass {
 	switch {
 	case p.PkgPath == declPath:
 		return evidenceSame
@@ -186,7 +188,7 @@ func (ev *evidence) record(m *module.Module, p *packages.Package, obj types.Obje
 		key = keyOf(m.Fset, obj)
 		ev.keys[obj] = key
 	}
-	switch evidenceClassify(p, obj.Pkg().Path()) {
+	switch evidenceClassOf(p, obj.Pkg().Path()) {
 	case evidenceSame:
 		ev.sites[key] = append(ev.sites[key], evidenceSite{pkg: p, ident: id})
 		if gen {
@@ -314,7 +316,7 @@ func (ev *evidence) unkeyed(m *module.Module, p *packages.Package, lit *ast.Comp
 		if s.owner == nil || s.owner.Pkg() == nil {
 			continue
 		}
-		class := evidenceClassify(p, s.owner.Pkg().Path())
+		class := evidenceClassOf(p, s.owner.Pkg().Path())
 		if class == evidenceSame {
 			continue
 		}
@@ -417,6 +419,42 @@ func (ev *evidence) unnamedStructs(m *module.Module, pkgs []*packages.Package) {
 	// One seen map for the run: a type already walked has already put every
 	// unnamed struct inside it into unnamed, so walking it again adds nothing.
 	seen := map[types.Type]bool{}
+	// addUnnamed adds every unnamed struct type inside t. A named type is not
+	// entered: its struct is its own, and its fields are declared where it is.
+	var addUnnamed func(t types.Type)
+	addUnnamed = func(t types.Type) {
+		if t == nil || seen[t] {
+			return
+		}
+		seen[t] = true
+		switch t := types.Unalias(t).(type) {
+		case *types.Struct:
+			if t.NumFields() > 0 {
+				unnamed.Set(t, true)
+			}
+			for i := range t.NumFields() {
+				addUnnamed(t.Field(i).Type())
+			}
+		case *types.Pointer:
+			addUnnamed(t.Elem())
+		case *types.Slice:
+			addUnnamed(t.Elem())
+		case *types.Array:
+			addUnnamed(t.Elem())
+		case *types.Chan:
+			addUnnamed(t.Elem())
+		case *types.Map:
+			addUnnamed(t.Key())
+			addUnnamed(t.Elem())
+		case *types.Signature:
+			addUnnamed(t.Params())
+			addUnnamed(t.Results())
+		case *types.Tuple:
+			for i := range t.Len() {
+				addUnnamed(t.At(i).Type())
+			}
+		}
+	}
 	for _, p := range pkgs {
 		// The struct literal a defined type is declared with is recorded as a
 		// type expression too, but it is that type's own struct, not an
@@ -432,7 +470,7 @@ func (ev *evidence) unnamedStructs(m *module.Module, pkgs []*packages.Package) {
 		}
 		for expr, tv := range p.TypesInfo.Types {
 			if !defining[expr] {
-				evidenceCollectUnnamed(tv.Type, &unnamed, seen)
+				addUnnamed(tv.Type)
 			}
 		}
 		for _, obj := range p.TypesInfo.Defs {
@@ -447,66 +485,27 @@ func (ev *evidence) unnamedStructs(m *module.Module, pkgs []*packages.Package) {
 		}
 	}
 	// Only structs with the same field names in the same order can be
-	// identical, so each named struct is compared with its bucket alone.
+	// identical, so each named struct is compared with its bucket alone,
+	// keyed by its field names spelled in order.
+	fieldNames := func(st *types.Struct) string {
+		names := make([]string, st.NumFields())
+		for i := range st.NumFields() {
+			names[i] = st.Field(i).Name()
+		}
+		return strings.Join(names, ",")
+	}
 	buckets := map[string][]*types.Struct{}
 	unnamed.Iterate(func(t types.Type, _ any) {
 		u := t.(*types.Struct)
-		buckets[evidenceFieldNames(u)] = append(buckets[evidenceFieldNames(u)], u)
+		buckets[fieldNames(u)] = append(buckets[fieldNames(u)], u)
 	})
 	for _, st := range named {
 		identical := func(u *types.Struct) bool { return u != st && types.IdenticalIgnoreTags(st, u) }
-		if !slices.ContainsFunc(buckets[evidenceFieldNames(st)], identical) {
+		if !slices.ContainsFunc(buckets[fieldNames(st)], identical) {
 			continue
 		}
 		for i := range st.NumFields() {
 			ev.paired[keyOf(m.Fset, st.Field(i))] = true
-		}
-	}
-}
-
-// evidenceFieldNames spells a struct's field names in order, which two
-// identical structs share.
-func evidenceFieldNames(st *types.Struct) string {
-	names := make([]string, st.NumFields())
-	for i := range st.NumFields() {
-		names[i] = st.Field(i).Name()
-	}
-	return strings.Join(names, ",")
-}
-
-// evidenceCollectUnnamed adds every unnamed struct type inside t. A named
-// type is not entered: its struct is its own, and its fields are declared
-// where it is.
-func evidenceCollectUnnamed(t types.Type, into *typeutil.Map, seen map[types.Type]bool) {
-	if t == nil || seen[t] {
-		return
-	}
-	seen[t] = true
-	switch t := types.Unalias(t).(type) {
-	case *types.Struct:
-		if t.NumFields() > 0 {
-			into.Set(t, true)
-		}
-		for i := range t.NumFields() {
-			evidenceCollectUnnamed(t.Field(i).Type(), into, seen)
-		}
-	case *types.Pointer:
-		evidenceCollectUnnamed(t.Elem(), into, seen)
-	case *types.Slice:
-		evidenceCollectUnnamed(t.Elem(), into, seen)
-	case *types.Array:
-		evidenceCollectUnnamed(t.Elem(), into, seen)
-	case *types.Chan:
-		evidenceCollectUnnamed(t.Elem(), into, seen)
-	case *types.Map:
-		evidenceCollectUnnamed(t.Key(), into, seen)
-		evidenceCollectUnnamed(t.Elem(), into, seen)
-	case *types.Signature:
-		evidenceCollectUnnamed(t.Params(), into, seen)
-		evidenceCollectUnnamed(t.Results(), into, seen)
-	case *types.Tuple:
-		for i := range t.Len() {
-			evidenceCollectUnnamed(t.At(i).Type(), into, seen)
 		}
 	}
 }
@@ -707,48 +706,4 @@ func (ev *evidence) exposure(m *module.Module) {
 		}
 		return true
 	}, func(*types.TypeName) {})
-}
-
-// evidenceTagged returns every struct type of the module with a field tag in
-// the key:"value" form, its own or one on a struct it holds without naming.
-// The tag says a marshaller reads the struct through reflection, whether or
-// not a value of it reaches one in this module yet, so the struct escapes:
-// all of its fields, tagged or not, and what they hold. go vet also rejects a
-// json or xml tag on an unexported field, so the rename would not pass vet.
-func evidenceTagged(pkgs []*packages.Package) []types.Type {
-	var out []types.Type
-	for _, p := range pkgs {
-		for _, obj := range p.TypesInfo.Defs {
-			if tn, ok := obj.(*types.TypeName); ok && !tn.IsAlias() && evidenceTagIn(tn.Type().Underlying()) {
-				out = append(out, tn.Type())
-			}
-		}
-	}
-	return out
-}
-
-// evidenceTagIn reports whether t is a struct with a tag in the key:"value"
-// form, or holds one without naming it. A named type is judged on its own,
-// and an alias is not a name of its own: type Conf = struct{ ... } is held
-// unnamed wherever it is written.
-func evidenceTagIn(t types.Type) bool {
-	switch t := types.Unalias(t).(type) {
-	case *types.Struct:
-		for i := range t.NumFields() {
-			if strings.Contains(t.Tag(i), `:"`) || evidenceTagIn(t.Field(i).Type()) {
-				return true
-			}
-		}
-	case *types.Pointer:
-		return evidenceTagIn(t.Elem())
-	case *types.Slice:
-		return evidenceTagIn(t.Elem())
-	case *types.Array:
-		return evidenceTagIn(t.Elem())
-	case *types.Chan:
-		return evidenceTagIn(t.Elem())
-	case *types.Map:
-		return evidenceTagIn(t.Key()) || evidenceTagIn(t.Elem())
-	}
-	return false
 }
