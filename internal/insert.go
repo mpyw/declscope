@@ -12,18 +12,6 @@ import (
 	"github.com/mpyw/declscope/internal/scope"
 )
 
-// insertBook is insert.go's half of the collection, embedded there.
-//
-//declscope:shared // collection embeds it, and collection lives in the core
-type insertBook struct {
-	// sources holds each file a directive fix has read, by name. Every fix on
-	// an indented declaration reads the file around it, and one file can hold
-	// hundreds of them. A file that could not be read is held as nil.
-	//
-	//declscope:private // the type is widened only so the core can embed it
-	sources map[string][]byte
-}
-
 // directiveInsertionFix inserts an explicit scope directive above the declaration.
 //
 //declscope:shared // finding.go offers it on a boundary finding
@@ -85,31 +73,10 @@ func (c *collection) insertionAtLineStart(pass *analysis.Pass, pos token.Pos) bo
 	if pass.ReadFile == nil {
 		return false
 	}
-	content := c.insertionSource(pass, position.Filename)
+	content := c.fileSource(pass, position.Filename)
 	if position.Offset > len(content) {
 		return false
 	}
 	prefix := content[position.Offset-position.Column+1 : position.Offset]
 	return strings.TrimLeft(string(prefix), " \t") == ""
-}
-
-// insertionSource reads a file once per pass. A read error is held as nil. Only
-// a position past the start of its line reads the content, and every such
-// position overruns nil, so the error still fails safe. scopesite.go's
-// directive removal reads through it too, and fails safe the same way.
-//
-//declscope:shared // scopesite.go's removal fix reads the same files
-func (c *collection) insertionSource(pass *analysis.Pass, name string) []byte {
-	if content, ok := c.sources[name]; ok {
-		return content
-	}
-	if c.sources == nil {
-		c.sources = make(map[string][]byte)
-	}
-	content, err := pass.ReadFile(name)
-	if err != nil {
-		content = nil
-	}
-	c.sources[name] = content
-	return content
 }

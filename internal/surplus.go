@@ -149,8 +149,9 @@ func (c *collection) surplusJudged(pass *analysis.Pass) *surplusState {
 }
 
 // reachesOutside reports whether t is reached from another namespace by any
-// path the rule counts, exportedness aside: another namespace spells it,
-// something reaches it without spelling it, or a directive names it as text.
+// path the rule counts, exportedness aside: another namespace spells it
+// (crossings, the boundary rule's own evidence), something reaches it without
+// spelling it, or a directive names it as text.
 // It is never asked of a blind state: a pass that does not read every file
 // cannot rule anything out, and every caller returns before asking.
 func (s *surplusState) reachesOutside(c *collection, t *target) bool {
@@ -158,7 +159,7 @@ func (s *surplusState) reachesOutside(c *collection, t *target) bool {
 		s.gathered = true
 		s.reached = c.surplusReached(s.pass)
 	}
-	return s.reached[t.obj] || c.linknamed(s.pass)[t.obj.Name()] || c.surplusSeesUseOutside(t)
+	return s.reached[t.obj] || c.linknamed(s.pass)[t.obj.Name()] || len(c.crossings(t)) > 0
 }
 
 // computeSurplus judges every //declscope:shared directive in the package.
@@ -228,14 +229,11 @@ func surplusMessage(rep *target, group []*target) string {
 //     read as a reference site.
 //   - cgo and assembly reach declarations from sources the analysis never
 //     parses at all. A non-Go file, in this build or another, is assembly or
-//     C (nonGoBlocksRename).
+//     C (unseenFiles.nonGo).
 //
 //declscope:shared // the survey reports whether the rule was asked at all
 func (c *collection) surplusSeesEveryFile(pass *analysis.Pass) bool {
-	if u := c.unseen(pass); u.all || len(u.names) > 0 {
-		return false
-	}
-	if c.nonGoBlocksRename(pass) {
+	if u := c.unseen(pass); u.all || len(u.names) > 0 || u.nonGo {
 		return false
 	}
 	for _, f := range pass.Files {
@@ -249,14 +247,6 @@ func (c *collection) surplusSeesEveryFile(pass *analysis.Pass) bool {
 		}
 	}
 	return true
-}
-
-// surplusSeesUseOutside reports whether another namespace spells the name — the
-// same evidence the boundary rule reads, from the same index, so whatever a
-// composite literal without keys or a selection on a generic type counts for
-// there counts here.
-func (c *collection) surplusSeesUseOutside(t *target) bool {
-	return slices.ContainsFunc(c.refs[t.obj], func(r ref) bool { return r.file.key() != t.file.key() })
 }
 
 // surplusReached collects every declaration reached by a path that spells no
@@ -601,7 +591,7 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 	}
 	wide := func(t *target) bool {
 		return surplusEnclosed(opts, t) && !s.fired[t.boundBy.ScopePos] &&
-			!s.reachesOutside(c, t) && !surplusToolchainNamed(pass, t)
+			!s.reachesOutside(c, t) && !t.namedByToolchain(pass.Pkg)
 	}
 
 	inheriting := make(map[types.Object][]*target)
@@ -682,12 +672,6 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 		}
 	}
 	return out
-}
-
-// surplusToolchainNamed reports whether the toolchain finds the declaration by
-// name, so that no directive on it says anything: main in package main.
-func surplusToolchainNamed(pass *analysis.Pass, t *target) bool {
-	return t.kind == kindFunc && t.obj.Name() == "main" && pass.Pkg.Name() == "main"
 }
 
 // surplusDeclarationMessage names the level that supplied the scope, as the

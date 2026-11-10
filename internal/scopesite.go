@@ -523,7 +523,7 @@ func (r *scopesiteRemovals) crosses(t *target) bool {
 	if r.c.mayCrossUnseen(r.pass, t) {
 		return true
 	}
-	return slices.ContainsFunc(r.c.refs[t.obj], func(use ref) bool { return use.file.key() != t.file.key() })
+	return len(r.c.crossings(t)) > 0
 }
 
 // scopesiteRemoval deletes the directive comment at pos: its whole line when it
@@ -534,7 +534,7 @@ func (r *scopesiteRemovals) crosses(t *target) bool {
 // standing between blank lines, as a file-level one often does, takes one of
 // them along, so that no double blank line is left.
 //
-// The file is read through insertionSource, once per pass however many
+// The file is read through fileSource, once per pass however many
 // directives it holds.
 //
 // It fails safe: an unreadable file is held as nil and yields no fix. The
@@ -548,7 +548,7 @@ func (c *collection) scopesiteRemoval(pass *analysis.Pass, pos token.Pos) (analy
 	if tf == nil {
 		return analysis.TextEdit{}, false
 	}
-	content := c.insertionSource(pass, tf.Name())
+	content := c.fileSource(pass, tf.Name())
 	off := tf.Offset(pos)
 	if off >= len(content) {
 		return analysis.TextEdit{}, false

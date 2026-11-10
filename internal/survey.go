@@ -67,10 +67,8 @@ func (c *collection) surveyed(pass *analysis.Pass, opts Options) measure.Package
 // the rule is switched off.
 func edgesForSurvey(c *collection, t *target, crossed measure.FindingState) []measure.Edge {
 	uses := map[string]int{}
-	for _, r := range c.refs[t.obj] {
-		if r.file.key() != t.file.key() {
-			uses[r.file.spelledNamespace()]++
-		}
+	for _, r := range c.crossings(t) {
+		uses[r.file.spelledNamespace()]++
 	}
 	if len(uses) == 0 {
 		return nil

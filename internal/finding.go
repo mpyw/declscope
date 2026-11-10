@@ -120,12 +120,7 @@ func (c *collection) findingsOf(pass *analysis.Pass, opts Options, t *target) []
 // boundaryFinding reports a declaration that is private to its namespace but is
 // referenced from outside it.
 func (c *collection) boundaryFinding(pass *analysis.Pass, opts Options, t *target) (finding, bool) {
-	var offenders []ref
-	for _, r := range c.refs[t.obj] {
-		if r.file.key() != t.file.key() {
-			offenders = append(offenders, r)
-		}
-	}
+	offenders := c.crossings(t)
 	if len(offenders) == 0 {
 		return finding{}, false
 	}
@@ -275,7 +270,8 @@ func (c *collection) qualifyFinding(pass *analysis.Pass, opts Options, t *target
 // later in the name, but the fix could not be, so the rule stays out rather
 // than report what it cannot remedy.
 //
-// main is a name the toolchain requires, so nothing can be asked of it.
+// The toolchain finds some declarations by name, main and a test among them
+// (namedByToolchain), so nothing can be asked of those.
 //
 //declscope:shared // the survey divides by it, and must divide by this one
 func (c *collection) qualifyFindingApplies(pass *analysis.Pass, opts Options, t *target) bool {
@@ -285,7 +281,7 @@ func (c *collection) qualifyFindingApplies(pass *analysis.Pass, opts Options, t 
 	if !namespace.CanPrefix(t.file.ns) {
 		return false
 	}
-	return t.kind != kindFunc || t.obj.Name() != "main" || pass.Pkg.Name() != "main"
+	return !t.namedByToolchain(pass.Pkg)
 }
 
 // namespaceInFinding names a file's namespace, or the file itself when its stem
@@ -323,7 +319,7 @@ func fileInFinding(f *fileInfo) string {
 // reader at a namespace that does not hold it, so the rule reaches it and asks
 // for the namespace it is actually written in.
 func (t *target) qualifyFindingReaches(opts Options) bool {
-	if t.file.core || t.findingSparesToolchainName() {
+	if t.file.core {
 		return false
 	}
 	switch {
@@ -335,23 +331,4 @@ func (t *target) qualifyFindingReaches(opts Options) bool {
 		}
 	}
 	return !isExported(t.obj.Name()) || opts.NameExported
-}
-
-// findingSparesToolchainName reports whether the toolchain finds this declaration by its
-// name, so that no rename can be asked of it. `go test` collects a test by
-// name, and renaming TestLoad to userTestLoad leaves a function nothing runs.
-//
-// The match is looser than the toolchain's own, which also reads the signature
-// and requires that TestXxx's Xxx not begin with a lowercase letter. Erring
-// toward exempting is the safe direction here: exempting one name too many
-// costs a rename nobody asked for, and exempting one too few is advice that
-// breaks the build.
-func (t *target) findingSparesToolchainName() bool {
-	if t.kind != kindFunc || !strings.HasSuffix(t.file.path, "_test.go") {
-		return false
-	}
-	name := t.obj.Name()
-	return slices.ContainsFunc([]string{"Test", "Benchmark", "Fuzz", "Example"}, func(prefix string) bool {
-		return strings.HasPrefix(name, prefix)
-	})
 }
