@@ -25,19 +25,19 @@ the binary.
 | `naming_rules.fsl` | No rename is ever applied to an exported declaration | As above |
 | `naming_rules.fsl` | Each naming key bites, and each silence is witnessed with every other reason for silence pinned | As above |
 | `naming_rules.fsl` | The core namespace is outside the rule, whatever is configured | As above |
-| `boundary_off.fsl` | `rules.boundary: off` silences `boundary` and nothing else. `qualify` and `surplus` still fire with it on, and `rules.surplus: off` still gates only `surplus` | Every combination of the two switches, the resolved scope, the reference shape, the naming mode and its inputs, and the two surplus inputs |
+| `boundary_off.fsl` | `rules.boundary: off` silences `boundary` and nothing else. `qualify` and `surplus` still fire with it on, and `rules.surplus: off` still gates only `surplus` | Every combination of the two switches, the resolved scope, where the declaration is referenced from (nowhere, its own namespace, another namespace), the naming mode and its inputs, and the two surplus inputs |
 | `boundary_off.fsl` | Each of the three rules keeps its own guards, witnessed by the report each one records rather than by a restatement of its definition | As above |
 | `filter.fsl` | `filter.only` narrows and `filter.omit` subtracts. Either list admits or rejects on any one of its patterns, an empty `only` places no restriction, and `omit` still bites inside `only` | Every combination of which of three patterns each list holds and which of them the file matches |
-| `filter.fsl` | The order of the two lists is not observable: narrowing then subtracting and subtracting then narrowing name the same set | As above |
+| `filter.fsl` | The order of the two lists is not observable: narrowing then subtracting, as the code does, and subtracting then narrowing, run as a second pipeline stage by stage, decide every file alike | As above |
 | `config_inherit.fsl` | A config file states some keys and leaves the rest alone: the nearest file that states a key wins, and a key no nearer file states still comes from the root | Every combination of what three levels state about one value key, and of what two levels state about two vocabulary namespaces |
 | `config_inherit.fsl` | `vocabulary` merges per namespace rather than the nearer map replacing the other, and neither namespace can take the other's value | As above |
 | `filter_chain.fsl` | `only` intersects and `omit` unions down the chain, so **a config file can only ever shrink what is read** and an `omit` at the root holds everywhere below it | Every combination of which lists two levels state and which of two files matches each of the four |
 | `filter_chain.fsl` | The filter report fires exactly when the nearest `only` is cancelled by one above it, and stays quiet where a package reads nothing on purpose. A file the nearest config's own `omit` removes does not count, so the report never blames an `only` above for what an `omit` did | As above |
-| `boundary_fix.fsl` | Inserting `//declscope:shared` always removes the boundary crossing, and is withheld wherever any level already stated a scope | Every combination of `defaults.unexported`, kind, exportedness, reference shape, and the declaration, block, type and file directives |
+| `boundary_fix.fsl` | Inserting `//declscope:shared` always removes the boundary crossing, and is withheld wherever any level already stated a scope | Every combination of `defaults.unexported`, kind (package-level, member, method with a receiver), exportedness, where the declaration is referenced from (nowhere, its own namespace, another namespace), and the declaration, block, type and file directives |
 | `boundary_fix.fsl` | The fix is offered only where a crossing exists, and never overwrites the declaration's own directive | As above |
-| `fix_members.fsl` | Two directive insertions in one run never converge: no directive `-fix` writes binds nothing, and whichever of the two it writes settles the crossing | Every combination of `defaults.unexported`, the exportedness and reference shape of a type and one of its members, and the declaration, type and file directives |
-| `fix_members.fsl` | The narrower fix is subsumed, not disabled: a member whose type does not cross still carries its own directive | As above |
-| `knobs.fsl` | `defaults.unexported` and every directive level demonstrably change an outcome, for each kind of declaration | As above |
+| `fix_members.fsl` | Two directive insertions in one run never converge: no directive `-fix` writes binds nothing, and whichever of the two it writes settles the crossing | Every combination of `defaults.unexported`, the exportedness of a type and one of its members, where each is referenced from (nowhere, its own namespace, another namespace), whether the baseline absorbs the type's boundary finding, and the declaration, type and file directives. The block level is left out: it is a stated scope like the type's, and withholds both fixes alike |
+| `fix_members.fsl` | The narrower fix is subsumed, not disabled: a member whose type does not cross, or whose type's finding the baseline absorbs so that no fix is written on the type, still carries its own directive | As above |
+| `knobs.fsl` | `defaults.unexported` and every directive level demonstrably change an outcome, for each kind of declaration the level reaches | Every combination of `defaults.unexported`, kind (package-level, member, method with a receiver), exportedness, where the declaration is referenced from (nowhere, its own namespace, another namespace), and the declaration, block, type and file directives |
 | `knobs.fsl` | The containing type's directive reaches its members and nothing else, witnessed by a package-level declaration and a method with a receiver that still fire | As above |
 | `knobs.fsl` | An exported declaration carries no boundary by default, for every kind | As above |
 | `knobs.fsl` | A directive narrows an exported declaration anyway, including a type's directive reaching an exported member | As above |
@@ -48,7 +48,7 @@ the binary.
 | `unused_modes.fsl` | The fix that deletes the directive leaves the declaration's scope where it was, and leaves the nearer directive judged against the scope it was judged against. It is offered only under `strict`, and never where it would change another report. A crossing under `//declscope:shared` or with `boundary: off`, and a `//declscope:private` that `surplus` depends on, change no report and do not withhold it | As above |
 | `unused_ignore.fsl` | No ignore answers the report that it is itself unused, whatever it names, `unused` and bare included. An ignore answers another's report and is then used: on a declaration only when it names `unused`, at the file level also when bare. `off` reports nothing | Every combination of `rules.unused`, the level, and what two ignores at that level name and silence |
 | `unused_ignore_unseen.fsl` | Over a run that reads a constrained file and one that leaves it out (#168, #172), one ignore on a declaration passes both wherever either needs it, and an ignore neither needs is reported by one of them. The run that leaves the file out keeps only a `boundary` ignore whose declaration that file names, or, for a field, a type name that file writes and an unkeyed literal fills the field through (its struct, an alias, a defined type, a named pointer, or a constraint), since such a literal crosses into the field by position. The run that reads it keeps nothing it does not silence, and an ignore of a rule judged on the declaration is judged alike in both | Every combination of the rule the ignore names, a crossing every run sees, a crossing only the constrained file makes by name or by position, whether that file names the declaration or a field's type, and whether the other rule's finding fires |
-| `knobs.fsl` | A boundary is reported only for a private scope and only across a namespace, and on an exported declaration only where a directive narrowed it — each guard witnessed by an invariant its removal breaks | As above |
+| `knobs.fsl` | A boundary is reported only for a private scope and only across a namespace, and on an exported declaration only where a directive narrowed it — each guard witnessed by an invariant its removal breaks | Every combination of `defaults.unexported`, kind (package-level, member, method with a receiver), exportedness, where the declaration is referenced from (nowhere, its own namespace, another namespace), and the declaration, block, type and file directives |
 | `naming_rules.fsl` | A fix is eventually applied wherever one is offered, which is what the `fair` on the fix actions claims | As above, plus whether a rename is offered at all |
 | `rename_guarded.fsl` | The guard `safeToRename` applies — every scope Go resolves through — makes the rename sound, and dropping any one of the four checks breaks it | Every binding environment at the reference site |
 | `rename_reach.fsl` | Nothing the fix leaves unedited still writes the old name, and the new name is never left declared twice — over every reason a file of the package can sit outside what the fix edits | Generated and `exclude`d files, unseen in-package tests, and build-excluded files, against both names |
@@ -133,7 +133,7 @@ fslc check  naming_rules.fsl
 fslc verify naming_rules.fsl      --depth 5
 fslc verify boundary_off.fsl     --depth 2
 fslc verify config_inherit.fsl   --depth 2
-fslc verify filter.fsl           --depth 2
+fslc verify filter.fsl           --depth 4
 fslc verify filter_chain.fsl     --depth 2
 fslc verify boundary_fix.fsl     --depth 4
 fslc verify fix_members.fsl      --depth 4
@@ -157,6 +157,8 @@ fslc verify rename_siblings.fsl  --depth 3   # expected: violated
 `knobs.fsl`, `unused_bind.fsl`, `surplus.fsl` and `unused_ignore.fsl` configure once and then
 have only the actions that record a report, so their reachables are witnessed at
 step 1 or 2; the others add a fix action and witness at step 2.
+`filter.fsl` decides in one step and then runs the other order in two, so it
+witnesses by step 4.
 `surplus_strict.fsl` configures in three steps, so that no one action carries the
 product of every parameter, reports and fixes, so it witnesses by step 5. `unused_modes.fsl`
 configures in four steps for the same reason, judges, and fixes, so it witnesses
@@ -194,6 +196,9 @@ is a semantics that contradicts the documented one; each was run:
 | A `var`/`const`/`type` block's directive reaches every kind | `reachable_failed` |
 | The block level is dropped | `reachable_failed` |
 | The file level outranks the declaration's own directive | `reachable_failed` |
+| The file level reaches package-level declarations only, not members or methods | `reachable_failed` (`FileDirBitesOnMember`; in `boundary_fix.fsl`, `FixWithheldUnderFileDirectiveOnMember`) |
+| A method ignores `defaults.unexported` and is always private | `reachable_failed` (`ConfigSilencesMethod`; in `boundary_fix.fsl`, `SharedDefaultLeavesNothingToFixOnMethod`) |
+| A method's own directive is ignored | `reachable_failed` (`DeclDirBitesOnMethod`) |
 | Exportedness is an exemption rather than a default, so a directive cannot narrow an exported declaration | `reachable_failed` |
 | A boundary is reported without a cross-namespace reference | `violated` |
 | A boundary is reported for a scope that is not private | `violated` |
@@ -219,6 +224,8 @@ is a semantics that contradicts the documented one; each was run:
 | An unseen in-package test file does not withhold the rename | `violated` |
 | Both directive insertions fire, so a member is fixed under a type fixed in the same run | `violated` (`InsertedMemberDirectiveBinds`) |
 | The narrower insertion wins, so the type's fix is dropped instead of the member's | `reachable_failed` (`OnlyTheWiderFixIsWritten`) |
+| The member's fix is dropped wherever the type crosses, even when the baseline absorbs the type's finding and no fix is written on it | `reachable_failed` (`MemberFixedWhereTypeIsBaselined`) |
+| The type's fix is written although the baseline absorbs its finding | `violated` (`TypeFixRecordsItsGuard`) |
 | `surplus` ignores one reach path: a spelled use, an interface satisfaction, an exported carrier, a struct conversion, an unkeyed literal through a guessed type set, a linkname, or exportedness (seven controls, one path each) | `violated` (`NeverReportsReachable`) |
 | `strict` reports without checking reach | `violated` (`NeverReportsReachable`) |
 | `strict` ignores one reach path: `Spelled`, `Satisfied`, `Carried`, `Converted`, `Guessed` or `Linknamed` (six controls, one path each) | `violated` (`NeverReportsReachable`) |
@@ -275,6 +282,7 @@ is a semantics that contradicts the documented one; each was run:
 | An empty `filter.only` matches nothing rather than placing no restriction | `reachable_failed` (`NoListsAdmitsAFileMatchingNothing`) |
 | `filter.omit` is ignored once `filter.only` is set | `violated` (`DecisionMatchesTheRule`) |
 | `filter.only` is ignored once `filter.omit` is set | `violated` (`DecisionMatchesTheRule`) |
+| Run after `filter.omit`, `filter.only` admits every file it matches rather than narrowing what `omit` left | `violated` (`OrderDoesNotMatter`) |
 | The nearest config file wins outright, rather than the nearest one that states the key | `violated` (`MidWinsWhenNearIsSilent`) |
 | `vocabulary` is replaced by the nearer map rather than merged | `violated` (`UnstatedNearInheritsItsKey`) |
 | `omit` is replaced down the chain rather than unioned | `violated` (`MonotoneDown`) |

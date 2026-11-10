@@ -10,6 +10,14 @@
 //
 // The guard is that the wider insertion subsumes the narrower one: the member's
 // fix is dropped whenever the type is about to carry a directive of its own.
+// "About to" is narrower than "crosses and states no scope": the type's fix is
+// written only if its finding is reported, and internal/report.go marks the
+// type widened only after the ignores and the baseline let the finding through
+// (widensReport, then subsumedByReport). A type whose finding the baseline
+// absorbs carries no fix, so its member is fixed on its own. An ignore needs no
+// input of its own: the type's ignores contain its members the way its scope
+// directive does (silencedByIgnore), so one that silences the type's boundary
+// finding silences the member's as well, and neither carries a fix.
 // The member's diagnostic is not — the crossing is real until the type's
 // directive lands — which is why nothing here says the member stops being
 // reported.
@@ -22,6 +30,12 @@
 //
 // ASSUME-1: one type and one of its members are enough — this convergence needs
 //   exactly a container and something it contains (modelling assumption)
+// ASSUME-2: scope resolution here is a reduced copy of knobs.fsl's, without the
+//   var/const/type block level (modelling assumption). In the code a type's
+//   block reaches its members through container.BeneathScope() in
+//   bindAtScopeSite, the way typeDir does here; a block directive is a stated
+//   scope like typeDir, and withholds both fixes the same way, so it adds no
+//   case to the convergence this spec is about.
 spec FixMembers {
   enum Scope { Shared, Private }
   enum Dir   { NoDir, DirShared, DirPrivate }
@@ -33,6 +47,10 @@ spec FixMembers {
     // What the author wrote. A fix never assigns these.
     typeDir: Dir = NoDir, memberDir: Dir = NoDir, fileDir: Dir = NoDir,
     typeRefs: Refs = NoRefs, memberRefs: Refs = NoRefs,
+    // The type's boundary finding matches a baseline entry, so it is not
+    // reported and carries no fix. The baseline keys each declaration
+    // separately, so it can absorb the type's finding and leave the member's.
+    typeBaselined: Bool = false,
     // What this run inserted.
     typeFixed: Bool = false, memberFixed: Bool = false,
     // A pass that reported and did not fix — -fix off, or the fix withheld. It
@@ -41,12 +59,13 @@ spec FixMembers {
     stalled: Bool = false
   }
   action configure(u: Scope, tx: Bool, mx: Bool,
-                   td: Dir, md: Dir, fd: Dir, tr: Refs, mr: Refs) {
+                   td: Dir, md: Dir, fd: Dir, tr: Refs, mr: Refs, tb: Bool) {
     requires not configured
     configured = true  cfgUnexported = u
     typeExported = tx  memberExported = mx
     typeDir = td  memberDir = md  fileDir = fd
     typeRefs = tr  memberRefs = mr
+    typeBaselined = tb
   }
 
   // Exportedness decides the default and nothing else, as everywhere else.
@@ -77,6 +96,9 @@ spec FixMembers {
   // them, which is boundary_fix.fsl's subject and is restated here only so
   // that the two fixes are guarded the way the implementation guards them.
   def typeStated()   = if typeDir != NoDir then typeDir else fileDir
+  // The type carries the insertion: it crosses, nothing stated its scope, and
+  // its finding survived the baseline to be reported with its fix.
+  def typeWidens() = typeCrosses() and typeStated() == NoDir and not typeBaselined
   def memberStated() =
     if memberDir != NoDir then memberDir
     else if typeDir != NoDir then typeDir
@@ -87,6 +109,7 @@ spec FixMembers {
   fair action fixType() {
     requires configured  requires not typeFixed
     requires typeCrosses()  requires typeStated() == NoDir
+    requires not typeBaselined
     typeFixed = true
   }
 
@@ -95,7 +118,7 @@ spec FixMembers {
     requires memberCrosses()  requires memberStated() == NoDir
     // The guard this spec exists for. Deleting this line is the defect: both
     // fixes then fire, and the member is left carrying an inert directive.
-    requires not (typeCrosses() and typeStated() == NoDir)
+    requires not typeWidens()
     memberFixed = true
   }
 
@@ -144,12 +167,12 @@ spec FixMembers {
   // consider a run that inserted a directive where nothing crossed, and the
   // claims below are not true of one.
   invariant TypeFixRecordsItsGuard {
-    typeFixed => typeCrosses() and typeStated() == NoDir
+    typeFixed => typeCrosses() and typeStated() == NoDir and not typeBaselined
   }
   invariant MemberFixRecordsItsGuard {
     memberFixed =>
       memberCrosses() and memberStated() == NoDir
-      and not (typeCrosses() and typeStated() == NoDir)
+      and not typeWidens()
   }
 
   // The claim: no directive this run inserted binds nothing. Expanded rather
@@ -202,6 +225,14 @@ spec FixMembers {
     memberFixed and not typeFixed and not typeCrosses()
     and memberRefs == CrossNs and not memberCrossesAfter()
   }
+  // Nor is it disabled where the type crosses but the baseline absorbs the
+  // type's finding: no fix is written on the type, so the member carries its
+  // own, and it binds and settles the member's crossing.
+  reachable MemberFixedWhereTypeIsBaselined {
+    memberFixed and not typeFixed and typeBaselined
+    and typeCrosses() and typeStated() == NoDir
+    and not memberCrossesAfter()
+  }
   // A member whose type states its own scope is withheld already, by the rule
   // boundary_fix.fsl proves. Pinned here so that the subsumption guard is not
   // the only thing keeping the member quiet.
@@ -225,7 +256,8 @@ spec FixMembers {
     decreases if memberCrossesAfter() then 1 else 0
   }
   leadsTo TypeEventuallySettled {
-    configured and typeCrosses() and typeStated() == NoDir ~> not typeCrossesAfter()
+    configured and typeCrosses() and typeStated() == NoDir and not typeBaselined
+      ~> not typeCrossesAfter()
     helpful fixType()
     decreases if typeCrossesAfter() then 1 else 0
   }

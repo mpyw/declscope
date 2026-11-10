@@ -358,7 +358,7 @@ A **directive** is a line comment `//declscope:name`, with a lowercase name, no 
 
 | Directive | Level | Effect |
 | --- | --- | --- |
-| `//declscope:shared`, `//declscope:private` | Declaration or file | States the [scope](#scope-resolution). On a type it also reaches the type's [fields](#members), but not its methods |
+| `//declscope:shared`, `//declscope:private` | Declaration or file | States the [scope](#scope-resolution). On a type it also reaches the type's [members](#members), its fields and its interface method names, but not its methods |
 | `//declscope:ignore` | Declaration or file | Silences every rule the analyzer reports. [`overexported`](#silencing-it) must be named |
 | `//declscope:ignore <rules>` | Declaration or file | Silences the named [rules](#rules), comma-separated. Naming [`filter`](#the-filter-rule) silences nothing |
 | `//declscope:core` | File | Joins the file to the [core namespace](#the-core-namespace) |

@@ -1,4 +1,5 @@
-// rules.boundary: off switches the boundary rule off and touches nothing else.
+// rules.boundary: off switches the boundary rule off and touches no other
+// rule's report.
 //
 // The key exists for a repository that wants the ownership mark in a name
 // without the scope behind it. What makes it acceptable is the "nothing else":
@@ -10,6 +11,15 @@
 // directives that no longer do a job, and the README says to set both. That is
 // advice to a reader, not a coupling in the code. SurplusFiresWhileBoundaryOff
 // below is what fails if someone makes it one.
+//
+// It does change one fix that another rule offers. The strict `unused` fix
+// that deletes a redundant directive is withheld while a declaration the
+// directive reaches would cross a boundary without it (scopesiteRemovals.decide
+// in internal/scopesite.go). With boundary off no crossing is reported, so
+// nothing is there to withhold the deletion, and the fix is offered. That is
+// the fix following the reports it could change, not a report being silenced.
+// unused_modes.fsl models the withholding, taking the crossing as its input
+// aCrosses, which is false under boundary off. This spec models reports only.
 //
 // Scope resolution is knobs.fsl's subject and is not repeated here: this spec
 // takes the resolved scope as an input, because rules.boundary is a gate on the
@@ -54,7 +64,7 @@ spec BoundaryOff {
     else if qualify == OnDemand then twoNamespaces
     else false
 
-  // --- the three gates, as internal/report.go and internal/surplus.go have
+  // --- the three gates, as internal/finding.go and internal/surplus.go have
   // them. boundaryOff appears in exactly one of them. ------------------------
   action reportBoundary() {
     requires configured

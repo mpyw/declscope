@@ -44,9 +44,10 @@ spec BoundaryFix {
   // boundary reports on API that every importer reaches.
   def defaultScope() = if exported then Shared else cfgUnexported
   // What contains a member: its type, and through the type the var/const/type
-  // block the type is declared in — addGenDecl merges the block into the spec's
-  // own directive and passes that as the member's container, so a block reaches
-  // a member even though it never reaches a method with a receiver.
+  // block the type is declared in — addGenDeclToCollection merges the block
+  // into the spec's own directive and passes that as the member's container, so
+  // a block reaches a member even though it never reaches a method with a
+  // receiver.
   def contained() =
     if kind == Member then (if typeDir != NoDir then typeDir else blockDir)
     else NoDir
@@ -103,6 +104,22 @@ spec BoundaryFix {
     configured and kind == Pkg and fileDir == DirPrivate
     and declDir == NoDir and boundaryFires() and not fixed
   }
+  // The file's directive reaches every kind. Each of these pins every nearer
+  // level and a shared default, so only the file can make it cross: a
+  // semantics that let the file reach package-level declarations alone would
+  // leave a member and a method with nothing to withhold.
+  reachable FixWithheldUnderFileDirectiveOnMember {
+    configured and kind == Member and fileDir == DirPrivate
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
+    and cfgUnexported == Shared and not exported
+    and boundaryFires() and not fixed
+  }
+  reachable FixWithheldUnderFileDirectiveOnMethod {
+    configured and kind == Method and fileDir == DirPrivate
+    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
+    and cfgUnexported == Shared and not exported
+    and boundaryFires() and not fixed
+  }
   // The exportedness dimension has to do work here too: without these the
   // default could ignore exportedness and this spec would not notice.
   // An exported declaration narrowed by its own directive does cross, and the
@@ -123,8 +140,18 @@ spec BoundaryFix {
   }
   // defaults.unexported must reach this spec too, not only knobs: under a
   // shared default there is no crossing to fix in the first place.
+  // One per kind: a semantics in which one kind ignored defaults.unexported
+  // would still satisfy a witness that left the kind free.
   reachable SharedDefaultLeavesNothingToFix {
-    configured and cfgUnexported == Shared and stated() == NoDir
+    configured and kind == Pkg and cfgUnexported == Shared and stated() == NoDir
+    and not exported and refs == CrossNs and not boundaryFires()
+  }
+  reachable SharedDefaultLeavesNothingToFixOnMember {
+    configured and kind == Member and cfgUnexported == Shared and stated() == NoDir
+    and not exported and refs == CrossNs and not boundaryFires()
+  }
+  reachable SharedDefaultLeavesNothingToFixOnMethod {
+    configured and kind == Method and cfgUnexported == Shared and stated() == NoDir
     and not exported and refs == CrossNs and not boundaryFires()
   }
 
