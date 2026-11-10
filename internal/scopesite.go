@@ -38,7 +38,7 @@ type scopesiteBook struct {
 // in a tree when one line of YAML changes, or when a config file appears two
 // directories up, and reports a directive recording a deliberate private.
 // rules.unused: strict is the default that makes that comparison
-// (redundantAtScopeSite) and accepts the trade.
+// (judgeAtScopeSite) and accepts the trade.
 //
 // Quantified, the answer cannot depend on configuration at all:
 //
@@ -79,7 +79,7 @@ type scopeSite struct {
 	// reached and needed are the strict judgment, made over everything in the
 	// directive's reach, shadowed or not. reached records that anything was
 	// judged; needed that something would take another scope without the
-	// directive, under the configuration in force. See redundantAtScopeSite.
+	// directive, under the configuration in force. See judgeAtScopeSite.
 	reached bool
 	needed  bool
 
@@ -107,12 +107,12 @@ func (c *collection) scopeSite(d directive.Decl) *scopeSite {
 	return s
 }
 
-// shadowedAtScopeSite records that a nearer directive supplied the scope of something outer
+// markScopeSiteShadowed records that a nearer directive supplied the scope of something outer
 // reaches. Called where the two are merged, since after the merge only the
 // winner's position survives.
 //
 //declscope:shared // the collector merges directives, so it reports these
-func (c *collection) shadowedAtScopeSite(outer, merged directive.Decl) {
+func (c *collection) markScopeSiteShadowed(outer, merged directive.Decl) {
 	if outer.HasScope && merged.HasScope && merged.ScopePos != outer.ScopePos {
 		c.scopeSite(outer).shadowed = true
 	}
@@ -134,7 +134,7 @@ func (c *collection) bindAtScopeSite(opts Options, name string, dir, container, 
 	// spec. Resolution is unaffected: a hidden directive is never the first.
 	chain := []directive.Decl{dir, dir.BeneathScope(), container, container.BeneathScope(), file}
 	levels := []boundLevel{boundAtDecl, boundAtDecl, boundAtContainer, boundAtContainer, boundAtFile}
-	c.redundantAtScopeSite(opts, name, chain)
+	c.judgeAtScopeSite(opts, name, chain)
 	for i, d := range chain {
 		if !d.HasScope {
 			continue
@@ -184,7 +184,7 @@ func isInertScopeSite(opts Options, name string, stated scope.Scope, rest []dire
 	return fixed && stated == outer
 }
 
-// redundantAtScopeSite makes the strict judgment for one declaration: each
+// judgeAtScopeSite makes the strict judgment for one declaration: each
 // directive in its chain, the one that decided and every one it shadows, is
 // asked whether it names the scope the declaration would take without it,
 // under the configuration in force. The resolution is bindAtScopeSite's: the
@@ -201,7 +201,7 @@ func isInertScopeSite(opts Options, name string, stated scope.Scope, rest []dire
 // directive. The nearer directive that shadows it is judged against this one's
 // scope today and against those levels once this one is deleted, so the two
 // must agree for the deletion to leave that judgment where it was.
-func (c *collection) redundantAtScopeSite(opts Options, name string, chain []directive.Decl) {
+func (c *collection) judgeAtScopeSite(opts Options, name string, chain []directive.Decl) {
 	var first *directive.Decl
 	for i, d := range chain {
 		if !d.HasScope {
@@ -251,7 +251,7 @@ func (s *scopeSite) redundant() bool { return s.reached && !s.needed }
 // file.
 //
 // Under rules.unused: strict it also reports a directive that is redundant
-// today (redundantAtScopeSite), and offers to delete it. Under off it reports
+// today (judgeAtScopeSite), and offers to delete it. Under off it reports
 // nothing, and so offers nothing. widened names the types a boundary fix in
 // this run widens; nil when no fix is made.
 //
@@ -411,7 +411,7 @@ func (c *collection) unboundAtScopeSite(opts Options, typ *target) bool {
 // the directive, once per run, and builds it.
 //
 // Deleting a redundant directive leaves every declaration's scope where it was
-// (redundantAtScopeSite), and deleting several in one run does too: each names
+// (judgeAtScopeSite), and deleting several in one run does too: each names
 // the scope the levels beyond it give, and those levels keep giving it. What
 // can still move is another report, and the fix is withheld wherever one
 // would, since -fix must not produce a diagnostic the run did not start with:
@@ -523,7 +523,7 @@ func (r *scopesiteRemovals) crosses(t *target) bool {
 	if r.c.mayCrossUnseen(r.pass, t) {
 		return true
 	}
-	return slices.ContainsFunc(r.c.refs[t.obj], func(use ref) bool { return use.file.key() != t.file.key() })
+	return len(r.c.crossings(t)) > 0
 }
 
 // scopesiteRemoval deletes the directive comment at pos: its whole line when it
@@ -534,7 +534,7 @@ func (r *scopesiteRemovals) crosses(t *target) bool {
 // standing between blank lines, as a file-level one often does, takes one of
 // them along, so that no double blank line is left.
 //
-// The file is read through insertionSource, once per pass however many
+// The file is read through fileSource, once per pass however many
 // directives it holds.
 //
 // It fails safe: an unreadable file is held as nil and yields no fix. The
@@ -548,7 +548,7 @@ func (c *collection) scopesiteRemoval(pass *analysis.Pass, pos token.Pos) (analy
 	if tf == nil {
 		return analysis.TextEdit{}, false
 	}
-	content := c.insertionSource(pass, tf.Name())
+	content := c.fileSource(pass, tf.Name())
 	off := tf.Offset(pos)
 	if off >= len(content) {
 		return analysis.TextEdit{}, false
@@ -568,8 +568,8 @@ func (c *collection) scopesiteRemoval(pass *analysis.Pass, pos token.Pos) (analy
 		return analysis.TextEdit{Pos: tf.Pos(lineStart + len(lead)), End: tf.Pos(end)}, true
 	}
 	start, end := lineStart, min(lineEnd+1, len(content))
-	prevStart, prev := scopesiteLine(content, lineStart, -1)
-	_, next := scopesiteLine(content, end, +1)
+	prevStart, prev := lineBesideScopeSite(content, lineStart, -1)
+	_, next := lineBesideScopeSite(content, end, +1)
 	switch {
 	case prev == "//" && !strings.HasPrefix(next, "//"):
 		start = prevStart
@@ -582,10 +582,10 @@ func (c *collection) scopesiteRemoval(pass *analysis.Pass, pos token.Pos) (analy
 	return analysis.TextEdit{Pos: tf.Pos(start), End: tf.Pos(end)}, true
 }
 
-// scopesiteLine returns the line before the one starting at off (dir -1), or
+// lineBesideScopeSite returns the line before the one starting at off (dir -1), or
 // the one starting at off (dir +1), trimmed of spaces, with the offset it
 // starts at. At either edge of the file it returns "".
-func scopesiteLine(content []byte, off, dir int) (int, string) {
+func lineBesideScopeSite(content []byte, off, dir int) (int, string) {
 	if dir < 0 {
 		if off == 0 {
 			return 0, ""

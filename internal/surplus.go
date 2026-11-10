@@ -149,8 +149,9 @@ func (c *collection) surplusJudged(pass *analysis.Pass) *surplusState {
 }
 
 // reachesOutside reports whether t is reached from another namespace by any
-// path the rule counts, exportedness aside: another namespace spells it,
-// something reaches it without spelling it, or a directive names it as text.
+// path the rule counts, exportedness aside: another namespace spells it
+// (crossings, the boundary rule's own evidence), something reaches it without
+// spelling it, or a directive names it as text.
 // It is never asked of a blind state: a pass that does not read every file
 // cannot rule anything out, and every caller returns before asking.
 func (s *surplusState) reachesOutside(c *collection, t *target) bool {
@@ -158,7 +159,7 @@ func (s *surplusState) reachesOutside(c *collection, t *target) bool {
 		s.gathered = true
 		s.reached = c.surplusReached(s.pass)
 	}
-	return s.reached[t.obj] || c.linknamed(s.pass)[t.obj.Name()] || c.surplusSeesUseOutside(t)
+	return s.reached[t.obj] || c.linknamed(s.pass)[t.obj.Name()] || len(c.crossings(t)) > 0
 }
 
 // computeSurplus judges every //declscope:shared directive in the package.
@@ -228,14 +229,11 @@ func surplusMessage(rep *target, group []*target) string {
 //     read as a reference site.
 //   - cgo and assembly reach declarations from sources the analysis never
 //     parses at all. A non-Go file, in this build or another, is assembly or
-//     C (nonGoBlocksRename).
+//     C (unseenFiles.nonGo).
 //
 //declscope:shared // the survey reports whether the rule was asked at all
 func (c *collection) surplusSeesEveryFile(pass *analysis.Pass) bool {
-	if u := c.unseen(pass); u.all || len(u.names) > 0 {
-		return false
-	}
-	if c.nonGoBlocksRename(pass) {
+	if u := c.unseen(pass); u.all || len(u.names) > 0 || u.nonGo {
 		return false
 	}
 	for _, f := range pass.Files {
@@ -251,22 +249,14 @@ func (c *collection) surplusSeesEveryFile(pass *analysis.Pass) bool {
 	return true
 }
 
-// surplusSeesUseOutside reports whether another namespace spells the name — the
-// same evidence the boundary rule reads, from the same index, so whatever a
-// composite literal without keys or a selection on a generic type counts for
-// there counts here.
-func (c *collection) surplusSeesUseOutside(t *target) bool {
-	return slices.ContainsFunc(c.refs[t.obj], func(r ref) bool { return r.file.key() != t.file.key() })
-}
-
 // surplusReached collects every declaration reached by a path that spells no
 // name, so that the index of references cannot hold it.
 func (c *collection) surplusReached(pass *analysis.Pass) map[types.Object]bool {
 	reached := make(map[types.Object]bool)
-	interfaces, satisfiers := surplusTypes(pass)
-	surplusSatisfies(pass, reached, c.surplusTrackedMethodNames(), interfaces, satisfiers)
-	surplusCarried(pass, reached)
-	c.surplusConversions(pass, reached)
+	interfaces, satisfiers := contractTypesForSurplus(pass)
+	markContractMethodsForSurplus(pass, reached, c.surplusTrackedMethodNames(), interfaces, satisfiers)
+	markCarriedMethodsForSurplus(pass, reached)
+	c.markConvertedFieldsForSurplus(pass, reached)
 	// A field an unkeyed literal may write, through a type set that had to
 	// be guessed, is reached too.
 	for f := range c.unkeyedGuessed {
@@ -275,7 +265,7 @@ func (c *collection) surplusReached(pass *analysis.Pass) map[types.Object]bool {
 	return reached
 }
 
-// surplusTypes gathers the interfaces of the package and every type that
+// contractTypesForSurplus gathers the interfaces of the package and every type that
 // could satisfy one.
 //
 // Neither side may be read from the package scope alone. An anonymous
@@ -285,7 +275,7 @@ func (c *collection) surplusReached(pass *analysis.Pass) map[types.Object]bool {
 // included — the type of a call's result is mentioned by no type expression),
 // from every instantiation (TypesInfo.Instances) and from every defined type
 // name, where a type parameter contributes its constraint.
-func surplusTypes(pass *analysis.Pass) (interfaces []*types.Interface, satisfiers []types.Type) {
+func contractTypesForSurplus(pass *analysis.Pass) (interfaces []*types.Interface, satisfiers []types.Type) {
 	seen := make(map[types.Type]bool)
 	add := func(t types.Type) {
 		if t == nil || seen[t] {
@@ -318,7 +308,7 @@ func surplusTypes(pass *analysis.Pass) (interfaces []*types.Interface, satisfier
 
 // surplusTrackedMethodNames returns the name of every tracked method,
 // interface methods included. Only these can be read back from what
-// surplusSatisfies marks: it marks methods alone, found by the name of a
+// markContractMethodsForSurplus marks: it marks methods alone, found by the name of a
 // requirement, and reached is asked only of tracked objects. A function of
 // the same name is never marked, so its name would only let more pairs by.
 func (c *collection) surplusTrackedMethodNames() map[string]bool {
@@ -331,7 +321,7 @@ func (c *collection) surplusTrackedMethodNames() map[string]bool {
 	return names
 }
 
-// surplusSatisfies marks every method that participates in an interface
+// markContractMethodsForSurplus marks every method that participates in an interface
 // contract of the package: an interface value built from the type reaches the
 // method with the interface's name, not the method's, so the reference index
 // holds nothing.
@@ -366,7 +356,7 @@ func (c *collection) surplusTrackedMethodNames() map[string]bool {
 //     is tested only against the candidates holding its rarest name. Without
 //     the index every interface meets every type the package spells, which
 //     is most of the time a large package spends in this rule.
-func surplusSatisfies(pass *analysis.Pass, reached map[types.Object]bool, tracked map[string]bool, interfaces []*types.Interface, satisfiers []types.Type) {
+func markContractMethodsForSurplus(pass *analysis.Pass, reached map[types.Object]bool, tracked map[string]bool, interfaces []*types.Interface, satisfiers []types.Type) {
 	var asking []*types.Interface
 	for _, iface := range interfaces {
 		for want := range iface.Methods() {
@@ -438,7 +428,7 @@ func surplusSatisfies(pass *analysis.Pass, reached map[types.Object]bool, tracke
 	}
 }
 
-// surplusCarried marks every unexported method an exported type carries out
+// markCarriedMethodsForSurplus marks every unexported method an exported type carries out
 // of the package. An importer that embeds the type inherits the method — or,
 // for an interface, the requirement — and can complete an interface
 // satisfaction this analysis never sees, so such a method keeps its directive.
@@ -447,7 +437,7 @@ func surplusSatisfies(pass *analysis.Pass, reached map[types.Object]bool, tracke
 // in package scope. A method promoted into it from an unexported embedded type
 // travels with it, which is why the whole method set is read rather than the
 // declared methods.
-func surplusCarried(pass *analysis.Pass, reached map[types.Object]bool) {
+func markCarriedMethodsForSurplus(pass *analysis.Pass, reached map[types.Object]bool) {
 	pkgScope := pass.Pkg.Scope()
 	for _, name := range pkgScope.Names() {
 		if !isExported(name) {
@@ -469,14 +459,14 @@ func surplusCarried(pass *analysis.Pass, reached map[types.Object]bool) {
 	}
 }
 
-// surplusConversions marks the unexported fields a struct conversion writes.
+// markConvertedFieldsForSurplus marks the unexported fields a struct conversion writes.
 // snapshot(user) pairs every field of both types by name and spells none of
 // them, so a field reached only this way looks unused to the reference index.
 // Both sides are marked: the conversion reads one and writes the other, and
 // either type's fields may be the ones another namespace declared. An
 // instantiated generic struct holds the instantiated fields, which origin maps
 // back to the declared ones byObj is keyed by.
-func (c *collection) surplusConversions(pass *analysis.Pass, reached map[types.Object]bool) {
+func (c *collection) markConvertedFieldsForSurplus(pass *analysis.Pass, reached map[types.Object]bool) {
 	mark := func(t types.Type, fi *fileInfo) {
 		// (*snapshot)(&user) converts between pointers to the two struct
 		// types, and pairs their fields the same way. So does P(&user) with
@@ -601,7 +591,7 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 	}
 	wide := func(t *target) bool {
 		return surplusEnclosed(opts, t) && !s.fired[t.boundBy.ScopePos] &&
-			!s.reachesOutside(c, t) && !surplusToolchainNamed(pass, t)
+			!s.reachesOutside(c, t) && !t.namedByToolchain(pass.Pkg)
 	}
 
 	inheriting := make(map[types.Object][]*target)
@@ -682,12 +672,6 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 		}
 	}
 	return out
-}
-
-// surplusToolchainNamed reports whether the toolchain finds the declaration by
-// name, so that no directive on it says anything: main in package main.
-func surplusToolchainNamed(pass *analysis.Pass, t *target) bool {
-	return t.kind == kindFunc && t.obj.Name() == "main" && pass.Pkg.Name() == "main"
 }
 
 // surplusDeclarationMessage names the level that supplied the scope, as the

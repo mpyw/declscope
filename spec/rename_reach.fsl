@@ -77,7 +77,7 @@ spec RenameReach {
     // variant will ever see that file, so withholding wholesale would disable
     // the fix for every package carrying a _GOOS suffix
     and not (kind == BuildExcluded and (spellsOld or declaresNew))
-    // nonGoBlocksRename: a non-Go file withholds every rename. It is not read,
+    // unseenFiles.nonGo: a non-Go file withholds every rename. It is not read,
     // so the guard cannot ask what it writes. Reading .s files for ·name was
     // rejected: a spelling the scan misses is a broken link
     and kind != NonGo

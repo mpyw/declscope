@@ -13,7 +13,7 @@
 // "About to" is narrower than "crosses and states no scope": the type's fix is
 // written only if its finding is reported, and internal/report.go marks the
 // type widened only after the ignores and the baseline let the finding through
-// (widensReport, then subsumedByReport). A type whose finding the baseline
+// (finding.widens, then subsumedByReport). A type whose finding the baseline
 // absorbs carries no fix, so its member is fixed on its own. An ignore needs no
 // input of its own: the type's ignores contain its members the way its scope
 // directive does (silencedByIgnore), so one that silences the type's boundary

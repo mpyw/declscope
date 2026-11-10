@@ -182,6 +182,34 @@ func (t *target) foreignMethod() bool {
 	return t.ownerFile.core != t.file.core || t.ownerFile.ns != t.file.ns
 }
 
+// namedByToolchain reports whether the toolchain finds this declaration by its
+// name: main in package main, and a test, benchmark, fuzz target or example in
+// a _test.go file, which `go test` collects by name. No rename can be asked of
+// such a name, since renaming TestLoad to userTestLoad leaves a function
+// nothing runs. Nor does a scope directive on it say anything: the toolchain,
+// not another namespace, is what reaches it.
+//
+// The match for a test is looser than the toolchain's own, which also reads
+// the signature and requires that TestXxx's Xxx not begin with a lowercase
+// letter. Erring toward exempting is the safe direction here: exempting one
+// name too many costs a rename nobody asked for, and exempting one too few is
+// advice that breaks the build.
+func (t *target) namedByToolchain(pkg *types.Package) bool {
+	if t.kind != kindFunc {
+		return false
+	}
+	name := t.obj.Name()
+	if name == "main" && pkg.Name() == "main" {
+		return true
+	}
+	if !strings.HasSuffix(t.file.path, "_test.go") {
+		return false
+	}
+	return slices.ContainsFunc([]string{"Test", "Benchmark", "Fuzz", "Example"}, func(prefix string) bool {
+		return strings.HasPrefix(name, prefix)
+	})
+}
+
 // fileAt finds the file a position falls in. A directive problem is not
 // attached to any declaration — a stray comment belongs to nothing — so the
 // file is the only level that can answer for it.
@@ -198,6 +226,21 @@ func (c *collection) fileAt(pass *analysis.Pass, pos token.Pos) *fileInfo {
 		}
 	}
 	return nil
+}
+
+// crossings returns the uses of t from another namespace, in index order:
+// the crossings the boundary rule reports, the survey draws as edges, and
+// surplus and the directive removal count as a use. Reading them from one
+// place keeps the four from disagreeing about what crosses, a composite
+// literal without keys and a selection on a generic type included.
+func (c *collection) crossings(t *target) []ref {
+	var out []ref
+	for _, r := range c.refs[t.obj] {
+		if r.file.key() != t.file.key() {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // declaresSomething reports whether the file holds anything at all beyond its
@@ -284,7 +327,6 @@ type collection struct {
 	scopesiteBook
 	collectingBook
 	renameBook
-	insertBook
 	surplusBook
 
 	// namespaces is how many distinct namespaces the package's non-test files
@@ -313,6 +355,14 @@ type collection struct {
 	//
 	//declscope:private
 	linknamedScan map[string]bool
+
+	// sources holds each file a fix has read, by name. Every directive
+	// insertion on an indented declaration reads the file around it, a
+	// directive removal reads the line it deletes, and one file can hold
+	// hundreds of either. A file that could not be read is held as nil.
+	//
+	//declscope:private
+	sources map[string][]byte
 
 	// typeSets is the type set of every type parameter an unkeyed literal or
 	// a struct conversion goes through. The reference collection and the
@@ -414,13 +464,15 @@ type unseenFiles struct {
 	names map[string]bool
 
 	// nonGo is whether the package holds a source file that is not Go, in
-	// this build or in another (nonGoBlocksRename). It is read from the
-	// folder, since the drivers list such files differently: go/packages
-	// puts .h and .syso files in OtherFiles, and go vet passes only .s and
-	// .c files, and none in a cgo package. It is set before the scan, so it
-	// holds even when all is set.
+	// this build or in another. Assembly for another GOARCH is in
+	// IgnoredFiles, and names the package's symbols in the build that holds
+	// it. It is read from the folder, since the drivers list such files
+	// differently: go/packages puts .h and .syso files in OtherFiles, and go
+	// vet passes only .s and .c files, and none in a cgo package. It is set
+	// before the scan, so it holds even when all is set. declscope shrink
+	// makes the same test before judging a package.
 	//
-	//declscope:shared // rename.go reads it through nonGoBlocksRename
+	//declscope:shared // rename.go withholds every rename on it, and surplus.go stands down on it
 	nonGo bool
 }
 
@@ -622,4 +674,24 @@ func (c *collection) linknamed(pass *analysis.Pass) map[string]bool {
 		c.linknamedScan = directive.Linknamed(pass.Files)
 	}
 	return c.linknamedScan
+}
+
+// fileSource reads a file once per pass, for the fixes that edit around a
+// position: insert.go's directive insertion and scopesite.go's directive
+// removal. A read error is held as nil. Both read the content only at a
+// position inside the file, and every such position overruns nil, so the
+// error fails safe: no fix, or an extra line break.
+func (c *collection) fileSource(pass *analysis.Pass, name string) []byte {
+	if content, ok := c.sources[name]; ok {
+		return content
+	}
+	if c.sources == nil {
+		c.sources = make(map[string][]byte)
+	}
+	content, err := pass.ReadFile(name)
+	if err != nil {
+		content = nil
+	}
+	c.sources[name] = content
+	return content
 }
