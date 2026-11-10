@@ -19,14 +19,6 @@ type pendingReport struct {
 	findings []finding
 }
 
-// widensReport reports whether this finding's fix widens the declaration to
-// shared scope, and with it every member the declaration contains. Only a
-// type contains members, and only an inserted directive widens: a rename
-// changes no reach at all.
-func (f finding) widensReport(t *target) bool {
-	return f.rule == rule.Boundary && len(f.fixes) > 0 && t.kind == kindType && !t.contained
-}
-
 // subsumedByReport reports whether the fix a member's finding carries is
 // already going to be written by the fix on its type, in the same run.
 //
@@ -57,7 +49,7 @@ func subsumedByReport(t *target, f finding, widened map[types.Object]bool) bool 
 func (c *collection) report(pass *analysis.Pass, opts Options) {
 	// Every surviving finding is collected before any of them is reported,
 	// because one fix can subsume another and no fix can see the edits of the
-	// others. widensReport marks what one is about to widen; subsumedByReport
+	// others. finding.widens marks what one is about to widen; subsumedByReport
 	// spells out why.
 	pending := make([]pendingReport, 0, len(c.targets))
 	widened := make(map[types.Object]bool)
@@ -76,7 +68,7 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 			if opts.Baseline.Has(f.key(pass, t)) {
 				continue
 			}
-			if f.widensReport(t) {
+			if f.widens(t) {
 				widened[t.obj] = true
 			}
 			p.findings = append(p.findings, f)

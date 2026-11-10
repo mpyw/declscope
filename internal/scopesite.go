@@ -568,8 +568,8 @@ func (c *collection) scopesiteRemoval(pass *analysis.Pass, pos token.Pos) (analy
 		return analysis.TextEdit{Pos: tf.Pos(lineStart + len(lead)), End: tf.Pos(end)}, true
 	}
 	start, end := lineStart, min(lineEnd+1, len(content))
-	prevStart, prev := scopesiteLine(content, lineStart, -1)
-	_, next := scopesiteLine(content, end, +1)
+	prevStart, prev := lineBesideScopeSite(content, lineStart, -1)
+	_, next := lineBesideScopeSite(content, end, +1)
 	switch {
 	case prev == "//" && !strings.HasPrefix(next, "//"):
 		start = prevStart
@@ -582,10 +582,10 @@ func (c *collection) scopesiteRemoval(pass *analysis.Pass, pos token.Pos) (analy
 	return analysis.TextEdit{Pos: tf.Pos(start), End: tf.Pos(end)}, true
 }
 
-// scopesiteLine returns the line before the one starting at off (dir -1), or
+// lineBesideScopeSite returns the line before the one starting at off (dir -1), or
 // the one starting at off (dir +1), trimmed of spaces, with the offset it
 // starts at. At either edge of the file it returns "".
-func scopesiteLine(content []byte, off, dir int) (int, string) {
+func lineBesideScopeSite(content []byte, off, dir int) (int, string) {
 	if dir < 0 {
 		if off == 0 {
 			return 0, ""

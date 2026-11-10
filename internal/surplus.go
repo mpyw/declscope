@@ -263,7 +263,7 @@ func (c *collection) surplusSeesUseOutside(t *target) bool {
 // name, so that the index of references cannot hold it.
 func (c *collection) surplusReached(pass *analysis.Pass) map[types.Object]bool {
 	reached := make(map[types.Object]bool)
-	interfaces, satisfiers := surplusTypes(pass)
+	interfaces, satisfiers := contractTypesForSurplus(pass)
 	markContractMethodsForSurplus(pass, reached, c.surplusTrackedMethodNames(), interfaces, satisfiers)
 	markCarriedMethodsForSurplus(pass, reached)
 	c.markConvertedFieldsForSurplus(pass, reached)
@@ -275,7 +275,7 @@ func (c *collection) surplusReached(pass *analysis.Pass) map[types.Object]bool {
 	return reached
 }
 
-// surplusTypes gathers the interfaces of the package and every type that
+// contractTypesForSurplus gathers the interfaces of the package and every type that
 // could satisfy one.
 //
 // Neither side may be read from the package scope alone. An anonymous
@@ -285,7 +285,7 @@ func (c *collection) surplusReached(pass *analysis.Pass) map[types.Object]bool {
 // included — the type of a call's result is mentioned by no type expression),
 // from every instantiation (TypesInfo.Instances) and from every defined type
 // name, where a type parameter contributes its constraint.
-func surplusTypes(pass *analysis.Pass) (interfaces []*types.Interface, satisfiers []types.Type) {
+func contractTypesForSurplus(pass *analysis.Pass) (interfaces []*types.Interface, satisfiers []types.Type) {
 	seen := make(map[types.Type]bool)
 	add := func(t types.Type) {
 		if t == nil || seen[t] {

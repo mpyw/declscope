@@ -203,7 +203,7 @@ func (c *collection) reportUnusedIgnores(pass *analysis.Pass, opts Options) {
 		}
 		// The report this would be, asked of the file before it exists, so
 		// that the ignore answering it is marked used in time.
-		c.ignoreSilencesFile(c.fileAt(pass, s.ig.Pos), directive.Problem{Pos: s.ig.Pos, Rule: rule.Unused})
+		c.silencedByFileIgnore(c.fileAt(pass, s.ig.Pos), directive.Problem{Pos: s.ig.Pos, Rule: rule.Unused})
 	}
 	for _, s := range sites {
 		if s.used || bySibling[s] {
@@ -262,11 +262,11 @@ func (c *collection) ignoreMayCrossUnseen(pass *analysis.Pass, s *ignoreSite) bo
 //declscope:shared // report.go and survey.go settle the problems no target holds
 func (c *collection) problemsLeftByIgnores(pass *analysis.Pass) []directive.Problem {
 	return slices.DeleteFunc(c.problems, func(p directive.Problem) bool {
-		return c.ignoreSilencesFile(c.fileAt(pass, p.Pos), p)
+		return c.silencedByFileIgnore(c.fileAt(pass, p.Pos), p)
 	})
 }
 
-// ignoreSilencesFile reports whether the file stands the problem's rule down
+// silencedByFileIgnore reports whether the file stands the problem's rule down
 // for everything it holds, and marks the ignore that did it used.
 //
 // The marking is what keeps an ignore written for a directive problem from
@@ -276,7 +276,7 @@ func (c *collection) problemsLeftByIgnores(pass *analysis.Pass) []directive.Prob
 // An ignore never silences the report written at its own position, which is
 // the report that it is unused. One that could would never be called unused,
 // and that report exists to catch it.
-func (c *collection) ignoreSilencesFile(fi *fileInfo, p directive.Problem) bool {
+func (c *collection) silencedByFileIgnore(fi *fileInfo, p directive.Problem) bool {
 	if fi == nil {
 		return false
 	}

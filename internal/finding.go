@@ -71,6 +71,16 @@ func (f finding) key(pass *analysis.Pass, t *target) baseline.Key {
 	}
 }
 
+// widens reports whether this finding's fix widens the declaration to shared
+// scope, and with it every member the declaration contains. Only a type
+// contains members, and only an inserted directive widens: a rename changes
+// no reach at all.
+//
+//declscope:shared // report.go records the types a fix in this run widens
+func (f finding) widens(t *target) bool {
+	return f.rule == rule.Boundary && len(f.fixes) > 0 && t.kind == kindType && !t.contained
+}
+
 // findingsOf returns every finding of one target, before any ignore or the
 // baseline is consulted.
 //
@@ -269,7 +279,7 @@ func (c *collection) qualifyFinding(pass *analysis.Pass, opts Options, t *target
 //
 //declscope:shared // the survey divides by it, and must divide by this one
 func (c *collection) qualifyFindingApplies(pass *analysis.Pass, opts Options, t *target) bool {
-	if !opts.Qualify.Applies(c.namespaces) || !t.findingReachesName(opts) {
+	if !opts.Qualify.Applies(c.namespaces) || !t.qualifyFindingReaches(opts) {
 		return false
 	}
 	if !namespace.CanPrefix(t.file.ns) {
@@ -299,7 +309,7 @@ func fileInFinding(f *fileInfo) string {
 	return namespaceInFinding(f.ns, f.path)
 }
 
-// findingReachesName reports whether the naming rule reaches a declaration at all.
+// qualifyFindingReaches reports whether the naming rule reaches a declaration at all.
 //
 // It reaches an exported declaration when rules.naming.exported says so —
 // inside the package an exported name is read as bare as any other, which is
@@ -312,7 +322,7 @@ func fileInFinding(f *fileInfo) string {
 // while the two are the same unit. A method filed away from its type points the
 // reader at a namespace that does not hold it, so the rule reaches it and asks
 // for the namespace it is actually written in.
-func (t *target) findingReachesName(opts Options) bool {
+func (t *target) qualifyFindingReaches(opts Options) bool {
 	if t.file.core || t.findingSparesToolchainName() {
 		return false
 	}
