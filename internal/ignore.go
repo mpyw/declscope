@@ -3,7 +3,6 @@ package internal
 import (
 	"fmt"
 	"go/token"
-	"go/types"
 	"slices"
 	"strings"
 
@@ -229,8 +228,8 @@ func (c *collection) reportUnusedIgnores(pass *analysis.Pass, opts Options) {
 // the crossing, and the ignore answers it there, so it is not unused here.
 // A file-level ignore reaches every declaration of its file.
 //
-// A field is crossed into by position too, by an unkeyed literal of its
-// type, so the name of the type, or of an alias of it, counts for a field.
+// What counts as writing a declaration's name is mayCrossUnseen's, which a
+// field reaches through the types an unkeyed literal fills it by.
 //
 // The name is all an unseen file is read for, so a name it writes from the
 // declaration's own namespace counts too. Such an ignore is still reported by
@@ -241,8 +240,7 @@ func (c *collection) ignoreMayCrossUnseen(pass *analysis.Pass, s *ignoreSite) bo
 	if !s.ig.Covers(rule.Boundary) {
 		return false
 	}
-	names := c.unseen(pass).names
-	if len(names) == 0 {
+	if len(c.unseen(pass).names) == 0 {
 		return false
 	}
 	targets := s.targets
@@ -255,58 +253,7 @@ func (c *collection) ignoreMayCrossUnseen(pass *analysis.Pass, s *ignoreSite) bo
 			}
 		}
 	}
-	return slices.ContainsFunc(targets, func(t *target) bool {
-		return slices.ContainsFunc(c.ignoreCrossingNames(pass, t), func(n string) bool { return names[n] })
-	})
-}
-
-// ignoreCrossingNames returns the names a file writes when it crosses into
-// t: its own, and for a field every type name of the package an unkeyed
-// literal can fill it through. An unkeyed literal fills the fields by position
-// and names only a type: the field's struct, an alias of it, a type defined
-// over it, a named pointer to it, or a constraint whose type set holds it,
-// written as P{1} with P constrained by it. The names are found once per pass,
-// by the same reading of a literal's type the reference index takes.
-func (c *collection) ignoreCrossingNames(pass *analysis.Pass, t *target) []string {
-	out := []string{t.obj.Name()}
-	v, ok := t.obj.(*types.Var)
-	if !ok || !v.IsField() || t.ownerObj == nil {
-		return out
-	}
-	if c.literalNames == nil {
-		c.literalNames = map[types.Object][]string{}
-		scope := pass.Pkg.Scope()
-		for _, name := range scope.Names() {
-			tn, ok := scope.Lookup(name).(*types.TypeName)
-			if !ok {
-				continue
-			}
-			for _, f := range c.ignoreLiteralFields(pass, tn) {
-				c.literalNames[f] = append(c.literalNames[f], name)
-			}
-		}
-	}
-	return append(append(out, t.ownerObj.Name()), c.literalNames[origin(v)]...)
-}
-
-// ignoreLiteralFields returns the fields an unkeyed literal fills when the only
-// type name it writes is tn. A constraint is read as the type parameter it
-// constrains would be. A guessed type set counts: keeping an ignore a file
-// might need is the safe side.
-func (c *collection) ignoreLiteralFields(pass *analysis.Pass, tn *types.TypeName) []types.Object {
-	typ := tn.Type()
-	if _, ok := typ.Underlying().(*types.Interface); ok {
-		typ = types.NewTypeParam(types.NewTypeName(tn.Pos(), pass.Pkg, "P", nil), typ)
-	}
-	holders, _ := c.typeSets.Literal(typ)
-	var out []types.Object
-	for _, h := range holders {
-		st := h.Underlying().(*types.Struct)
-		for i := range st.NumFields() {
-			out = append(out, origin(st.Field(i)))
-		}
-	}
-	return out
+	return slices.ContainsFunc(targets, func(t *target) bool { return c.mayCrossUnseen(pass, t) })
 }
 
 // problemsLeftByIgnores drops the problems a file-level ignore stands

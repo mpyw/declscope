@@ -6,6 +6,7 @@
 package pointer
 
 import (
+	"go/token"
 	"go/types"
 	"slices"
 
@@ -67,6 +68,14 @@ func (s *Sets) Literal(t types.Type) ([]types.Type, bool) {
 		return s.structCore(ptr.Elem())
 	}
 	return s.structCore(t)
+}
+
+// Constrained returns the types whose fields an unkeyed literal of a type
+// parameter constrained by constraint writes, as Literal reads P{1}. A file
+// that writes such a literal names only the constraint, so this is what the
+// constraint's name can reach.
+func (s *Sets) Constrained(constraint types.Type) ([]types.Type, bool) {
+	return s.Literal(types.NewTypeParam(types.NewTypeName(token.NoPos, nil, "P", nil), constraint))
 }
 
 // structCore returns the types of t's type set when their core type is a

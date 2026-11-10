@@ -292,7 +292,10 @@ type collection struct {
 	namespaces int
 
 	// literalNames maps a field to the type names of the package scope an
-	// unkeyed literal can fill it through. It is filled on first use.
+	// unkeyed literal can fill it through. mayCrossUnseen fills it on first
+	// use.
+	//
+	//declscope:private
 	literalNames map[types.Object][]string
 
 	// unseenScan is what the package directory holds that this pass does not
@@ -419,6 +422,51 @@ type unseenFiles struct {
 	//
 	//declscope:shared // rename.go reads it through nonGoBlocksRename
 	nonGo bool
+}
+
+// mayCrossUnseen reports whether a file this pass does not read may cross into
+// t. Such a file is read for its names alone, so it may wherever it writes
+// t's name. A field is crossed into by position too, by an unkeyed literal
+// that names only a type: the field's struct, an alias of it, a type defined
+// over it, a named pointer to it, or a constraint whose type set holds it,
+// written as P{1}. Those names come from pointer.Sets, the reading the
+// reference index takes, so the two cannot disagree about which literal
+// reaches a field. A guessed type set counts, since this errs toward a
+// crossing.
+func (c *collection) mayCrossUnseen(pass *analysis.Pass, t *target) bool {
+	names := c.unseen(pass).names
+	if names[t.obj.Name()] {
+		return true
+	}
+	v, ok := t.obj.(*types.Var)
+	if !ok || !v.IsField() || t.ownerObj == nil {
+		return false
+	}
+	if names[t.ownerObj.Name()] {
+		return true
+	}
+	if c.literalNames == nil {
+		c.literalNames = map[types.Object][]string{}
+		scope := pass.Pkg.Scope()
+		for _, name := range scope.Names() {
+			tn, ok := scope.Lookup(name).(*types.TypeName)
+			if !ok {
+				continue
+			}
+			holders, _ := c.typeSets.Literal(tn.Type())
+			if _, isIface := tn.Type().Underlying().(*types.Interface); isIface {
+				holders, _ = c.typeSets.Constrained(tn.Type())
+			}
+			for _, h := range holders {
+				st := h.Underlying().(*types.Struct)
+				for i := range st.NumFields() {
+					f := origin(st.Field(i))
+					c.literalNames[f] = append(c.literalNames[f], name)
+				}
+			}
+		}
+	}
+	return slices.ContainsFunc(c.literalNames[origin(v)], func(n string) bool { return names[n] })
 }
 
 // unseen scans the package directory, once per pass. It lives here rather

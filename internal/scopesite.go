@@ -495,9 +495,10 @@ func (r *scopesiteRemovals) decide(s *scopeSite) bool {
 
 // crosses reports whether another namespace spells t, the test the boundary
 // rule reports on. A file the build excludes may spell it from anywhere, and
-// is read for its names alone, so a name it writes counts as a crossing.
+// is read for its names alone, so a name it writes counts as a crossing
+// (mayCrossUnseen).
 func (r *scopesiteRemovals) crosses(t *target) bool {
-	if r.c.unseen(r.pass).names[t.obj.Name()] {
+	if r.c.mayCrossUnseen(r.pass, t) {
 		return true
 	}
 	return slices.ContainsFunc(r.c.refs[t.obj], func(use ref) bool { return use.file.key() != t.file.key() })
