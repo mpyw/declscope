@@ -385,6 +385,28 @@ func (c *collection) rewordedAtScopeSite(opts Options, d directive.Decl, narrowe
 	return messageOfScopeSite(s, redundant) != messageOfScopeSite(&after, redundant)
 }
 
+// unboundAtScopeSite reports whether widening typ, as a boundary fix on it
+// does, would leave a directive one of its members states binding nothing.
+//
+// The fix is offered only where nothing stated the type's scope, so a member's
+// own //declscope:shared binds only because the member is unexported and would
+// otherwise take defaults.unexported. Once the type carries
+// //declscope:shared, the member has that scope without it, and the unused
+// rule reports the directive under either mode. Deleting it is not the fix's
+// to do: it records the author's decision. A //declscope:private keeps
+// binding, and a directive that binds nothing today, such as an exported
+// member's //declscope:shared, is reported the same after.
+//
+//declscope:shared // finding.go withholds a type's boundary fix that would unbind one
+func (c *collection) unboundAtScopeSite(opts Options, typ *target) bool {
+	if !opts.Unused.Reports() {
+		return false
+	}
+	return slices.ContainsFunc(c.targets, func(m *target) bool {
+		return m.contained && m.ownerObj == typ.obj && m.boundAt == boundAtDecl && m.decided && m.scope == scope.Shared
+	})
+}
+
 // scopesiteRemovals decides which strict reports carry the fix that deletes
 // the directive, once per run, and builds it.
 //

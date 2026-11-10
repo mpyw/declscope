@@ -1,0 +1,4 @@
+# The unused rule is off, so a member's own directive that the type's fix
+# leaves binding nothing has no report, and the type's fix is offered.
+rules:
+  unused: off

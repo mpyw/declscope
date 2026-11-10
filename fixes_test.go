@@ -309,6 +309,21 @@ func TestSuggestedFixSurplusNarrowsWithTypeFix(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixsurplusnarrow")
 }
 
+// TestSuggestedFixTypeOverOwnShared checks that a boundary fix on a type is
+// withheld where widening the type would leave a member's own
+// //declscope:shared binding nothing, and that the member crossing beside it
+// then takes its own fix.
+func TestSuggestedFixTypeOverOwnShared(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixtypeownshared")
+}
+
+// TestSuggestedFixTypeOverOwnSharedUnusedOff checks that the type's fix is
+// offered over a member's own //declscope:shared when the unused rule is off:
+// no report would name the directive the fix leaves binding nothing.
+func TestSuggestedFixTypeOverOwnSharedUnusedOff(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixtypeownsharedunusedoff")
+}
+
 // TestSuggestedFixSurplusStrictUnusedStrict checks strict's fix under a
 // directive that decides nothing while the unused rule is strict. The fix is
 // offered where the directive's report reads the same after it, and withheld

@@ -192,6 +192,16 @@ var fixCases = []fixCase{
 			"user_test.go": "package x\n\nimport \"testing\"\n\nfunc TestItem(t *testing.T) {\n\tif userCount(item{count: 1}) != 1 {\n\t\tt.Fatal(\"no\")\n\t}\n}\n",
 		},
 	},
+	{
+		// The field's own directive binds only while the type states no
+		// scope. A boundary fix widening the type would leave it binding
+		// nothing, so that fix is withheld, and the other field takes its own.
+		name: "boundary fix on a type one of whose fields states shared scope",
+		files: map[string]string{
+			"user.go":  "package x\n\ntype entry struct {\n\tkey string\n\t//declscope:shared // order.go reads it\n\tnote string\n}\n",
+			"order.go": "package x\n\nfunc orderRun() string {\n\te := entry{key: \"x\", note: \"y\"}\n\treturn e.key + e.note\n}\n\nvar _ = orderRun\n",
+		},
+	},
 
 	// rules.unused: strict deletes a directive naming the scope its
 	// declarations would have without it. Deleting several in one run must
