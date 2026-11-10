@@ -71,7 +71,7 @@ func candidatesOf(p *packages.Package) (_ []*candidate, siblings map[token.Pos][
 				if testFile && d.Recv == nil && candidateTestEntry(d.Name.Name) {
 					continue
 				}
-				candidateFunc(p, d, slices.Concat(ignores, fileIgnores), add)
+				candidatesOfFunc(p, d, slices.Concat(ignores, fileIgnores), add)
 			case *ast.GenDecl:
 				// The doc is a block's binding with parentheses and its single
 				// spec's without, as in the analyzer.
@@ -82,7 +82,7 @@ func candidatesOf(p *packages.Package) (_ []*candidate, siblings map[token.Pos][
 				}
 				first := len(out)
 				for _, spec := range d.Specs {
-					candidateSpec(p, d, spec, slices.Concat(parse(slices.Concat(lead, b.Spec(spec))...), block), fileIgnores, parse, add)
+					candidatesOfSpec(p, d, spec, slices.Concat(parse(slices.Concat(lead, b.Spec(spec))...), block), fileIgnores, parse, add)
 				}
 				if set := candidateConstSet(p, d); set != nil {
 					for _, c := range out[first:] {
@@ -95,13 +95,14 @@ func candidatesOf(p *packages.Package) (_ []*candidate, siblings map[token.Pos][
 	return out, siblings, repeated
 }
 
-// candidateAdd records one candidate with the ignores covering it and its
+// candidateAdder records one candidate with the ignores covering it and its
 // doc comment.
-type candidateAdd func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore, doc *ast.CommentGroup)
+type candidateAdder func(obj types.Object, k kind, owner *types.TypeName, ignores []directive.Ignore, doc *ast.CommentGroup)
 
-// candidateFunc records an exported func, or an exported method of a named
-// type that is not an interface.
-func candidateFunc(p *packages.Package, d *ast.FuncDecl, ignores []directive.Ignore, add candidateAdd) {
+// candidatesOfFunc records the candidate a func declaration declares, if any:
+// an exported func, or an exported method of a named type that is not an
+// interface.
+func candidatesOfFunc(p *packages.Package, d *ast.FuncDecl, ignores []directive.Ignore, add candidateAdder) {
 	fn, ok := p.TypesInfo.Defs[d.Name].(*types.Func)
 	if !ok || !d.Name.IsExported() {
 		return
@@ -120,11 +121,11 @@ func candidateFunc(p *packages.Package, d *ast.FuncDecl, ignores []directive.Ign
 	}
 }
 
-// candidateSpec records the exported names of one spec, and the exported
-// fields a type spec writes. own holds the ignores of the spec and its
-// block, and fileIgnores those of the file.
-func candidateSpec(p *packages.Package, d *ast.GenDecl, spec ast.Spec, own, fileIgnores []directive.Ignore,
-	parse func(...*ast.CommentGroup) []directive.Ignore, add candidateAdd,
+// candidatesOfSpec records the candidates of one spec: its exported names,
+// and the exported fields a type spec writes. own holds the ignores of the
+// spec and its block, and fileIgnores those of the file.
+func candidatesOfSpec(p *packages.Package, d *ast.GenDecl, spec ast.Spec, own, fileIgnores []directive.Ignore,
+	parse func(...*ast.CommentGroup) []directive.Ignore, add candidateAdder,
 ) {
 	switch s := spec.(type) {
 	case *ast.ValueSpec:
