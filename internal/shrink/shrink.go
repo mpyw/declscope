@@ -584,7 +584,7 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 			// A configuration that leaves out the files using it reports it,
 			// and the ignore answers the report there.
 			if r.neededWithoutConstrained(c) {
-				r.ignoreSilenced(c)
+				r.markIgnoresUsed(c)
 			}
 			continue
 		}
@@ -663,7 +663,7 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 		switch {
 		case v.used:
 		case v.silenced:
-			r.ignoreSilenced(v.c)
+			r.markIgnoresUsed(v.c)
 		case v.baselined:
 		default:
 			if v.fixable() {
