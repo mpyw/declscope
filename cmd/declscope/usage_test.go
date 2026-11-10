@@ -51,7 +51,7 @@ func TestUsageListsEverySubcommand(t *testing.T) {
 	}
 }
 
-// TestUsageDocIsOneParagraph pins what usageInstall assumes: the help prints
+// TestUsageDocIsOneParagraph pins what installUsage assumes: the help prints
 // the Doc whole beside the name, where the driver prints its first paragraph.
 func TestUsageDocIsOneParagraph(t *testing.T) {
 	if strings.Contains(declscope.Analyzer.Doc, "\n\n") {

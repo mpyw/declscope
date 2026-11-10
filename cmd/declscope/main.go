@@ -42,6 +42,6 @@ func main() {
 	// Before the driver: it registers a -V of its own only when nothing else
 	// has, and the one it registers answers every binary with "devel".
 	registerVersionFlag()
-	usageInstall()
+	installUsage()
 	singlechecker.Main(declscope.Analyzer)
 }

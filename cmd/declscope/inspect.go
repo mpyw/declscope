@@ -58,7 +58,7 @@ func inspectRun(args []string) {
 	if err != nil {
 		inspectFail(err)
 	}
-	if failed := loadErrorsForInspect(pkgs); len(failed) > 0 {
+	if failed := inspectedLoadFailures(pkgs); len(failed) > 0 {
 		// A package that does not type-check yields no findings, which reads
 		// exactly like a package with nothing wrong. Refusing is the only
 		// answer that cannot be misread.
@@ -66,7 +66,7 @@ func inspectRun(args []string) {
 			strings.Join(failed, "\n  ")))
 	}
 
-	pkg, err := inspectOnePackage(pkgs)
+	pkg, err := packageToInspect(pkgs)
 	if err != nil {
 		inspectFail(err)
 	}
@@ -88,7 +88,28 @@ func inspectRun(args []string) {
 	}
 }
 
-// inspectOnePackage picks the package to report, and refuses where the answer
+// inspectedLoadFailures names the packages inspect would measure that did not
+// type-check.
+//
+// It leaves out an external test package when the package it tests is also
+// present. inspect reports that subject package, not the separate scope
+// declared by package foo_test, so an error in the skipped package must not
+// prevent the requested package from being measured.
+func inspectedLoadFailures(pkgs []*packages.Package) []string {
+	subjects := map[string]bool{}
+	for _, pkg := range loadedWidestVariants(pkgs) {
+		if !loadedExternalTest(pkg) {
+			subjects[pkg.PkgPath] = true
+		}
+	}
+
+	filtered := slices.DeleteFunc(slices.Clone(pkgs), func(pkg *packages.Package) bool {
+		return loadedExternalTest(pkg) && subjects[pkg.ForTest]
+	})
+	return loadFailures(filtered)
+}
+
+// packageToInspect picks the package to report, and refuses where the answer
 // would be ambiguous.
 //
 // It keeps one package per import path, the widest variant of each, so the
@@ -97,16 +118,16 @@ func inspectRun(args []string) {
 // and reporting it in answer to a request for foo would hand back a different
 // package under the asked-for name. It is skipped when its
 // subject is present, and refused alongside anything else.
-func inspectOnePackage(loaded []*packages.Package) (*packages.Package, error) {
+func packageToInspect(loaded []*packages.Package) (*packages.Package, error) {
 	byPath := map[string]*packages.Package{}
-	for _, pkg := range loadWidestVariants(loaded) {
+	for _, pkg := range loadedWidestVariants(loaded) {
 		byPath[pkg.PkgPath] = pkg
 	}
 
 	var paths []string
 	for path := range byPath {
 		pkg := byPath[path]
-		if loadIsExternalTest(pkg) {
+		if loadedExternalTest(pkg) {
 			if _, ok := byPath[pkg.ForTest]; ok {
 				continue
 			}
@@ -145,7 +166,7 @@ func inspectOnePackage(loaded []*packages.Package) (*packages.Package, error) {
 // path, and an external test package is skipped beside its subject, so
 // neither changes the count. A package the go command could not list, such as
 // a directory that does not exist, is not counted: the full load reports its
-// error, which says more than a count would. inspectOnePackage still decides
+// error, which says more than a count would. packageToInspect still decides
 // what the full load hands back.
 func inspectRefuseManyBeforeLoad(patterns []string) error {
 	if len(patterns) == 1 && !inspectPatternMayMatchMany(patterns[0]) {
