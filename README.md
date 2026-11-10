@@ -782,7 +782,7 @@ query.go:4:22: 	used here, in namespace "query"
 The naming rule asks the method to carry `query`. A method is read through its receiver, and `s.Where` points the reader at `Statement`'s unit, which does not hold it.
 
 ```console
-query.go:3:21: method Where does not carry namespace "query" anywhere in its name; give it a name that carries "query", such as QueryWhere, or move it to the file it belongs to
+query.go:3:21: method Where does not carry namespace "query" anywhere in its name; move it to the file it belongs to, or give it a name that carries "query" (QueryWhere is one candidate, not necessarily the best)
 ```
 
 Neither report asks for a rename here. The two files are one unit split in two, and `//declscope:namespace statement` on `query.go` settles both.
@@ -1027,7 +1027,7 @@ rules:
 So the message offers both ways, and names one rename as an example.
 
 ```console
-user.go:3:6: func helper does not carry namespace "user" anywhere in its name; give it a name that carries "user", such as userHelper, or move it to the file it belongs to
+user.go:3:6: func helper does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" (userHelper is one candidate, not necessarily the best)
 ```
 
 The switch changes only the fix. The report, its message and its [baseline](#adopting-on-an-existing-codebase) key are the same either way. `declscope inspect` reports `names[].fixable` as whether the rename is safe, so you can see what turning it on would rename before you do.
@@ -1049,7 +1049,7 @@ The suggestion is one answer, not the only one. Any spelling that carries the na
 > Sometimes the namespace is what is wrong, not the name. A file name may hold words that name no unit.
 >
 > ```console
-> user_repository.go:18:6: func scanUser does not carry namespace "userRepository" anywhere in its name; give it a name that carries "userRepository", such as userRepositoryScanUser, or move it to the file it belongs to
+> user_repository.go:18:6: func scanUser does not carry namespace "userRepository" anywhere in its name; move it to the file it belongs to, or give it a name that carries "userRepository" (userRepositoryScanUser is one candidate, not necessarily the best)
 > ```
 >
 > The unit here is `user`, not `userRepository`. `//declscope:namespace user` on the file settles the rule and leaves every name alone.

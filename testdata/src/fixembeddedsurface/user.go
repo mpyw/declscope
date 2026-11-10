@@ -4,7 +4,7 @@ package fixembeddedsurface
 // userItemer promotes from one level down. Renamed, the field would stop
 // hiding it: userBox would gain the method and satisfy userItemer, and
 // userSatisfies would answer true. That compiles, so the rename is withheld.
-type item struct{ n int } // want `type item does not carry namespace "user" anywhere in its name; give it a name that carries "user", such as userItem, or move it to the file it belongs to`
+type item struct{ n int } // want `type item does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" \(userItem is one candidate, not necessarily the best\)`
 
 type userItemer interface{ item() string }
 
@@ -20,7 +20,7 @@ func userSatisfies() bool {
 
 // spare is embedded where no interface of the package asks for its name, so
 // no method can surface and it is renamed.
-type spare struct{ n int } // want `type spare does not carry namespace "user" anywhere in its name; give it a name that carries "user", such as userSpare, or move it to the file it belongs to`
+type spare struct{ n int } // want `type spare does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" \(userSpare is one candidate, not necessarily the best\)`
 
 type userFree struct {
 	spare

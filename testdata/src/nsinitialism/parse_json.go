@@ -5,6 +5,6 @@ package nsinitialism
 func parseJSONTree() int { return 1 }
 func parseJsonTree() int { return 2 }
 
-func tree() int { return 3 } // want `func tree does not carry namespace "parseJSON" anywhere in its name; give it a name that carries "parseJSON", such as parseJSONTree, or move it to the file it belongs to`
+func tree() int { return 3 } // want `func tree does not carry namespace "parseJSON" anywhere in its name; move it to the file it belongs to, or give it a name that carries "parseJSON" \(parseJSONTree is one candidate, not necessarily the best\)`
 
 func ParseExported() int { return parseJSONTree() + parseJsonTree() + tree() }

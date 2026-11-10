@@ -251,7 +251,7 @@ func (c *collection) qualifyFinding(pass *analysis.Pass, opts Options, t *target
 		// which settle the rule just as well, and from the file the
 		// declaration belongs in. The wording is the same whether or not the
 		// fix is on, so turning it on changes no message.
-		msg: fmt.Sprintf("%s %s does not carry %s anywhere in its name; give it a name that carries %q, such as %s, or move it to the file it belongs to",
+		msg: fmt.Sprintf("%s %s does not carry %s anywhere in its name; move it to the file it belongs to, or give it a name that carries %q (%s is one candidate, not necessarily the best)",
 			t.kind, name, namespaceInFinding(t.file.ns, t.file.path),
 			t.file.ns, rename),
 		renamable: fixed,

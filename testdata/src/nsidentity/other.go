@@ -4,7 +4,7 @@ package nsidentity
 // It is a prefix, so its own declarations are held to it.
 func otherRun() int { return 1 }
 
-func helper() int { return 2 } // want `func helper does not carry namespace "other" anywhere in its name; give it a name that carries "other", such as otherHelper, or move it to the file it belongs to`
+func helper() int { return 2 } // want `func helper does not carry namespace "other" anywhere in its name; move it to the file it belongs to, or give it a name that carries "other" \(otherHelper is one candidate, not necessarily the best\)`
 
 // A cross-namespace use is still a violation: 2fa is an identity even though
 // it is not a prefix.

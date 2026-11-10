@@ -1,17 +1,17 @@
 package qualifyrule
 
 // Unexported package-level declarations must say which unit owns them.
-func helper() int { return 1 } // want `func helper does not carry namespace "user" anywhere in its name; give it a name that carries "user", such as userHelper, or move it to the file it belongs to`
+func helper() int { return 1 } // want `func helper does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" \(userHelper is one candidate, not necessarily the best\)`
 
 // The right edge of the match is free, so a plural spells the namespace as
 // plainly as the singular would.
 func users() int { return 2 }
 
-var count int // want `var count does not carry namespace "user" anywhere in its name; give it a name that carries "user", such as userCount, or move it to the file it belongs to`
+var count int // want `var count does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" \(userCount is one candidate, not necessarily the best\)`
 
-const limit = 3 // want `const limit does not carry namespace "user" anywhere in its name; give it a name that carries "user", such as userLimit, or move it to the file it belongs to`
+const limit = 3 // want `const limit does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" \(userLimit is one candidate, not necessarily the best\)`
 
-type payload struct { // want `type payload does not carry namespace "user" anywhere in its name; give it a name that carries "user", such as userPayload, or move it to the file it belongs to`
+type payload struct { // want `type payload does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" \(userPayload is one candidate, not necessarily the best\)`
 	// Members are exempt: they are already namespaced by the type that owns
 	// them, and a prefix here would be the stutter Go idiom avoids.
 	field int

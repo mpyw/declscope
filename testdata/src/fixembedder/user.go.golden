@@ -4,7 +4,7 @@ import "fmt"
 
 // item is embedded in userHolder, which already has a field userItem.
 // Renamed, the embedded field would be redeclared.
-type item struct{ n int } // want `type item does not carry namespace "user" anywhere in its name; give it a name that carries "user", such as userItem, or move it to the file it belongs to`
+type item struct{ n int } // want `type item does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" \(userItem is one candidate, not necessarily the best\)`
 
 type userHolder struct {
 	item
@@ -14,7 +14,7 @@ type userHolder struct {
 // part is embedded beside userOther, which has a field userPart. Renamed, the
 // embedded field would be shallower than userOther.userPart, so h.userPart
 // would select it instead: the program would still compile, and read part.
-type part struct{ n int } // want `type part does not carry namespace "user" anywhere in its name; give it a name that carries "user", such as userPart, or move it to the file it belongs to`
+type part struct{ n int } // want `type part does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" \(userPart is one candidate, not necessarily the best\)`
 
 type userOther struct{ userPart int }
 
@@ -27,7 +27,7 @@ func userRead(h userShallow) int { return h.userPart + h.part.n }
 
 // deep is embedded two levels down, beside a field the rename would collide
 // with at the same depth, which would make h.userDeep ambiguous.
-type deep struct{ n int } // want `type deep does not carry namespace "user" anywhere in its name; give it a name that carries "user", such as userDeep, or move it to the file it belongs to`
+type deep struct{ n int } // want `type deep does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" \(userDeep is one candidate, not necessarily the best\)`
 
 type userMiddle struct{ deep }
 
@@ -41,7 +41,7 @@ type userTop struct {
 func userReadTop(h userTop) int { return h.userDeep + h.deep.n }
 
 // spare is embedded where nothing else is called userSpare, so it is renamed.
-type userSpare struct{ n int } // want `type spare does not carry namespace "user" anywhere in its name; give it a name that carries "user", such as userSpare, or move it to the file it belongs to`
+type userSpare struct{ n int } // want `type spare does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" \(userSpare is one candidate, not necessarily the best\)`
 
 type userFree struct{ userSpare }
 

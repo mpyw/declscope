@@ -2,7 +2,7 @@ package fixembeddedgeneric
 
 import "strings"
 
-type box[T any] struct{ v T } // want `type box does not carry namespace "user" anywhere in its name; give it a name that carries "user", such as userBox, or move it to the file it belongs to`
+type box[T any] struct{ v T } // want `type box does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" \(userBox is one candidate, not necessarily the best\)`
 
 // UserList embeds an instantiation that mentions its type parameter. Uses holds
 // the instantiated field for u.box, which origin maps back to the declared one.
