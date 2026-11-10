@@ -1,0 +1,79 @@
+// The rename guard against sibling fixes, as implemented, and that it is sound.
+//
+// rename_siblings.fsl is the negative control: it models fixes that check
+// their target against the pre-fix names only, and shows two of them
+// converging on one name. A control with no positive counterpart proves
+// nothing about the code that exists: internal/rename.go could lose the
+// reserved check and no spec would change verdict.
+//
+// This is that counterpart. Each fix also checks its target against the names
+// fixes emitted earlier in the pass have claimed (reserved), and claims its
+// own target when it is emitted (reserveForRename). Dropping either turns this
+// spec violated.
+//
+// ASSUME-1: two declarations are enough — a collision needs exactly two
+//   (modelling assumption)
+// ASSUME-2: a fix is emitted and applied in one step. The other fix cannot see
+//   the applied name either way, since it checks the pre-fix state, so only
+//   the order of emission matters (modelling assumption)
+spec RenameReserved {
+  enum Name { NameA, NameB, NameT, NameU }
+
+  state {
+    configured: Bool = false,
+    // Current names
+    nameA: Name = NameA, nameB: Name = NameB,
+    // Names in the state the fixes were generated from
+    origA: Name = NameA, origB: Name = NameB,
+    // What each fix renames to
+    tgtA:  Name = NameA, tgtB:  Name = NameB,
+    // The names fixes emitted so far have claimed
+    reserved: Set<Name> = Set {},
+    appliedA: Bool = false, appliedB: Bool = false
+  }
+
+  action configure(ta: Name, tb: Name) {
+    requires not configured
+    configured = true  tgtA = ta  tgtB = tb
+  }
+
+  // Pkg.Scope().Lookup: the target is not a name in the pre-fix state.
+  def freeInOriginalState(n: Name) = n != origA and n != origB
+
+  // The guard as implemented: free before the fixes, and claimed by none.
+  def guardAsImplemented(n: Name) = freeInOriginalState(n) and not reserved.contains(n)
+
+  fair action fixA() {
+    requires configured  requires not appliedA
+    requires tgtA != origA
+    requires guardAsImplemented(tgtA)
+    nameA = tgtA  appliedA = true
+    reserved = reserved.add(tgtA)
+  }
+  fair action fixB() {
+    requires configured  requires not appliedB
+    requires tgtB != origB
+    requires guardAsImplemented(tgtB)
+    nameB = tgtB  appliedB = true
+    reserved = reserved.add(tgtB)
+  }
+
+  // Two declarations in one package may never share a name.
+  invariant NamesStayDistinct { nameA != nameB }
+
+  // What the guard relies on: a renamed declaration's name is claimed, and an
+  // unrenamed one keeps its pre-fix name.
+  invariant RenamedNameIsReserved { (appliedA => reserved.contains(nameA)) and (appliedB => reserved.contains(nameB)) }
+  invariant UnrenamedKeepsItsName { (not appliedA => nameA == origA) and (not appliedB => nameB == origB) }
+  invariant OriginalNamesNeverReserved { not reserved.contains(origA) and not reserved.contains(origB) }
+
+  // Both fixes apply when their targets differ: the guard is no broader than
+  // it needs to be.
+  reachable BothApplied { appliedA and appliedB }
+  // Two fixes aiming at one name: the first claims it, and the second is
+  // withheld, its declaration keeping its name.
+  reachable SecondWithheld {
+    configured and tgtA == tgtB and freeInOriginalState(tgtA) and appliedA and not appliedB
+      and not guardAsImplemented(tgtB)
+  }
+}

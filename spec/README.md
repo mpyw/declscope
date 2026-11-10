@@ -51,8 +51,12 @@ the binary.
 | `knobs.fsl` | A boundary is reported only for a private scope and only across a namespace, and on an exported declaration only where a directive narrowed it — each guard witnessed by an invariant its removal breaks | Every combination of `defaults.unexported`, kind (package-level, member, method with a receiver), exportedness, where the declaration is referenced from (nowhere, its own namespace, another namespace), and the declaration, block, type and file directives |
 | `naming_rules.fsl` | A fix is eventually applied wherever one is offered, which is what the `fair` on the fix actions claims | Every combination of the inputs in the first `naming_rules.fsl` row, plus whether a rename is offered at all |
 | `rename_guarded.fsl` | The guard `safeToRename` applies — every scope Go resolves through — makes the rename sound, and dropping any one of the four checks breaks it | Every binding environment at the reference site |
-| `rename_reach.fsl` | Nothing the fix leaves unedited still writes the old name, and the new name is never left declared twice — over every reason a file of the package can sit outside what the fix edits | Generated and `exclude`d files, unseen in-package tests, and build-excluded files, against both names |
-| `rename_reach.fsl` | The build-excluded guard is no broader than it needs to be: a rename beside an excluded file that writes neither name is still offered | As above |
+| `rename_reach.fsl` | Nothing the fix leaves unedited still writes the old name, and the new name is never left declared twice — over every reason a file of the package can sit outside what the fix edits, and the one place inside an edited file the fix does not reach: a `//go:linkname` or `//export` directive naming the old name as text | Generated files and files left out by `filter`, unseen in-package tests, build-excluded files, and non-Go source files (`.s`, `.c`, `.h`, `.syso`, for any GOARCH), against both names, and a directive naming the old name, another name or none |
+| `rename_reach.fsl` | The build-excluded guard is no broader than it needs to be: a rename beside an excluded file that writes neither name is still offered, and so is one beside a directive naming another name. A non-Go file withholds every rename, since nothing reads it | As above |
+| `rename_selections.fsl` | Renaming a method, or a type that is embedded, keeps every selector selecting what it did and every type assertion answering what it did, and declares no name twice on a type. `selectionsFree` proves it, and dropping any of its checks breaks it | Every depth of the renamed member, of a member already named the new name and of one sharing the old name, whether each is a method, and whether an interface of the package asks for either name |
+| `rename_selections.fsl` | The guard is no broader than it needs to be: a type embedded one level up, one whose old name is hidden today, one that uncovers a deeper method no interface asks for, and one beside an interface asking for its new name are each still renamed | As above |
+| `rename_reserved.fsl` | Two renames in one run never take the same name: each checks its target against the names earlier fixes claimed, and claims its own. Dropping either breaks it | Every pair of rename targets, in either order |
+| `rename_reserved.fsl` | Both fixes apply when their targets differ, and the second is withheld when they share one | As above |
 | `surplus.fsl` | `surplus` never reports a declaration reachable by any path: a spelled use, an interface satisfaction, an exported carrier, a struct conversion, an unkeyed literal through a guessed type set, a linkname, or exportedness | Every combination of the rule switch, the directive, the seven reach paths, and whether the pass read every file (an opaque source — generated, filtered-out, cgo, assembly or other non-Go files, unread tests, build-excluded files of the package — is that last input, not a reach path) |
 | `surplus.fsl` | A pass that did not read every file reports nothing, and each suppressor is witnessed alone, with every other one off | As above |
 | `surplus_strict.fsl` | Neither `surplus` finding is made of a declaration reachable by any path the rule counts: the paths of `surplus.fsl` less exportedness, which `strict` never judges | Every combination of `rules.surplus`, why the declaration has its scope (the enclosing directive, its own, exportedness, `defaults.unexported`, no enclosing directive), the level the directive is written at, the reach path, the shape of the entry (`main` in package `main` included), what else the directive reaches, and whether the pass read every file |
@@ -98,10 +102,15 @@ lands on every *other* reference that wanted the builtin. That shows up only onc
 the spec also asks whether the rename captures references it was never meant to
 touch.
 
-Two causes are outside *this* model, because they concern the set of references
-and the set of fixes rather than scope resolution. `rename_reach.fsl` covers the
-first — which files the fix actually edits, and what it has to establish about
-the ones it does not — and `rename_siblings.fsl` covers the second.
+Three causes are outside *this* model, because they concern the set of
+references, names resolved through types, and the set of fixes rather than scope
+resolution. `rename_reach.fsl` covers the first — which files the fix actually
+edits, and what it has to establish about the ones it does not, non-Go files and
+directive text included. `rename_selections.fsl` covers the second: a method's
+name and an embedded field's are selected through types, so no scope lookup sees
+them, and a rename there can compile into a different selection or a different
+method set. `rename_siblings.fsl` covers the third, and `rename_reserved.fsl` is
+its proved counterpart, the guard the implementation applies.
 
 That split is worth stating plainly, because the reach half went unmodelled at
 first and the one defect that could break a build lived exactly there: a file
@@ -125,7 +134,7 @@ step and needs gigabytes for the same claims these prove in single-digit
 megabytes.
 
 ```console
-./spec/verify.sh     # what CI runs: twenty-one proved, two violated
+./spec/verify.sh     # what CI runs: twenty-three proved, two violated
 ```
 
 Or one at a time:
@@ -142,6 +151,8 @@ fslc verify fix_members.fsl      --depth 4
 fslc verify knobs.fsl            --depth 4
 fslc verify rename_guarded.fsl   --depth 4
 fslc verify rename_reach.fsl     --depth 3
+fslc verify rename_selections.fsl --depth 3
+fslc verify rename_reserved.fsl  --depth 3
 fslc verify surplus.fsl         --depth 2
 fslc verify surplus_strict.fsl  --depth 5
 fslc verify type_fix_members.fsl --depth 4
@@ -171,12 +182,15 @@ configures in four steps for the same reason, judges, and fixes, so it witnesses
 by step 6. `shrink.fsl` configures in three steps, reports, and fixes, so it
 witnesses by step 5. `shrink_ignore.fsl` and `unused_ignore_unseen.fsl`
 configure once and judge the two runs one after the other, so they witness at
-step 3. The deadlock warning a bounded
+step 3. `rename_selections.fsl` configures the members and the interfaces in two
+steps and renames, so it witnesses at step 3, and `rename_reserved.fsl` applies
+two fixes after configuring, so it too witnesses at step 3. The deadlock warning a bounded
 run prints is the shape of the model, not a failure, and `rename_guarded.fsl`
 also reports a vacuous antecedent — which is the guard working, and is stated as
-`NothingResolvedNewName` rather than left as a warning.
+`NothingResolvedNewName` rather than left as a warning. `rename_selections.fsl`
+reports one the same way, stated as `NothingSelectedNewName`.
 
-The twenty-one that pass are `proved` under `--engine induction`, which is what
+The twenty-three that pass are `proved` under `--engine induction`, which is what
 `verify.sh` and CI assert. Bounded verification alone would let an invariant be
 true to a depth without being inductive, and reading the exit code alone would
 let a spec that stopped parsing pass as "violated, as intended" — `fslc` exits
@@ -231,6 +245,17 @@ is a semantics that contradicts the documented one; each was run:
 | Any one of the four scope checks in `safeToRename` is dropped | `violated` |
 | The build-excluded file is not consulted, so a rename disturbs a name only another configuration writes | `violated` |
 | An unseen in-package test file does not withhold the rename | `violated` |
+| A non-Go source file does not withhold the rename | `violated` (`NoStaleSpelling`) |
+| A `//go:linkname` or `//export` naming the old name does not withhold the rename | `violated` (`NoStaleText`) |
+| Any `//go:linkname` or `//export` withholds the rename, whatever name it writes | `reachable_failed` (`RenameBesideOtherDirective`) |
+| The selector guard is dropped, so the new name may already select a member | `violated` (`RewrittenSiteSelectsTheMember`) |
+| The selector guard asks the method's receiver only, not the types promoting it | `violated` (`RewrittenSiteSelectsTheMember`) |
+| The selector guard asks only where the old name selects the member today, not where it is hidden | `violated` (`WrittenNewNameUnchanged`) |
+| A method is renamed although an interface of the package asks for its old name, or for its new name | `violated` (`AssertionsUnchanged`), each |
+| An embedded type is renamed although an interface asks for its old name, which a deeper method may then answer, as before this spec | `violated` (`AssertionsUnchanged`) |
+| An interface asking for its new name withholds the rename of an embedded type | `reachable_failed` (`RenameEmbeddedDespiteAskedNewName`) |
+| A fix does not check its target against the names earlier fixes claimed | `violated` (`NamesStayDistinct`) |
+| A fix does not claim its target, or claims its old name instead | `violated` (`RenamedNameIsReserved`; `NamesStayDistinct` without the helper invariants) |
 | Both directive insertions fire, so a member is fixed under a type fixed in the same run | `violated` (`InsertedMemberDirectiveBinds`) |
 | The narrower insertion wins, so the type's fix is dropped instead of the member's | `reachable_failed` (`OnlyTheWiderFixIsWritten`) |
 | The member's fix is dropped wherever the type crosses, even when the baseline absorbs the type's finding and no fix is written on it | `reachable_failed` (`MemberFixedWhereTypeIsBaselined`) |

@@ -6,11 +6,14 @@
 // specs set aside. This is that half.
 //
 // The distinction that carries the model is what a file sits outside of. A
-// generated or config-excluded file is still in pass.Files, so the type checker
-// read it and its package-level declarations are in Pkg.Scope(); only the
-// rewrite skips it. A build-excluded file and an unseen in-package test file
-// are not in pass.Files at all: nothing type-checked them, no scope lookup can
-// answer for them, and the directory listing is the only evidence there is.
+// generated file, or one left out by `filter`, is still in pass.Files, so the
+// type checker read it and its package-level declarations are in
+// Pkg.Scope(); only the rewrite skips it. A build-excluded file and an unseen
+// in-package test file are not in pass.Files at all: nothing type-checked
+// them, no scope lookup can answer for them, and the directory listing is the
+// only evidence there is. A non-Go source file is not even read for its
+// names. And a file the fix does edit can still write the name where the edit
+// does not reach: in the text of a //go:linkname or //export directive.
 //
 // ASSUME-1: one other file is enough. Soundness over a directory is the
 //   conjunction over each file in it (modelling assumption)
@@ -18,30 +21,43 @@
 //   name the rename would take, both, or neither. The spelling does not
 //   matter, only which of the two names it collides with (modelling
 //   assumption)
+// ASSUME-3: a directive that names a local name as text is modeled once, by
+//   the name it writes. Its file is collected or not; the text is never
+//   rewritten either way (modelling assumption)
 spec RenameReach {
   // Why a file of this package can sit outside the set the fix edits.
   //   Rewritten     — collected by the pass; the fix edits it
-  //   Uncollected   — in pass.Files but not collected: generated, or named by
-  //                   an exclude. Type-checked, never edited
+  //   Uncollected   — in pass.Files but not collected: generated, or left out
+  //                   by `filter`. Type-checked, never edited
   //   UnseenTest    — an in-package _test.go the non-test variant lacks
   //                   and the test variant sees
   //   BuildExcluded — a _GOOS suffix or a //go:build line left it out of this
   //                   configuration, and out of every configuration any
   //                   variant of this package runs under. A _test.go file
   //                   can be one too
-  enum Kind { Rewritten, Uncollected, UnseenTest, BuildExcluded }
+  //   NonGo         — a file the go command builds that is not Go: assembly,
+  //                   C, a header or a .syso object, for this GOARCH or
+  //                   another. It names Go symbols as text (TEXT ·add(SB)),
+  //                   and nothing reads it for them
+  enum Kind { Rewritten, Uncollected, UnseenTest, BuildExcluded, NonGo }
+
+  // What a //go:linkname or //export directive in a file of the pass names as
+  // its local name. The rename edits identifiers, and the directive's text is
+  // a comment, so it is never edited, whichever file holds it.
+  enum TextRef { NoText, TextOld, TextOther }
 
   state {
     configured:  Bool = false,
     kind:        Kind = Rewritten,
     spellsOld:   Bool = false,  // The file writes the name being renamed away
     declaresNew: Bool = false,  // The file declares the name the rename would take
+    text:        TextRef = NoText,
     renamed:     Bool = false
   }
 
-  action configure(k: Kind, s: Bool, d: Bool) {
+  action configure(k: Kind, s: Bool, d: Bool, t: TextRef) {
     requires not configured
-    configured = true  kind = k  spellsOld = s  declaresNew = d
+    configured = true  kind = k  spellsOld = s  declaresNew = d  text = t
   }
 
   // A file in pass.Files was type-checked, so its package-level declarations
@@ -61,6 +77,13 @@ spec RenameReach {
     // variant will ever see that file, so withholding wholesale would disable
     // the fix for every package carrying a _GOOS suffix
     and not (kind == BuildExcluded and (spellsOld or declaresNew))
+    // nonGoBlocksRename: a non-Go file withholds every rename. It is not read,
+    // so the guard cannot ask what it writes. Reading .s files for ·name was
+    // rejected: a spelling the scan misses is a broken link
+    and kind != NonGo
+    // linknamed: a directive naming the old name as text. A directive naming
+    // the new one needs a declaration of it, which Pkg.Scope() already finds
+    and text != TextOld
 
   fair action rename() {
     requires configured
@@ -77,6 +100,11 @@ spec RenameReach {
   // where the rename does not remove it from.
   invariant NewNameDeclaredOnce { renamed => not declaresNew }
 
+  // Soundness, part three: no directive is left naming, as text, a local
+  // name that no longer exists. //go:linkname would not compile, and //export
+  // would fail cgo.
+  invariant NoStaleText { renamed => text != TextOld }
+
   invariant RenameImpliesConfigured { renamed => configured }
 
   reachable RenameHappens { renamed }
@@ -89,4 +117,7 @@ spec RenameReach {
   reachable RenameBesideQuietExcludedFile {
     renamed and kind == BuildExcluded and not spellsOld and not declaresNew
   }
+  // The text row is per name: a directive naming something else does not
+  // withhold the rename.
+  reachable RenameBesideOtherDirective { renamed and text == TextOther }
 }
