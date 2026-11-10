@@ -4,8 +4,9 @@
 // here to any choice of standing fixes that leaves every loser out.
 //
 // Two fixes clash when their declarations lower to one name (Foo and FOO both
-// become foo). The fixes that stand claim their names in order, with the ones
-// released earlier first, and a fix that finds its name claimed loses it:
+// become foo). The fixes that stand claim their names in order: the released
+// ones first, then the rest, each group by position (verdictsFirst), and a
+// fix that finds its name claimed loses it:
 // its fix is withheld, and settling starts again. A loser keeps its name, so
 // settling can then withhold its winner, which leaves the loser withheld for a
 // name that no fix takes. Such a loser is released, claims first from then

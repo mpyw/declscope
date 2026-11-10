@@ -23,7 +23,8 @@ import (
 //
 // Each is one reach path from spec/shrink.fsl: outside and extTest are the
 // Outside variable, satisfied is staticSatisfaction, exposed is exposed,
-// escaped is the Escapes doubt, and generated is generatedRef.
+// escaped is Escapes (read as a use), guessed is the Guessed doubt, and
+// generated is generatedRef.
 //
 //declscope:shared // the core judges from it, and rename.go reads its sites
 type evidence struct {
