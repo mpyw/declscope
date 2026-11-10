@@ -184,11 +184,14 @@ func (o Options) NearestOnly() (FilterPattern, bool) {
 	return group[0], true
 }
 
-// NearestOnlyAdmits reports whether the nearest only group would read the file
-// on its own, with the groups above it and every omit set aside.
-func (o Options) NearestOnlyAdmits(path string) bool {
+// CancelledAbove reports whether the nearest only group admits the file, no
+// omit removes it, and an only group above removes it anyway. A file an omit
+// removes is the author's choice and is not counted, since the filter report
+// names an only above as the cause.
+func (o Options) CancelledAbove(path string) bool {
 	if len(o.onlyRE) == 0 {
 		return false
 	}
-	return filterMatches(o.onlyRE[len(o.onlyRE)-1], path)
+	return filterMatches(o.onlyRE[len(o.onlyRE)-1], path) &&
+		!filterMatches(o.omitRE, path) && o.Skips(path)
 }

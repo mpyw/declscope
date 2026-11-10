@@ -32,7 +32,7 @@ the binary.
 | `config_inherit.fsl` | A config file states some keys and leaves the rest alone: the nearest file that states a key wins, and a key no nearer file states still comes from the root | Every combination of what three levels state about one value key, and of what two levels state about two vocabulary namespaces |
 | `config_inherit.fsl` | `vocabulary` merges per namespace rather than the nearer map replacing the other, and neither namespace can take the other's value | As above |
 | `filter_chain.fsl` | `only` intersects and `omit` unions down the chain, so **a config file can only ever shrink what is read** and an `omit` at the root holds everywhere below it | Every combination of which lists two levels state and which of two files matches each of the four |
-| `filter_chain.fsl` | The filter report fires exactly when the nearest `only` is cancelled by one above it, and stays quiet where a package reads nothing on purpose | As above |
+| `filter_chain.fsl` | The filter report fires exactly when the nearest `only` is cancelled by one above it, and stays quiet where a package reads nothing on purpose. A file the nearest config's own `omit` removes does not count, so the report never blames an `only` above for what an `omit` did | As above |
 | `boundary_fix.fsl` | Inserting `//declscope:shared` always removes the boundary crossing, and is withheld wherever any level already stated a scope | Every combination of `defaults.unexported`, kind, exportedness, reference shape, and the declaration, block, type and file directives |
 | `boundary_fix.fsl` | The fix is offered only where a crossing exists, and never overwrites the declaration's own directive | As above |
 | `fix_members.fsl` | Two directive insertions in one run never converge: no directive `-fix` writes binds nothing, and whichever of the two it writes settles the crossing | Every combination of `defaults.unexported`, the exportedness and reference shape of a type and one of its members, and the declaration, type and file directives |
@@ -268,6 +268,7 @@ is a semantics that contradicts the documented one; each was run:
 | `omit` is replaced down the chain rather than unioned | `violated` (`MonotoneDown`) |
 | `only` is unioned down the chain rather than intersected | `violated` (`MonotoneDown`) |
 | The filter report fires whenever a package reads nothing | `violated` (`WarnedExactlyWhenTheNearestOnlyIsCancelled`) |
+| The filter report counts a file an `omit` removes as cancelled by an `only` above | `violated` (`WarnedOnlyWhereAnOnlyAboveRemoves`) |
 
 Three habits keep those controls sharp. **Record the report.** A spec whose only
 action assigns the whole state at once cannot carry an invariant that any state

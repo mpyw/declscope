@@ -70,9 +70,12 @@ spec FilterChain {
   def chainKeeps1() = chainPassesOnly1() and not chainOmits1()
   def chainKeeps2() = chainPassesOnly2() and not chainOmits2()
 
-  // What the nearest config's only would have read on its own, with the
-  // groups above it and every omit set aside.
-  def nearestOnlyAdmits() = not nOnlyEmpty and (f1nOnly or f2nOnly)
+  // A file the nearest config's only admits and no omit removes, which the
+  // chain drops anyway: only an only above can have done it. A file an omit
+  // removes is not counted, since the omit is the author's own choice and the
+  // report names an only above as the cause (Options.CancelledAbove).
+  def cancelled1() = not nOnlyEmpty and f1nOnly and not chainOmits1() and not chainPassesOnly1()
+  def cancelled2() = not nOnlyEmpty and f2nOnly and not chainOmits2() and not chainPassesOnly2()
 
   action decide() {
     requires configured
@@ -82,10 +85,11 @@ spec FilterChain {
     kept2 = chainKeeps2()
     // A package with nothing to read is usually the point: a root only naming
     // one subtree excludes every package outside it. What is worth saying is
-    // narrower. The nearest config states an only, the files it matches are
-    // all removed by an only above it, and so that config can never take
-    // effect. Nobody writes a filter for a subtree they meant to exclude.
-    warned = not chainKeeps1() and not chainKeeps2() and nearestOnlyAdmits()
+    // narrower. The nearest config states an only, the files it matches and
+    // its omit leaves are all removed by an only above it, and so that config
+    // can never take effect. Nobody writes a filter for a subtree they meant
+    // to exclude.
+    warned = not chainKeeps1() and not chainKeeps2() and (cancelled1() or cancelled2())
   }
 
   invariant DecisionNeedsConfig { decided => configured }
@@ -130,7 +134,14 @@ spec FilterChain {
   // --- the warning ----------------------------------------------------------
   // Intersecting two only lists that do not overlap leaves nothing to read.
   invariant WarnedExactlyWhenTheNearestOnlyIsCancelled {
-    decided => (warned == (not kept1 and not kept2 and nearestOnlyAdmits()))
+    decided => (warned == (not kept1 and not kept2 and (cancelled1() or cancelled2())))
+  }
+  // The report's message is true: where it fires, an only above the nearest
+  // config removed a file that config's only admits and no omit removes.
+  invariant WarnedOnlyWhereAnOnlyAboveRemoves {
+    warned => not oOnlyEmpty and (
+      (f1nOnly and not f1oOnly and not f1oOmit and not f1nOmit) or
+      (f2nOnly and not f2oOnly and not f2oOmit and not f2nOmit))
   }
   invariant ReadingSomethingNeverWarns { decided and (kept1 or kept2) => not warned }
   reachable NearestOnlyCancelledByTheOneAbove {
@@ -153,4 +164,21 @@ spec FilterChain {
     and f1oOmit and f2oOmit and not warned
   }
   reachable ReadsSomethingAndDoesNotWarn { decided and kept1 and not warned }
+  // The nearest config's own omit removes what its only matches. No only
+  // above is the cause, so nothing is said, even where an only above would
+  // also have removed the files.
+  reachable NearestOmitEmptiedItsOnlyQuietly {
+    decided and not nOnlyEmpty and f1nOnly and f2nOnly
+    and f1nOmit and f2nOmit
+    and not oOnlyEmpty and not f1oOnly and not f2oOnly
+    and not warned
+  }
+  // One file is omitted and the only above removes the other: the report
+  // fires, and its cause is the only above.
+  reachable CancelledBesideAnOmit {
+    decided and not oOnlyEmpty and not nOnlyEmpty
+    and f1nOnly and not f1oOnly and not f1nOmit and not f1oOmit
+    and f2nOnly and f2nOmit
+    and warned
+  }
 }

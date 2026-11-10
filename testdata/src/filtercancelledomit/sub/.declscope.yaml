@@ -1,0 +1,8 @@
+# The only matches a.go and b.go, and the omit takes b.go back out. a.go is
+# what the root's only removes, so the report counts it alone.
+filter:
+  only:
+    - "a.go"
+    - "b.go"
+  omit:
+    - "b.go"
