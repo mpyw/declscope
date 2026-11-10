@@ -139,7 +139,7 @@ spec FilterChain {
   // The report's message is true: where it fires, an only above the nearest
   // config removed a file that config's only admits and no omit removes.
   invariant WarnedOnlyWhereAnOnlyAboveRemoves {
-    warned => not oOnlyEmpty and (
+    decided and warned => not oOnlyEmpty and (
       (f1nOnly and not f1oOnly and not f1oOmit and not f1nOmit) or
       (f2nOnly and not f2oOnly and not f2oOmit and not f2nOmit))
   }
