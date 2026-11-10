@@ -54,7 +54,7 @@ func surveyRun(args []string) {
 	if err != nil {
 		surveyFail(err)
 	}
-	failed := loadErrors(pkgs)
+	failed := loadFailures(pkgs)
 	if len(failed) > 0 && !*allowErrors {
 		// A package that does not type-check produces no findings, and that
 		// is indistinguishable from a package with nothing wrong. The skill
@@ -71,7 +71,7 @@ func surveyRun(args []string) {
 		fmt.Fprintf(os.Stderr, "declscope survey: warning: %s has only test files, so -test=false leaves nothing to measure\n", path)
 	}
 
-	summary, err := surveyPackages(loadWidestVariants(pkgs), *configPath, failed)
+	summary, err := surveyPackages(loadedWidestVariants(pkgs), *configPath, failed)
 	if err != nil {
 		surveyFail(err)
 	}
@@ -91,7 +91,7 @@ func surveyPackages(pkgs []*packages.Package, configPath string, failed []string
 	// be a clean one, which is the reading -allow-errors must not buy:
 	// checks.typeCheck names it instead. So does a package that compiles
 	// against a dependency that does not.
-	causes := loadFailedCauses(pkgs)
+	causes := loadFailureCauses(pkgs)
 	pkgs = slices.DeleteFunc(slices.Clone(pkgs), func(pkg *packages.Package) bool { return causes[pkg] != nil })
 
 	// Each package is resolved and measured on its own, in parallel. Only
@@ -103,7 +103,7 @@ func surveyPackages(pkgs []*packages.Package, configPath string, failed []string
 		err      error
 	}
 	results := make([]measuredPackage, len(pkgs))
-	loadInParallel(len(pkgs), func(i int) {
+	inParallel(len(pkgs), func(i int) {
 		opts, chain, err := config.Resolve(loadedPackageDir(pkgs[i]), configPath)
 		if err != nil {
 			results[i].err = err

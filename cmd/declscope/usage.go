@@ -26,7 +26,7 @@ const usageSubcommands = `Subcommands:
 Run a subcommand with -h for its flags.
 `
 
-// usageInstall makes the help the driver prints list the subcommands.
+// installUsage makes the help the driver prints list the subcommands.
 //
 // singlechecker.Main assigns flag.Usage itself, so assigning it here would be
 // undone. The flag set calls CommandLine.Usage, whose default only calls
@@ -40,7 +40,7 @@ Run a subcommand with -h for its flags.
 // without the subcommands.
 //
 //declscope:shared // main.go installs it before the driver runs
-func usageInstall() {
+func installUsage() {
 	bare := len(os.Args) == 1
 	if bare {
 		os.Args = append(os.Args, "-h")

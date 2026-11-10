@@ -5,9 +5,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
-	"sync"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
@@ -67,7 +65,7 @@ func loadPackages(command string, patterns []string, tests bool) ([]*packages.Pa
 	return pkgs, nil
 }
 
-// loadErrors names every package that did not type-check.
+// loadFailures names every package that did not type-check.
 //
 // A failed build reports no diagnostics, and that is indistinguishable from a
 // clean run: the authoring skill warns an agent to run
@@ -82,7 +80,7 @@ func loadPackages(command string, patterns []string, tests bool) ([]*packages.Pa
 // variants of a package report the same error twice.
 //
 // A package that compiles but imports one that does not is named too, along
-// with the package that failed. loadFailedCauses says why it counts.
+// with the package that failed. loadFailureCauses says why it counts.
 //
 // Each entry names the failing package's first error that is not the go
 // command's. Dependencies come from export data, so go list compiles the
@@ -93,9 +91,9 @@ func loadPackages(command string, patterns []string, tests bool) ([]*packages.Pa
 // directory that does not exist, has only the go command's error, and that one
 // is named, on one line by module.ErrorLine.
 //
-//declscope:shared // survey refuses on it, and says which packages failed
-func loadErrors(pkgs []*packages.Package) []string {
-	causes := loadFailedCauses(pkgs)
+//declscope:shared // survey and inspect refuse on it, and say which packages failed
+func loadFailures(pkgs []*packages.Package) []string {
+	causes := loadFailureCauses(pkgs)
 	// The go command reports positions relative to its working directory,
 	// which is this process's: the config sets no Dir.
 	cwd, _ := os.Getwd()
@@ -117,7 +115,7 @@ func loadErrors(pkgs []*packages.Package) []string {
 	return failed
 }
 
-// loadFailedCauses maps each package that cannot be measured to the package
+// loadFailureCauses maps each package that cannot be measured to the package
 // whose errors are why: itself, or the first package it imports, directly or
 // not, that has errors.
 //
@@ -128,8 +126,8 @@ func loadErrors(pkgs []*packages.Package) []string {
 // visited in import-path order, so the dependency named does not depend on map
 // order.
 //
-//declscope:shared // survey drops the packages it maps, and loadErrors names them
-func loadFailedCauses(pkgs []*packages.Package) map[*packages.Package]*packages.Package {
+//declscope:shared // survey drops the packages it maps, and loadFailures names them
+func loadFailureCauses(pkgs []*packages.Package) map[*packages.Package]*packages.Package {
 	causes := map[*packages.Package]*packages.Package{}
 	visited := map[*packages.Package]bool{}
 	var visit func(pkg *packages.Package) *packages.Package
@@ -156,34 +154,14 @@ func loadFailedCauses(pkgs []*packages.Package) map[*packages.Package]*packages.
 	return causes
 }
 
-// loadErrorsForInspect leaves out an external test package when the package it
-// tests is also present. inspect reports that subject package, not the separate
-// scope declared by package foo_test, so an error in the skipped package must
-// not prevent the requested package from being measured.
-//
-//declscope:shared // inspect applies the loader's package-selection rules
-func loadErrorsForInspect(pkgs []*packages.Package) []string {
-	subjects := map[string]bool{}
-	for _, pkg := range loadWidestVariants(pkgs) {
-		if !loadIsExternalTest(pkg) {
-			subjects[pkg.PkgPath] = true
-		}
-	}
-
-	filtered := slices.DeleteFunc(slices.Clone(pkgs), func(pkg *packages.Package) bool {
-		return loadIsExternalTest(pkg) && subjects[pkg.ForTest]
-	})
-	return loadErrors(filtered)
-}
-
-// loadIsAnalyzable reports whether a loaded package is one to analyze at all.
+// loadedAnalyzable reports whether a loaded package is one to analyze at all.
 //
 // The synthesized main package of a test binary lives in the build cache: no
 // config or baseline could ever be looked up from it, and it has nothing of
 // its own to say.
 //
 //declscope:shared // both subcommands skip the same packages
-func loadIsAnalyzable(pkg *packages.Package) bool {
+func loadedAnalyzable(pkg *packages.Package) bool {
 	if len(pkg.Syntax) == 0 || pkg.TypesInfo == nil || pkg.Types == nil {
 		return false
 	}
@@ -204,7 +182,7 @@ func loadIsAnalyzable(pkg *packages.Package) bool {
 func loadedTestOnlyPaths(pkgs []*packages.Package) []string {
 	analyzable := map[string]bool{}
 	for _, pkg := range pkgs {
-		if loadIsAnalyzable(pkg) {
+		if loadedAnalyzable(pkg) {
 			analyzable[pkg.PkgPath] = true
 		}
 	}
@@ -221,16 +199,16 @@ func loadedTestOnlyPaths(pkgs []*packages.Package) []string {
 	return paths
 }
 
-// loadIsExternalTest identifies package foo_test as loaded for package foo.
+// loadedExternalTest identifies package foo_test as loaded for package foo.
 // ForTest is the build system's answer; trimming an import-path suffix would
 // also discard an ordinary package that is genuinely named foo_test.
 //
 //declscope:shared // inspect excludes this separate scope when its subject is present
-func loadIsExternalTest(pkg *packages.Package) bool {
+func loadedExternalTest(pkg *packages.Package) bool {
 	return pkg.ForTest != "" && pkg.PkgPath != pkg.ForTest && !module.IsTestMain(pkg)
 }
 
-// loadWidestVariants keeps one package per import path: the variant that sees
+// loadedWidestVariants keeps one package per import path: the variant that sees
 // the most files.
 //
 // Loading with tests yields up to three packages for one directory, and two of
@@ -245,11 +223,11 @@ func loadIsExternalTest(pkg *packages.Package) bool {
 // scope, and folding it into its subject would mix two packages' counts.
 //
 //declscope:shared // survey measures one row per package, not per variant
-func loadWidestVariants(pkgs []*packages.Package) []*packages.Package {
+func loadedWidestVariants(pkgs []*packages.Package) []*packages.Package {
 	widest := map[string]*packages.Package{}
 	var paths []string
 	for _, pkg := range pkgs {
-		if !loadIsAnalyzable(pkg) {
+		if !loadedAnalyzable(pkg) {
 			continue
 		}
 		seen, ok := widest[pkg.PkgPath]
@@ -266,30 +244,6 @@ func loadWidestVariants(pkgs []*packages.Package) []*packages.Package {
 		out = append(out, widest[path])
 	}
 	return out
-}
-
-// loadInParallel calls f once for every index below n, on up to GOMAXPROCS
-// goroutines at a time, and returns once every call has.
-//
-// Loading type-checks in parallel already, and on a large module the analysis
-// that follows is a quarter of the run: 0.7s of 2.5s over the standard
-// library. Each caller writes one package's result to that package's own slot
-// and folds the slots in order afterwards, so no call shares state with
-// another and the output does not depend on scheduling. The analysis is safe
-// to run this way: singlechecker already runs it on many packages at once.
-//
-//declscope:shared // survey and baseline analyze every package through it
-func loadInParallel(n int, f func(i int)) {
-	slots := make(chan struct{}, runtime.GOMAXPROCS(0))
-	var wg sync.WaitGroup
-	for i := range n {
-		slots <- struct{}{}
-		wg.Go(func() {
-			defer func() { <-slots }()
-			f(i)
-		})
-	}
-	wg.Wait()
 }
 
 // loadedPass builds the pass a subcommand analyzes a package with.

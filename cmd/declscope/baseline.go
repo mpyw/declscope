@@ -137,7 +137,7 @@ func baselineCollect(patterns []string, configPath, out, cwd string, shrinkToo b
 	// the fold below sees more than one, and it runs in package order, so
 	// the first error and the order of every entry are the ones a sequential
 	// run would give.
-	pkgs = slices.DeleteFunc(slices.Clone(pkgs), func(pkg *packages.Package) bool { return !loadIsAnalyzable(pkg) })
+	pkgs = slices.DeleteFunc(slices.Clone(pkgs), func(pkg *packages.Package) bool { return !loadedAnalyzable(pkg) })
 	loaded = map[string]bool{}
 	for _, pkg := range pkgs {
 		loaded[pkg.PkgPath] = true
@@ -148,7 +148,7 @@ func baselineCollect(patterns []string, configPath, out, cwd string, shrinkToo b
 		err  error
 	}
 	results := make([]collectedPackage, len(pkgs))
-	loadInParallel(len(pkgs), func(i int) {
+	inParallel(len(pkgs), func(i int) {
 		dir := loadedPackageDir(pkgs[i])
 		// Options are resolved per package, since a subtree may configure its
 		// own rules. The existing baseline is deliberately not loaded:
