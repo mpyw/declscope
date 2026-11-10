@@ -220,10 +220,8 @@ func candidateDoc(d *ast.GenDecl, own *ast.CommentGroup, names int) *ast.Comment
 
 // candidateTestEntry reports whether go test finds a function of a _test.go
 // file by this name.
+// TestMain is one of them, by the Test prefix.
 func candidateTestEntry(name string) bool {
-	if name == "TestMain" {
-		return true
-	}
 	return slices.ContainsFunc([]string{"Test", "Benchmark", "Fuzz", "Example"}, func(prefix string) bool {
 		return strings.HasPrefix(name, prefix)
 	})
