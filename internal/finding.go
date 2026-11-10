@@ -160,6 +160,13 @@ func (c *collection) boundaryFinding(pass *analysis.Pass, opts Options, t *targe
 	if t.boundAt != boundAtDefault {
 		return f, true
 	}
+	// Widening a type also decides what its members' own directives bind. A
+	// member's //declscope:shared that the widened type would leave binding
+	// nothing withholds the fix for the same reason, and nothing then subsumes
+	// the fix of a member that crosses, so each such member gets its own.
+	if t.kind == kindType && c.unboundAtScopeSite(opts, t) {
+		return f, true
+	}
 	fix := c.directiveInsertionFix(pass, t, scope.Shared)
 	// The directive reaches the type's members too, so under strict a member
 	// no other namespace reads would come out of this fix shared, and

@@ -832,6 +832,7 @@ Every crossing use site is attached to the diagnostic, and a use from inside the
 | The declaration states its **own** scope | None. The directive and the use are both deliberate, and `-fix` must not overwrite what the author wrote |
 | The `private` is inherited from a block, a type or a file | None. A directive on the declaration would leave the outer directive reaching one declaration fewer. If that was its last one, the next run reports the outer directive as unused, a report the fix created |
 | A type and its members cross together | One directive, on the type. The members are reported without a fix, since a second directive on them would bind nothing |
+| A type one of whose unexported members states `//declscope:shared` | None on the type while `rules.unused` is on. Widened, the type would give the member that scope anyway, and the next run would report the member's directive as unused. A member that crosses gets its own fix |
 
 #### Reach without a boundary
 

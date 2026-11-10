@@ -58,6 +58,8 @@ the binary.
 | `surplus_strict.fsl` | Neither `surplus` finding is made of a declaration reachable by any path the rule counts: the paths of `surplus.fsl` less exportedness, which `strict` never judges | Every combination of `rules.surplus`, why the declaration has its scope (the enclosing directive, its own, exportedness, `defaults.unexported`, no enclosing directive), the level the directive is written at, the reach path, the shape of the entry (`main` in package `main` included), what else the directive reaches, and whether the pass read every file |
 | `surplus_strict.fsl` | `strict` reports a superset of `loose` and never lands on the declaration `loose` already covers. It reports only where an enclosing directive widened the declaration, at the file, block and type level alike, never a type whose narrowing would narrow a reached member, and never `main` in package `main` | As above |
 | `surplus_strict.fsl` | The inserted `//declscope:private` binds, settles the report, starts no boundary report on the declaration or a member it narrows, never makes `loose` fire, and never leaves the enclosing directive binding nothing. Where it would, the fix is withheld and the report is not. Under a directive that already binds nothing, the fix is withheld only where it would reword that directive's `unused` report | As above |
+| `type_fix_members.fsl` | A type's boundary fix converges in one pass with the edits it makes to the members. It leaves no boundary report on the type or on a member it was written for, narrows no member another namespace spells, never writes over a member's own directive, and under `rules.surplus: strict` leaves no member that `strict` reports as widened by the type's new directive | Every combination of `rules.unused`, `rules.surplus`, whether the pass read every file, whether an ignore or the baseline answers the type's report, and of a member's exportedness, own directive, reach path, entry and `surplus` ignore, plus a sibling member's exportedness and own directive |
+| `type_fix_members.fsl` | Neither inserted directive binds nothing, under either `unused` mode, and no directive the author wrote on a member is left binding nothing. Where widening the type would leave one so, the type's fix is withheld and the report is not, and a member that crosses takes its own fix | As above |
 | `shrink.fsl` | `declscope shrink` (#112) never unexports a declaration that anything outside its package uses, by any path: a spelled use, an external test, a static interface satisfaction, an importer no loaded package shows, a value of its type that the exported API of an importable package hands out, a use through reflection, or a write through a type parameter. Nor does it unexport one whose rename something inside the package would break | Every combination of the kind of declaration, where it sits, what the loaded code shows about a use from another package, the doubts the tool can raise but not settle, and the four things inside the package that stop a rename: a build-excluded file of the package, a reference the rename cannot rewrite (a generated file, an example function, or `-ldflags -X` on a string var), the rename guard, and an exported declaration that keeps its name and hands the type out |
 | `shrink.fsl` | The report and the fix are held to different standards. The report may be wrong where a use is possible but not provable, and each such doubt withholds the fix and leaves the report: a name a build-excluded file of another package writes, a literal or conversion through a type parameter whose type set cannot be computed (#309), or a nested module that builds a copy of other source that imports the range, or whose build list cannot be read. An escape into an interface is a use, and silences the report. Wherever `run.skip` or `module.Range` cannot vouch for every importer, nothing is said at all: outside `internal/` or under an `internal/` above the module, in package main, in a package with non-Go files or cgo, where a module the build reads could not be loaded or is read from elsewhere, or after a load error. These silences hold by definition, since a report needs the range: the spec shows each placement maps to silence, not which code conditions map to each placement | As above |
 | `shrink.fsl` | One pass converges: an unexported declaration is out of the rule, and no report starts after the fix | As above |
@@ -123,7 +125,7 @@ step and needs gigabytes for the same claims these prove in single-digit
 megabytes.
 
 ```console
-./spec/verify.sh     # what CI runs: twenty proved, two violated
+./spec/verify.sh     # what CI runs: twenty-one proved, two violated
 ```
 
 Or one at a time:
@@ -142,6 +144,7 @@ fslc verify rename_guarded.fsl   --depth 4
 fslc verify rename_reach.fsl     --depth 3
 fslc verify surplus.fsl         --depth 2
 fslc verify surplus_strict.fsl  --depth 5
+fslc verify type_fix_members.fsl --depth 4
 fslc verify unused_bind.fsl     --depth 4
 fslc verify unused_ignore.fsl   --depth 2
 fslc verify unused_ignore_unseen.fsl --depth 3
@@ -160,7 +163,10 @@ step 1 or 2; the others add a fix action and witness at step 2.
 `filter.fsl` decides in one step and then runs the other order in two, so it
 witnesses by step 4.
 `surplus_strict.fsl` configures in three steps, so that no one action carries the
-product of every parameter, reports and fixes, so it witnesses by step 5. `unused_modes.fsl`
+product of every parameter, reports and fixes, so it witnesses by step 5. `type_fix_members.fsl`
+configures in two steps and witnesses at step 3; it runs to depth 4 so that
+the bounded check also holds a run that writes both the type's fix and the
+member's. `unused_modes.fsl`
 configures in four steps for the same reason, judges, and fixes, so it witnesses
 by step 6. `shrink.fsl` configures in three steps, reports, and fixes, so it
 witnesses by step 5. `shrink_ignore.fsl` and `unused_ignore_unseen.fsl`
@@ -170,7 +176,7 @@ run prints is the shape of the model, not a failure, and `rename_guarded.fsl`
 also reports a vacuous antecedent — which is the guard working, and is stated as
 `NothingResolvedNewName` rather than left as a warning.
 
-The twenty that pass are `proved` under `--engine induction`, which is what
+The twenty-one that pass are `proved` under `--engine induction`, which is what
 `verify.sh` and CI assert. Bounded verification alone would let an invariant be
 true to a depth without being inductive, and reading the exit code alone would
 let a spec that stopped parsing pass as "violated, as intended" — `fslc` exits
@@ -245,6 +251,12 @@ is a semantics that contradicts the documented one; each was run:
 | Unread in-package tests withhold the `strict` fix only for a `private` taker | `reachable_failed` (`TestsUnseenWithholds`) |
 | `surplus` withholds the `strict` fix of a `//declscope:private` | `reachable_failed` (`SurplusIgnoresPrivate`) |
 | `surplus` withholds the `strict` fix with `surplus: off` | `reachable_failed` (`SurplusOffFixes`) |
+| A type's fix narrows no member | `violated` (`StrictSilentAfter`) |
+| A type's fix also narrows a member another namespace spells | `violated` (`MemberCrossingSettled`) |
+| A type's fix narrows a member over the member's own directive | `violated` (`NeverOverwritesTheAuthor`) |
+| A type's fix is offered where it leaves a member's own `//declscope:shared` binding nothing, as before this spec | `violated` (`AuthoredDirectivesKeepTheirReport`) |
+| A member's own fix is written beside its type's | `violated` (`InsertedMemberDirectiveBinds`) at depth 4 |
+| `fair` is dropped from the type's fix | under induction, `unknown_cti` (`progress_action_not_fair`) |
 | `shrink` reports a declaration whose type or owner escapes into an interface | `violated` (`SilentOnEscape`) |
 | `shrink` fixes where a build-excluded file of another package may use the name | `violated` (`FixNeverBreaks`) |
 | `shrink` fixes a declaration a build-excluded file of its own package writes | `violated` (`FixNeverBreaks`) |
