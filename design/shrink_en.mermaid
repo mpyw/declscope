@@ -1,5 +1,5 @@
 flowchart TD
-  start(["declscope shrink [-fix] [-config] [packages]<br>once per run, over the whole module"]) --> resolve["module.Resolve<br>the patterns, as the go command reads them"]
+  start(["declscope shrink [-fix] [-config] [packages]<br>once per run, over the whole module"]) --> resolve["pattern.Resolve<br>the patterns, as the go command reads them"]
   resolve -- "a pattern is rejected" --> fail(["error, exit 1"])
   resolve --> load["module.Load<br>every package of the main modules, with every test variant<br>an importer outside the patterns still counts"]
   load --> ev

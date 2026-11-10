@@ -30,7 +30,6 @@ import (
 	"golang.org/x/mod/semver"
 	"golang.org/x/tools/go/packages"
 
-	"github.com/mpyw/declscope/internal/pattern"
 	"github.com/mpyw/declscope/internal/shrink/excluded"
 )
 
@@ -912,59 +911,6 @@ func InternalParent(path string) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-// Named is what the patterns name.
-type Named struct {
-	// Paths is every package they name in a main module.
-	Paths map[string]bool
-	// Outside counts the packages they name outside every main module: the
-	// standard library, a dependency, anything all names.
-	Outside int
-	// Unmatched lists the patterns that named no package, in order.
-	Unmatched []string
-}
-
-// Resolve resolves the patterns, from dir, to the packages they name, the way
-// the go command does.
-//
-// A pattern the go command rejects is an error with the go command's own
-// message, since go vet stops there too: a typo in CI must not pass as a run
-// that found nothing. A pattern that names nothing is a warning, and an error
-// when every pattern names nothing, which is what go vet does. Package
-// pattern answers which ones those are, for every command alike.
-func Resolve(dir string, patterns []string) (Named, error) {
-	if len(patterns) == 0 {
-		patterns = []string{"./..."}
-	}
-	cfg := &packages.Config{Dir: dir, Mode: packages.NeedName | packages.NeedModule}
-	pkgs, err := packages.Load(cfg, patterns...)
-	if err != nil {
-		return Named{}, err
-	}
-	named := Named{Paths: map[string]bool{}}
-	outside := map[string]bool{}
-	var problems []string
-	for _, p := range pkgs {
-		if len(p.Errors) > 0 {
-			problems = append(problems, p.Errors[0].Msg)
-			continue
-		}
-		if p.Module != nil && p.Module.Main {
-			named.Paths[p.PkgPath] = true
-		} else {
-			outside[p.PkgPath] = true
-		}
-	}
-	if len(problems) > 0 {
-		slices.Sort(problems)
-		return Named{}, fmt.Errorf("%s", strings.Join(slices.Compact(problems), "\n"))
-	}
-	if named.Unmatched, err = pattern.Unmatched(cfg, patterns, pkgs); err != nil {
-		return Named{}, err
-	}
-	named.Outside = len(outside)
-	return named, nil
 }
 
 // mainModules asks the go command for the main modules seen from dir: the

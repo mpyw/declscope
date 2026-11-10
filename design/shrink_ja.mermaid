@@ -1,5 +1,5 @@
 flowchart TD
-  start(["declscope shrink [-fix] [-config] [packages]<br>1 回の実行で、モジュール全体を対象に"]) --> resolve["module.Resolve<br>パターンを go コマンドと同じように解釈"]
+  start(["declscope shrink [-fix] [-config] [packages]<br>1 回の実行で、モジュール全体を対象に"]) --> resolve["pattern.Resolve<br>パターンを go コマンドと同じように解釈"]
   resolve -- "パターンが拒否された" --> fail(["エラー、exit 1"])
   resolve --> load["module.Load<br>main モジュールの全パッケージを、テスト variant も含めて<br>パターン外の importer も数に入れる"]
   load --> ev

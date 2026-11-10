@@ -45,6 +45,7 @@ import (
 	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/namespace"
+	"github.com/mpyw/declscope/internal/pattern"
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/shrink/module"
 	"github.com/mpyw/declscope/internal/shrink/reach"
@@ -148,7 +149,7 @@ type Skipped struct {
 func Run(dir string, patterns []string, baselined Baselined) (Result, error) {
 	// The patterns first: a pattern the go command rejects is the cheaper
 	// thing to find, and the one a reader should see.
-	named, err := module.Resolve(dir, patterns)
+	named, err := pattern.Resolve(dir, patterns)
 	if err != nil {
 		return Result{}, err
 	}
