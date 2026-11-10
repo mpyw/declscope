@@ -15,13 +15,13 @@ type QualifyRow struct {
 	Reported  int
 
 	// Targets is how many declarations the rule examines here, and the
-	// denominator of Saturation. It is zero wherever the rule is not in
+	// denominator of its saturation. It is zero wherever the rule is not in
 	// force, which is not the same as every declaration passing.
 	Targets int
 }
 
-// Saturation is the share of this namespace's targets that fail, as a
-// numerator over Targets.
+// Failing counts this namespace's targets that fail: the numerator of its
+// saturation, over Targets.
 //
 // A baselined finding counts toward it. The baseline defers a decision rather
 // than settling one, so a namespace whose every name is baselined is exactly
@@ -32,7 +32,7 @@ type QualifyRow struct {
 // name is usually what is wrong; in the middle, the file holds several
 // concerns; near the bottom, the one declaration does. Which of those applies
 // is a judgment, and this package reports the ratio.
-func (q QualifyRow) Saturation() int { return q.Baselined + q.Reported }
+func (q QualifyRow) Failing() int { return q.Baselined + q.Reported }
 
 // qualifyRows folds the naming findings per namespace, worst first, and lists
 // every namespace, including those with nothing against them: a namespace the
@@ -90,13 +90,13 @@ func (p Package) worstQualified() (QualifyRow, bool) {
 	var worst QualifyRow
 	found := false
 	for _, row := range p.qualifyRows() {
-		if row.Core || row.Targets == 0 || row.Saturation() == 0 {
+		if row.Core || row.Targets == 0 || row.Failing() == 0 {
 			continue
 		}
 		switch {
 		case !found,
-			row.Saturation() > worst.Saturation(),
-			row.Saturation() == worst.Saturation() && row.Saturation()*worst.Targets > worst.Saturation()*row.Targets:
+			row.Failing() > worst.Failing(),
+			row.Failing() == worst.Failing() && row.Failing()*worst.Targets > worst.Failing()*row.Targets:
 			worst, found = row, true
 		}
 	}

@@ -30,9 +30,9 @@ func TestWorstQualifiedNamesTheWork(t *testing.T) {
 	if worst.Namespace != "large" {
 		t.Errorf("worst is %q, want large: three failing names are more work than two", worst.Namespace)
 	}
-	if worst.Saturation() != 3 || worst.Targets != 30 {
+	if worst.Failing() != 3 || worst.Targets != 30 {
 		t.Errorf("worst reads %d of %d, want 3 of 30 — the ratio is reported, not the ranking",
-			worst.Saturation(), worst.Targets)
+			worst.Failing(), worst.Targets)
 	}
 }
 
@@ -86,7 +86,7 @@ func TestQualifyRowsCountExemptApart(t *testing.T) {
 		if row.Exempt != 1 {
 			t.Errorf("completion has %d exempt names, want 1", row.Exempt)
 		}
-		if row.Saturation() != row.Baselined+row.Reported {
+		if row.Failing() != row.Baselined+row.Reported {
 			t.Error("an exempt name was counted as failing")
 		}
 		return

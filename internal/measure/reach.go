@@ -40,7 +40,7 @@ type Reach struct {
 //
 //declscope:shared // markdown.go renders the rows
 func (p Package) mostReached(limit int) []Reach {
-	core := p.coreNamespacesForReach()
+	core := p.coreLeftOutOfReach()
 	// Keyed on the pair, not on a joined string: a namespace can be spelled
 	// "(file x.go)" and a member "Type.member", so both sides may hold a dot
 	// and a join would not be injective.
@@ -88,7 +88,7 @@ func (p Package) mostReached(limit int) []Reach {
 //
 //declscope:shared // markdown.go says how many the table leaves out
 func (p Package) coreDeclarationsReached() int {
-	core := p.coreNamespacesForReach()
+	core := p.coreLeftOutOfReach()
 	seen := map[string]bool{}
 	for _, e := range p.Edges {
 		if e.State != EdgeOpen && core[e.To] {
@@ -98,9 +98,10 @@ func (p Package) coreDeclarationsReached() int {
 	return len(seen)
 }
 
-// coreNamespacesForReach is the name the core goes by in the edges, read
-// from the namespace marked Core rather than matched on its spelling.
-func (p Package) coreNamespacesForReach() map[string]bool {
+// coreLeftOutOfReach is the name the core goes by in the edges, which
+// mostReached leaves out. It is read from the namespace marked Core rather
+// than matched on its spelling.
+func (p Package) coreLeftOutOfReach() map[string]bool {
 	out := map[string]bool{}
 	for _, ns := range p.Namespaces {
 		if ns.Core {
