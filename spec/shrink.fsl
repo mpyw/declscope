@@ -8,7 +8,8 @@
 //
 //   the report may be wrong where a use is possible but not provable: a
 //     method or field whose name alone a build-excluded file of another
-//     package writes
+//     package writes, or a range a nested module's build may read through a
+//     copy of other source
 //   an escape into an interface is taken as a use and reported not at all,
 //     and so is a struct tag, which declares a use through reflection.
 //     fmt, encoding/json and reflect find methods and fields at run time,
@@ -22,10 +23,13 @@
 // the guards never read:
 //
 //   hiddenUse   a use no loaded package shows: an importer in another module,
-//               a plugin looking up a symbol of package main, a nested module
-//               under the internal parent, a package that failed to load. Each
-//               is possible only outside Placement Internal, which is what the
-//               range restriction buys, or where the declaration is exposed
+//               a plugin looking up a symbol of package main, a module the
+//               build reads that this run could not load, a package that
+//               failed to load, or a copy of other source a nested module
+//               builds. Each is possible only outside Placement Internal,
+//               which is what the range restriction buys, where the
+//               declaration is exposed, or where the tool sees the
+//               NestedBuild doubt
 //   exposed     a method or field of a type the exported API of an importable
 //               package reaches. Another module cannot name the type, but it
 //               can hold a value of it (pub.Get().Method()), so the internal
@@ -47,8 +51,12 @@ spec Shrink {
   enum Kind { Value, Type, Method, Field }
   // Where the declaration sits. Only Internal is in range: outside internal/
   // another module may import the package, package main is reachable by
-  // plugin, and a nested module or a load error leaves an importer unread.
-  enum Placement { Internal, NotInternal, MainPkg, NestedModule, LoadError }
+  // plugin, and a load error leaves an importer unread. UnreadModule is a
+  // range module.Range cannot vouch for: a nested module that may import it
+  // failed to load, the main build list could not be read, or the build
+  // reads a module in the range from elsewhere. A nested module that loads
+  // is read, and its uses count as Spelled.
+  enum Placement { Internal, NotInternal, MainPkg, UnreadModule, LoadError }
   // What the loaded code shows about a use from another package.
   //   Spelled            a package in the build spells it, writes it in an
   //                      unkeyed literal, pairs it in a struct conversion,
@@ -57,12 +65,17 @@ spec Shrink {
   //   ExcludedQualified  a build-excluded file imports the package and writes
   //                      pkg.Name, which only a package-level name can be
   enum Outside { None, Spelled, ExtTestOnly, ExcludedQualified }
-  // A use the tool can suspect but not prove.
+  // What the tool sees short of a spelled use.
   //   Escapes       the type, or its owner, escapes into an empty interface,
-  //                 directly or through a field, element, key or pointer
+  //                 directly or through a field, element, key or pointer. It
+  //                 is read as a use (escapes() below), not as a doubt
   //   ExcludedName  a build-excluded file of another package writes the name
   //                 where no import pins it: x.Name, or a dot import
-  enum Doubt { NoDoubt, Escapes, ExcludedName }
+  //   NestedBuild   a nested module's build compiles a copy of other source
+  //                 that imports the range, or its build list cannot be read
+  //                 (module.Doubt). Every fix in the range is withheld, and
+  //                 the reports stay
+  enum Doubt { NoDoubt, Escapes, ExcludedName, NestedBuild }
 
   state {
     phase: 0..3 = 0,
@@ -79,9 +92,6 @@ spec Shrink {
     requires phase == 0
     // Only a method or a field is reached through a value.
     requires not (ex and (k == Value or k == Type))
-    // Everything that can hide an importer is outside the range, or exposes
-    // the declaration through a value.
-    requires not (h and p == Internal and not ex)
     phase = 1  kind = k  placement = p  exposed = ex  hiddenUse = h
   }
   action configureUse(o: Outside, d: Doubt, dyn: Bool, sat: Bool) {
@@ -94,6 +104,10 @@ spec Shrink {
     requires not (d == Escapes and kind == Value)
     // A dynamic use leaves a trace: an escape, or a name in an excluded file.
     requires not (dyn and d == NoDoubt)
+    // Everything that can hide an importer is outside the range, exposes the
+    // declaration through a value, or is a nested module's build the tool
+    // sees and cannot read through.
+    requires not (hiddenUse and placement == Internal and not exposed and d != NestedBuild)
     phase = 2  outside = o  doubt = d  dynamicUse = dyn  staticSatisfaction = sat
   }
   // gen is a generated file or an example function of the package naming
@@ -161,8 +175,8 @@ spec Shrink {
   invariant FixInputsUnsetBeforeTheirStep {
     phase <= 2 => not excludedSamePkg and not generatedRef and not renameUnsafe and not kept
   }
-  invariant NothingHiddenInRangeUnlessExposed {
-    hiddenUse => placement != Internal or exposed
+  invariant NothingHiddenInRangeUnlessSeen {
+    (phase >= 2 and hiddenUse) => placement != Internal or exposed or doubt == NestedBuild
   }
   invariant OnlyAMemberIsExposed { exposed => kind == Method or kind == Field }
   invariant DynamicUseLeavesATrace { dynamicUse => doubt != NoDoubt }
@@ -230,6 +244,12 @@ spec Shrink {
     onlyBlocker() and doubt == NoDoubt
     and not excludedSamePkg and not generatedRef and renameUnsafe and not kept and not fixable()
   }
+  // A nested module's build may use the declaration through a copy of other
+  // source. The report stays, and may be wrong, and the fix is withheld.
+  reachable WithheldOnNestedBuild {
+    onlyBlocker() and doubt == NestedBuild and hiddenUse and reported
+    and not excludedSamePkg and not generatedRef and not renameUnsafe and not kept and not fixable()
+  }
   reachable WithheldOnKeptByAnExport {
     onlyBlocker() and doubt == NoDoubt
     and not excludedSamePkg and not generatedRef and not renameUnsafe and kept and not fixable()
@@ -264,8 +284,8 @@ spec Shrink {
   reachable SilentInMain {
     configured() and placement == MainPkg and outside == None and not fires()
   }
-  reachable SilentOverNestedModule {
-    configured() and placement == NestedModule and outside == None and not fires()
+  reachable SilentOverUnreadModule {
+    configured() and placement == UnreadModule and outside == None and not fires()
   }
   reachable SilentOnLoadError {
     configured() and placement == LoadError and outside == None and not fires()
