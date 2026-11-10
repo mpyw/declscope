@@ -93,12 +93,12 @@ func (p Package) crossings() []Crossing {
 		}
 	}
 
-	reachedBy := p.namespacesReachingCrossing()
+	reachedBy := p.crossingFindingReachers()
 
 	out := make([]Crossing, 0, len(byPair))
 	for key, c := range byPair {
 		_, c.Mutual = byPair[[2]string{key[1], key[0]}]
-		c.Clears = clearedByCrossing(reachedBy, c.From, c.To)
+		c.Clears = crossingClears(reachedBy, c.From, c.To)
 		out = append(out, *c)
 	}
 	slices.SortFunc(out, func(a, b Crossing) int {
@@ -134,10 +134,10 @@ func (p Package) declarationsCrossing(state EdgeState) int {
 	return len(seen)
 }
 
-// namespacesReachingCrossing indexes, per declaration still under a finding,
+// crossingFindingReachers indexes, per declaration still under a finding,
 // every namespace that reaches it. A declared or open crossing is left out:
 // nothing is outstanding on it, so merging clears nothing there.
-func (p Package) namespacesReachingCrossing() map[[2]string]map[string]bool {
+func (p Package) crossingFindingReachers() map[[2]string]map[string]bool {
 	out := map[[2]string]map[string]bool{}
 	for _, e := range p.Edges {
 		if e.State != EdgeReported && e.State != EdgeBaselined {
@@ -152,9 +152,9 @@ func (p Package) namespacesReachingCrossing() map[[2]string]map[string]bool {
 	return out
 }
 
-// clearedByCrossing counts the declarations of either namespace that no third
+// crossingClears counts the declarations of either namespace that no third
 // namespace reaches, which are the findings merging the two would settle.
-func clearedByCrossing(reachedBy map[[2]string]map[string]bool, from, to string) int {
+func crossingClears(reachedBy map[[2]string]map[string]bool, from, to string) int {
 	n := 0
 	for key, froms := range reachedBy {
 		if key[0] != from && key[0] != to {

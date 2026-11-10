@@ -49,8 +49,8 @@ import (
 	"github.com/mpyw/declscope/internal/scope"
 )
 
-// names are tried in order in each directory.
-var names = []string{".declscope.yaml", ".declscope.yml"}
+// configNames are tried in order in each directory.
+var configNames = []string{".declscope.yaml", ".declscope.yml"}
 
 // baselineNames are the default baseline file names, discovered the same way
 // as the config file when none is configured explicitly.
@@ -228,7 +228,7 @@ func resolve(dir, explicit string) (internal.Options, []string, error) {
 func FindChain(dir string) []string {
 	var found []string
 	for d := range dirsUp(dir) {
-		if path := firstFile(d, names); path != "" {
+		if path := firstFile(d, configNames); path != "" {
 			found = append(found, path)
 		}
 	}

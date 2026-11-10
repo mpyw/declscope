@@ -172,7 +172,7 @@ func writeMarkdownQualify(out *sink, p Package, asked bool) {
 		}
 		rows = append(rows, []string{
 			q.Namespace, fmt.Sprint(q.Exempt), fmt.Sprint(q.Baselined), fmt.Sprint(q.Reported),
-			fmt.Sprintf("%d of %d", q.Saturation(), q.Targets),
+			fmt.Sprintf("%d of %d", q.Failing(), q.Targets),
 		})
 	}
 	writeMarkdownTable(out, "Qualify", rows)
@@ -257,7 +257,7 @@ func (s Summary) writeMarkdown(w io.Writer) error {
 		}
 		worst := "-"
 		if r.HasWorst {
-			worst = fmt.Sprintf("%s %d of %d", r.Worst.Namespace, r.Worst.Saturation(), r.Worst.Targets)
+			worst = fmt.Sprintf("%s %d of %d", r.Worst.Namespace, r.Worst.Failing(), r.Worst.Targets)
 		}
 		qualify = append(qualify, []string{
 			"`" + r.Package + "`", fmt.Sprint(r.QualifyReported), fmt.Sprint(r.QualifyBaselined),

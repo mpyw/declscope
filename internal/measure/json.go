@@ -296,7 +296,7 @@ func (s Summary) writeJSON(w io.Writer) error {
 		if row.HasWorst {
 			pkg.Qualify.Worst = &jsonWorst{
 				Namespace: row.Worst.Namespace,
-				Failing:   row.Worst.Saturation(),
+				Failing:   row.Worst.Failing(),
 				Targets:   row.Worst.Targets,
 			}
 		}
