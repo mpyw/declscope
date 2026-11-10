@@ -138,6 +138,7 @@ func surveyPackages(pkgs []*packages.Package, configPath string, failed []string
 				Unused:   opts.Unused.String(),
 				Qualify:  opts.Qualify.String(),
 				Exported: opts.NameExported,
+				Fix:      opts.NamingFix,
 			}
 			configs[key] = use
 			configOrder = append(configOrder, key)

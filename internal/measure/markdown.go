@@ -194,6 +194,9 @@ func (s Summary) writeMarkdown(w io.Writer) error {
 		if c.Exported {
 			qualify += ", exported"
 		}
+		if c.Fix {
+			qualify += ", fix"
+		}
 		rows = append(rows,
 			[]string{"config", chain, fmt.Sprint(c.Packages)},
 			[]string{"rules", fmt.Sprintf("boundary %s, qualify %s, surplus %s, unused %s",

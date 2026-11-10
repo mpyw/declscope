@@ -1,11 +1,11 @@
 ## Checks in force
 
-| check      | value                                                                 | packages |
-| ---------- | --------------------------------------------------------------------- | -------: |
-| config     | `.declscope.yaml`                                                     |        2 |
-| rules      | boundary on, qualify ondemand, exported, surplus loose, unused strict |        2 |
-| baseline   | `.declscope-baseline.yaml`, 12 entries                                |          |
-| type check | 2 packages ok, 1 failed                                               |          |
+| check      | value                                                                      | packages |
+| ---------- | -------------------------------------------------------------------------- | -------: |
+| config     | `.declscope.yaml`                                                          |        2 |
+| rules      | boundary on, qualify ondemand, exported, fix, surplus loose, unused strict |        2 |
+| baseline   | `.declscope-baseline.yaml`, 12 entries                                     |          |
+| type check | 2 packages ok, 1 failed                                                    |          |
 
 Did not type-check, so given no row:
 

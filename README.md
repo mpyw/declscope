@@ -1627,35 +1627,35 @@ graph LR
 | ------------------- | ------ | -------: | --------: | -------: | -----: | -------: | ---: |
 | markdown → cell     | yes    |        7 |         0 |        0 |      0 |  7 of 18 |   18 |
 | markdown → sink     |        |        5 |         0 |        0 |      0 |  5 of 18 |   36 |
-| golden → (core)     |        |        4 |         0 |        0 |      0 |  4 of 79 |    9 |
+| golden → (core)     |        |        4 |         0 |        0 |      0 |  4 of 80 |    9 |
 | json → summary      | yes    |        3 |         0 |        0 |      0 |  3 of 27 |    9 |
 | markdown → summary  | yes    |        3 |         0 |        0 |      0 |  3 of 27 |    7 |
 | markdown → crossing |        |        2 |         0 |        0 |      0 |  2 of 20 |    6 |
 | cell → markdown     | yes    |        2 |         0 |        0 |      0 |  2 of 10 |    3 |
-| format → json       |        |        2 |         0 |        0 |      0 | 2 of 107 |    2 |
+| format → json       |        |        2 |         0 |        0 |      0 | 2 of 108 |    2 |
 | format → markdown   |        |        2 |         0 |        0 |      0 |  2 of 10 |    2 |
 | markdown → reach    |        |        2 |         0 |        0 |      0 |   2 of 9 |    2 |
 | summary → crossing  |        |        2 |         0 |        0 |      0 |  2 of 20 |    2 |
-| crossing → (core)   |        |        1 |         0 |        0 |      0 |  1 of 79 |    3 |
+| crossing → (core)   |        |        1 |         0 |        0 |      0 |  1 of 80 |    3 |
 | golden → markdown   |        |        1 |         0 |        0 |      0 |  1 of 10 |    3 |
 | golden → reach      |        |        1 |         0 |        0 |      0 |   1 of 9 |    3 |
 | cell → summary      |        |        1 |         0 |        0 |      0 |  1 of 27 |    2 |
 | golden → crossing   |        |        1 |         0 |        0 |      0 |  1 of 20 |    2 |
 | golden → format     |        |        1 |         0 |        0 |      0 |   1 of 9 |    2 |
-| cell → (core)       |        |        1 |         0 |        0 |      0 |  1 of 79 |    1 |
-| cell → json         |        |        1 |         0 |        0 |      0 | 1 of 107 |    1 |
-| format → (core)     |        |        1 |         0 |        0 |      0 |  1 of 79 |    1 |
-| golden → json       |        |        1 |         0 |        0 |      0 | 1 of 107 |    1 |
+| cell → (core)       |        |        1 |         0 |        0 |      0 |  1 of 80 |    1 |
+| cell → json         |        |        1 |         0 |        0 |      0 | 1 of 108 |    1 |
+| format → (core)     |        |        1 |         0 |        0 |      0 |  1 of 80 |    1 |
+| golden → json       |        |        1 |         0 |        0 |      0 | 1 of 108 |    1 |
 | json → crossing     |        |        1 |         0 |        0 |      0 |  1 of 20 |    1 |
 | markdown → qualify  |        |        1 |         0 |        0 |      0 |  1 of 15 |    1 |
-| qualify → (core)    |        |        1 |         0 |        0 |      0 |  1 of 79 |    1 |
-| summary → json      | yes    |        1 |         0 |        0 |      0 | 1 of 107 |    1 |
+| qualify → (core)    |        |        1 |         0 |        0 |      0 |  1 of 80 |    1 |
+| summary → json      | yes    |        1 |         0 |        0 |      0 | 1 of 108 |    1 |
 | summary → markdown  | yes    |        1 |         0 |        0 |      0 |  1 of 10 |    1 |
 | summary → qualify   |        |        1 |         0 |        0 |      0 |  1 of 15 |    1 |
 
 </details>
 
-109 declarations are further: open, shared by default rather than by decision, so left out of the table and of the diagram.
+110 declarations are further: open, shared by default rather than by decision, so left out of the table and of the diagram.
 
 Declarations crossed: 0 reported, 0 baselined, 30 declared. The columns above count within a pair, so they sum to more: a declaration reached from two namespaces is two rows and one finding.
 ````

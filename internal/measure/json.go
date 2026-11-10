@@ -164,6 +164,7 @@ type jsonRules struct {
 	Boundary bool   `json:"boundary"`
 	Qualify  string `json:"qualify"`
 	Exported bool   `json:"exported"`
+	Fix      bool   `json:"fix"`
 	Surplus  string `json:"surplus"`
 	Unused   string `json:"unused"`
 }
@@ -254,6 +255,7 @@ func (s Summary) writeJSON(w io.Writer) error {
 				Boundary: c.Boundary,
 				Qualify:  c.Qualify,
 				Exported: c.Exported,
+				Fix:      c.Fix,
 				Surplus:  c.Surplus,
 				Unused:   c.Unused,
 			},

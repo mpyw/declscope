@@ -457,7 +457,7 @@ func surveyTestRuleRow(out, rule, found string) bool {
 func TestSurveyNamesTheChecksInForce(t *testing.T) {
 	dir := t.TempDir()
 	writeTree(t, dir, "go.mod", testModule)
-	writeTree(t, dir, ".declscope.yaml", "rules:\n  surplus: off\n  unused: strict\n  naming:\n    qualify: always\n")
+	writeTree(t, dir, ".declscope.yaml", "rules:\n  surplus: off\n  unused: strict\n  naming:\n    qualify: always\n    fix: true\n")
 	writeTree(t, dir, ".declscope-baseline.yaml",
 		"packages:\n  example.com/declscopetest/p:\n    boundary:\n      user: [userHelper]\n")
 	writeTree(t, dir, "p/user.go", "package p\n\nfunc userHelper() int { return 1 }\n")
@@ -475,6 +475,7 @@ func TestSurveyNamesTheChecksInForce(t *testing.T) {
 				Rules    struct {
 					Boundary bool   `json:"boundary"`
 					Qualify  string `json:"qualify"`
+					Fix      bool   `json:"fix"`
 					Surplus  string `json:"surplus"`
 					Unused   string `json:"unused"`
 				} `json:"rules"`
@@ -498,6 +499,9 @@ func TestSurveyNamesTheChecksInForce(t *testing.T) {
 	}
 	if cfg.Rules.Qualify != "always" || cfg.Rules.Surplus != "off" || cfg.Rules.Unused != "strict" || !cfg.Rules.Boundary {
 		t.Errorf("rules = %+v, want qualify always with surplus off, unused strict and boundary on", cfg.Rules)
+	}
+	if !cfg.Rules.Fix {
+		t.Errorf("rules = %+v, want fix on: the config opted into the naming rule's rename", cfg.Rules)
 	}
 
 	if len(got.Checks.Baselines) != 1 {

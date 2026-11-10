@@ -74,7 +74,7 @@ func fixtureSummary() Summary {
 	}}, Checks{
 		Configs: []ConfigUse{{
 			Chain: []string{".declscope.yaml"}, Packages: 2,
-			Boundary: true, Surplus: "loose", Unused: "strict", Qualify: "ondemand", Exported: true,
+			Boundary: true, Surplus: "loose", Unused: "strict", Qualify: "ondemand", Exported: true, Fix: true,
 		}},
 		Baselines: []BaselineUse{{Path: ".declscope-baseline.yaml", Entries: 12}},
 		// One package did not compile. Markdown has to name it, not only

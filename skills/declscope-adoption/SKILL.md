@@ -185,7 +185,7 @@ Do **not** move the baseline aside to measure: `survey` reports `baselined` as i
 | Is this deferred or decided | `boundary.baselined` against `boundary.declared` |
 | Which two namespaces to merge | `inspect`'s `crossings[]`, one row per ordered pair, with `clears` |
 | Where the structure is | `inspect`'s `edges[]`, one row per declaration **and reaching namespace** |
-| Where a name is wrong | `inspect`'s `names[]`, with `fixable` saying whether the rename is safe. `-fix` makes it only under `rules.naming.fix: true` |
+| Where a name is wrong | `inspect`'s `names[]`, with `fixable` saying whether the rename is safe. `-fix` makes it only under `rules.naming.fix: true`, which `checks.configs[].rules.fix` reports |
 
 **`clears` is the number the decision turns on.** A crossing's `reached` says how much of a namespace it touches. `clears` says how many findings would go away if the two became one namespace. It is smaller whenever a third namespace reaches the same declaration. Rank the work by `clears`, not by `reached` or `uses`.
 
