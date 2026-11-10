@@ -1,4 +1,4 @@
-package pointer_test
+package implicitfield_test
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mpyw/declscope/internal/pointer"
+	"github.com/mpyw/declscope/internal/implicitfield"
 )
 
 // The oracle declares structs in package a and writes them from package b
@@ -164,7 +164,7 @@ func (f importerFunc) Import(path string) (*types.Package, error) { return f(pat
 
 // read returns the structs of package a whose fields declscope reads the
 // expression as writing, by name, and whether that is exact.
-func (o *oracle) read(sets *pointer.Sets, expr ast.Expr, info *types.Info, literal bool) (map[string]bool, bool) {
+func (o *oracle) read(sets *implicitfield.Sets, expr ast.Expr, info *types.Info, literal bool) (map[string]bool, bool) {
 	var holders []types.Type
 	exact := true
 	if literal {
@@ -198,7 +198,7 @@ func (o *oracle) read(sets *pointer.Sets, expr ast.Expr, info *types.Info, liter
 // whose unexported fields break it.
 func TestOracle(t *testing.T) {
 	o := newOracle(t)
-	var sets pointer.Sets
+	var sets implicitfield.Sets
 	accepted, writing, wider := 0, 0, 0
 	for _, constraint := range oracleConstraints() {
 		for _, form := range oracleForms {
@@ -277,7 +277,7 @@ func TestGuessed(t *testing.T) {
 	inner := types.NewInterfaceType(nil, []types.Type{types.NewUnion(terms)})
 	constraint := types.NewInterfaceType(nil, []types.Type{inner, types.NewUnion([]*types.Term{types.NewTerm(false, inner)})})
 	tp := types.NewTypeParam(types.NewTypeName(token.NoPos, pkg, "P", nil), constraint)
-	var sets pointer.Sets
+	var sets implicitfield.Sets
 	for _, ask := range []func(types.Type) ([]types.Type, bool){sets.Literal, sets.Conversion} {
 		got, exact := ask(tp)
 		if exact {
@@ -295,7 +295,7 @@ func TestGuessed(t *testing.T) {
 
 // TestNotStructs pins the types that write no struct's fields.
 func TestNotStructs(t *testing.T) {
-	var sets pointer.Sets
+	var sets implicitfield.Sets
 	for _, typ := range []types.Type{
 		types.Typ[types.Int],
 		types.NewPointer(types.Typ[types.Int]),
@@ -318,7 +318,7 @@ func TestLeftOut(t *testing.T) {
 	st := types.NewStruct([]*types.Var{types.NewField(token.NoPos, pkg, "X", types.Typ[types.Int], false)}, nil)
 	s := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "S", nil), st, nil)
 	ptrs := types.NewTypeParam(types.NewTypeName(token.NoPos, pkg, "P", nil), types.NewInterfaceType(nil, []types.Type{types.NewPointer(s)}))
-	var sets pointer.Sets
+	var sets implicitfield.Sets
 	if got, exact := sets.Literal(s); len(got) != 1 || got[0] != s || !exact {
 		t.Errorf("Literal(S) = %v, %v", got, exact)
 	}
@@ -365,7 +365,7 @@ func BenchmarkSharedUnion(b *testing.B) {
 		b.Fatalf("got %d type parameters", len(tparams))
 	}
 	for b.Loop() {
-		var sets pointer.Sets
+		var sets implicitfield.Sets
 		for _, tp := range tparams {
 			if got, exact := sets.Literal(tp); len(got) != structs || !exact {
 				b.Fatalf("Literal(%s) = %d structs, exact %v", tp, len(got), exact)

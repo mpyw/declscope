@@ -27,8 +27,8 @@ import (
 	"golang.org/x/tools/go/analysis"
 
 	"github.com/mpyw/declscope/internal/directive"
+	"github.com/mpyw/declscope/internal/implicitfield"
 	"github.com/mpyw/declscope/internal/namespace"
-	"github.com/mpyw/declscope/internal/pointer"
 	"github.com/mpyw/declscope/internal/scope"
 )
 
@@ -367,7 +367,7 @@ type collection struct {
 	// typeSets is the type set of every type parameter an unkeyed literal or
 	// a struct conversion goes through. The reference collection and the
 	// surplus evidence both ask it, so each is computed once per pass.
-	typeSets pointer.Sets
+	typeSets implicitfield.Sets
 	// unkeyedGuessed is every field an unkeyed literal in another namespace
 	// may write, through a type parameter whose type set could not be
 	// computed. It is no ref: the guess may name a struct the literal does
@@ -481,7 +481,7 @@ type unseenFiles struct {
 // t's name. A field is crossed into by position too, by an unkeyed literal
 // that names only a type: the field's struct, an alias of it, a type defined
 // over it, a named pointer to it, or a constraint whose type set holds it,
-// written as P{1}. Those names come from pointer.Sets, the reading the
+// written as P{1}. Those names come from implicitfield.Sets, the reading the
 // reference index takes, so the two cannot disagree about which literal
 // reaches a field. A guessed type set counts, since this errs toward a
 // crossing.

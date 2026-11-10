@@ -13,7 +13,7 @@ import (
 	"golang.org/x/tools/refactor/satisfy"
 
 	"github.com/mpyw/declscope/internal/buildtag"
-	"github.com/mpyw/declscope/internal/pointer"
+	"github.com/mpyw/declscope/internal/implicitfield"
 	"github.com/mpyw/declscope/internal/shrink/module"
 	"github.com/mpyw/declscope/internal/shrink/reach"
 )
@@ -80,7 +80,7 @@ type evidence struct {
 	// conversion goes through, computed once per run.
 	//
 	//declscope:private // only structsOf reads it
-	typeSets pointer.Sets
+	typeSets implicitfield.Sets
 }
 
 // evidenceSite is one identifier naming a declaration, in the package
@@ -380,7 +380,7 @@ type evidenceStruct struct {
 // structsOf returns the declared struct types an unkeyed literal of type t
 // writes, or a conversion to or from t pairs, through a pointer in any of its
 // forms, the type set of a type parameter, and an instantiation
-// (pointer.Sets), and whether that is exact.
+// (implicitfield.Sets), and whether that is exact.
 func (ev *evidence) structsOf(t types.Type, literal bool) ([]evidenceStruct, bool) {
 	if t == nil {
 		return nil, true
