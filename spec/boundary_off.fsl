@@ -24,6 +24,7 @@
 // Scope resolution is knobs.fsl's subject and is not repeated here: this spec
 // takes the resolved scope as an input, because rules.boundary is a gate on the
 // report and not a participant in the resolution.
+fsl 5
 spec BoundaryOff {
   enum Scope { Shared, Private }
   enum Refs  { NoRefs, SameNs, CrossNs }

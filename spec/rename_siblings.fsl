@@ -6,6 +6,7 @@
 //
 // ASSUME-1: two declarations are enough — a collision needs exactly two
 //   (modelling assumption)
+fsl 5
 spec RenameSiblings {
   enum Name { NameA, NameB, NameT }
 

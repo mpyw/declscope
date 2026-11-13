@@ -49,6 +49,7 @@
 // ASSUME-2: the rename guard itself (scope capture, collisions, sibling
 //   targets) is renameUnsafe here. rename_guarded.fsl, rename_reach.fsl and
 //   rename_siblings.fsl hold what it must check (modelling assumption)
+fsl 5
 spec Shrink {
   // Value is a func, var or const, and Type a type name. The two differ only
   // in whether an escape into an empty interface reaches them: a type's name

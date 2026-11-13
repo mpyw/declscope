@@ -19,6 +19,7 @@
 //
 // A released loser that loses again is left withheld, true or not: releasing
 // it twice would let two fixes that clash take turns without end.
+fsl 5
 spec ShrinkClaim {
   type Decl = 0..2
 

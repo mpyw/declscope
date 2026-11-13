@@ -22,6 +22,7 @@
 //
 // Whether a pattern matches a path at all is filter.go's subject, and the set
 // algebra within one level is filter.fsl's. This spec is the chain.
+fsl 5
 spec FilterChain {
   state {
     configured: Bool = false,

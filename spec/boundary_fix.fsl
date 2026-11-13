@@ -9,6 +9,7 @@
 // can make that directive unused: a report the fix created. So the fix is
 // withheld at every level that stated a scope, as FixNeverClobbersDirective and
 // the FixWithheldUnder* witnesses pin.
+fsl 5
 spec BoundaryFix {
   enum Scope { Shared, Private }
   // Member is anything written inside a type's declaration: a struct field,

@@ -62,6 +62,7 @@
 // ruleOn is rules.surplus set to loose or strict. This spec is the directive
 // as a whole, which both modes report; surplus_strict.fsl is what strict adds
 // one declaration at a time.
+fsl 5
 spec Surplus {
   state {
     configured: Bool = false, ruleOn: Bool = false,

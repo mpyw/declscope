@@ -54,6 +54,7 @@
 //   (modelling assumption)
 // ASSUME-2: the ignore silences nothing else. What else it may silence, and
 //   which other ignore may answer its report, is unused_ignore.fsl's
+fsl 5
 spec UnusedIgnoreUnseen {
   enum Rule { Boundary, Other }
 

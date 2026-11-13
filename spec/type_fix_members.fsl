@@ -43,6 +43,7 @@
 // ASSUME-2: one member and one sibling are enough. Every member is judged
 //   alone except through the type's fix, which the sibling stands for
 //   (modelling assumption)
+fsl 5
 spec TypeFixMembers {
   enum Scope { Shared, Private }
   enum Dir   { NoDir, DirShared, DirPrivate }

@@ -34,3 +34,10 @@ TASKS.md
 
 # Python bytecode from the docs-site scripts
 __pycache__/
+
+# FSL agent skills. mise links them from the fslc version in mise.toml
+# (skills.auto_sync, or `mise skills sync`). Each link points into the mise
+# install directory of one machine, so do not commit them. mise makes
+# .claude/skills as a symlink to .agents/skills, so it has no trailing /.
+.agents/skills/
+.claude/skills
