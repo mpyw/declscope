@@ -46,6 +46,7 @@
 // ASSUME-2: F is modelled only beside declaration-level ignores, and only
 //   when it covers unused. One that does not cover unused answers nothing
 //   and is judged as the lone file-level ignore is (modelling assumption)
+fsl 5
 spec UnusedIgnore {
   enum Mode  { Off, Loose, Strict }
   enum Level { Decl, File }

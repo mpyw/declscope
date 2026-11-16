@@ -16,6 +16,7 @@
 // Reach is not modelled here. only and omit are path sets rather than values,
 // they compose by union and intersection rather than by overriding, and
 // filter_chain.fsl is where that is proved.
+fsl 5
 spec ConfigInherit {
   // MODEL: qualify takes three values in the config and two here. The third
   // adds another value to choose between and nothing to the question this

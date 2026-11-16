@@ -40,6 +40,7 @@
 // Rename clashes are left out, and are shrink_claim.fsl's. Names are claimed
 // only once this settles, and a clash or a released loser starts it again
 // from the judgment, with the losers left out.
+fsl 5
 spec ShrinkSettle {
   type Decl = 0..2
 

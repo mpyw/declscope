@@ -65,6 +65,7 @@
 // ASSUME-1: one declaration of each kind is enough. Reach is a conjunction
 //   here where it is a disjunction in unused_bind.fsl, and a conjunction
 //   of two is what shows each half is read (modelling assumption)
+fsl 5
 spec UnusedModes {
   enum Scope { Shared, Private }
   enum Dir   { NoDir, DirShared, DirPrivate }

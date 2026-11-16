@@ -16,6 +16,7 @@
 // ASSUME-2: a fix is emitted and applied in one step. The other fix cannot see
 //   the applied name either way, since it checks the pre-fix state, so only
 //   the order of emission matters (modelling assumption)
+fsl 5
 spec RenameReserved {
   enum Name { NameA, NameB, NameT, NameU }
 

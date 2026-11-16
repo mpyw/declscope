@@ -12,6 +12,7 @@
 //   declaration, and one elsewhere in the package that already used the new
 //   name. Soundness over more sites is the conjunction over each (modelling
 //   assumption)
+fsl 5
 spec RenameSound {
   enum NameId { OldName, NewName, OtherName }
   enum Bind   { Unbound, BindsOld, BindsNew, BindsOther }

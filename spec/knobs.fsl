@@ -14,6 +14,7 @@
 // Resolution order: declaration > var/const/type block (package-level specs
 // only) > containing type, and through it the block the type sits in (members
 // only) > file > config.
+fsl 5
 spec Knobs {
   enum Scope { Shared, Private }
   // Member is anything written inside a type's declaration: a struct field,

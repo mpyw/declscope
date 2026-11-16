@@ -25,6 +25,7 @@
 // pipelines recorded. A stage that did more than narrow what it was handed —
 // an only that admitted every file it matches, whatever omit removed — would
 // make the two disagree.
+fsl 5
 spec Filter {
   state {
     configured: Bool = false,

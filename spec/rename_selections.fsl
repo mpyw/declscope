@@ -24,6 +24,7 @@
 //   name stand for every interface of the package. An unexported method name
 //   is qualified by its package, so no interface elsewhere can ask for it
 //   (Go spec, method sets; modelling assumption that one of each suffices)
+fsl 5
 spec RenameSelections {
   enum NameId  { OldName, NewName }
   enum Renamed { Method, EmbeddedType }

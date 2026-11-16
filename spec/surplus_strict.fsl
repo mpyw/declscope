@@ -65,6 +65,7 @@
 // ASSUME-1: one declaration and its enclosing directive are enough. Everything
 //   else the directive reaches matters only through otherLive and otherDecided,
 //   and a type's members only through membersKeep (modelling assumption)
+fsl 5
 spec SurplusStrict {
   enum Scope { Shared, Private }
   enum Mode  { Off, Loose, Strict }

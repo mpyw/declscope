@@ -24,6 +24,7 @@
 // ASSUME-3: a directive that names a local name as text is modeled once, by
 //   the name it writes. Its file is collected or not; the text is never
 //   rewritten either way (modelling assumption)
+fsl 5
 spec RenameReach {
   // Why a file of this package can sit outside the set the fix edits.
   //   Rewritten     — collected by the pass; the fix edits it

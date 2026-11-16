@@ -43,6 +43,7 @@
 // that nothing bindable is never called used, and nothing about the reverse:
 // a design in which an enclosed declaration never binds would still verify,
 // and that design reports a directive that decides something.
+fsl 5
 spec UnusedBind {
   enum Scope { Shared, Private }
   enum Dir   { NoDir, DirShared, DirPrivate }

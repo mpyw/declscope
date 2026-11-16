@@ -58,6 +58,7 @@
 // writes pkg.T, In sees that use too, so neither run reports the type, Out calls
 // the ignore unused, and the properties hold: the model's Member reports in
 // Out where the tool does not, and never the reverse.
+fsl 5
 spec ShrinkIgnore {
   enum Kind { Member, Other }
 

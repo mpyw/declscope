@@ -36,6 +36,7 @@
 //   bindAtScopeSite, the way typeDir does here; a block directive is a stated
 //   scope like typeDir, and withholds both fixes the same way, so it adds no
 //   case to the convergence this spec is about.
+fsl 5
 spec FixMembers {
   enum Scope { Shared, Private }
   enum Dir   { NoDir, DirShared, DirPrivate }

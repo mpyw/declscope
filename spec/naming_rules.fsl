@@ -61,6 +61,7 @@
 // a package-level function can be one.
 //
 // The scope settings are not read by this rule, so they are left out.
+fsl 5
 spec NamingRules {
   enum Qualify { Always, OnDemand, Never }
   // Decl is a package-level declaration other than a method or a ToolchainFunc.
