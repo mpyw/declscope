@@ -78,10 +78,10 @@ const (
 	SilentB
 )
 
-// Excluded is reported, since nothing names it. A build-excluded file uses one
-// of its values, which keeps the set exported, and keeps the type that the
-// value hands out.
-type Excluded int // want: type Excluded is exported.*no fix: an exported declaration that keeps its name hands it out
+// Excluded is named nowhere, but a build-excluded file uses one of its
+// values. That keeps the set exported, and the value hands out the type, so
+// the type is used, as it is in the configuration that builds the file.
+type Excluded int
 
 const (
 	ExcludedA Excluded = iota

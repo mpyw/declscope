@@ -148,3 +148,13 @@ type Printed struct {
 	//declscope:ignore overexported
 	Hidden int
 }
+
+// Carried is returned by Carry, which only b/tagged.go calls. A configuration
+// that leaves tagged.go out still reads Carry as used, since tagged.go spells
+// i.Carry, and so reads Carried as held outside. No configuration reports it,
+// and the ignore silences nothing in any of them.
+//
+//declscope:ignore overexported // want: unused //declscope:ignore overexported
+type Carried struct{}
+
+func Carry() Carried { return Carried{} }

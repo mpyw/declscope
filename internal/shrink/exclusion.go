@@ -114,8 +114,16 @@ func (r *run) exclusionsOf(p *packages.Package) *exclusions {
 //
 //declscope:shared // the core counts it as a use
 func (near *exclusions) qualifies(c *candidate) bool {
+	return near.writes(c.pkg, c.obj.Name())
+}
+
+// writes reports whether a build-excluded file of another package imports p
+// and writes p.name.
+//
+//declscope:shared // the core asks it of each declaration that can carry a type
+func (near *exclusions) writes(p *packages.Package, name string) bool {
 	return slices.ContainsFunc(near.importing, func(x *excluded.File) bool {
-		return x.Qualifies(c.pkg.PkgPath, c.pkg.Types.Name(), c.obj.Name())
+		return x.Qualifies(p.PkgPath, p.Types.Name(), name)
 	})
 }
 

@@ -591,7 +591,7 @@ func verdictsFirst(vs []*verdict, first map[*verdict]bool, in bool) []*verdict {
 // keeps its names or loses them together: one value that keeps its name
 // withholds the fix of every other.
 // spec/shrink_settle.fsl proves that this still ends, and leaves no set split.
-func (r *run) settle(within *types.Package, vs []*verdict, roots []types.Object) {
+func (r *run) settle(within *types.Package, vs []*verdict, roots []carrierRoot) {
 	byKey := map[string]*verdict{}
 	for _, v := range vs {
 		byKey[v.c.key] = v
@@ -633,11 +633,24 @@ func (r *run) settle(within *types.Package, vs []*verdict, roots []types.Object)
 	}
 }
 
+// carrierRoot is an exported declaration that can carry a type, and whether
+// another package uses it.
+type carrierRoot struct {
+	obj     types.Object
+	outside bool
+}
+
 // carrierRoots returns every exported declaration of the package that can
 // carry a type: those at package scope, and the methods and fields another
 // package uses.
-func (r *run) carrierRoots(p *packages.Package) []types.Object {
-	var roots []types.Object
+//
+// A declaration a build-excluded file writes as pkg.Name is used from
+// another package too. Without that, a type only such a file reaches through
+// it is held outside in the configuration that builds the file, and reported
+// in the one that leaves it out. No ignore over the type could pass both.
+func (r *run) carrierRoots(p *packages.Package) []carrierRoot {
+	var roots []carrierRoot
+	near := r.exclusionsOf(p)
 	for _, obj := range p.TypesInfo.Defs {
 		if obj == nil || !obj.Exported() || obj.Pkg() != p.Types {
 			continue
@@ -647,10 +660,12 @@ func (r *run) carrierRoots(p *packages.Package) []types.Object {
 		default:
 			continue
 		}
-		if obj.Parent() != p.Types.Scope() && !r.ev.outside[keyOf(r.mod.Fset, obj)] {
+		atScope := obj.Parent() == p.Types.Scope()
+		outside := r.ev.outside[keyOf(r.mod.Fset, obj)] || atScope && near.writes(p, obj.Name())
+		if !atScope && !outside {
 			continue
 		}
-		roots = append(roots, obj)
+		roots = append(roots, carrierRoot{obj: obj, outside: outside})
 	}
 	return roots
 }
@@ -669,19 +684,18 @@ func (r *run) carrierRoots(p *packages.Package) []types.Object {
 // A method or field in fixed is not followed, since the same run unexports
 // it. spec/shrink_settle.fsl proves that settling this way ends, and leaves
 // nothing fixed that a declaration keeping its name carries.
-func (r *run) typesCarried(within *types.Package, roots []types.Object, fixed map[string]bool) (carried, kept map[string]bool) {
+func (r *run) typesCarried(within *types.Package, roots []carrierRoot, fixed map[string]bool) (carried, kept map[string]bool) {
 	fset := r.mod.Fset
 	carried, kept = map[string]bool{}, map[string]bool{}
 	follow := func(o types.Object) bool { return !fixed[keyOf(fset, o)] }
 	var outside, staying []types.Type
 	for _, root := range roots {
-		key := keyOf(fset, root)
 		switch {
-		case fixed[key]:
-		case r.ev.outside[key]:
-			outside = append(outside, root.Type())
+		case fixed[keyOf(fset, root.obj)]:
+		case root.outside:
+			outside = append(outside, root.obj.Type())
 		default:
-			staying = append(staying, root.Type())
+			staying = append(staying, root.obj.Type())
 		}
 	}
 	reach.ByName(outside, within, follow, func(tn *types.TypeName) { carried[keyOf(fset, tn)] = true })

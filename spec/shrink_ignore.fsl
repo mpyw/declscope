@@ -21,6 +21,14 @@
 //                        constraint. Only In sees it. None of the four
 //                        records where it was found. So In cannot tell it
 //                        from otherUseFree.
+//   carrierSpelledConstrained
+//                        A file behind the constraint writes pkg.Name for
+//                        another exported declaration that hands this one
+//                        out, such as a function returning the type. In sees
+//                        the carrier used, so the type is held outside
+//                        (run.typesCarried). Out reads the carrier's name
+//                        too (carrierRoots, exclusions.writes), so the same
+//                        holds there.
 //
 // One more input says whether the files behind the constraint reach the
 // declaration:
@@ -59,7 +67,8 @@
 //   package, whether it uses it by name or not. A use is made through an
 //   import (modelling assumption, a requirement of configure).
 // ASSUME-3: a constrained file uses a declaration other than a member by
-//   writing pkg.Name. So Out reads that use (exclusions.qualifies).
+//   writing pkg.Name, either its own or a carrier's. So Out reads that use
+//   (exclusions.qualifies, exclusions.writes).
 //
 // An embedded type sits between the two kinds. It is a Member here, as
 // run.usedImplicitly makes it. But exclusions.qualifies asks only that it
@@ -80,6 +89,7 @@ spec ShrinkIgnore {
     spelledConstrained: Bool = false,
     otherUseFree: Bool = false,
     otherUseConstrained: Bool = false,
+    carrierSpelledConstrained: Bool = false,
     constrainedReaches: Bool = false,
     // wouldReportIn and wouldReportOut: the run would report the
     // declaration without the ignore.
@@ -96,23 +106,34 @@ spec ShrinkIgnore {
     newSpelledConstrained: Bool,
     newOtherUseFree: Bool,
     newOtherUseConstrained: Bool,
+    newCarrierSpelledConstrained: Bool,
     newConstrainedReaches: Bool
   ) {
     requires phase == 0
     // ASSUME-2.
-    requires not (newSpelledConstrained or newOtherUseConstrained) or newConstrainedReaches
+    requires not (newSpelledConstrained or newOtherUseConstrained or newCarrierSpelledConstrained)
+             or newConstrainedReaches
     phase = 1
     kind = newKind
     spelledFree = newSpelledFree
     spelledConstrained = newSpelledConstrained
     otherUseFree = newOtherUseFree
     otherUseConstrained = newOtherUseConstrained
+    carrierSpelledConstrained = newCarrierSpelledConstrained
     constrainedReaches = newConstrainedReaches
   }
 
   // What each run sees as a use.
-  def seenIn()  = spelledFree or spelledConstrained or otherUseFree or otherUseConstrained
-  def seenOut() = spelledFree or otherUseFree or (kind == Other and (spelledConstrained or otherUseConstrained))
+  def seenIn() =
+    spelledFree
+    or spelledConstrained
+    or otherUseFree
+    or otherUseConstrained
+    or carrierSpelledConstrained
+  def seenOut() =
+    spelledFree
+    or otherUseFree
+    or (kind == Other and (spelledConstrained or otherUseConstrained or carrierSpelledConstrained))
   // In keeps the ignore (run.neededWithoutConstrained).
   def inKeepsIgnore() = kind == Member and not spelledFree and constrainedReaches
 
@@ -157,7 +178,9 @@ spec ShrinkIgnore {
 
   // Auxiliary. Each run records its judgment. The inputs of that judgment
   // are never assigned again.
-  invariant ConstrainedUseReaches { (spelledConstrained or otherUseConstrained) => constrainedReaches }
+  invariant ConstrainedUseReaches {
+    (spelledConstrained or otherUseConstrained or carrierSpelledConstrained) => constrainedReaches
+  }
   invariant InRecordsItsJudgment {
     phase >= 2 => (wouldReportIn == not seenIn()
                    and ignoreUnusedIn == (seenIn() and not inKeepsIgnore()))
@@ -179,6 +202,7 @@ spec ShrinkIgnore {
     and not spelledFree
     and not otherUseFree
     and not otherUseConstrained
+    and not carrierSpelledConstrained
     and not wouldReportIn
     and wouldReportOut
     and not ignoreUnusedIn
@@ -242,6 +266,23 @@ spec ShrinkIgnore {
     and not spelledFree
     and not otherUseFree
     and not otherUseConstrained
+    and not carrierSpelledConstrained
+    and not wouldReportOut
+    and ignoreUnusedIn
+    and ignoreUnusedOut
+  }
+  // A type that only a function called behind a tag returns. Out reads the
+  // function's name, and so reads the type as held outside. No run needs the
+  // ignore. Before carrierRoots read excluded files, Out reported the type,
+  // and no ignore passed both runs.
+  reachable ConstrainedCarrierCaught {
+    phase == 3
+    and kind == Other
+    and carrierSpelledConstrained
+    and not spelledFree
+    and not spelledConstrained
+    and not otherUseFree
+    and not otherUseConstrained
     and not wouldReportOut
     and ignoreUnusedIn
     and ignoreUnusedOut
@@ -253,6 +294,7 @@ spec ShrinkIgnore {
     and not spelledConstrained
     and not otherUseFree
     and not otherUseConstrained
+    and not carrierSpelledConstrained
     and wouldReportIn
     and wouldReportOut
     and not ignoreUnusedIn

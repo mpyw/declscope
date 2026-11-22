@@ -13,6 +13,8 @@ var _ = i.Mode{}.Tagged + i.Mode{}.Plain
 
 var _ = i.TaggedFunc
 
+var _ = i.Carry()
+
 // Shown and Printed escape into fmt.Println, behind the constraint as well.
 func show() { fmt.Println(i.Shown{Field: 1}, i.Printed{}) }
 
