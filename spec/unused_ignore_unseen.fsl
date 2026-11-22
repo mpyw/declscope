@@ -19,28 +19,32 @@
 //
 // What there is to silence:
 //
-//   seenCross      a crossing in a file that every configuration reads
-//   unseenNamed    a crossing in the constrained file that writes the
-//                  declaration's name. Only In sees it
-//   unseenUnkeyed  a crossing in the constrained file into a field. An
-//                  unkeyed literal makes it and fills the field by position.
-//                  The literal writes a type name that it fills the field
-//                  through. It does not write the field's name
-//   names          the constrained file writes the declaration's name. Out
-//                  reads that much. A crossing by name needs it. A name alone
-//                  may be no crossing at all. It may be a local of that name,
-//                  or a use from the declaration's own namespace
-//   field          the declaration is a struct field
-//   typeNames      the constrained file writes a type name of the package
-//                  that an unkeyed literal fills the field through. That is
-//                  its struct, an alias of it, a type defined over it, a
-//                  named pointer to it, or a constraint whose type set holds
-//                  it
-//   fires          the Other finding fires
+//   seenCrossing              a crossing in a file that every
+//                             configuration reads
+//   unseenCrossingByName      a crossing in the constrained file that
+//                             writes the declaration's name. Only In sees
+//                             it
+//   unseenCrossingByPosition  a crossing in the constrained file into a
+//                             field. An unkeyed literal makes it and fills
+//                             the field by position. The literal writes a
+//                             type name that it fills the field through.
+//                             It does not write the field's name
+//   writesName                the constrained file writes the declaration's
+//                             name. Out reads that much. A crossing by name
+//                             needs it. A name alone may be no crossing at
+//                             all. It may be a local of that name, or a use
+//                             from the declaration's own namespace
+//   isField                   the declaration is a struct field
+//   writesTypeName            the constrained file writes a type name of the
+//                             package that an unkeyed literal fills the
+//                             field through. That is its struct, an alias
+//                             of it, a type defined over it, a named pointer
+//                             to it, or a constraint whose type set holds it
+//   otherFires                the Other finding fires
 //
 // Out keeps a Boundary ignore that the unseen file may answer
 // (collection.ignoreMayCrossUnseen). That is when the file writes the
-// declaration's name, or, for a field, one of the typeNames. In reads that
+// declaration's name, or, for a field, one of those type names. In reads that
 // file, and may find there the crossing the ignore answers. Those names alone
 // decide. So a name written from the declaration's own namespace keeps the
 // ignore too. A keyed literal of the type keeps it as well. In reads every
@@ -65,13 +69,13 @@ spec UnusedIgnoreUnseen {
   state {
     phase: 0..3 = 0,
     rule: Rule = Boundary,
-    seenCross: Bool = false,
-    unseenNamed: Bool = false,
-    unseenUnkeyed: Bool = false,
-    names: Bool = false,
-    field: Bool = false,
-    typeNames: Bool = false,
-    fires: Bool = false,
+    seenCrossing: Bool = false,
+    unseenCrossingByName: Bool = false,
+    unseenCrossingByPosition: Bool = false,
+    writesName: Bool = false,
+    isField: Bool = false,
+    writesTypeName: Bool = false,
+    otherFires: Bool = false,
     // silencedIn and silencedOut: the run has a finding for the ignore to
     // silence. unusedIn and unusedOut: the run reports the ignore unused.
     silencedIn: Bool = false,
@@ -80,40 +84,49 @@ spec UnusedIgnoreUnseen {
     unusedOut: Bool = false
   }
 
-  action configure(r: Rule, sc: Bool, un: Bool, uu: Bool, n: Bool, fd: Bool, tn: Bool, f: Bool) {
+  action configure(givenRule: Rule,
+                   givenSeenCrossing: Bool,
+                   givenUnseenCrossingByName: Bool,
+                   givenUnseenCrossingByPosition: Bool,
+                   givenWritesName: Bool,
+                   givenIsField: Bool,
+                   givenWritesTypeName: Bool,
+                   givenOtherFires: Bool) {
     requires phase == 0
     // A crossing by name writes the declaration's name there. An unkeyed
-    // crossing fills a field, and writes one of its typeNames.
-    requires not un or n
-    requires not uu or (fd and tn)
+    // crossing fills a field, and writes one of the field's type names.
+    requires not givenUnseenCrossingByName or givenWritesName
+    requires not givenUnseenCrossingByPosition or (givenIsField and givenWritesTypeName)
     phase = 1
-    rule = r
-    seenCross = sc
-    unseenNamed = un
-    unseenUnkeyed = uu
-    names = n
-    field = fd
-    typeNames = tn
-    fires = f
+    rule = givenRule
+    seenCrossing = givenSeenCrossing
+    unseenCrossingByName = givenUnseenCrossingByName
+    unseenCrossingByPosition = givenUnseenCrossingByPosition
+    writesName = givenWritesName
+    isField = givenIsField
+    writesTypeName = givenWritesTypeName
+    otherFires = givenOtherFires
   }
 
   // What each run has for the ignore to silence.
-  def hasIn()  = if rule == Boundary then seenCross or unseenNamed or unseenUnkeyed else fires
-  def hasOut() = if rule == Boundary then seenCross else fires
+  def inHasFinding() =
+    if rule == Boundary then seenCrossing or unseenCrossingByName or unseenCrossingByPosition
+    else otherFires
+  def outHasFinding() = if rule == Boundary then seenCrossing else otherFires
   // Out keeps a Boundary ignore that the unseen file may answer.
-  def keptOut() = rule == Boundary and (names or (field and typeNames))
+  def outKeeps() = rule == Boundary and (writesName or (isField and writesTypeName))
 
   fair action judgeIn() {
     requires phase == 1
     phase = 2
-    silencedIn = hasIn()
-    unusedIn = not hasIn()
+    silencedIn = inHasFinding()
+    unusedIn = not inHasFinding()
   }
   fair action judgeOut() {
     requires phase == 2
     phase = 3
-    silencedOut = hasOut()
-    unusedOut = not hasOut() and not keptOut()
+    silencedOut = outHasFinding()
+    unusedOut = not outHasFinding() and not outKeeps()
   }
 
   def needed() = silencedIn or silencedOut
@@ -129,11 +142,11 @@ spec UnusedIgnoreUnseen {
   invariant InKeepsNothing    { phase >= 2 => (unusedIn == not silencedIn) }
   // Out keeps only a Boundary ignore whose declaration the unseen file names.
   // For a field, it also keeps one whose type the file names. Expanded, not
-  // routed through keptOut(). Then a mutation of the guard moves one side
+  // routed through outKeeps(). Then a mutation of the guard moves one side
   // only, and the invariant can fail.
   invariant OutKeepsOnlyWrittenBoundary {
     (phase == 3 and not silencedOut and not unusedOut)
-    => (rule == Boundary and (names or (field and typeNames)))
+    => (rule == Boundary and (writesName or (isField and writesTypeName)))
   }
   // The rules judged on the declaration are judged alike in both runs.
   invariant OtherIsConfigurationFree {
@@ -142,14 +155,14 @@ spec UnusedIgnoreUnseen {
 
   // Auxiliary. Each run records its judgment of inputs that are never
   // assigned again.
-  invariant UnseenNamedIsNamed { unseenNamed => names }
-  invariant UnseenUnkeyedIsAField { unseenUnkeyed => (field and typeNames) }
+  invariant UnseenNamedIsNamed { unseenCrossingByName => writesName }
+  invariant UnseenUnkeyedIsAField { unseenCrossingByPosition => (isField and writesTypeName) }
   invariant InRecordsItsJudgment {
-    phase >= 2 => (silencedIn == hasIn() and unusedIn == not hasIn())
+    phase >= 2 => (silencedIn == inHasFinding() and unusedIn == not inHasFinding())
   }
   invariant OutRecordsItsJudgment {
     phase == 3
-    => (silencedOut == hasOut() and unusedOut == (not hasOut() and not keptOut()))
+    => (silencedOut == outHasFinding() and unusedOut == (not outHasFinding() and not outKeeps()))
   }
   invariant JudgedInFirst { (silencedIn or unusedIn) => phase >= 2 }
   invariant JudgedOutLast { (silencedOut or unusedOut) => phase == 3 }
@@ -160,9 +173,9 @@ spec UnusedIgnoreUnseen {
   reachable UnseenCrossingKept {
     phase == 3
     and rule == Boundary
-    and not seenCross
-    and unseenNamed
-    and not unseenUnkeyed
+    and not seenCrossing
+    and unseenCrossingByName
+    and not unseenCrossingByPosition
     and silencedIn
     and not silencedOut
     and not unusedIn
@@ -173,10 +186,10 @@ spec UnusedIgnoreUnseen {
   reachable UnkeyedCrossingKept {
     phase == 3
     and rule == Boundary
-    and not seenCross
-    and not unseenNamed
-    and unseenUnkeyed
-    and not names
+    and not seenCrossing
+    and not unseenCrossingByName
+    and unseenCrossingByPosition
+    and not writesName
     and silencedIn
     and not silencedOut
     and not unusedIn
@@ -187,12 +200,12 @@ spec UnusedIgnoreUnseen {
   reachable TypeNameWithoutCrossingCaughtIn {
     phase == 3
     and rule == Boundary
-    and field
-    and typeNames
-    and not names
-    and not seenCross
-    and not unseenNamed
-    and not unseenUnkeyed
+    and isField
+    and writesTypeName
+    and not writesName
+    and not seenCrossing
+    and not unseenCrossingByName
+    and not unseenCrossingByPosition
     and unusedIn
     and not unusedOut
   }
@@ -201,10 +214,10 @@ spec UnusedIgnoreUnseen {
   reachable NameWithoutCrossingCaughtIn {
     phase == 3
     and rule == Boundary
-    and not seenCross
-    and not unseenNamed
-    and not unseenUnkeyed
-    and names
+    and not seenCrossing
+    and not unseenCrossingByName
+    and not unseenCrossingByPosition
+    and writesName
     and unusedIn
     and not unusedOut
   }
@@ -212,9 +225,9 @@ spec UnusedIgnoreUnseen {
   reachable StaleReportedByBoth {
     phase == 3
     and rule == Boundary
-    and not seenCross
-    and not names
-    and not typeNames
+    and not seenCrossing
+    and not writesName
+    and not writesTypeName
     and unusedIn
     and unusedOut
   }
@@ -222,7 +235,7 @@ spec UnusedIgnoreUnseen {
   reachable SeenCrossingUsedByBoth {
     phase == 3
     and rule == Boundary
-    and seenCross
+    and seenCrossing
     and silencedIn
     and silencedOut
   }
@@ -230,8 +243,8 @@ spec UnusedIgnoreUnseen {
   reachable OtherNamedStillReported {
     phase == 3
     and rule == Other
-    and names
-    and not fires
+    and writesName
+    and not otherFires
     and unusedIn
     and unusedOut
   }

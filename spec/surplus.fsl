@@ -84,20 +84,28 @@ spec Surplus {
     stalled: Bool = false
   }
 
-  action configure(on: Bool, w: Bool, sa: Bool, uo: Bool, sat: Bool,
-                   ce: Bool, cv: Bool, gu: Bool, ln: Bool, ex: Bool) {
+  action configure(givenRuleOn: Bool,
+                   givenWidened: Bool,
+                   givenSeesAllFiles: Bool,
+                   givenUsedOutside: Bool,
+                   givenSatisfaction: Bool,
+                   givenCarrierExposed: Bool,
+                   givenConversion: Bool,
+                   givenGuessed: Bool,
+                   givenLinkname: Bool,
+                   givenExported: Bool) {
     requires not configured
     configured = true
-    ruleOn = on
-    widened = w
-    seesAllFiles = sa
-    usedOutside = uo
-    satisfaction = sat
-    carrierExposed = ce
-    conversion = cv
-    guessed = gu
-    linkname = ln
-    exported = ex
+    ruleOn = givenRuleOn
+    widened = givenWidened
+    seesAllFiles = givenSeesAllFiles
+    usedOutside = givenUsedOutside
+    satisfaction = givenSatisfaction
+    carrierExposed = givenCarrierExposed
+    conversion = givenConversion
+    guessed = givenGuessed
+    linkname = givenLinkname
+    exported = givenExported
   }
 
   // A pass that ran and reported nothing. It may repeat forever.

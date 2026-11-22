@@ -109,52 +109,64 @@ spec UnusedModes {
 
   // One step per concern, not one action for all of them. The instances of
   // an action are the product of its parameters, at every step.
-  action configureScope(m: Mode, st: Scope, cu: Scope, bo: Bool, so: Bool) {
+  action configureScope(givenMode: Mode,
+                        givenStated: Scope,
+                        givenCfgUnexported: Scope,
+                        givenBoundaryOn: Bool,
+                        givenSurplusOn: Bool) {
     requires phase == 0
     phase = 1
-    mode = m
-    stated = st
-    cfgUnexported = cu
-    boundaryOn = bo
-    surplusOn = so
+    mode = givenMode
+    stated = givenStated
+    cfgUnexported = givenCfgUnexported
+    boundaryOn = givenBoundaryOn
+    surplusOn = givenSurplusOn
   }
-  action configureTaker(ap: Bool, ax: Bool, ao: Dir) {
+  action configureTaker(givenTakerPresent: Bool, givenTakerExported: Bool, givenTakerOuter: Dir) {
     requires phase == 1
     phase = 2
-    aPresent = ap
-    aExported = ax
-    aOuter = ao
+    aPresent = givenTakerPresent
+    aExported = givenTakerExported
+    aOuter = givenTakerOuter
   }
-  action configureShadowed(bp: Bool, bx: Bool, bo: Dir) {
+  action configureShadowed(givenShadowedPresent: Bool,
+                           givenShadowedExported: Bool,
+                           givenShadowedOuter: Dir) {
     requires phase == 2
     phase = 3
-    bPresent = bp
-    bExported = bx
-    bOuter = bo
+    bPresent = givenShadowedPresent
+    bExported = givenShadowedExported
+    bOuter = givenShadowedOuter
   }
-  action configureOthers(cr: Bool, ex: Bool, ct: Bool, ow: Bool, sd: Bool, os: Bool, tu: Bool) {
+  action configureOthers(givenCrosses: Bool,
+                         givenCrossesExcluded: Bool,
+                         givenCrossesInTests: Bool,
+                         givenOwnerWidened: Bool,
+                         givenSurplusDepends: Bool,
+                         givenOuterStuck: Bool,
+                         givenTestsUnseen: Bool) {
     requires phase == 3
     // Only a declaration that is there is used.
-    requires not (cr or ex or ct) or aPresent
+    requires not (givenCrosses or givenCrossesExcluded or givenCrossesInTests) or aPresent
     // A crossing in a test file the pass does not read needs such a file.
-    requires not ct or tu
+    requires not givenCrossesInTests or givenTestsUnseen
     phase = 4
-    aCrosses = cr
-    aCrossesExcluded = ex
-    aCrossesInTests = ct
-    ownerWidened = ow
-    surplusDepends = sd
-    outerStuck = os
-    testsUnseen = tu
+    aCrosses = givenCrosses
+    aCrossesExcluded = givenCrossesExcluded
+    aCrossesInTests = givenCrossesInTests
+    ownerWidened = givenOwnerWidened
+    surplusDepends = givenSurplusDepends
+    outerStuck = givenOuterStuck
+    testsUnseen = givenTestsUnseen
   }
 
   // The scope from the next level out, and whether it is the same under every
   // configuration. These are outerFixed and outerScope of unused_bind.fsl.
-  def outerFixed(o: Dir, x: Bool) = o != NoDir or x
-  def outerScope(o: Dir, x: Bool) =
-    if o == DirShared then Shared
-    else if o == DirPrivate then Private
-    else if x then Shared
+  def outerFixed(outer: Dir, isExported: Bool) = outer != NoDir or isExported
+  def outerScope(outer: Dir, isExported: Bool) =
+    if outer == DirShared then Shared
+    else if outer == DirPrivate then Private
+    else if isExported then Shared
     else cfgUnexported
 
   // loose: bound when a takes a scope it could not have had under any

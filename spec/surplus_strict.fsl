@@ -32,8 +32,8 @@
 // seesAllFiles, as in surplus.fsl.
 //
 // The two findings are about one directive and one declaration under it.
-// otherLive is whether anything else under the directive keeps it alive.
-// Suppose nothing does, and this declaration does not either. Then loose
+// otherKeepsDirective is whether anything else under the directive keeps it
+// alive. Suppose nothing does, and this declaration does not either. Then loose
 // reports the directive, and strict adds nothing. The per-declaration finding
 // would say the same thing again. So strict reports a superset of loose. The
 // two never both land on the declaration.
@@ -74,7 +74,7 @@
 // the type and never its fields. So a field narrowed under it rewords nothing.
 //
 // ASSUME-1: one declaration and its enclosing directive are enough. Everything
-//   else the directive reaches matters only through otherLive and
+//   else the directive reaches matters only through otherKeepsDirective and
 //   otherDecided. A type's members matter only through membersKeep (modelling
 //   assumption)
 fsl 5
@@ -87,7 +87,7 @@ spec SurplusStrict {
   // Why the declaration has the scope it has. Each value other than Enclosed
   // is one reason the enclosing directive did not widen it. They are one
   // variable and not four flags, for the same reason as Reach below.
-  enum Source { Enclosed, Own, Exported, SharedDefault, NoEnclosing }
+  enum Source { Enclosed, OwnDirective, Exported, SharedDefault, NoEnclosing }
   // The reach paths are one variable. Reach is a disjunction, so no property
   // reads two paths at once. Flags would multiply the states the checker
   // holds. An enum only adds to them.
@@ -104,7 +104,7 @@ spec SurplusStrict {
     seesAllFiles: Bool = true,
     reach: Reach = Unreached,
     shape: Shape = Plain,
-    otherLive: Bool = false,
+    otherKeepsDirective: Bool = false,
     otherDecided: Bool = false,
     restated: Bool = false,
     rewords: Bool = false,
@@ -116,44 +116,50 @@ spec SurplusStrict {
 
   // Three steps, not one. One action with every parameter is the product of
   // all of them at every step. The checker holds that product.
-  action configureScope(m: Mode, src: Source, l: Level, sa: Bool) {
+  action configureScope(givenMode: Mode,
+                        givenSource: Source,
+                        givenLevel: Level,
+                        givenSeesAllFiles: Bool) {
     requires phase == 0
     phase = 1
-    mode = m
-    source = src
-    level = l
-    seesAllFiles = sa
+    mode = givenMode
+    source = givenSource
+    level = givenLevel
+    seesAllFiles = givenSeesAllFiles
   }
-  action configureReach(r: Reach, sh: Shape) {
+  action configureReach(givenReach: Reach, givenShape: Shape) {
     requires phase == 1
     // main is a function with an unexported name. So no type's directive
     // reaches it, and exportedness never gives it its scope.
-    requires sh == ToolchainNamed => level != OnType
-    requires sh == ToolchainNamed => source != Exported
+    requires givenShape == ToolchainNamed => level != OnType
+    requires givenShape == ToolchainNamed => source != Exported
     phase = 2
-    reach = r
-    shape = sh
+    reach = givenReach
+    shape = givenShape
   }
-  action configureDirective(live: Bool, decided: Bool, rs: Bool, rw: Bool) {
+  action configureDirective(givenOtherKeepsDirective: Bool,
+                            givenOtherDecided: Bool,
+                            givenRestated: Bool,
+                            givenRewords: Bool) {
     requires phase == 2
     // A restated directive has an enclosing directive to restate. So it is
     // never the file's, and nothing under it decides. Only its report can be
     // reworded.
-    requires rs => level != OnFile
-    requires rs => source != NoEnclosing
-    requires rs => not decided
-    requires rw => rs
+    requires givenRestated => level != OnFile
+    requires givenRestated => source != NoEnclosing
+    requires givenRestated => not givenOtherDecided
+    requires givenRewords => givenRestated
     phase = 3
-    otherLive = live
-    otherDecided = decided
-    restated = rs
-    rewords = rw
+    otherKeepsDirective = givenOtherKeepsDirective
+    otherDecided = givenOtherDecided
+    restated = givenRestated
+    rewords = givenRewords
   }
 
   def configured() = phase == 3
 
   def exported() = source == Exported
-  def ownDir() = source == Own
+  def ownDirective() = source == OwnDirective
   def cfgUnexported() = if source == SharedDefault then Shared else Private
   def entryMixed() = shape == MixedEntry
   def carriesMembers() = shape == MembersQuiet or shape == MembersKeep
@@ -174,14 +180,14 @@ spec SurplusStrict {
   // --- loose: the directive as a whole ------------------------------------
   // The declaration depends on the directive while it states no scope of its
   // own. It keeps the directive alive while it is reached or exported.
-  def dependsOnDirective() = enclosing() and not ownDir()
+  def dependsOnDirective() = enclosing() and not ownDirective()
   def keepsDirective() = dependsOnDirective() and (reachable() or exported())
-  def looseCondition() =
+  def looseWouldFire() =
     enclosing()
     and seesAllFiles
-    and not otherLive
+    and not otherKeepsDirective
     and not keepsDirective()
-  def looseFires() = mode != Off and looseCondition()
+  def looseFires() = mode != Off and looseWouldFire()
 
   // --- strict: this one declaration ---------------------------------------
   // The enclosing directive made it shared. Without that directive, under
@@ -199,7 +205,7 @@ spec SurplusStrict {
     and not (carriesMembers() and membersKeep())
     and not ownerNarrowed()
     and not toolchainNamed()
-    and not looseCondition()
+    and not looseWouldFire()
   def strictFires() =
     mode == Strict
     and widened()
@@ -254,7 +260,7 @@ spec SurplusStrict {
   def looseAfter() =
     enclosing()
     and seesAllFiles
-    and not otherLive
+    and not otherKeepsDirective
     and (fixed or not keepsDirective())
   def directiveBindsAfter() = otherDecided or not fixed
 
@@ -272,11 +278,13 @@ spec SurplusStrict {
 
   // Only an enclosing directive may be the reason for a strict finding.
   invariant StrictImpliesEnclosing          { strictReported => enclosing() }
-  invariant NeverReportsOwnDirective        { strictReported => not ownDir() }
+  invariant NeverReportsOwnDirective        { strictReported => not ownDirective() }
   invariant NeverReportsExported            { strictReported => not exported() }
   invariant NeverReportsUnderSharedDefault  { strictReported => cfgUnexported() == Private }
   invariant NeverReportsMixedEntry          { strictReported => not entryMixed() }
-  invariant NeverNarrowsAReachedMember      { strictReported => not (carriesMembers() and membersKeep()) }
+  invariant NeverNarrowsAReachedMember {
+    strictReported => not (carriesMembers() and membersKeep())
+  }
   invariant NeverRepeatsTheOwnersFinding    { strictReported => not ownerNarrowed() }
   invariant NeverReportsMain                { strictReported => not toolchainNamed() }
 
@@ -338,7 +346,7 @@ spec SurplusStrict {
     and mode == Loose
     and widened()
     and seesAllFiles
-    and otherLive
+    and otherKeepsDirective
     and not reachable()
     and shape == Plain
     and not looseFires()
@@ -351,7 +359,7 @@ spec SurplusStrict {
     configured()
     and mode == Strict
     and seesAllFiles
-    and otherLive
+    and otherKeepsDirective
 
   // Each suppressor of the strict finding is witnessed on its own, with every
   // other one off.
@@ -430,7 +438,7 @@ spec SurplusStrict {
     and mode == Strict
     and widened()
     and seesAllFiles
-    and not otherLive
+    and not otherKeepsDirective
     and not reachable()
     and shape == Plain
     and not strictFires()
@@ -441,7 +449,7 @@ spec SurplusStrict {
     and mode == Strict
     and widened()
     and not seesAllFiles
-    and otherLive
+    and otherKeepsDirective
     and not reachable()
     and shape == Plain
     and not strictFires()
@@ -460,7 +468,7 @@ spec SurplusStrict {
   // And each reason the enclosing directive did not give the scope.
   reachable SilentOnOwnDirective {
     strictArmed()
-    and source == Own
+    and source == OwnDirective
     and cfgUnexported() == Private
     and not reachable()
     and shape == Plain
@@ -477,7 +485,7 @@ spec SurplusStrict {
   reachable SilentUnderSharedDefault {
     strictArmed()
     and enclosing()
-    and not ownDir()
+    and not ownDirective()
     and not exported()
     and cfgUnexported() == Shared
     and not reachable()

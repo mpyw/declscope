@@ -62,53 +62,60 @@ spec UnusedBind {
     hasTarget: Bool = false,
     targetExported: Bool = false,
     // Two declarations within its reach. A nearer directive may shadow each.
-    aPresent: Bool = false,
-    aExported: Bool = false,
-    aShadowed: Bool = false,
-    bPresent: Bool = false,
-    bExported: Bool = false,
-    bShadowed: Bool = false,
+    firstPresent: Bool = false,
+    firstExported: Bool = false,
+    firstShadowed: Bool = false,
+    secondPresent: Bool = false,
+    secondExported: Bool = false,
+    secondShadowed: Bool = false,
     judged: Bool = false,
     bound: Bool = false
   }
-  action configure(st: Scope, od: Dir, cu: Scope,
-                   ht: Bool, tx: Bool,
-                   ap: Bool, ax: Bool, ash: Bool,
-                   bp: Bool, bx: Bool, bsh: Bool) {
+  action configure(givenStated: Scope,
+                   givenOuterDir: Dir,
+                   givenCfgUnexported: Scope,
+                   givenHasTarget: Bool,
+                   givenTargetExported: Bool,
+                   givenFirstPresent: Bool,
+                   givenFirstExported: Bool,
+                   givenFirstShadowed: Bool,
+                   givenSecondPresent: Bool,
+                   givenSecondExported: Bool,
+                   givenSecondShadowed: Bool) {
     requires not configured
     configured = true
-    stated = st
-    outerDir = od
-    cfgUnexported = cu
-    hasTarget = ht
-    targetExported = tx
-    aPresent = ap
-    aExported = ax
-    aShadowed = ash
-    bPresent = bp
-    bExported = bx
-    bShadowed = bsh
+    stated = givenStated
+    outerDir = givenOuterDir
+    cfgUnexported = givenCfgUnexported
+    hasTarget = givenHasTarget
+    targetExported = givenTargetExported
+    firstPresent = givenFirstPresent
+    firstExported = givenFirstExported
+    firstShadowed = givenFirstShadowed
+    secondPresent = givenSecondPresent
+    secondExported = givenSecondExported
+    secondShadowed = givenSecondShadowed
   }
 
-  def outerFixed(x: Bool) = outerDir != NoDir or x
-  def outerScope(x: Bool) =
+  def outerFixed(isExported: Bool) = outerDir != NoDir or isExported
+  def outerScope(isExported: Bool) =
     if outerDir == DirShared then Shared
     else if outerDir == DirPrivate then Private
-    else if x then Shared
+    else if isExported then Shared
     else cfgUnexported
-  def inert(x: Bool) = outerFixed(x) and stated == outerScope(x)
+  def inert(isExported: Bool) = outerFixed(isExported) and stated == outerScope(isExported)
 
   // What binds. Either the declaration the directive sits on, or an enclosed
   // one that no nearer directive shadows. The directive decides its scope.
   def targetBinds() = hasTarget and not inert(targetExported)
-  def aBinds() = aPresent and not aShadowed and not inert(aExported)
-  def bBinds() = bPresent and not bShadowed and not inert(bExported)
+  def firstBinds() = firstPresent and not firstShadowed and not inert(firstExported)
+  def secondBinds() = secondPresent and not secondShadowed and not inert(secondExported)
 
   action judge() {
     requires configured
     requires not judged
     judged = true
-    bound = targetBinds() or aBinds() or bBinds()
+    bound = targetBinds() or firstBinds() or secondBinds()
   }
   def reported() = judged and not bound
 
@@ -122,20 +129,20 @@ spec UnusedBind {
     judged => bound ==
       ((hasTarget
         and not (outerFixed(targetExported) and stated == outerScope(targetExported)))
-       or (aPresent
-           and not aShadowed
-           and not (outerFixed(aExported) and stated == outerScope(aExported)))
-       or (bPresent
-           and not bShadowed
-           and not (outerFixed(bExported) and stated == outerScope(bExported))))
+       or (firstPresent
+           and not firstShadowed
+           and not (outerFixed(firstExported) and stated == outerScope(firstExported)))
+       or (secondPresent
+           and not secondShadowed
+           and not (outerFixed(secondExported) and stated == outerScope(secondExported))))
   }
 
   // The directive sits on a declaration and encloses nothing.
   def onTargetAlone() =
     configured
     and hasTarget
-    and not aPresent
-    and not bPresent
+    and not firstPresent
+    and not secondPresent
 
   // --- the two quantifiers -------------------------------------------------
   // Over configurations. An unexported declaration takes defaults.unexported,
@@ -205,21 +212,21 @@ spec UnusedBind {
     and targetExported
     and stated == Shared
     and outerDir == NoDir
-    and aPresent
-    and not aExported
-    and not aShadowed
-    and not bPresent
+    and firstPresent
+    and not firstExported
+    and not firstShadowed
+    and not secondPresent
     and bound
   }
   reachable UsedViaSecondOnly {
     configured
     and not hasTarget
     and outerDir == NoDir
-    and aPresent
-    and aShadowed
-    and bPresent
-    and not bExported
-    and not bShadowed
+    and firstPresent
+    and firstShadowed
+    and secondPresent
+    and not secondExported
+    and not secondShadowed
     and bound
   }
   reachable UnusedOnExportedLeaf {
@@ -232,10 +239,10 @@ spec UnusedBind {
   reachable UnusedBecauseAllShadowed {
     configured
     and not hasTarget
-    and aPresent
-    and aShadowed
-    and bPresent
-    and bShadowed
+    and firstPresent
+    and firstShadowed
+    and secondPresent
+    and secondShadowed
     and reported()
   }
 }
