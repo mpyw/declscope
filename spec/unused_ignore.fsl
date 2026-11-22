@@ -1,118 +1,150 @@
-// The unused rule on an ignore directive: which ignore answers the report that
-// another ignore is unused, and why no ignore answers its own.
+// The unused rule on an ignore directive. It decides which ignore answers the
+// report that another ignore is unused. It also shows why no ignore answers
+// its own report.
 //
 // An ignore is unused when it silenced nothing. The report that says so is
-// itself a report of the unused rule, so an ignore covering that rule could
-// answer it. It may answer another ignore's report, never its own: an ignore
-// that could exempt itself would never be called unused, and that report is
-// the one written to catch it.
+// itself a report of the unused rule. So an ignore that covers that rule
+// could answer it. An ignore may answer another ignore's report, but never
+// its own. An ignore that could exempt itself would never be called unused.
+// And this report is written to catch exactly that ignore.
 //
 // Which ignore answers another depends on the level:
 //
 //   Decl  an ignore in the same comment group, when it NAMES the unused rule.
 //         A bare //declscope:ignore does not answer here. It sits on every
-//         declaration an author wanted quiet, and reading it as an answer
-//         would let a whole group of ignores exempt one another.
+//         declaration an author wanted quiet. Reading it as an answer would
+//         let a whole group of ignores exempt one another.
 //   File  another file-level ignore of the same file, when it covers the
 //         unused rule, named or bare. A file-level ignore stands a rule down
-//         for the whole file, and its own report is the one exception.
+//         for the whole file. Its own report is the one exception.
 //
-// An ignore that answers another's report has done a job, and is used. The
-// answer is taken over the ignores that silenced nothing before any answer is
-// counted, so the result does not depend on which one is judged first. Two
-// ignores that answer each other are both used.
+// An ignore that answers another's report has done a job, so it is used. The
+// answer is taken over the ignores that silenced nothing, before any answer
+// is counted. So the result does not depend on which ignore is judged first.
+// Two ignores that answer each other are both used.
 //
-// A file-level ignore covering the unused rule also answers the report of an
-// ignore on a declaration in its file (F below). That report is made and then
-// silenced, so it does not surface.
+// A file-level ignore that covers the unused rule also answers another
+// report. That is the report of an ignore on a declaration in its file (F
+// below). That report is made and then silenced, so it does not surface.
 //
 // Out of scope:
 //
-//   - A second ignore naming the same set of rules as one before it on one
-//     binding or one file, such as two bare //declscope:ignore at the top of a
-//     file. That is a duplicate, the directive rule's report (#211, #242). It
-//     is dropped and registers no ignore to judge, so the first is judged as
-//     if alone. configure therefore never puts two bare ignores at one level:
-//     they always name the same set. Two that name other rules, or both name
-//     unused, stand for two different sets.
-//   - An ignore naming a module-wide rule, such as overexported, and one that
-//     may answer its unused report: beside it naming unused, or at the file
-//     level covering unused. One pass cannot tell whether such an ignore does
-//     its job, so declscope shrink judges it (spec/shrink_ignore.fsl). Every
-//     claim here, NeverExemptsItself included, is about the other ignores.
+//   - A second ignore that names the same set of rules as one before it, on
+//     one binding or one file. An example is two bare //declscope:ignore at
+//     the top of a file. That is a duplicate, the directive rule's report
+//     (#211, #242). It is dropped and registers no ignore to judge. So the
+//     first is judged as if it were alone. Two bare ignores always name the
+//     same set. So configure never puts two bare ignores at one level. Two
+//     that name other rules, or that both name unused, stand for two
+//     different sets.
+//   - An ignore that names a module-wide rule, such as overexported. Also an
+//     ignore that may answer its unused report: one beside it that names
+//     unused, or one at the file level that covers unused. One pass cannot
+//     tell whether such an ignore does its job. So declscope shrink judges it
+//     (spec/shrink_ignore.fsl). Every claim here is about the other ignores.
+//     NeverExemptsItself is one of those claims.
 //
 // ASSUME-1: two ignores at one level are enough. A third changes which one
-//   answers, never whether an ignore can answer itself (modelling assumption)
+//   answers. It never changes whether an ignore can answer itself (modelling
+//   assumption)
 // ASSUME-2: F is modelled only beside declaration-level ignores, and only
-//   when it covers unused. One that does not cover unused answers nothing
-//   and is judged as the lone file-level ignore is (modelling assumption)
+//   when it covers unused. One that does not cover unused answers nothing. It
+//   is judged as the lone file-level ignore is (modelling assumption)
 fsl 5
 spec UnusedIgnore {
   enum Mode  { Off, Loose, Strict }
   enum Level { Decl, File }
-  // What an ignore's rule list says about the unused rule: it names only
-  // other rules, it names unused, or it is bare and covers every rule.
+  // What an ignore's rule list says about the unused rule. It names only
+  // other rules, or it names unused, or it is bare and covers every rule.
   enum Names { Other, Unused, Bare }
 
   state {
     phase: 0..2 = 0,
-    mode: Mode = Loose, level: Level = Decl,
-    // I is the ignore judged. silenced: it silenced some finding that is not
+    mode: Mode = Loose,
+    level: Level = Decl,
+    // I is the ignore judged. iSilenced: it silenced some finding that is not
     // an unused-ignore report.
-    iNames: Names = Other, iSilenced: Bool = false,
-    // J is another ignore at the same level: the same comment group for Decl,
-    // the same file for File.
-    jPresent: Bool = false, jNames: Names = Other, jSilenced: Bool = false,
-    // F is a file-level ignore covering unused, in the file of the
+    iNames: Names = Other,
+    iSilenced: Bool = false,
+    // J is another ignore at the same level. That is the same comment group
+    // for Decl, and the same file for File.
+    jPresent: Bool = false,
+    jNames: Names = Other,
+    jSilenced: Bool = false,
+    // F is a file-level ignore that covers unused. It is in the file of the
     // declaration-level ignores I and J.
-    fPresent: Bool = false, fSilenced: Bool = false,
-    iReported: Bool = false, jReported: Bool = false, fReported: Bool = false
+    fPresent: Bool = false,
+    fSilenced: Bool = false,
+    iReported: Bool = false,
+    jReported: Bool = false,
+    fReported: Bool = false
   }
 
   action configure(m: Mode, l: Level, in: Names, is: Bool, jp: Bool, jn: Names, js: Bool,
                    fp: Bool, fs: Bool) {
     requires phase == 0
-    // A second bare ignore at one level repeats the first: a duplicate.
+    // A second bare ignore at one level repeats the first. It is a duplicate.
     requires not (jp and in == Bare and jn == Bare)
     requires fp => l == Decl
     phase = 1
-    mode = m  level = l
-    iNames = in  iSilenced = is
-    jPresent = jp  jNames = jn  jSilenced = js
-    fPresent = fp  fSilenced = fs
+    mode = m
+    level = l
+    iNames = in
+    iSilenced = is
+    jPresent = jp
+    jNames = jn
+    jSilenced = js
+    fPresent = fp
+    fSilenced = fs
   }
 
-  // Whether an ignore saying n answers another ignore's unused report here.
+  // Whether an ignore that says n answers another ignore's unused report here.
   def answersAt(n: Names) = if level == File then n != Other else n == Unused
-  // I answers J's report, which exists only when J silenced nothing.
+  // I answers J's report. That report exists only when J silenced nothing.
   def iAnswersJ() = jPresent and not jSilenced and answersAt(iNames)
   def jAnswersI() = jPresent and not iSilenced and answersAt(jNames)
-  // F answers every report of I or J, taken over the ignores that silenced
-  // nothing, like the answers between I and J.
+  // F answers every report of I or J. Like the answers between I and J, this
+  // is taken over the ignores that silenced nothing.
   def fAnswers() = fPresent and (not iSilenced or (jPresent and not jSilenced))
 
   fair action judge() {
     requires phase == 1
     phase = 2
-    iReported = mode != Off and not iSilenced and not iAnswersJ() and not jAnswersI() and not fPresent
-    jReported = mode != Off and jPresent and not jSilenced and not jAnswersI() and not iAnswersJ()
-                and not fPresent
-    fReported = mode != Off and fPresent and not fSilenced and not fAnswers()
+    iReported =
+      mode != Off
+      and not iSilenced
+      and not iAnswersJ()
+      and not jAnswersI()
+      and not fPresent
+    jReported =
+      mode != Off
+      and jPresent
+      and not jSilenced
+      and not jAnswersI()
+      and not iAnswersJ()
+      and not fPresent
+    fReported =
+      mode != Off
+      and fPresent
+      and not fSilenced
+      and not fAnswers()
   }
 
   // --- off says nothing ----------------------------------------------------------
   invariant OffReportsNothing { mode == Off => not iReported and not jReported }
 
   // --- no ignore exempts itself --------------------------------------------------
-  // Alone, an ignore is reported exactly when it silenced nothing, whatever it
-  // names: unused, or nothing at all. An ignore naming a module-wide rule is
-  // left to declscope shrink (see the header).
+  // Alone, an ignore is reported exactly when it silenced nothing. What it
+  // names does not matter: unused, or nothing at all. An ignore that names a
+  // module-wide rule is left to declscope shrink (see the header).
   invariant NeverExemptsItself {
-    (phase == 2 and not jPresent and not fPresent) => (iReported == (mode != Off and not iSilenced))
+    (phase == 2 and not jPresent and not fPresent)
+    => (iReported == (mode != Off and not iSilenced))
   }
-  // F alone with nothing to answer is reported like any lone ignore.
+  // F alone, with nothing to answer, is reported like any lone ignore.
   invariant FileNeverExemptsItself {
-    (phase == 2 and fPresent and iSilenced and not jPresent) => (fReported == (mode != Off and not fSilenced))
+    (phase == 2 and fPresent and iSilenced and not jPresent)
+    => (fReported == (mode != Off and not fSilenced))
   }
   // Silencing something is always a use.
   invariant SilencingIsUse { iSilenced => not iReported }
@@ -120,12 +152,12 @@ spec UnusedIgnore {
   // --- answering another is a use, and the answered report is gone -------------
   invariant AnsweringIsUse  { (phase == 2 and iAnswersJ()) => not iReported }
   invariant AnsweredIsQuiet { (phase == 2 and iAnswersJ()) => not jReported }
-  // On a declaration, only a named unused answers.
+  // On a declaration, only an ignore that names unused answers.
   invariant DeclAnswersByName { (level == Decl and iAnswersJ()) => iNames == Unused }
-  // A file-level ignore covering unused answers a declaration's ignore.
+  // A file-level ignore that covers unused answers a declaration's ignore.
   invariant FileAnswersDecl   { (phase == 2 and fPresent) => (not iReported and not jReported) }
   invariant FileAnsweringIsUse { (phase == 2 and fPresent and not iSilenced) => not fReported }
-  // Two ignores at one level never name the same set as bare.
+  // Two ignores at one level never both name the bare set.
   invariant NoBarePair { (jPresent and iNames == Bare) => jNames != Bare }
 
   // Auxiliary.
@@ -136,39 +168,96 @@ spec UnusedIgnore {
 
   // --- witnesses -------------------------------------------------------------------
   reachable LoneUnusedIgnoreReported {
-    phase == 2 and mode == Loose and level == Decl and iNames == Unused
-    and not iSilenced and not jPresent and iReported
+    phase == 2
+    and mode == Loose
+    and level == Decl
+    and iNames == Unused
+    and not iSilenced
+    and not jPresent
+    and iReported
   }
   reachable LoneBareFileIgnoreReported {
-    phase == 2 and mode == Loose and level == File and iNames == Bare
-    and not iSilenced and not jPresent and iReported
+    phase == 2
+    and mode == Loose
+    and level == File
+    and iNames == Bare
+    and not iSilenced
+    and not jPresent
+    and iReported
   }
-  // A leftover ignore for another rule, such as directive, that silenced
+  // A leftover ignore for another rule, such as directive. It silenced
   // nothing.
   reachable LeftoverIgnoreReported {
-    phase == 2 and mode == Strict and iNames == Other and not iSilenced and not jPresent and iReported
+    phase == 2
+    and mode == Strict
+    and iNames == Other
+    and not iSilenced
+    and not jPresent
+    and iReported
   }
   reachable SiblingNamingUnusedAnswers {
-    phase == 2 and mode == Loose and level == Decl and iNames == Other and not iSilenced
-    and jPresent and jNames == Unused and jSilenced and not iReported and not jReported
+    phase == 2
+    and mode == Loose
+    and level == Decl
+    and iNames == Other
+    and not iSilenced
+    and jPresent
+    and jNames == Unused
+    and jSilenced
+    and not iReported
+    and not jReported
   }
   reachable BareSiblingDoesNotAnswer {
-    phase == 2 and mode == Loose and level == Decl and iNames == Other and not iSilenced
-    and jPresent and jNames == Bare and jSilenced and iReported and not jReported
+    phase == 2
+    and mode == Loose
+    and level == Decl
+    and iNames == Other
+    and not iSilenced
+    and jPresent
+    and jNames == Bare
+    and jSilenced
+    and iReported
+    and not jReported
   }
   reachable BareFileIgnoreAnswers {
-    phase == 2 and mode == Loose and level == File and iNames == Other and not iSilenced
-    and jPresent and jNames == Bare and not jSilenced and not iReported and not jReported
+    phase == 2
+    and mode == Loose
+    and level == File
+    and iNames == Other
+    and not iSilenced
+    and jPresent
+    and jNames == Bare
+    and not jSilenced
+    and not iReported
+    and not jReported
   }
   reachable FileIgnoreAnswersDecl {
-    phase == 2 and mode == Loose and level == Decl and iNames == Other and not iSilenced
-    and not jPresent and fPresent and not fSilenced and not iReported and not fReported
+    phase == 2
+    and mode == Loose
+    and level == Decl
+    and iNames == Other
+    and not iSilenced
+    and not jPresent
+    and fPresent
+    and not fSilenced
+    and not iReported
+    and not fReported
   }
   reachable FileIgnoreWithNothingToAnswerReported {
-    phase == 2 and mode == Loose and level == Decl and iSilenced and not jPresent
-    and fPresent and not fSilenced and fReported
+    phase == 2
+    and mode == Loose
+    and level == Decl
+    and iSilenced
+    and not jPresent
+    and fPresent
+    and not fSilenced
+    and fReported
   }
   reachable OffIsSilent {
-    phase == 2 and mode == Off and not iSilenced and not jPresent and not iReported
+    phase == 2
+    and mode == Off
+    and not iSilenced
+    and not jPresent
+    and not iReported
   }
 }

@@ -1,97 +1,129 @@
 // surplus reports a //declscope:shared that nothing outside the namespace
-// needed. Four such directives were found by hand while auditing this
-// repository, which is the argument for having the rule.
+// needed. An audit of this repository found four such directives by hand.
+// That is the argument for having the rule.
 //
-// The rule is unlike the others: it concludes from an absence. boundary needs a
-// use to find, and qualify reads a name. This one reports because it saw
-// nothing, so every way a declaration can be reached without being spelled is a
-// way for it to be wrong.
+// The rule is unlike the others: it concludes from an absence. boundary needs
+// a use to find, and qualify reads a name. This rule reports because it saw
+// nothing. So every way to reach a declaration without spelling it is a way
+// for the rule to be wrong.
 //
-// Being wrong here is expensive. The advice is to delete a directive, and
-// deleting one that was holding something up breaks the build of a package the
-// analysis never saw. A tool that exists to keep boundaries would be handing
-// out the instructions to break one.
+// Being wrong here is expensive. The advice is to delete a directive. Deleting
+// one that holds something up breaks the build of a package the analysis
+// never saw. A tool that exists to keep boundaries would then hand out the
+// instructions to break one.
 //
 // So the model is built around one property. NeverReportsReachable says the
-// rule stays silent whenever the declaration is reachable at all, by any of the
-// paths below. Everything else here exists to make that property bite.
+// rule stays silent whenever the declaration is reachable at all. Any of the
+// paths below counts. Everything else here exists to make that property bite.
 //
-// The paths are the ones surplusState.reachesOutside tests, plus exportedness,
-// which computeSurplus tests beside it. strict asks the same function, so
-// surplus_strict.fsl names the same paths, as the values of its Reach:
+// The paths are the ones surplusState.reachesOutside tests, plus exportedness.
+// computeSurplus tests exportedness beside it. Both are in internal/surplus.go.
+// strict asks the same function. So surplus_strict.fsl names the same paths,
+// as the values of its Reach:
 //
-//   usedOutside     Spelled: another namespace spells the name, or a
-//                   composite literal without keys whose type is exact writes
-//                   it. Both are in the reference index
-//   satisfaction    Satisfied: a method participates in an interface contract
+//   usedOutside     Spelled: another namespace spells the name. Or a
+//                   composite literal without keys writes it, and the
+//                   literal's type is exact. Both are in the reference index
+//   satisfaction    Satisfied: a method takes part in an interface contract
 //                   in the package
-//   carrierExposed  Carried: an exported type carries an unexported method out
-//                   of the package, where an importer completes the
-//                   satisfaction. No go/analysis pass can see that, so the rule
-//                   only detects the shape and stays quiet
-//   conversion      Converted: a struct conversion pairs a field by name and
+//   carrierExposed  Carried: an exported type carries an unexported method
+//                   out of the package. An importer completes the
+//                   satisfaction there. No go/analysis pass can see that. So
+//                   the rule only detects the shape and stays quiet
+//   conversion      Converted: a struct conversion pairs a field by name. It
 //                   spells nothing
 //   guessed         Guessed: a composite literal without keys may write a
-//                   field through a type parameter's type set, which had to be
-//                   guessed. The guess reports no crossing, so it is kept
-//                   apart from the reference index, and it still counts here
+//                   field through a type parameter's type set. That type set
+//                   had to be guessed. The guess reports no crossing, so it
+//                   stays out of the reference index. It still counts here
 //   linkname        Linknamed: //go:linkname or //export names it as text
-//   exported        an importer reaches it, which no single-package analysis
-//                   sees. strict never judges an exported declaration, so its
+//   exported        an importer reaches it. No single-package analysis sees
+//                   that. strict never judges an exported declaration, so its
 //                   Reach has no value for this
 //
-// seesAllFiles is separate. It is not a way to be reached but a statement about
-// this pass: some file that may hold the use was never read, and the rule
-// switches off for the whole package rather than guess. That is so when
+// seesAllFiles is separate. It is not a way to be reached. It is a statement
+// about this pass: some file that may hold the use was never read. Then the
+// rule switches off for the whole package and does not guess
+// (collection.surplusSeesEveryFile). That is so when
 //
 //   - this pass does not collect an in-package _test.go file (-test=false, or
 //     a test variant this pass is not)
 //   - a build-excluded .go file of this package exists. A build-excluded file
-//     of another package, such as a //go:build ignore generator declaring
-//     package main, names nothing here and does not switch it off (#253)
-//   - a generated or filtered-out file is in the package but not read as a
-//     reference site
+//     of another package does not switch it off (#253). An example is a
+//     //go:build ignore generator that declares package main. It names
+//     nothing here
+//   - a generated or filtered-out file is in the package, but is not read as
+//     a reference site
 //   - the package imports "C", or a non-Go file (assembly, C) is in either
 //     build list or in the folder
 //
-// None of these is per declaration, so they are not a reach path either.
-
-// There is no fix. Every remaining false positive would be an automatic edit
-// that deletes a load-bearing directive.
+// None of these is per declaration, so they are not reach paths either.
 //
-// ruleOn is rules.surplus set to loose or strict. This spec is the directive
-// as a whole, which both modes report; surplus_strict.fsl is what strict adds
-// one declaration at a time.
+// There is no fix. Every remaining false positive would become an automatic
+// edit that deletes a load-bearing directive.
+//
+// ruleOn is rules.surplus set to loose or strict. This spec covers the
+// directive as a whole, which both modes report. surplus_strict.fsl covers
+// what strict adds, one declaration at a time.
 fsl 5
 spec Surplus {
   state {
-    configured: Bool = false, ruleOn: Bool = false,
-    widened: Bool = false, seesAllFiles: Bool = true,
-    usedOutside: Bool = false, satisfaction: Bool = false, carrierExposed: Bool = false,
-    conversion: Bool = false, guessed: Bool = false, linkname: Bool = false,
+    configured: Bool = false,
+    ruleOn: Bool = false,
+    widened: Bool = false,
+    seesAllFiles: Bool = true,
+    // The reach paths, one flag each.
+    usedOutside: Bool = false,
+    satisfaction: Bool = false,
+    carrierExposed: Bool = false,
+    conversion: Bool = false,
+    guessed: Bool = false,
+    linkname: Bool = false,
     exported: Bool = false,
-    reported: Bool = false, stalled: Bool = false
+    reported: Bool = false,
+    stalled: Bool = false
   }
 
   action configure(on: Bool, w: Bool, sa: Bool, uo: Bool, sat: Bool,
                    ce: Bool, cv: Bool, gu: Bool, ln: Bool, ex: Bool) {
     requires not configured
-    configured = true  ruleOn = on  widened = w  seesAllFiles = sa
-    usedOutside = uo  satisfaction = sat  carrierExposed = ce
-    conversion = cv  guessed = gu  linkname = ln  exported = ex
+    configured = true
+    ruleOn = on
+    widened = w
+    seesAllFiles = sa
+    usedOutside = uo
+    satisfaction = sat
+    carrierExposed = ce
+    conversion = cv
+    guessed = gu
+    linkname = ln
+    exported = ex
   }
 
-  // A pass that ran and reported nothing, which may repeat forever.
-  action pass() { requires configured  stalled = true }
+  // A pass that ran and reported nothing. It may repeat forever.
+  action pass() {
+    requires configured
+    stalled = true
+  }
 
-  // Every way the declaration is reached from outside its namespace, whether or
-  // not this pass can see it.
-  def reachable() = usedOutside or satisfaction or carrierExposed
-                    or conversion or guessed or linkname or exported
-  def fires() = ruleOn and widened and seesAllFiles and not reachable()
+  // Every way the declaration is reached from outside its namespace. This
+  // pass may or may not see it.
+  def reachable() =
+    usedOutside
+    or satisfaction
+    or carrierExposed
+    or conversion
+    or guessed
+    or linkname
+    or exported
+  // Everything the rule asks except reach. The rule is on, a directive widened
+  // the declaration, and the pass read every file.
+  def onlyReachDecides() = ruleOn and widened and seesAllFiles
+  def fires() = onlyReachDecides() and not reachable()
 
   fair action report() {
-    requires configured  requires fires()
+    requires configured
+    requires fires()
     reported = true
   }
 
@@ -102,8 +134,8 @@ spec Surplus {
   invariant ReportImpliesConfigured { reported => configured }
   invariant ReportImpliesWidened    { reported => widened }
   invariant ReportImpliesRuleOn     { reported => ruleOn }
-  // A pass that did not read every file reports nothing, rather than reading
-  // the absence of a use as evidence.
+  // A pass that did not read every file reports nothing. It does not read the
+  // absence of a use as evidence.
   invariant SilentWhenBlind         { reported => seesAllFiles }
 
   trans ReportOnlyWhereItFires {
@@ -113,57 +145,119 @@ spec Surplus {
   reachable CanFire { configured and fires() }
   reachable Reported { reported }
 
-  // Each suppressor is witnessed on its own, with every other one off, so that
-  // none of them is dead weight satisfied by another.
+  // Each suppressor is witnessed on its own, with every other one off. So no
+  // suppressor is dead weight that another one satisfies.
   reachable SilentOnUseOutside {
-    configured and ruleOn and widened and seesAllFiles
-    and usedOutside and not satisfaction and not carrierExposed and not conversion
-    and not guessed and not linkname and not exported and not fires()
+    configured
+    and onlyReachDecides()
+    and usedOutside
+    and not satisfaction
+    and not carrierExposed
+    and not conversion
+    and not guessed
+    and not linkname
+    and not exported
+    and not fires()
   }
   reachable SilentOnInterfaceSatisfaction {
-    configured and ruleOn and widened and seesAllFiles
-    and not usedOutside and satisfaction and not carrierExposed and not conversion
-    and not guessed and not linkname and not exported and not fires()
+    configured
+    and onlyReachDecides()
+    and not usedOutside
+    and satisfaction
+    and not carrierExposed
+    and not conversion
+    and not guessed
+    and not linkname
+    and not exported
+    and not fires()
   }
   reachable SilentOnExportedCarrier {
-    configured and ruleOn and widened and seesAllFiles
-    and not usedOutside and not satisfaction and carrierExposed and not conversion
-    and not guessed and not linkname and not exported and not fires()
+    configured
+    and onlyReachDecides()
+    and not usedOutside
+    and not satisfaction
+    and carrierExposed
+    and not conversion
+    and not guessed
+    and not linkname
+    and not exported
+    and not fires()
   }
   reachable SilentOnConversion {
-    configured and ruleOn and widened and seesAllFiles
-    and not usedOutside and not satisfaction and not carrierExposed and conversion
-    and not guessed and not linkname and not exported and not fires()
+    configured
+    and onlyReachDecides()
+    and not usedOutside
+    and not satisfaction
+    and not carrierExposed
+    and conversion
+    and not guessed
+    and not linkname
+    and not exported
+    and not fires()
   }
   reachable SilentOnGuessedLiteral {
-    configured and ruleOn and widened and seesAllFiles
-    and not usedOutside and not satisfaction and not carrierExposed and not conversion
-    and guessed and not linkname and not exported and not fires()
+    configured
+    and onlyReachDecides()
+    and not usedOutside
+    and not satisfaction
+    and not carrierExposed
+    and not conversion
+    and guessed
+    and not linkname
+    and not exported
+    and not fires()
   }
   reachable SilentOnLinkname {
-    configured and ruleOn and widened and seesAllFiles
-    and not usedOutside and not satisfaction and not carrierExposed and not conversion
-    and not guessed and linkname and not exported and not fires()
+    configured
+    and onlyReachDecides()
+    and not usedOutside
+    and not satisfaction
+    and not carrierExposed
+    and not conversion
+    and not guessed
+    and linkname
+    and not exported
+    and not fires()
   }
   reachable SilentOnExported {
-    configured and ruleOn and widened and seesAllFiles
-    and not usedOutside and not satisfaction and not carrierExposed and not conversion
-    and not guessed and not linkname and exported and not fires()
+    configured
+    and onlyReachDecides()
+    and not usedOutside
+    and not satisfaction
+    and not carrierExposed
+    and not conversion
+    and not guessed
+    and not linkname
+    and exported
+    and not fires()
   }
+  // The other three inputs, each off alone, with nothing reached.
   reachable SilentWhenNotEveryFileIsRead {
-    configured and ruleOn and widened and not seesAllFiles
-    and not reachable() and not fires()
+    configured
+    and ruleOn
+    and widened
+    and not seesAllFiles
+    and not reachable()
+    and not fires()
   }
   reachable SilentWhenOff {
-    configured and not ruleOn and widened and seesAllFiles
-    and not reachable() and not fires()
+    configured
+    and not ruleOn
+    and widened
+    and seesAllFiles
+    and not reachable()
+    and not fires()
   }
   reachable SilentWithoutTheDirective {
-    configured and ruleOn and not widened and seesAllFiles
-    and not reachable() and not fires()
+    configured
+    and ruleOn
+    and not widened
+    and seesAllFiles
+    and not reachable()
+    and not fires()
   }
 
-  // The rule reporting nothing for a pass, which is what the leadsTo escapes.
+  // The rule reports nothing for a pass. The leadsTo escapes this state.
   reachable PendingReportSurvivesAPass { stalled and fires() and not reported }
 
   leadsTo EventuallyReported {
