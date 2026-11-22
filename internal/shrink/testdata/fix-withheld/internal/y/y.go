@@ -16,8 +16,9 @@ type Picker struct{} // want: type Picker is exported, but nothing.*uses it$
 func (Picker) Pick() {} // want: method Pick is exported.*no fix: a build-excluded file of another package may use it
 
 // Runner's method satisfies an interface in the file of package v, which
-// never writes its name.
-type Runner struct{} // want: type Runner is exported.*no fix: an exported declaration that keeps its name hands it out
+// never writes its name. The file calls NewRunner, which hands out Runner, so
+// Runner is used, as it is in the configuration that builds the file.
+type Runner struct{}
 
 func (Runner) Run() {} // want: method Run is exported.*no fix: a build-excluded file of another package may use it
 
@@ -30,8 +31,9 @@ type Converted struct {
 }
 
 // Holder embeds Embedded, and the file of package v selects the embedded
-// field by the type's name.
-type Holder struct{ Embedded } // want: type Holder is exported.*no fix: an exported declaration that keeps its name hands it out
+// field by the type's name. The file calls NewHolder, which hands out Holder,
+// so Holder is used.
+type Holder struct{ Embedded }
 
 type Embedded struct{} // want: type Embedded is exported, but nothing.*no fix: a build-excluded file of another package may use it
 
