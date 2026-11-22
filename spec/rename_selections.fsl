@@ -38,10 +38,14 @@ spec RenameSelections {
     // The renamed member's depth on the holder.
     depth:      Depth = 0,
     // Another member already named the new name.
-    hasNew:     Bool = false,  newDepth: Depth = 0,  newIsMethod: Bool = false,
+    hasNew:      Bool = false,
+    newDepth:    Depth = 0,
+    newIsMethod: Bool = false,
     // Another member sharing the old name, hidden by the renamed one or
     // hiding it.
-    hasOld:     Bool = false,  oldDepth: Depth = 0,  oldIsMethod: Bool = false,
+    hasOld:      Bool = false,
+    oldDepth:    Depth = 0,
+    oldIsMethod: Bool = false,
     // An interface of the package asks for the old name, or the new one.
     askOld:     Bool = false,
     askNew:     Bool = false,
@@ -59,28 +63,52 @@ spec RenameSelections {
     requires not configured
     // Two members of one name at depth 0 do not compile today.
     requires not (ho and od == 0 and d == 0)
-    configured = true  what = w  depth = d
-    hasNew = hn  newDepth = nd  newIsMethod = nm
-    hasOld = ho  oldDepth = od  oldIsMethod = om
+    configured = true
+    what = w
+    depth = d
+    hasNew = hn
+    newDepth = nd
+    newIsMethod = nm
+    hasOld = ho
+    oldDepth = od
+    oldIsMethod = om
   }
 
   action configureInterfaces(ao: Bool, an: Bool) {
     requires configured
     requires not renamed
-    askOld = ao  askNew = an
+    askOld = ao
+    askNew = an
   }
 
   // The renamed member's current name.
-  def renamedIs(n: NameId) = (renamed and n == NewName) or (not renamed and n == OldName)
+  def renamedIs(n: NameId) =
+    (renamed and n == NewName)
+    or (not renamed and n == OldName)
   def newIs(n: NameId) = hasNew and n == NewName
   def oldIs(n: NameId) = hasOld and n == OldName
 
-  // Go's selection: the unique shallowest member of the name, if any.
+  // The member holds the name and is strictly shallower than every other
+  // member holding it, so it is the unique shallowest. The new and the old
+  // member never hold the same name, so each is compared with the renamed one
+  // only.
+  def renamedShallowest(n: NameId) =
+    renamedIs(n)
+    and (not newIs(n) or depth < newDepth)
+    and (not oldIs(n) or depth < oldDepth)
+  def newShallowest(n: NameId) =
+    newIs(n)
+    and (not renamedIs(n) or newDepth < depth)
+  def oldShallowest(n: NameId) =
+    oldIs(n)
+    and (not renamedIs(n) or oldDepth < depth)
+
+  // Go's selection: the unique shallowest member of the name, if any. A tie
+  // at the shallowest depth is ambiguous.
   def sel(n: NameId) =
-    if renamedIs(n) and (not newIs(n) or depth < newDepth)
-                    and (not oldIs(n) or depth < oldDepth) then SelRenamed
-    else if newIs(n) and (not renamedIs(n) or newDepth < depth) then SelNewMember
-    else if oldIs(n) and (not renamedIs(n) or oldDepth < depth) then SelOldMember
+    if renamedShallowest(n) then SelRenamed
+    else if newShallowest(n) then SelNewMember
+    else if oldShallowest(n) then SelOldMember
     else if renamedIs(n) or newIs(n) or oldIs(n) then Ambiguous
     else NoSel
 
@@ -93,7 +121,9 @@ spec RenameSelections {
 
   // Two members of one name declared at depth 0: redeclared.
   def declaredTwice(n: NameId) =
-    (renamedIs(n) and depth == 0 and ((newIs(n) and newDepth == 0) or (oldIs(n) and oldDepth == 0)))
+    renamedIs(n)
+    and depth == 0
+    and ((newIs(n) and newDepth == 0) or (oldIs(n) and oldDepth == 0))
 
   // The guard as implemented (selectionsFree).
   def guardAsImplemented() =
@@ -120,18 +150,23 @@ spec RenameSelections {
 
   // A site that selected the renamed member is rewritten, and still selects it.
   invariant RewrittenSiteSelectsTheMember {
-    renamed and oldSiteBefore == SelRenamed => sel(NewName) == SelRenamed
+    renamed
+      and oldSiteBefore == SelRenamed
+      => sel(NewName) == SelRenamed
   }
 
   // A site that already wrote the new name, and compiled, selects what it did.
   invariant WrittenNewNameUnchanged {
-    renamed and (newSiteBefore == SelNewMember or newSiteBefore == SelOldMember)
+    renamed
+      and (newSiteBefore == SelNewMember or newSiteBefore == SelOldMember)
       => sel(NewName) == newSiteBefore
   }
 
   // A site of the old name that the fix leaves alone selects what it did.
   invariant LeftOldNameUnchanged {
-    renamed and oldSiteBefore == SelOldMember => sel(OldName) == SelOldMember
+    renamed
+      and oldSiteBefore == SelOldMember
+      => sel(OldName) == SelOldMember
   }
 
   // No type assertion changes its answer.
@@ -141,7 +176,10 @@ spec RenameSelections {
   }
 
   // The rename never declares a name twice on one type.
-  invariant NothingRedeclared { not declaredTwice(OldName) and not declaredTwice(NewName) }
+  invariant NothingRedeclared {
+    not declaredTwice(OldName)
+      and not declaredTwice(NewName)
+  }
 
   invariant RenameImpliesConfigured { renamed => configured }
   // Under the full guard the new name selected nothing before, which is why
@@ -153,12 +191,24 @@ spec RenameSelections {
   // Through a type that promotes the method, or embeds the type one level up.
   reachable RenameThroughEmbedder { renamed and depth == 1 }
   // Where the old name is hidden today, by a shallower member sharing it.
-  reachable RenameWhereOldIsHidden { renamed and hasOld and oldDepth < depth }
+  reachable RenameWhereOldIsHidden {
+    renamed
+      and hasOld
+      and oldDepth < depth
+  }
   // A deeper method sharing the old name surfaces, with no interface asking.
   reachable RenameSurfacesUnasked {
-    renamed and what == EmbeddedType and hasOld and oldIsMethod and depth < oldDepth
+    renamed
+      and what == EmbeddedType
+      and hasOld
+      and oldIsMethod
+      and depth < oldDepth
   }
   // A field is in no method set, so an interface asking for the new name does
   // not withhold the rename of an embedded type: the guard is no broader.
-  reachable RenameEmbeddedDespiteAskedNewName { renamed and what == EmbeddedType and askNew }
+  reachable RenameEmbeddedDespiteAskedNewName {
+    renamed
+      and what == EmbeddedType
+      and askNew
+  }
 }

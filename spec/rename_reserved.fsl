@@ -23,39 +23,51 @@ spec RenameReserved {
   state {
     configured: Bool = false,
     // Current names
-    nameA: Name = NameA, nameB: Name = NameB,
+    nameA: Name = NameA,
+    nameB: Name = NameB,
     // Names in the state the fixes were generated from
-    origA: Name = NameA, origB: Name = NameB,
+    origA: Name = NameA,
+    origB: Name = NameB,
     // What each fix renames to
-    tgtA:  Name = NameA, tgtB:  Name = NameB,
+    tgtA: Name = NameA,
+    tgtB: Name = NameB,
     // The names fixes emitted so far have claimed
     reserved: Set<Name> = Set {},
-    appliedA: Bool = false, appliedB: Bool = false
+    appliedA: Bool = false,
+    appliedB: Bool = false
   }
 
   action configure(ta: Name, tb: Name) {
     requires not configured
-    configured = true  tgtA = ta  tgtB = tb
+    configured = true
+    tgtA = ta
+    tgtB = tb
   }
 
   // Pkg.Scope().Lookup: the target is not a name in the pre-fix state.
   def freeInOriginalState(n: Name) = n != origA and n != origB
 
   // The guard as implemented: free before the fixes, and claimed by none.
-  def guardAsImplemented(n: Name) = freeInOriginalState(n) and not reserved.contains(n)
+  def guardAsImplemented(n: Name) =
+    freeInOriginalState(n)
+    and not reserved.contains(n)
 
   fair action fixA() {
-    requires configured  requires not appliedA
+    requires configured
+    requires not appliedA
     requires tgtA != origA
     requires guardAsImplemented(tgtA)
-    nameA = tgtA  appliedA = true
+    nameA = tgtA
+    appliedA = true
     reserved = reserved.add(tgtA)
   }
   fair action fixB() {
-    requires configured  requires not appliedB
+    requires configured
+    requires not appliedB
     requires tgtB != origB
     requires guardAsImplemented(tgtB)
-    nameB = tgtB  appliedB = true
+    nameB = tgtB
+    appliedB = true
     reserved = reserved.add(tgtB)
   }
 
@@ -64,9 +76,18 @@ spec RenameReserved {
 
   // What the guard relies on: a renamed declaration's name is claimed, and an
   // unrenamed one keeps its pre-fix name.
-  invariant RenamedNameIsReserved { (appliedA => reserved.contains(nameA)) and (appliedB => reserved.contains(nameB)) }
-  invariant UnrenamedKeepsItsName { (not appliedA => nameA == origA) and (not appliedB => nameB == origB) }
-  invariant OriginalNamesNeverReserved { not reserved.contains(origA) and not reserved.contains(origB) }
+  invariant RenamedNameIsReserved {
+    (appliedA => reserved.contains(nameA))
+      and (appliedB => reserved.contains(nameB))
+  }
+  invariant UnrenamedKeepsItsName {
+    (not appliedA => nameA == origA)
+      and (not appliedB => nameB == origB)
+  }
+  invariant OriginalNamesNeverReserved {
+    not reserved.contains(origA)
+      and not reserved.contains(origB)
+  }
 
   // Both fixes apply when their targets differ: the guard is no broader than
   // it needs to be.
@@ -74,7 +95,11 @@ spec RenameReserved {
   // Two fixes aiming at one name: the first claims it, and the second is
   // withheld, its declaration keeping its name.
   reachable SecondWithheld {
-    configured and tgtA == tgtB and freeInOriginalState(tgtA) and appliedA and not appliedB
+    configured
+      and tgtA == tgtB
+      and freeInOriginalState(tgtA)
+      and appliedA
+      and not appliedB
       and not guardAsImplemented(tgtB)
   }
 }

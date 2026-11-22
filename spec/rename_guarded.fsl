@@ -6,10 +6,15 @@
 // internal/rename.go safeToRename could lose renameBoundByImport and no spec here
 // would change verdict.
 //
-// This is that counterpart. It models all four scope checks safeToRename applies
-// (Pkg.Scope().Lookup, types.Universe.Lookup, renameBoundByImport, and
-// LookupParent at the reference site) and proves the rename sound under them.
-// Dropping any one of the four turns this spec violated.
+// This is that counterpart. It models the four scopes Go resolves through,
+// one guard row each, and proves the rename sound under them. Dropping any one
+// row turns this spec violated. safeToRename covers the four scopes with
+// Pkg.Scope().Lookup, types.Universe.Lookup, renameBoundByImport, and
+// LookupParent at each reference site. The rows do not map one to one onto
+// those calls: LookupParent walks from the reference out to the universe, so
+// in Go it also catches the reference file's imports and the predeclared
+// names. The other two calls remain because they hold where no reference
+// exists, and because an import in another file is not on that path.
 //
 // ASSUME-1: names reduce to Old / New / Other, since only the presence of a
 //   collision matters, not the spelling (modelling assumption)
@@ -38,11 +43,17 @@ spec RenameGuarded {
 
   action configure(l: Bind, f: Bind, o: Bind, u: Bool) {
     requires not configured
-    configured = true  localAt = l  fileAt = f  otherPkg = o  universeNew = u
+    configured = true
+    localAt = l
+    fileAt = f
+    otherPkg = o
+    universeNew = u
   }
 
   def bindOf(n: NameId) =
-    if n == OldName then BindsOld else if n == NewName then BindsNew else BindsOther
+    if n == OldName then BindsOld
+    else if n == NewName then BindsNew
+    else BindsOther
 
   // Resolution from the reference site, innermost scope first.
   def resolve(n: NameId) =
@@ -61,12 +72,13 @@ spec RenameGuarded {
     else if universeNew then ToUniverse
     else Unresolved
 
-  // The guard as implemented: every scope Go resolves through.
+  // The guard as implemented: every scope Go resolves through. Each row names
+  // the call in safeToRename that covers it where no other call does.
   def guardAsImplemented() =
     otherPkg != BindsNew      // Pkg.Scope().Lookup
-    and fileAt != BindsNew    // renameBoundByImport
+    and fileAt != BindsNew    // renameBoundByImport (and LookupParent, at this site)
     and localAt != BindsNew   // LookupParent at the reference site
-    and not universeNew       // types.Universe.Lookup
+    and not universeNew       // types.Universe.Lookup (and LookupParent)
 
   fair action rename() {
     requires configured
@@ -87,15 +99,21 @@ spec RenameGuarded {
   // legitimately shadows the universe, so the first invariant stays silent
   // here — the harm falls on everything else that wanted the predeclared name.
   invariant RenameCapturesNothingElsewhere {
-    renamed and elsewhereBefore != Unresolved => resolveElsewhere() == elsewhereBefore
+    renamed
+      and elsewhereBefore != Unresolved
+      => resolveElsewhere() == elsewhereBefore
   }
 
   invariant RenameImpliesConfigured { renamed => configured }
   invariant RenameRecordsNewName    { renamed => declName == NewName }
   // Under the full guard nothing elsewhere ever resolved the new name, which is
   // why RenameCapturesNothingElsewhere reports a vacuous antecedent here: the
-  // guard removes the states that would have exercised it. That is the guard
-  // working, stated as a property rather than left as a warning.
+  // guard removes the states that would have exercised it. fslc classifies the
+  // warning as insufficient_depth, but no depth reaches the antecedent: this
+  // invariant proves it unreachable. That is the guard working, stated as a
+  // property rather than left as a warning. RenameCapturesNothingElsewhere
+  // still matters: it is the invariant that breaks when the universe row is
+  // dropped.
   invariant NothingResolvedNewName { renamed => elsewhereBefore == Unresolved }
 
   reachable RenameHappens { renamed }

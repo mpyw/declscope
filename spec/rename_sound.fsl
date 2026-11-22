@@ -33,11 +33,17 @@ spec RenameSound {
 
   action configure(l: Bind, f: Bind, o: Bind, u: Bool) {
     requires not configured
-    configured = true  localAt = l  fileAt = f  otherPkg = o  universeNew = u
+    configured = true
+    localAt = l
+    fileAt = f
+    otherPkg = o
+    universeNew = u
   }
 
   def bindOf(n: NameId) =
-    if n == OldName then BindsOld else if n == NewName then BindsNew else BindsOther
+    if n == OldName then BindsOld
+    else if n == NewName then BindsNew
+    else BindsOther
 
   // Resolution from the reference site, innermost scope first.
   def resolve(n: NameId) =
@@ -78,7 +84,9 @@ spec RenameSound {
   // legitimately shadows the universe, so the first invariant stays silent
   // here — the harm falls on everything else that wanted the predeclared name.
   invariant RenameCapturesNothingElsewhere {
-    renamed and elsewhereBefore != Unresolved => resolveElsewhere() == elsewhereBefore
+    renamed
+      and elsewhereBefore != Unresolved
+      => resolveElsewhere() == elsewhereBefore
   }
 
   reachable RenameHappens { renamed }

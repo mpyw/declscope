@@ -58,7 +58,11 @@ spec RenameReach {
 
   action configure(k: Kind, s: Bool, d: Bool, t: TextRef) {
     requires not configured
-    configured = true  kind = k  spellsOld = s  declaresNew = d  text = t
+    configured = true
+    kind = k
+    spellsOld = s
+    declaresNew = d
+    text = t
   }
 
   // A file in pass.Files was type-checked, so its package-level declarations
@@ -109,14 +113,22 @@ spec RenameReach {
   invariant RenameImpliesConfigured { renamed => configured }
 
   reachable RenameHappens { renamed }
-  // A file the fix edits may collide however it likes: the edit covers it.
-  reachable RenameOverRewrittenCollision { renamed and kind == Rewritten and spellsOld }
+  // A file the fix edits may write the old name: the edit covers it. It may
+  // not declare the new name, which Pkg.Scope().Lookup catches.
+  reachable RenameOverRewrittenCollision {
+    renamed
+      and kind == Rewritten
+      and spellsOld
+  }
   // The build-excluded row is no broader than it needs to be — a file that
   // writes neither name does not withhold the rename. Treating that kind the
   // way UnseenTest is treated makes this unreachable, which is the entire cost
   // of the blunter choice, stated as a property rather than argued in prose.
   reachable RenameBesideQuietExcludedFile {
-    renamed and kind == BuildExcluded and not spellsOld and not declaresNew
+    renamed
+      and kind == BuildExcluded
+      and not spellsOld
+      and not declaresNew
   }
   // The text row is per name: a directive naming something else does not
   // withhold the rename.

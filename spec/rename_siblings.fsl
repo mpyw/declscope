@@ -13,17 +13,23 @@ spec RenameSiblings {
   state {
     configured: Bool = false,
     // Current names
-    nameA: Name = NameA, nameB: Name = NameB,
+    nameA: Name = NameA,
+    nameB: Name = NameB,
     // Names in the state the fixes were generated from
-    origA: Name = NameA, origB: Name = NameB,
+    origA: Name = NameA,
+    origB: Name = NameB,
     // What each fix renames to
-    tgtA:  Name = NameA, tgtB:  Name = NameB,
-    appliedA: Bool = false, appliedB: Bool = false
+    tgtA: Name = NameA,
+    tgtB: Name = NameB,
+    appliedA: Bool = false,
+    appliedB: Bool = false
   }
 
   action configure(ta: Name, tb: Name) {
     requires not configured
-    configured = true  tgtA = ta  tgtB = tb
+    configured = true
+    tgtA = ta
+    tgtB = tb
   }
 
   // The guard modeled here: the target must not already be a package-scope
@@ -32,16 +38,20 @@ spec RenameSiblings {
   def freeInOriginalState(n: Name) = n != origA and n != origB
 
   action fixA() {
-    requires configured  requires not appliedA
+    requires configured
+    requires not appliedA
     requires tgtA != origA
     requires freeInOriginalState(tgtA)
-    nameA = tgtA  appliedA = true
+    nameA = tgtA
+    appliedA = true
   }
   action fixB() {
-    requires configured  requires not appliedB
+    requires configured
+    requires not appliedB
     requires tgtB != origB
     requires freeInOriginalState(tgtB)
-    nameB = tgtB  appliedB = true
+    nameB = tgtB
+    appliedB = true
   }
 
   // Two declarations in one package may never share a name.
