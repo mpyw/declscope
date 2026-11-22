@@ -5,27 +5,29 @@
 // One declaration carries the ignore. These are the uses of it from
 // outside its package:
 //
-//   free              A name spelled in a file under no build constraint,
-//                     or a linkname. Every configuration reads it, and the
-//                     run knows that (evidence.everywhere).
-//   constrained       A name spelled in a file behind a build constraint.
-//                     The configuration In reads the file. The
-//                     configuration Out leaves it out and reads it for
-//                     names only.
-//   otherFree         A use made by code that every configuration reads. It
-//                     is a static interface satisfaction, an escape into an
-//                     interface, an exposure through the API of an
-//                     importable package, or a struct pairing.
-//   otherConstrained  One of those four uses, made by code behind the
-//                     constraint. Only In sees it. None of the four records
-//                     where it was found. So In cannot tell it from
-//                     otherFree.
+//   spelledFree          A name spelled in a file under no build
+//                        constraint, or a linkname. Every configuration
+//                        reads it, and the run knows that
+//                        (evidence.everywhere).
+//   spelledConstrained   A name spelled in a file behind a build
+//                        constraint. The configuration In reads the file.
+//                        The configuration Out leaves it out and reads it
+//                        for names only.
+//   otherUseFree         A use made by code that every configuration
+//                        reads. It is a static interface satisfaction, an
+//                        escape into an interface, an exposure through the
+//                        API of an importable package, or a struct pairing.
+//   otherUseConstrained  One of those four uses, made by code behind the
+//                        constraint. Only In sees it. None of the four
+//                        records where it was found. So In cannot tell it
+//                        from otherUseFree.
 //
 // One more input says whether the files behind the constraint reach the
 // declaration:
 //
-//   reach  A constrained file is in its package, or it imports a path that
-//          reaches the package (module.Reaches).
+//   constrainedReaches  A constrained file is in its package, or it
+//                       imports a path that reaches the package
+//                       (module.Reaches).
 //
 // What a run reports without the ignore:
 //
@@ -74,91 +76,98 @@ spec ShrinkIgnore {
   state {
     phase: 0..3 = 0,
     kind: Kind = Member,
-    free: Bool = false,
-    constrained: Bool = false,
-    otherFree: Bool = false,
-    otherConstrained: Bool = false,
-    reach: Bool = false,
-    // reportedIn and reportedOut: the run would report the declaration
-    // without the ignore.
-    // unusedIn and unusedOut: the run reports the ignore unused.
-    reportedIn: Bool = false,
-    reportedOut: Bool = false,
-    unusedIn: Bool = false,
-    unusedOut: Bool = false
+    spelledFree: Bool = false,
+    spelledConstrained: Bool = false,
+    otherUseFree: Bool = false,
+    otherUseConstrained: Bool = false,
+    constrainedReaches: Bool = false,
+    // wouldReportIn and wouldReportOut: the run would report the
+    // declaration without the ignore.
+    // ignoreUnusedIn and ignoreUnusedOut: the run reports the ignore unused.
+    wouldReportIn: Bool = false,
+    wouldReportOut: Bool = false,
+    ignoreUnusedIn: Bool = false,
+    ignoreUnusedOut: Bool = false
   }
 
-  action configure(k: Kind, f: Bool, c: Bool, of: Bool, oc: Bool, r: Bool) {
+  action configure(
+    newKind: Kind,
+    newSpelledFree: Bool,
+    newSpelledConstrained: Bool,
+    newOtherUseFree: Bool,
+    newOtherUseConstrained: Bool,
+    newConstrainedReaches: Bool
+  ) {
     requires phase == 0
     // ASSUME-2.
-    requires not (c or oc) or r
+    requires not (newSpelledConstrained or newOtherUseConstrained) or newConstrainedReaches
     phase = 1
-    kind = k
-    free = f
-    constrained = c
-    otherFree = of
-    otherConstrained = oc
-    reach = r
+    kind = newKind
+    spelledFree = newSpelledFree
+    spelledConstrained = newSpelledConstrained
+    otherUseFree = newOtherUseFree
+    otherUseConstrained = newOtherUseConstrained
+    constrainedReaches = newConstrainedReaches
   }
 
   // What each run sees as a use.
-  def seenIn()  = free or constrained or otherFree or otherConstrained
-  def seenOut() = free or otherFree or (kind == Other and (constrained or otherConstrained))
+  def seenIn()  = spelledFree or spelledConstrained or otherUseFree or otherUseConstrained
+  def seenOut() = spelledFree or otherUseFree or (kind == Other and (spelledConstrained or otherUseConstrained))
   // In keeps the ignore (run.neededWithoutConstrained).
-  def keptIn() = kind == Member and not free and reach
+  def inKeepsIgnore() = kind == Member and not spelledFree and constrainedReaches
 
   fair action judgeIn() {
     requires phase == 1
     phase = 2
-    reportedIn = not seenIn()
-    unusedIn = seenIn() and not keptIn()
+    wouldReportIn = not seenIn()
+    ignoreUnusedIn = seenIn() and not inKeepsIgnore()
   }
   fair action judgeOut() {
     requires phase == 2
     phase = 3
-    reportedOut = not seenOut()
-    unusedOut = seenOut()
+    wouldReportOut = not seenOut()
+    ignoreUnusedOut = seenOut()
   }
 
   // What a run reports is what the ignore silences in that run. An ignore
   // is unused in a run only where that run gives it nothing to silence.
-  def needed() = reportedIn or reportedOut
+  def ignoreNeeded() = wouldReportIn or wouldReportOut
 
   // --- the two properties -------------------------------------------------------
   // One ignore passes every configuration where any of them needs it.
   invariant OnePassesEvery {
-    (phase == 3 and needed()) => not unusedIn and not unusedOut
+    (phase == 3 and ignoreNeeded()) => not ignoreUnusedIn and not ignoreUnusedOut
   }
   // An ignore no configuration needs is reported by one of them.
-  invariant StaleIsCaught { (phase == 3 and not needed()) => unusedIn or unusedOut }
+  invariant StaleIsCaught { (phase == 3 and not ignoreNeeded()) => ignoreUnusedIn or ignoreUnusedOut }
 
   // --- per run ------------------------------------------------------------------
-  invariant SilencingIsUseIn  { (phase >= 2 and reportedIn) => not unusedIn }
-  invariant SilencingIsUseOut { (phase == 3 and reportedOut) => not unusedOut }
+  invariant SilencingIsUseIn  { (phase >= 2 and wouldReportIn) => not ignoreUnusedIn }
+  invariant SilencingIsUseOut { (phase == 3 and wouldReportOut) => not ignoreUnusedOut }
   // Out never keeps an ignore that silences nothing there.
-  invariant OutKeepsNothing   { phase == 3 => (unusedOut == not reportedOut) }
+  invariant OutKeepsNothing   { phase == 3 => (ignoreUnusedOut == not wouldReportOut) }
   // In keeps an ignore only for a member that no free use reaches, where a
   // constrained file reaches the declaration. The condition is written out
-  // here, not taken from keptIn(). A mutant of the guard then changes one
+  // here, not taken from inKeepsIgnore(). A mutant of the guard then changes one
   // side only, and the invariant can fail.
   invariant InKeepsOnlyReachedMembers {
-    (phase >= 2 and not reportedIn and not unusedIn)
-    => (kind == Member and not free and reach)
+    (phase >= 2 and not wouldReportIn and not ignoreUnusedIn)
+    => (kind == Member and not spelledFree and constrainedReaches)
   }
 
   // Auxiliary. Each run records its judgment. The inputs of that judgment
   // are never assigned again.
-  invariant ConstrainedUseReaches { (constrained or otherConstrained) => reach }
+  invariant ConstrainedUseReaches { (spelledConstrained or otherUseConstrained) => constrainedReaches }
   invariant InRecordsItsJudgment {
-    phase >= 2 => (reportedIn == not seenIn()
-                   and unusedIn == (seenIn() and not keptIn()))
+    phase >= 2 => (wouldReportIn == not seenIn()
+                   and ignoreUnusedIn == (seenIn() and not inKeepsIgnore()))
   }
   invariant OutRecordsItsJudgment {
-    phase == 3 => (reportedOut == not seenOut()
-                   and unusedOut == seenOut())
+    phase == 3 => (wouldReportOut == not seenOut()
+                   and ignoreUnusedOut == seenOut())
   }
-  invariant JudgedInFirst { (unusedIn or reportedIn) => phase >= 2 }
-  invariant JudgedOutLast { (unusedOut or reportedOut) => phase == 3 }
+  invariant JudgedInFirst { (ignoreUnusedIn or wouldReportIn) => phase >= 2 }
+  invariant JudgedOutLast { (ignoreUnusedOut or wouldReportOut) => phase == 3 }
 
   // --- witnesses ------------------------------------------------------------------
   // #165: a field set only behind a tag. Out reports it. In sees the use.
@@ -166,50 +175,50 @@ spec ShrinkIgnore {
   reachable ConstrainedMemberKept {
     phase == 3
     and kind == Member
-    and constrained
-    and not free
-    and not otherFree
-    and not otherConstrained
-    and not reportedIn
-    and reportedOut
-    and not unusedIn
-    and not unusedOut
+    and spelledConstrained
+    and not spelledFree
+    and not otherUseFree
+    and not otherUseConstrained
+    and not wouldReportIn
+    and wouldReportOut
+    and not ignoreUnusedIn
+    and not ignoreUnusedOut
   }
   // #171: the code behind the tag only passes a value to an interface. In
   // sees an escape. Out sees nothing. The ignore passes both.
   reachable EscapeBehindConstraintKept {
     phase == 3
     and kind == Member
-    and not constrained
-    and not free
-    and not otherFree
-    and otherConstrained
-    and not reportedIn
-    and reportedOut
-    and not unusedIn
-    and not unusedOut
+    and not spelledConstrained
+    and not spelledFree
+    and not otherUseFree
+    and otherUseConstrained
+    and not wouldReportIn
+    and wouldReportOut
+    and not ignoreUnusedIn
+    and not ignoreUnusedOut
   }
   // suve's SplitSpec: named and escaped behind the tag alike.
   reachable SpelledAndEscapedBehindConstraintKept {
     phase == 3
     and kind == Member
-    and constrained
-    and otherConstrained
-    and not free
-    and not otherFree
-    and reportedOut
-    and not unusedIn
-    and not unusedOut
+    and spelledConstrained
+    and otherUseConstrained
+    and not spelledFree
+    and not otherUseFree
+    and wouldReportOut
+    and not ignoreUnusedIn
+    and not ignoreUnusedOut
   }
   // An unconstrained file spells it too. No run needs the ignore, and In
   // says so.
   reachable FreeUseCaughtIn {
     phase == 3
     and kind == Member
-    and constrained
-    and free
-    and unusedIn
-    and unusedOut
+    and spelledConstrained
+    and spelledFree
+    and ignoreUnusedIn
+    and ignoreUnusedOut
   }
   // An escape that every configuration reads, beside a use behind the tag.
   // In cannot tell where the escape comes from, and keeps the ignore. Out
@@ -217,37 +226,37 @@ spec ShrinkIgnore {
   reachable OtherFreeUseCaughtOut {
     phase == 3
     and kind == Member
-    and constrained
-    and not free
-    and otherFree
-    and not reportedOut
-    and not unusedIn
-    and unusedOut
+    and spelledConstrained
+    and not spelledFree
+    and otherUseFree
+    and not wouldReportOut
+    and not ignoreUnusedIn
+    and ignoreUnusedOut
   }
   // A function used only behind a tag. Out reads the qualified name, so no
   // run needs the ignore.
   reachable ConstrainedNonMemberCaught {
     phase == 3
     and kind == Other
-    and constrained
-    and not free
-    and not otherFree
-    and not otherConstrained
-    and not reportedOut
-    and unusedIn
-    and unusedOut
+    and spelledConstrained
+    and not spelledFree
+    and not otherUseFree
+    and not otherUseConstrained
+    and not wouldReportOut
+    and ignoreUnusedIn
+    and ignoreUnusedOut
   }
   // Nothing uses it. Both runs report it, and the ignore silences both.
   reachable UnusedDeclarationSilenced {
     phase == 3
-    and not free
-    and not constrained
-    and not otherFree
-    and not otherConstrained
-    and reportedIn
-    and reportedOut
-    and not unusedIn
-    and not unusedOut
+    and not spelledFree
+    and not spelledConstrained
+    and not otherUseFree
+    and not otherUseConstrained
+    and wouldReportIn
+    and wouldReportOut
+    and not ignoreUnusedIn
+    and not ignoreUnusedOut
   }
 
   leadsTo BothRunsJudge {

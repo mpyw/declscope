@@ -2,17 +2,17 @@
 // package keep their names. That is step 2 of run.judge in
 // internal/shrink/shrink.go.
 //
-// Each declaration is first judged on its own. fixable0 says the judgment
-// would unexport it. A declaration that keeps its name holds every type it
+// Each declaration is first judged on its own. judgedFixable says the
+// judgment would unexport it. A declaration that keeps its name holds every type it
 // carries. It carries a type by returning it, taking it, or holding it in
 // an exported field or method. Unexporting such a type would leave that
 // declaration handing out a type its callers cannot name. carries is that
 // relation, one step at a time. A type kept this way keeps its name too,
 // and carries further on the next step.
 //
-// settle takes one type out of the fix set when a declaration outside the
-// set carries it. That declaration is never the type itself. settle is the
-// only move, so the fix set only shrinks, and the loop ends (Settles). Once
+// keepForCarrier takes one type out of the fix set when a declaration
+// outside the set carries it. That declaration is never the type itself.
+// keepForCarrier is the only move, so the fix set only shrinks, and the loop ends (Settles). Once
 // no move is enabled, the judgment is done, and two properties hold:
 //
 //   Sound  No fixed declaration is carried by one that keeps its name. So
@@ -25,14 +25,15 @@
 // A carrier is never fixable. So a type that carries itself keeps nothing,
 // and the model needs no rule against it (SelfCarryKeepsNothing).
 //
-// A const set (#179) adds two moves. inSet marks the values of one const
-// block of one type. typeUsed says that type was found used.
+// A const set (#179) adds two moves. inConstSet marks the values of one
+// const block of one type. setTypeUsed says that type was found used.
 //
-//   drop  It takes a value of a used type out, since that value is not
-//         reported at all.
-//   hold  It takes a value out when another value of its set keeps its name.
+//   dropWithUsedType  It takes a value of a used type out, since that value
+//                     is not reported at all.
+//   holdForSibling    It takes a value out when another value of its set
+//                     keeps its name.
 //
-// Both only take fixes away, like settle. So the loop still ends, and one
+// Both only take fixes away, like keepForCarrier. So the loop still ends, and one
 // more property holds:
 //
 //   Whole  A set is fixed whole or kept whole. It is never split between
@@ -40,7 +41,7 @@
 //
 // Tight widens to the two new reasons. The next run holds a value for its
 // sibling again, since the sibling still keeps its name. Whether the type is
-// used comes from the evidence. This model takes it as given: typeUsed is
+// used comes from the evidence. This model takes it as given: setTypeUsed is
 // configured, not derived.
 //
 // Rename clashes are left out. They belong to shrink_claim.fsl. Names are
@@ -52,81 +53,81 @@ spec ShrinkSettle {
 
   state {
     phase: 0..2 = 0,
-    fixable0: Map<Decl, Bool>,
+    judgedFixable: Map<Decl, Bool>,
     carries: relation Decl -> Decl = Set {},
-    inSet: Map<Decl, Bool>,
-    typeUsed: Bool = false,
+    inConstSet: Map<Decl, Bool>,
+    setTypeUsed: Bool = false,
     fixable: Map<Decl, Bool>
   }
 
   init {
-    forall d: Decl { fixable0[d] = false }
+    forall d: Decl { judgedFixable[d] = false }
     forall d: Decl { fixable[d] = false }
-    forall d: Decl { inSet[d] = false }
+    forall d: Decl { inConstSet[d] = false }
   }
 
   // The judgment of each declaration on its own, and what carries what. A
   // self-edge is allowed, since a method of T can return T.
-  action configure(d: Decl, f: Bool) {
+  action configureJudgment(d: Decl, fixableAlone: Bool) {
     requires phase == 0
-    fixable0[d] = f
-    fixable[d] = f
+    judgedFixable[d] = fixableAlone
+    fixable[d] = fixableAlone
   }
   action carry(a: Decl, b: Decl) {
     requires phase == 0
     carries = carries.add(a, b)
   }
-  action configureSet(d: Decl, s: Bool) {
+  action configureSet(d: Decl, isInSet: Bool) {
     requires phase == 0
-    inSet[d] = s
+    inConstSet[d] = isInSet
   }
-  action configureTypeUsed(u: Bool) {
+  action configureTypeUsed(used: Bool) {
     requires phase == 0
-    typeUsed = u
+    setTypeUsed = used
   }
   action start() {
     requires phase == 0
     phase = 1
   }
 
-  def carriedByAKeeper(e: Decl) =
-    exists d: Decl { carries.contains(d, e) and not fixable[d] }
+  def carriedByAKeeper(candidate: Decl) =
+    exists d: Decl { carries.contains(d, candidate) and not fixable[d] }
 
-  def heldBySibling(e: Decl) =
-    inSet[e] and exists d: Decl { inSet[d] and not fixable[d] }
-  def droppedWithType(e: Decl) = inSet[e] and typeUsed
-  def takenOut(e: Decl) = carriedByAKeeper(e) or heldBySibling(e) or droppedWithType(e)
+  def heldBySibling(candidate: Decl) =
+    inConstSet[candidate] and exists d: Decl { inConstSet[d] and not fixable[d] }
+  def droppedWithType(candidate: Decl) = inConstSet[candidate] and setTypeUsed
+  def takenOut(candidate: Decl) = carriedByAKeeper(candidate) or heldBySibling(candidate) or droppedWithType(candidate)
 
-  fair action settle(e: Decl) {
+  fair action keepForCarrier(candidate: Decl) {
     requires phase == 1
-    requires fixable[e]
-    requires carriedByAKeeper(e)
-    fixable[e] = false
+    requires fixable[candidate]
+    requires carriedByAKeeper(candidate)
+    fixable[candidate] = false
   }
-  fair action hold(e: Decl) {
+  fair action holdForSibling(candidate: Decl) {
     requires phase == 1
-    requires fixable[e]
-    requires heldBySibling(e)
-    fixable[e] = false
+    requires fixable[candidate]
+    requires heldBySibling(candidate)
+    fixable[candidate] = false
   }
-  fair action drop(e: Decl) {
+  fair action dropWithUsedType(candidate: Decl) {
     requires phase == 1
-    requires fixable[e]
-    requires droppedWithType(e)
-    fixable[e] = false
+    requires fixable[candidate]
+    requires droppedWithType(candidate)
+    fixable[candidate] = false
   }
   fair action finish() {
     requires phase == 1
-    requires not (exists e: Decl { fixable[e] and takenOut(e) })
+    requires not (exists candidate: Decl { fixable[candidate] and takenOut(candidate) })
     phase = 2
   }
 
   terminal { phase == 2 }
 
-  invariant FixedOnlyWhenJudged { forall d: Decl { fixable[d] => fixable0[d] } }
+  invariant FixedOnlyWhenJudged { forall d: Decl { fixable[d] => judgedFixable[d] } }
   // Before settling starts, the fix set is the judgment itself.
   invariant UnsettledBeforeStart {
-    phase == 0 => forall d: Decl { fixable[d] == fixable0[d] }
+    phase == 0 => forall d: Decl { fixable[d] == judgedFixable[d] }
   }
 
   // Once settling starts, the fix set only shrinks.
@@ -134,8 +135,8 @@ spec ShrinkSettle {
     old(phase) >= 1 => forall d: Decl { fixable[d] => old(fixable[d]) }
   }
   trans SetFrozen {
-    old(phase) >= 1 => typeUsed == old(typeUsed)
-                       and forall d: Decl { inSet[d] == old(inSet[d]) }
+    old(phase) >= 1 => setTypeUsed == old(setTypeUsed)
+                       and forall d: Decl { inConstSet[d] == old(inConstSet[d]) }
   }
   trans CarriesFrozen {
     old(phase) >= 1 => forall a: Decl { forall b: Decl {
@@ -144,18 +145,18 @@ spec ShrinkSettle {
   }
 
   invariant Sound {
-    phase == 2 => forall e: Decl { fixable[e] => forall d: Decl {
-      carries.contains(d, e) => fixable[d]
+    phase == 2 => forall candidate: Decl { fixable[candidate] => forall d: Decl {
+      carries.contains(d, candidate) => fixable[d]
     } }
   }
   invariant Tight {
-    phase >= 1 => forall e: Decl {
-      (fixable0[e] and not fixable[e]) => takenOut(e)
+    phase >= 1 => forall candidate: Decl {
+      (judgedFixable[candidate] and not fixable[candidate]) => takenOut(candidate)
     }
   }
   invariant Whole {
     phase == 2 => forall a: Decl { forall b: Decl {
-      (inSet[a] and inSet[b]) => fixable[a] == fixable[b]
+      (inConstSet[a] and inConstSet[b]) => fixable[a] == fixable[b]
     } }
   }
 
@@ -168,9 +169,9 @@ spec ShrinkSettle {
   // A type kept through another kept type. The chain settles in two steps.
   reachable ChainKept {
     phase == 2
-    and not fixable0[0]
-    and fixable0[1]
-    and fixable0[2]
+    and not judgedFixable[0]
+    and judgedFixable[1]
+    and judgedFixable[2]
     and carries.contains(0, 1)
     and carries.contains(1, 2)
     and not fixable[1]
@@ -180,8 +181,8 @@ spec ShrinkSettle {
   // its name carries either of them.
   reachable FixedTogether {
     phase == 2
-    and fixable0[0]
-    and fixable0[1]
+    and judgedFixable[0]
+    and judgedFixable[1]
     and carries.contains(0, 1)
     and fixable[0]
     and fixable[1]
@@ -189,11 +190,11 @@ spec ShrinkSettle {
   // One value of a set keeps its name, so the other does too.
   reachable SetKeptWhole {
     phase == 2
-    and inSet[0]
-    and inSet[1]
-    and not fixable0[0]
-    and fixable0[1]
-    and not typeUsed
+    and inConstSet[0]
+    and inConstSet[1]
+    and not judgedFixable[0]
+    and judgedFixable[1]
+    and not setTypeUsed
     and not carries.contains(0, 1)
     and not carries.contains(2, 1)
     and not fixable[1]
@@ -201,24 +202,24 @@ spec ShrinkSettle {
   // A set nothing keeps is fixed whole.
   reachable SetFixedWhole {
     phase == 2
-    and inSet[0]
-    and inSet[1]
+    and inConstSet[0]
+    and inConstSet[1]
     and fixable[0]
     and fixable[1]
   }
   // The values of a used type go with it.
   reachable SetDroppedWithType {
     phase == 2
-    and inSet[0]
-    and inSet[1]
-    and fixable0[0]
-    and typeUsed
+    and inConstSet[0]
+    and inConstSet[1]
+    and judgedFixable[0]
+    and setTypeUsed
     and not fixable[0]
   }
   // A type that returns itself keeps nothing.
   reachable SelfCarryKeepsNothing {
     phase == 2
-    and fixable0[0]
+    and judgedFixable[0]
     and carries.contains(0, 0)
     and fixable[0]
   }
