@@ -1,11 +1,11 @@
 // Two renames in one run must not converge on the same name.
 //
 // The guard modeled here checks a target against the pre-fix names only.
-// Every fix in a run is generated from the same pre-fix state, so under that
-// guard neither fix sees the name the other is about to take.
+// Every fix in a run is generated from the same pre-fix state. So under this
+// guard, neither fix sees the name the other is about to take.
 //
-// ASSUME-1: two declarations are enough — a collision needs exactly two
-//   (modelling assumption)
+// ASSUME-1: two declarations are enough. A collision needs exactly two
+//   (modelling assumption).
 fsl 5
 spec RenameSiblings {
   // NameA and NameB are the two declarations' names before any fix. FreeName
@@ -14,13 +14,13 @@ spec RenameSiblings {
 
   state {
     configured: Bool = false,
-    // Current names
+    // The current names
     nameA: Name = NameA,
     nameB: Name = NameB,
     // Names in the state the fixes were generated from
     originalA: Name = NameA,
     originalB: Name = NameB,
-    // What each fix renames to
+    // The name each fix renames to
     targetA: Name = NameA,
     targetB: Name = NameB,
     appliedA: Bool = false,
@@ -35,8 +35,8 @@ spec RenameSiblings {
   }
 
   // The guard modeled here: the target must not already be a package-scope
-  // name. "Already" means in the state the fixes were generated from, which
-  // is why a sibling's target is invisible.
+  // name. "Already" means in the state the fixes were generated from. That is
+  // why a sibling's target is invisible to it.
   def freeInOriginalState(name: Name) = name != originalA and name != originalB
 
   action fixA() {

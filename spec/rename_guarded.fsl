@@ -1,27 +1,30 @@
-// The rename guard the implementation applies, and that it is sound.
+// The rename guard the implementation applies, and a proof that it is sound.
 //
-// rename_sound.fsl is the negative control: it models a guard checking package
-// scope only and enumerates what a sound one must check beyond it. A control
-// with no positive counterpart proves nothing about the code that exists —
-// internal/rename.go safeToRename could lose renameBoundByImport and no spec here
-// would change verdict.
+// rename_sound.fsl is the negative control. It models a guard that checks
+// package scope only. Its counterexamples list what a sound guard must check
+// beyond that. A control alone proves nothing about the code that exists.
+// Without a positive counterpart, safeToRename in internal/rename.go could
+// lose renameBoundByImport, and no spec would change verdict.
 //
-// This is that counterpart. It models the four scopes Go resolves through,
-// one guard row each, and proves the rename sound under them. Dropping any one
-// row turns this spec violated. safeToRename covers the four scopes with
+// This spec is that counterpart. It models the four scopes Go resolves
+// through, with one guard row for each. It proves the rename sound under
+// them. Dropping any one row makes this spec violated.
+//
+// safeToRename covers the four scopes with four calls:
 // Pkg.Scope().Lookup, types.Universe.Lookup, renameBoundByImport, and
 // LookupParent at each reference site. The rows do not map one to one onto
-// those calls: LookupParent walks from the reference out to the universe, so
-// in Go it also catches the reference file's imports and the predeclared
-// names. The other two calls remain because they hold where no reference
-// exists, and because an import in another file is not on that path.
+// these calls. LookupParent walks from the reference out to the universe. So
+// in Go it also catches the imports of the reference's file and the
+// predeclared names. The other two calls stay for two reasons. They hold
+// where no reference exists. And an import in another file is not on the
+// LookupParent path.
 //
-// ASSUME-1: names reduce to Old / New / Other, since only the presence of a
-//   collision matters, not the spelling (modelling assumption)
-// ASSUME-2: two reference sites are modeled — one that referred to the
-//   declaration, and one elsewhere in the package that already used the new
-//   name. Soundness over more sites is the conjunction over each (modelling
-//   assumption)
+// ASSUME-1: names reduce to Old, New and Other. Only the presence of a
+//   collision matters, not the spelling (modelling assumption).
+// ASSUME-2: two reference sites are modeled. One referred to the
+//   declaration. The other is elsewhere in the package and already used the
+//   new name. Soundness over more sites is the conjunction over each site
+//   (modelling assumption).
 fsl 5
 spec RenameGuarded {
   enum Name    { OldName, NewName, OtherName }
@@ -46,7 +49,8 @@ spec RenameGuarded {
     newNameIsPredeclared:    Bool = false,        // NewName is predeclared (len, error, string, ...)
     renamed:                 Bool = false,
     // What a second site elsewhere in the package resolved NewName to before
-    // the rename. Captured so the rename can be checked not to capture it.
+    // the rename. The rename records it, so the spec can check that the
+    // rename does not capture that site.
     elsewhereResolvedBefore: Resolution = Unresolved
   }
 
@@ -74,16 +78,17 @@ spec RenameGuarded {
     else if name == NewName and newNameIsPredeclared then ToPredeclared
     else Unresolved
 
-  // A second site elsewhere in the package, with no local or import binding of
-  // its own, resolving NewName.
+  // How a second site elsewhere in the package resolves NewName. That site
+  // has no local or import binding of its own.
   def resolveElsewhere() =
     if otherDeclarationBinding == BindsNew then ToOtherDeclaration
     else if declarationName == NewName then ToDeclaration
     else if newNameIsPredeclared then ToPredeclared
     else Unresolved
 
-  // The guard as implemented: every scope Go resolves through. Each row names
-  // the call in safeToRename that covers it where no other call does.
+  // The guard as implemented. It checks every scope Go resolves through.
+  // Each row names the call in safeToRename that covers it where no other
+  // call does.
   def guardAsImplemented() =
     otherDeclarationBinding != BindsNew  // Pkg.Scope().Lookup
     and importBinding != BindsNew        // renameBoundByImport (and LookupParent, at this site)
@@ -94,12 +99,12 @@ spec RenameGuarded {
     requires configured
     requires not renamed
     requires declarationName == OldName
-    // The reference resolves correctly before
+    // The reference resolves correctly before the rename.
     requires resolveAtReference(OldName) == ToDeclaration
     requires guardAsImplemented()
     declarationName = NewName
     renamed = true
-    // Reads the pre-rename state
+    // Reads the state before the rename.
     elsewhereResolvedBefore = resolveElsewhere()
   }
 
@@ -108,10 +113,11 @@ spec RenameGuarded {
     renamed => resolveAtReference(NewName) == ToDeclaration
   }
 
-  // Soundness, part two: a reference that already used the new name elsewhere
-  // must not be captured by the renamed declaration. A package-level name
-  // legitimately shadows the universe, so the first invariant stays silent
-  // here — the harm falls on everything else that wanted the predeclared name.
+  // Soundness, part two: the renamed declaration must not capture a reference
+  // elsewhere that already used the new name. A package-level name may
+  // legitimately shadow the universe. So the first invariant stays silent
+  // when the new name is predeclared. The harm falls on every other reference
+  // that wanted the predeclared name.
   invariant RenameCapturesNothingElsewhere {
     renamed
       and elsewhereResolvedBefore != Unresolved
@@ -120,19 +126,19 @@ spec RenameGuarded {
 
   invariant RenameImpliesConfigured { renamed => configured }
   invariant RenameRecordsNewName    { renamed => declarationName == NewName }
-  // Under the full guard nothing elsewhere ever resolved the new name, which is
-  // why RenameCapturesNothingElsewhere reports a vacuous antecedent here: the
-  // guard removes the states that would have exercised it. fslc classifies the
-  // warning as insufficient_depth, but no depth reaches the antecedent: this
-  // invariant proves it unreachable. That is the guard working, stated as a
-  // property rather than left as a warning. RenameCapturesNothingElsewhere
-  // still matters: it is the invariant that breaks when the universe row is
-  // dropped.
+  // Under the full guard, nothing elsewhere ever resolved the new name. The
+  // guard removes the states that would exercise
+  // RenameCapturesNothingElsewhere. So fslc reports a vacuous antecedent for
+  // it. fslc classifies that warning as insufficient_depth. But no depth
+  // reaches the antecedent, and this invariant proves it. The warning is the
+  // guard working, and this invariant states it as a property.
+  // RenameCapturesNothingElsewhere still matters. It is the invariant that
+  // breaks when the universe row is dropped.
   invariant NothingResolvedNewName { renamed => elsewhereResolvedBefore == Unresolved }
 
   reachable RenameHappens { renamed }
-  // The rename still happens with a local binding present, as long as it is not
-  // the new name: the guard must be no broader than it needs to be.
+  // The rename still happens when a local binding exists, if it does not bind
+  // the new name. The guard must be no broader than it needs to be.
   reachable RenameUnderLocalOther {
     renamed
       and localBinding == BindsOther

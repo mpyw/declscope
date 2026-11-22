@@ -1,21 +1,22 @@
-// The rename guard against sibling fixes, as implemented, and that it is sound.
+// The rename guard against sibling fixes, as implemented, and a proof that
+// it is sound.
 //
-// rename_siblings.fsl is the negative control: it models fixes that check
-// their target against the pre-fix names only, and shows two of them
-// converging on one name. A control with no positive counterpart proves
-// nothing about the code that exists: internal/rename.go could lose the
-// reserved check and no spec would change verdict.
+// rename_siblings.fsl is the negative control. It models fixes that check
+// their target against the pre-fix names only. It shows two of them
+// converging on one name. A control alone proves nothing about the code that
+// exists. Without a positive counterpart, internal/rename.go could lose the
+// reserved check, and no spec would change verdict.
 //
-// This is that counterpart. Each fix also checks its target against the names
-// fixes emitted earlier in the pass have claimed (renameState.reserved), and
-// claims its own target when it is emitted (reserveForRename). Dropping either turns this
-// spec violated.
+// This spec is that counterpart. Each fix also checks its target against the
+// names that earlier fixes in the pass claimed (renameState.reserved). Each
+// fix claims its own target when it is emitted (reserveForRename). Dropping
+// either step makes this spec violated.
 //
-// ASSUME-1: two declarations are enough — a collision needs exactly two
-//   (modelling assumption)
-// ASSUME-2: a fix is emitted and applied in one step. The other fix cannot see
-//   the applied name either way, since it checks the pre-fix state, so only
-//   the order of emission matters (modelling assumption)
+// ASSUME-1: two declarations are enough. A collision needs exactly two
+//   (modelling assumption).
+// ASSUME-2: a fix is emitted and applied in one step. The other fix cannot
+//   see the applied name either way, because it checks the pre-fix state. So
+//   only the order of emission matters (modelling assumption).
 fsl 5
 spec RenameReserved {
   // NameA and NameB are the two declarations' names before any fix. The free
@@ -24,16 +25,16 @@ spec RenameReserved {
 
   state {
     configured: Bool = false,
-    // Current names
+    // The current names
     nameA: Name = NameA,
     nameB: Name = NameB,
     // Names in the state the fixes were generated from
     originalA: Name = NameA,
     originalB: Name = NameB,
-    // What each fix renames to
+    // The name each fix renames to
     targetA: Name = NameA,
     targetB: Name = NameB,
-    // The names fixes emitted so far have claimed
+    // The names that the fixes emitted so far have claimed
     reserved: Set<Name> = Set {},
     appliedA: Bool = false,
     appliedB: Bool = false
@@ -49,7 +50,8 @@ spec RenameReserved {
   // Pkg.Scope().Lookup: the target is not a name in the pre-fix state.
   def freeInOriginalState(name: Name) = name != originalA and name != originalB
 
-  // The guard as implemented: free before the fixes, and claimed by none.
+  // The guard as implemented: the target is free before the fixes, and no
+  // fix has claimed it.
   def guardAsImplemented(name: Name) =
     freeInOriginalState(name)
     and not reserved.contains(name)
@@ -76,8 +78,8 @@ spec RenameReserved {
   // Two declarations in one package may never share a name.
   invariant NamesStayDistinct { nameA != nameB }
 
-  // What the guard relies on: a renamed declaration's name is claimed, and an
-  // unrenamed one keeps its pre-fix name.
+  // What the guard relies on. A renamed declaration's name is claimed. An
+  // unrenamed declaration keeps its pre-fix name.
   invariant RenamedNameIsReserved {
     (appliedA => reserved.contains(nameA))
       and (appliedB => reserved.contains(nameB))
@@ -91,11 +93,11 @@ spec RenameReserved {
       and not reserved.contains(originalB)
   }
 
-  // Both fixes apply when their targets differ: the guard is no broader than
+  // Both fixes apply when their targets differ. The guard is no broader than
   // it needs to be.
   reachable BothApplied { appliedA and appliedB }
-  // Two fixes aiming at one name: the first claims it, and the second is
-  // withheld, its declaration keeping its name.
+  // Two fixes aim at one name. The first claims it. The second is withheld,
+  // and its declaration keeps its name.
   reachable SecondWithheld {
     configured
       and targetA == targetB

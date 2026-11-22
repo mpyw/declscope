@@ -1,17 +1,18 @@
-// Soundness of the rename fix.
+// Soundness of the rename fix, under a guard that is too weak.
 //
 // A rename is correct when every reference still resolves to the same object
-// afterwards. Go resolves a name from the inside out: local scope, then file
-// scope (imports), then package scope, then the universe of predeclared names.
-// The guard modeled here checks package scope only; the counterexamples
-// enumerate the further scopes a sound guard must check.
+// afterwards. Go resolves a name from the inside out. It tries the local
+// scope, then the file scope (imports), then the package scope, and then the
+// universe of predeclared names. The guard modeled here checks package scope
+// only. The counterexamples list the further scopes a sound guard must check.
+// spec/README.md walks through them one at a time.
 //
-// ASSUME-1: names reduce to Old / New / Other, since only the presence of a
-//   collision matters, not the spelling (modelling assumption)
-// ASSUME-2: two reference sites are modeled — one that referred to the
-//   declaration, and one elsewhere in the package that already used the new
-//   name. Soundness over more sites is the conjunction over each (modelling
-//   assumption)
+// ASSUME-1: names reduce to Old, New and Other. Only the presence of a
+//   collision matters, not the spelling (modelling assumption).
+// ASSUME-2: two reference sites are modeled. One referred to the
+//   declaration. The other is elsewhere in the package and already used the
+//   new name. Soundness over more sites is the conjunction over each site
+//   (modelling assumption).
 fsl 5
 spec RenameSound {
   enum Name    { OldName, NewName, OtherName }
@@ -36,7 +37,8 @@ spec RenameSound {
     newNameIsPredeclared:    Bool = false,        // NewName is predeclared (len, error, string, ...)
     renamed:                 Bool = false,
     // What a second site elsewhere in the package resolved NewName to before
-    // the rename. Captured so the rename can be checked not to capture it.
+    // the rename. The rename records it, so the spec can check that the
+    // rename does not capture that site.
     elsewhereResolvedBefore: Resolution = Unresolved
   }
 
@@ -64,8 +66,8 @@ spec RenameSound {
     else if name == NewName and newNameIsPredeclared then ToPredeclared
     else Unresolved
 
-  // A second site elsewhere in the package, with no local or import binding of
-  // its own, resolving NewName.
+  // How a second site elsewhere in the package resolves NewName. That site
+  // has no local or import binding of its own.
   def resolveElsewhere() =
     if otherDeclarationBinding == BindsNew then ToOtherDeclaration
     else if declarationName == NewName then ToDeclaration
@@ -79,12 +81,12 @@ spec RenameSound {
     requires configured
     requires not renamed
     requires declarationName == OldName
-    // The reference resolves correctly before
+    // The reference resolves correctly before the rename.
     requires resolveAtReference(OldName) == ToDeclaration
     requires guardPackageScopeOnly()
     declarationName = NewName
     renamed = true
-    // Reads the pre-rename state
+    // Reads the state before the rename.
     elsewhereResolvedBefore = resolveElsewhere()
   }
 
@@ -93,10 +95,11 @@ spec RenameSound {
     renamed => resolveAtReference(NewName) == ToDeclaration
   }
 
-  // Soundness, part two: a reference that already used the new name elsewhere
-  // must not be captured by the renamed declaration. A package-level name
-  // legitimately shadows the universe, so the first invariant stays silent
-  // here — the harm falls on everything else that wanted the predeclared name.
+  // Soundness, part two: the renamed declaration must not capture a reference
+  // elsewhere that already used the new name. A package-level name may
+  // legitimately shadow the universe. So the first invariant stays silent
+  // when the new name is predeclared. The harm falls on every other reference
+  // that wanted the predeclared name.
   invariant RenameCapturesNothingElsewhere {
     renamed
       and elsewhereResolvedBefore != Unresolved

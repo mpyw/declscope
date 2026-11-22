@@ -1,34 +1,37 @@
-// Selections: a rename of a member keeps every selector selecting what it did,
-// and every type assertion answering what it did.
+// Selections: a rename of a member keeps every selector selecting what it
+// did. It also keeps every type assertion answering what it did.
 //
-// rename_guarded.fsl and rename_reach.fsl cover names resolved through scopes.
-// A method's name, and the field name an embedded type gives, are resolved
-// through types instead: x.name selects the shallowest member of that name on
-// x's type, and fails when two are equally shallow. No scope lookup sees them.
-// This is selectionsFree in internal/rename.go.
+// rename_guarded.fsl and rename_reach.fsl cover names resolved through
+// scopes. A method's name, and the field name an embedded type gives, resolve
+// through types instead. x.name selects the shallowest member of that name on
+// x's type. It fails when two members are equally shallow. No scope lookup
+// sees these names. selectionsFree in internal/rename.go guards them.
 //
-// The renamed member sits on a holder type at some depth: a method on its
-// receiver at depth 0, or promoted from an embedded type at depth 1 or more;
-// the field an embedded type gives at depth 0 in the struct embedding it, or
-// deeper in one embedding that. Two other members can matter: one already
-// named the new name, and one sharing the old name. Either can be shallower or
-// deeper than the renamed one, or as deep.
+// The renamed member sits on a holder type at some depth:
+//   - A method is at depth 0 on its receiver. It is at depth 1 or more where
+//     an embedded type promotes it.
+//   - The field an embedded type gives is at depth 0 in the struct that
+//     embeds it. It is deeper in a struct that embeds that one.
+// Two other members can matter. One already has the new name. The other
+// shares the old name. Each can be shallower than the renamed one, deeper,
+// or as deep.
 //
-// ASSUME-1: one holder type is enough. The guard asks every holder alike, so
-//   soundness over the package is the conjunction over each (modelling
-//   assumption)
-// ASSUME-2: two selector sites are modeled on the holder: one that selected
-//   the renamed member, which the fix rewrites, and one that already wrote
-//   the new name, which it does not (modelling assumption)
-// ASSUME-3: one interface asking for the old name and one asking for the new
-//   name stand for every interface of the package. An unexported method name
-//   is qualified by its package, so no interface elsewhere can ask for it
-//   (Go spec, method sets; modelling assumption that one of each suffices)
+// ASSUME-1: one holder type is enough. The guard asks every holder alike. So
+//   soundness over the package is the conjunction over each holder
+//   (modelling assumption).
+// ASSUME-2: two selector sites are modeled on the holder. One selected the
+//   renamed member, and the fix rewrites it. The other already wrote the new
+//   name, and the fix leaves it alone (modelling assumption).
+// ASSUME-3: one interface that asks for the old name and one that asks for
+//   the new name stand for every interface of the package. An unexported
+//   method name is qualified by its package. So no interface elsewhere can
+//   ask for it (Go spec, method sets). That one of each suffices is a
+//   modelling assumption.
 fsl 5
 spec RenameSelections {
   enum Name       { OldName, NewName }
-  // What is renamed: a method, or a type that is embedded, which renames the
-  // field the embedding gives.
+  // What is renamed: a method, or a type that is embedded. Renaming an
+  // embedded type also renames the field the embedding gives.
   enum MemberKind { Method, EmbeddedType }
   // What a selector of one name selects on the holder.
   enum Selection {
@@ -49,8 +52,8 @@ spec RenameSelections {
     hasNewMember:          Bool = false,
     newMemberDepth:        Depth = 0,
     newMemberIsMethod:     Bool = false,
-    // Another member sharing the old name, hidden by the renamed one or
-    // hiding it.
+    // Another member that shares the old name. The renamed member hides it,
+    // or it hides the renamed member.
     hasOldMember:          Bool = false,
     oldMemberDepth:        Depth = 0,
     oldMemberIsMethod:     Bool = false,
@@ -58,19 +61,21 @@ spec RenameSelections {
     interfaceAsksOld:      Bool = false,
     interfaceAsksNew:      Bool = false,
     renamed:               Bool = false,
-    // Captured before the rename, from the pre-fix state.
-    oldSiteSelectedBefore: Selection = SelectsNothing,  // What x.Old selected, so what the fix rewrites
-    newSiteSelectedBefore: Selection = SelectsNothing,  // What x.New selected, left as written
-    satisfiedOldBefore:    Bool = false,                // The holder satisfied the interface asking Old
-    satisfiedNewBefore:    Bool = false                 // ... and the one asking New
+    // Recorded by the rename, from the pre-fix state.
+    oldSiteSelectedBefore: Selection = SelectsNothing,  // What x.Old selected. The fix rewrites this site.
+    newSiteSelectedBefore: Selection = SelectsNothing,  // What x.New selected. The fix leaves it as written.
+    satisfiedOldBefore:    Bool = false,                // The holder satisfied the interface asking for Old.
+    satisfiedNewBefore:    Bool = false                 // The holder satisfied the interface asking for New.
   }
 
-  // Configured in two steps, so that no one action carries every parameter.
+  // Configuration takes two steps. No single action then carries every
+  // parameter.
   action configureMembers(kind: MemberKind, depth: Depth,
                           hasNew: Bool, newDepth: Depth, newIsMethod: Bool,
                           hasOld: Bool, oldDepth: Depth, oldIsMethod: Bool) {
     requires not configured
-    // Two members of one name at depth 0 do not compile today.
+    // Two members of one name at depth 0 do not compile, even before the
+    // rename.
     requires not (hasOld and oldDepth == 0 and depth == 0)
     configured = true
     renamedKind = kind
@@ -97,10 +102,10 @@ spec RenameSelections {
   def newMemberHasName(name: Name) = hasNewMember and name == NewName
   def oldMemberHasName(name: Name) = hasOldMember and name == OldName
 
-  // The member holds the name and is strictly shallower than every other
-  // member holding it, so it is the unique shallowest. The new and the old
-  // member never hold the same name, so each is compared with the renamed one
-  // only.
+  // The member holds the name, and it is strictly shallower than every other
+  // member that holds it. So it is the unique shallowest. The new and the old
+  // member never hold the same name. So each is compared with the renamed
+  // member only.
   def renamedIsShallowest(name: Name) =
     renamedHasName(name)
     and (not newMemberHasName(name) or renamedDepth < newMemberDepth)
@@ -123,14 +128,15 @@ spec RenameSelections {
          or oldMemberHasName(name) then Ambiguous
     else SelectsNothing
 
-  // The holder's method set holds the name, so it satisfies an interface
-  // asking for it alone. A field never does.
+  // The holder's method set holds the name. So the holder satisfies an
+  // interface that asks for that name alone. A field never does.
   def satisfies(name: Name) =
     (selection(name) == SelectsRenamed and renamedKind == Method)
     or (selection(name) == SelectsNewMember and newMemberIsMethod)
     or (selection(name) == SelectsOldMember and oldMemberIsMethod)
 
-  // Two members of one name declared at depth 0: redeclared.
+  // Two members of one name are declared at depth 0. That is a
+  // redeclaration.
   def declaredTwice(name: Name) =
     renamedHasName(name)
     and renamedDepth == 0
@@ -140,13 +146,13 @@ spec RenameSelections {
   // The guard as implemented (selectionsFree).
   def guardAsImplemented() =
     // selects(holder, newName): LookupFieldOrMethod finds nothing of the new
-    // name, ambiguous or not, on every holder at every depth, and also where
-    // the old name is hidden today
+    // name on any holder, at any depth, ambiguous or not. This also holds
+    // where the old name is hidden today.
     not hasNewMember
-    // A method: no interface of the package asks for the old or new name
+    // A method: no interface of the package asks for the old or the new name.
     and (renamedKind != Method or (not interfaceAsksOld and not interfaceAsksNew))
-    // An embedded type: no interface of the package asks for the old name,
-    // since the field stops hiding a deeper method of that name
+    // An embedded type: no interface of the package asks for the old name.
+    // After the rename, the field stops hiding a deeper method of that name.
     and (renamedKind != EmbeddedType or not interfaceAsksOld)
 
   fair action rename() {
@@ -196,24 +202,28 @@ spec RenameSelections {
   }
 
   invariant RenameImpliesConfigured { renamed => configured }
-  // Under the full guard the new name selected nothing before, which is why
-  // WrittenNewNameUnchanged reports a vacuous antecedent: the guard removes
-  // the states that would have exercised it.
+  // Under the full guard, the new name selected nothing before the rename.
+  // The guard removes the states that would exercise WrittenNewNameUnchanged.
+  // So fslc reports a vacuous antecedent for it. That invariant still
+  // matters. It breaks when the guard asks only where the old name selects
+  // the member today.
   invariant NothingSelectedNewName { renamed => newSiteSelectedBefore == SelectsNothing }
 
   reachable RenameHappens { renamed }
-  // Through a type that promotes the method, or embeds the type one level up.
+  // Through a type that promotes the method, or that embeds the type one
+  // level up.
   reachable RenameThroughEmbedder {
     renamed
       and renamedDepth == 1
   }
-  // Where the old name is hidden today, by a shallower member sharing it.
+  // Where a shallower member that shares the old name hides it today.
   reachable RenameWhereOldIsHidden {
     renamed
       and hasOldMember
       and oldMemberDepth < renamedDepth
   }
-  // A deeper method sharing the old name surfaces, with no interface asking.
+  // A deeper method that shares the old name surfaces. No interface asks for
+  // it.
   reachable RenameSurfacesUnasked {
     renamed
       and renamedKind == EmbeddedType
@@ -221,8 +231,9 @@ spec RenameSelections {
       and oldMemberIsMethod
       and renamedDepth < oldMemberDepth
   }
-  // A field is in no method set, so an interface asking for the new name does
-  // not withhold the rename of an embedded type: the guard is no broader.
+  // A field is in no method set. So an interface that asks for the new name
+  // does not withhold the rename of an embedded type. The guard is no
+  // broader than it needs to be.
   reachable RenameEmbeddedDespiteAskedNewName {
     renamed
       and renamedKind == EmbeddedType
