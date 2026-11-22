@@ -1,192 +1,221 @@
 // A config file states some keys and leaves the rest alone. The keys it
-// states win for the packages below it; the keys it does not state come from
-// the file above, and from the built-in default when no file states them.
+// states win for the packages below it. The keys it does not state come from
+// the file above. When no file states a key, it comes from the built-in
+// default.
 //
-// This replaces a lookup that stopped at the first file it found, which meant
-// a nested config that set one key silently dropped every other key the root
-// had set. baseline already worked the way this spec describes — it has its
-// own upward search — so the change makes one key's behaviour the rule rather
-// than the exception.
+// The rejected design was a lookup that stopped at the first file it found.
+// Then a nested config that set one key silently dropped every other key the
+// root had set. baseline already works the way this spec describes. It has
+// its own upward search. So this rule makes one key's behaviour the rule for
+// every key.
 //
-// Three levels are the fewest that show the difference between "the nearest
-// file wins" and "the nearest file that states this key wins": with two, the
-// two readings agree. Outer is the repository root, Near is the file beside
-// the package, and Mid is a directory between them.
+// Three levels are the fewest that tell apart two readings: "the nearest file
+// wins" and "the nearest file that states this key wins". With two levels,
+// the two readings agree. Outer is the repository root. Near is the file
+// beside the package. Mid is a directory between them.
 //
-// filter is not modelled here. only and omit are path sets rather than values,
-// they compose by union and intersection rather than by overriding, and
-// filter_chain.fsl is where that is proved.
+// filter is not modelled here. only and omit are path sets, not values. They
+// compose by union and intersection, not by overriding. filter_chain.fsl
+// proves that.
 fsl 5
 spec ConfigInherit {
   // MODEL: qualify takes three values in the config and two here. The third
-  // adds another value to choose between and nothing to the question this
-  // spec asks, which is which level the value comes from.
+  // adds another value to choose between. It adds nothing to the question
+  // this spec asks: which level the value comes from.
   enum Mode   { Never, Always }
   // What one level says about a value key: nothing, or one of the values.
   enum Stated { Unset, AsNever, AsAlways }
-  // What one level says about one namespace's vocabulary entry. Namespace a
-  // needs two words, so that the two levels can disagree; namespace b only
-  // has to be present or absent.
-  enum Word   { NoWord, Wx, Wy }
-  enum Flag   { Off, On }
+  // What one level says about one namespace's vocabulary entry. Namespace A
+  // needs two words, so the two levels can disagree. Namespace B only has to
+  // be present or absent.
+  enum Word     { NoWord, FirstWord, SecondWord }
+  enum Presence { Absent, Present }
   // Which level supplied the value that took effect.
   enum Level  { Builtin, Outer, Mid, Near }
 
   state {
     configured: Bool = false,
     // rules.naming.qualify, stated or not at each of the three levels.
-    qOuter: Stated = Unset,
-    qMid: Stated = Unset,
-    qNear: Stated = Unset,
+    qualifyAtOuter: Stated = Unset,
+    qualifyAtMid: Stated = Unset,
+    qualifyAtNear: Stated = Unset,
     // rules.naming.vocabulary, two namespaces over two levels. Two namespaces
-    // are what separates "the maps merge" from "the nearer map replaces the
-    // other", and two levels are enough to see it.
-    aOuter: Word = NoWord,
-    aNear: Word = NoWord,
-    bOuter: Flag = Off,
-    bNear: Flag = Off,
-    // Recording the resolution keeps the chain load-bearing: an invariant over
-    // the defs alone would hold however resolve() was written.
+    // tell "the maps merge" apart from "the nearer map replaces the other".
+    // Two levels are enough to see it.
+    vocabularyAAtOuter: Word = NoWord,
+    vocabularyAAtNear: Word = NoWord,
+    vocabularyBAtOuter: Presence = Absent,
+    vocabularyBAtNear: Presence = Absent,
+    // The resolution is recorded, and that keeps the chain load-bearing. An
+    // invariant over the defs alone would hold however resolve() was written.
     resolved: Bool = false,
-    qValue: Mode = Never,
-    qFrom: Level = Builtin,
-    aValue: Word = NoWord,
-    bValue: Flag = Off
+    resolvedQualify: Mode = Never,
+    resolvedQualifyFrom: Level = Builtin,
+    resolvedVocabularyA: Word = NoWord,
+    resolvedVocabularyB: Presence = Absent
   }
 
-  action configure(qo: Stated, qm: Stated, qn: Stated,
-                   ao: Word, an: Word, bo: Flag, bn: Flag) {
+  action configure(givenQualifyAtOuter: Stated,
+                   givenQualifyAtMid: Stated,
+                   givenQualifyAtNear: Stated,
+                   givenVocabularyAAtOuter: Word,
+                   givenVocabularyAAtNear: Word,
+                   givenVocabularyBAtOuter: Presence,
+                   givenVocabularyBAtNear: Presence) {
     requires not configured
     configured = true
-    qOuter = qo
-    qMid = qm
-    qNear = qn
-    aOuter = ao
-    aNear = an
-    bOuter = bo
-    bNear = bn
+    qualifyAtOuter = givenQualifyAtOuter
+    qualifyAtMid = givenQualifyAtMid
+    qualifyAtNear = givenQualifyAtNear
+    vocabularyAAtOuter = givenVocabularyAAtOuter
+    vocabularyAAtNear = givenVocabularyAAtNear
+    vocabularyBAtOuter = givenVocabularyBAtOuter
+    vocabularyBAtNear = givenVocabularyBAtNear
   }
 
-  def valueOf(s: Stated) = if s == AsAlways then Always else Never
+  def modeOf(stated: Stated) = if stated == AsAlways then Always else Never
 
-  // One step of the lookup: a level that states the key decides it, and a
-  // level that does not passes the question to the level above.
-  def valueOr(s: Stated, otherwise: Mode) =
-    if s != Unset then valueOf(s) else otherwise
-  def sourceOr(s: Stated, here: Level, otherwise: Level) =
-    if s != Unset then here else otherwise
+  // One step of the lookup. A level that states the key decides it. A level
+  // that does not state it passes the question to the level above.
+  def modeOr(stated: Stated, otherwise: Mode) =
+    if stated != Unset then modeOf(stated) else otherwise
+  def sourceOr(stated: Stated, here: Level, otherwise: Level) =
+    if stated != Unset then here else otherwise
 
-  // The nearest level that states the key, and nothing nearer than that. The
-  // built-in default is Never.
-  def qEff() = valueOr(qNear, valueOr(qMid, valueOr(qOuter, Never)))
-  def qSource() = sourceOr(qNear, Near, sourceOr(qMid, Mid, sourceOr(qOuter, Outer, Builtin)))
+  // The nearest level that states the key wins. No level nearer than that
+  // states it. The built-in default is Never.
+  def effectiveQualify() =
+    modeOr(qualifyAtNear,
+           modeOr(qualifyAtMid,
+                  modeOr(qualifyAtOuter, Never)))
+  def effectiveQualifySource() =
+    sourceOr(qualifyAtNear, Near,
+             sourceOr(qualifyAtMid, Mid,
+                      sourceOr(qualifyAtOuter, Outer, Builtin)))
 
-  // A map merges per key. The nearer file wins the keys it states, and the
-  // keys it does not state keep the value from above. Replacing the whole map
-  // would make adding one word cost restating every other.
-  def aEff() = if aNear != NoWord then aNear else aOuter
-  def bEff() = if bNear != Off then bNear else bOuter
+  // A map merges per key. The nearer file wins the keys it states. The keys
+  // it does not state keep the value from above. If the whole map were
+  // replaced, adding one word would mean restating every other word.
+  def mergedVocabularyA() =
+    if vocabularyAAtNear != NoWord then vocabularyAAtNear else vocabularyAAtOuter
+  def mergedVocabularyB() =
+    if vocabularyBAtNear != Absent then vocabularyBAtNear else vocabularyBAtOuter
 
   action resolve() {
     requires configured
     requires not resolved
     resolved = true
-    qValue = qEff()
-    qFrom = qSource()
-    aValue = aEff()
-    bValue = bEff()
+    resolvedQualify = effectiveQualify()
+    resolvedQualifyFrom = effectiveQualifySource()
+    resolvedVocabularyA = mergedVocabularyA()
+    resolvedVocabularyB = mergedVocabularyB()
   }
 
   invariant ResolutionNeedsConfig { resolved => configured }
 
   // --- a stated key wins over everything above it ---------------------------
   invariant NearestStatedWins {
-    resolved and qNear != Unset
-      => qValue == valueOf(qNear) and qFrom == Near
+    resolved and qualifyAtNear != Unset
+      => resolvedQualify == modeOf(qualifyAtNear)
+         and resolvedQualifyFrom == Near
   }
   invariant MidWinsWhenNearIsSilent {
-    resolved and qNear == Unset and qMid != Unset
-      => qValue == valueOf(qMid) and qFrom == Mid
+    resolved and qualifyAtNear == Unset and qualifyAtMid != Unset
+      => resolvedQualify == modeOf(qualifyAtMid)
+         and resolvedQualifyFrom == Mid
   }
-  // The claim the old lookup got wrong: a key the two nearer files do not
-  // state still comes from the root, rather than being dropped because a
-  // nearer file existed at all.
+  // The claim the rejected lookup got wrong. The two nearer files do not
+  // state a key. The key still comes from the root. It is not dropped just
+  // because a nearer file exists.
   invariant OuterSurvivesTwoSilentLevels {
-    resolved and qNear == Unset and qMid == Unset and qOuter != Unset
-      => qValue == valueOf(qOuter) and qFrom == Outer
+    resolved
+    and qualifyAtNear == Unset
+    and qualifyAtMid == Unset
+    and qualifyAtOuter != Unset
+      => resolvedQualify == modeOf(qualifyAtOuter)
+         and resolvedQualifyFrom == Outer
   }
   invariant AllSilentTakesTheBuiltin {
-    resolved and qNear == Unset and qMid == Unset and qOuter == Unset
-      => qValue == Never and qFrom == Builtin
+    resolved
+    and qualifyAtNear == Unset
+    and qualifyAtMid == Unset
+    and qualifyAtOuter == Unset
+      => resolvedQualify == Never
+         and resolvedQualifyFrom == Builtin
   }
 
-  // Each level is witnessed supplying the value while the others differ, so a
-  // resolution that read only one of them would be caught.
+  // Each level is witnessed supplying the value while the others differ. So
+  // a resolution that read only one of them would be caught.
   reachable NearSupplies {
     resolved
-    and qFrom == Near
-    and qNear == AsAlways
-    and qMid == AsNever
-    and qOuter == AsNever
-    and qValue == Always
+    and resolvedQualifyFrom == Near
+    and qualifyAtNear == AsAlways
+    and qualifyAtMid == AsNever
+    and qualifyAtOuter == AsNever
+    and resolvedQualify == Always
   }
   reachable MidSupplies {
     resolved
-    and qFrom == Mid
-    and qNear == Unset
-    and qMid == AsAlways
-    and qOuter == AsNever
-    and qValue == Always
+    and resolvedQualifyFrom == Mid
+    and qualifyAtNear == Unset
+    and qualifyAtMid == AsAlways
+    and qualifyAtOuter == AsNever
+    and resolvedQualify == Always
   }
   reachable OuterSupplies {
     resolved
-    and qFrom == Outer
-    and qNear == Unset
-    and qMid == Unset
-    and qOuter == AsAlways
-    and qValue == Always
+    and resolvedQualifyFrom == Outer
+    and qualifyAtNear == Unset
+    and qualifyAtMid == Unset
+    and qualifyAtOuter == AsAlways
+    and resolvedQualify == Always
   }
   reachable BuiltinSupplies {
-    resolved and qFrom == Builtin and qValue == Never
+    resolved and resolvedQualifyFrom == Builtin and resolvedQualify == Never
   }
   // A nearer file may relax as well as tighten. The README says a subtree can
-  // do either, and this is that sentence made checkable.
+  // do either. This makes that sentence checkable.
   reachable NearerRelaxes {
     resolved
-    and qOuter == AsAlways
-    and qNear == AsNever
-    and qValue == Never
+    and qualifyAtOuter == AsAlways
+    and qualifyAtNear == AsNever
+    and resolvedQualify == Never
   }
 
-  // --- the map merges rather than replacing ---------------------------------
-  // The one that matters: the root states a, the nested file states b, and
-  // both survive. A map that replaced would lose a.
+  // --- the map merges and is not replaced ------------------------------------
+  // The case that matters. The root states namespace A, and the nested file
+  // states namespace B. Both survive. A map that was replaced would lose A.
   reachable BothNamespacesSurvive {
     resolved
-    and aOuter == Wx
-    and aNear == NoWord
-    and bOuter == Off
-    and bNear == On
-    and aValue == Wx
-    and bValue == On
+    and vocabularyAAtOuter == FirstWord
+    and vocabularyAAtNear == NoWord
+    and vocabularyBAtOuter == Absent
+    and vocabularyBAtNear == Present
+    and resolvedVocabularyA == FirstWord
+    and resolvedVocabularyB == Present
   }
-  // And on the one key they both state, the nearer file wins.
+  // On the one key both files state, the nearer file wins.
   reachable NearerWinsTheSharedKey {
     resolved
-    and aOuter == Wx
-    and aNear == Wy
-    and aValue == Wy
+    and vocabularyAAtOuter == FirstWord
+    and vocabularyAAtNear == SecondWord
+    and resolvedVocabularyA == SecondWord
   }
   invariant StatedNearOwnsItsKey {
-    resolved and aNear != NoWord => aValue == aNear
+    resolved and vocabularyAAtNear != NoWord
+      => resolvedVocabularyA == vocabularyAAtNear
   }
   invariant UnstatedNearInheritsItsKey {
-    resolved and aNear == NoWord => aValue == aOuter
+    resolved and vocabularyAAtNear == NoWord
+      => resolvedVocabularyA == vocabularyAAtOuter
   }
-  // Neither namespace can take the other's value, which a merge written over
-  // one shared slot would allow.
+  // Neither namespace can take the other's value. A merge written over one
+  // shared slot would allow that.
   invariant NamespacesDoNotBleed {
-    resolved => (aValue == aNear or aValue == aOuter)
-                and (bValue == bNear or bValue == bOuter)
+    resolved
+      => (resolvedVocabularyA == vocabularyAAtNear
+          or resolvedVocabularyA == vocabularyAAtOuter)
+         and (resolvedVocabularyB == vocabularyBAtNear
+              or resolvedVocabularyB == vocabularyBAtOuter)
   }
 }
