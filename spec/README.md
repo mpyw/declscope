@@ -240,7 +240,7 @@ is a semantics that contradicts the documented one; each was run:
 | The binding test reads `defaults.unexported` instead of quantifying over it | `reachable_failed` (`UnexportedBindsPrivateUnderPrivateDefault`) |
 | The binding test asks only whether the name is exported, ignoring an enclosing directive | `violated` (`UsedExactlyWhenSomethingBinds`) |
 | A `var`/`const`/`type` block's directive does not reach the members of a type it holds | `reachable_failed` |
-| `boundary_fix.fsl` stops reading `blockDir`, or stops discriminating exportedness | `reachable_failed` |
+| `boundary_fix.fsl` stops reading `blockDirective`, or stops discriminating exportedness | `reachable_failed` |
 | `fair` is dropped from `fixBoundary` | `violated` (`leadsTo`); under induction, `unknown_cti` (`progress_action_not_fair`) |
 | A scope directive ignores a nearer directive that shadows it | `violated` (`UsedExactlyWhenSomethingBinds`) |
 | An enclosed declaration never binds while a directive encloses the one that names its scope | `violated` (`UsedExactlyWhenSomethingBinds`) |

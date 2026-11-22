@@ -1,36 +1,38 @@
-// rules.boundary: off switches the boundary rule off and touches no other
-// rule's report.
+// rules.boundary: off switches the boundary rule off. It touches no report of
+// another rule.
 //
 // The key exists for a repository that wants the ownership mark in a name
-// without the scope behind it. What makes it acceptable is the "nothing else":
-// a key that silenced a rule its name does not mention would be the shape this
-// project set out to avoid, and the shape a later change is most likely to
-// introduce by being helpful.
+// without the scope behind it. The "nothing else" is what makes the key
+// acceptable. A key that silenced a rule its name does not mention would be
+// the shape this project set out to avoid. A later change that tries to be
+// helpful is the most likely way to introduce that shape.
 //
-// Turning boundary off does leave surplus auditing //declscope:shared
-// directives that no longer do a job, and the README says to set both. That is
-// advice to a reader, not a coupling in the code. SurplusFiresWhileBoundaryOff
-// below is what fails if someone makes it one.
+// With boundary off, surplus still audits //declscope:shared directives. Some
+// of them no longer do a job. The README says to set both keys. That is advice
+// to a reader, not a coupling in the code. SurplusFiresWhileBoundaryOff below
+// fails if someone makes it one.
 //
-// It does change one fix that another rule offers. The strict `unused` fix
-// that deletes a redundant directive is withheld while a declaration the
-// directive reaches would cross a boundary without it (scopesiteRemovals.decide
-// in internal/scopesite.go). With boundary off no crossing is reported, so
-// nothing is there to withhold the deletion, and the fix is offered. That is
-// the fix following the reports it could change, not a report being silenced.
-// unused_modes.fsl models the withholding, taking the crossing as its input
-// aCrosses, which is false under boundary off. This spec models reports only.
+// Boundary off does change one fix that another rule offers. The strict
+// `unused` fix deletes a redundant directive. It is withheld while a
+// declaration the directive reaches would cross a boundary without it. That
+// is scopesiteRemovals.decide in internal/scopesite.go. With boundary off, no
+// crossing is reported. So nothing withholds the deletion, and the fix is
+// offered. The fix follows the reports it could change. No report is being
+// silenced. unused_modes.fsl models the withholding. It takes the crossing as
+// its input aCrosses, which is false under boundary off. This spec models
+// reports only.
 //
-// Scope resolution is knobs.fsl's subject and is not repeated here: this spec
-// takes the resolved scope as an input, because rules.boundary is a gate on the
-// report and not a participant in the resolution.
+// Scope resolution is the subject of knobs.fsl and is not repeated here. This
+// spec takes the resolved scope as an input. rules.boundary is a gate on the
+// report, not a part of the resolution.
 fsl 5
 spec BoundaryOff {
   enum Scope { Shared, Private }
-  enum Refs  { NoRefs, SameNs, CrossNs }
-  // The naming rule's three modes. OnDemand asks only once a package holds a
-  // second namespace, which is why the count is an input below.
-  enum Mode  { Never, OnDemand, Always }
+  enum ReferencedFrom { Nowhere, SameNamespace, OtherNamespace }
+  // The three modes of the naming rule. OnDemand applies only once a package
+  // holds a second namespace. That is why the namespace count is an input
+  // below.
+  enum NamingMode { Never, OnDemand, Always }
 
   state {
     configured: Bool = false,
@@ -38,56 +40,61 @@ spec BoundaryOff {
     boundaryOff: Bool = false,
     surplusOff: Bool = false,
     // What each rule reads.
-    scope: Scope = Private,
-    refs: Refs = NoRefs,
-    qualify: Mode = Never,
-    carries: Bool = false,
-    twoNamespaces: Bool = false,
-    hasSharedDir: Bool = false,
+    resolvedScope: Scope = Private,
+    referencedFrom: ReferencedFrom = Nowhere,
+    namingMode: NamingMode = Never,
+    nameCarriesNamespace: Bool = false,
+    hasTwoNamespaces: Bool = false,
+    hasSharedDirective: Bool = false,
     sawEveryFile: Bool = false,
     // Recording each report keeps the guards load-bearing. An invariant over
-    // the defs alone would be a tautology, and deleting a guard would not
-    // break it.
+    // the defs alone would be a tautology. Deleting a guard would not break
+    // it.
     boundaryReported: Bool = false,
     qualifyReported: Bool = false,
     surplusReported: Bool = false
   }
 
-  action configure(bo: Bool, as_: Bool, sc: Scope, r: Refs,
-                   q: Mode, c: Bool, two: Bool, pd: Bool, saw: Bool) {
+  action configure(newBoundaryOff: Bool, newSurplusOff: Bool,
+                   newResolvedScope: Scope, newReferencedFrom: ReferencedFrom,
+                   newNamingMode: NamingMode, newNameCarriesNamespace: Bool,
+                   newHasTwoNamespaces: Bool, newHasSharedDirective: Bool,
+                   newSawEveryFile: Bool) {
     requires not configured
     configured = true
-    boundaryOff = bo
-    surplusOff = as_
-    scope = sc
-    refs = r
-    qualify = q
-    carries = c
-    twoNamespaces = two
-    hasSharedDir = pd
-    sawEveryFile = saw
+    boundaryOff = newBoundaryOff
+    surplusOff = newSurplusOff
+    resolvedScope = newResolvedScope
+    referencedFrom = newReferencedFrom
+    namingMode = newNamingMode
+    nameCarriesNamespace = newNameCarriesNamespace
+    hasTwoNamespaces = newHasTwoNamespaces
+    hasSharedDirective = newHasSharedDirective
+    sawEveryFile = newSawEveryFile
   }
 
   // The naming rule applies always, never, or once a second namespace exists.
   def qualifyApplies() =
-    if qualify == Always then true
-    else if qualify == OnDemand then twoNamespaces
+    if namingMode == Always then true
+    else if namingMode == OnDemand then hasTwoNamespaces
     else false
 
-  // --- the three gates, as internal/finding.go and internal/surplus.go have
-  // them. boundaryOff appears in exactly one of them. ------------------------
+  // --- the three gates ---------------------------------------------------------
+  // internal/finding.go holds the boundary and naming gates.
+  // internal/surplus.go holds the surplus gate. boundaryOff appears in exactly
+  // one of them.
   action reportBoundary() {
     requires configured
     requires not boundaryOff
-    requires scope == Private
-    requires refs == CrossNs
+    requires resolvedScope == Private
+    requires referencedFrom == OtherNamespace
     boundaryReported = true
   }
 
   action reportQualify() {
     requires configured
     requires qualifyApplies()
-    requires not carries
+    requires not nameCarriesNamespace
     qualifyReported = true
   }
 
@@ -95,46 +102,48 @@ spec BoundaryOff {
     requires configured
     requires not surplusOff
     requires sawEveryFile
-    requires hasSharedDir
-    requires refs != CrossNs
+    requires hasSharedDirective
+    requires referencedFrom != OtherNamespace
     surplusReported = true
   }
 
   // --- the switch bites, in both directions ---------------------------------
   invariant BoundarySilencedWhenOff { boundaryReported => not boundaryOff }
+  // Without this witness, the invariant above would hold for a rule that
+  // never fires at all.
   reachable BoundaryFiresWhenOn {
     not boundaryOff
-    and scope == Private
-    and refs == CrossNs
+    and resolvedScope == Private
+    and referencedFrom == OtherNamespace
     and boundaryReported
   }
-  // The same configuration, with the switch on, stays quiet. Without this the
-  // invariant above would hold for a rule that never fired at all.
+  // The same scope and reference, with boundary off, stay quiet.
   reachable BoundarySilentOnTheSameConfiguration {
     boundaryOff
-    and scope == Private
-    and refs == CrossNs
+    and resolvedScope == Private
+    and referencedFrom == OtherNamespace
     and not boundaryReported
   }
 
   // --- and touches nothing else ---------------------------------------------
-  // Each of these fails the moment boundaryOff is added to another rule's
-  // guard, which is the change this spec is here to catch.
+  // Each of these fails as soon as boundaryOff is added to the guard of
+  // another rule. That is the change this spec exists to catch.
   reachable QualifyFiresWhileBoundaryOff {
     boundaryOff
     and qualifyApplies()
-    and not carries
+    and not nameCarriesNamespace
     and qualifyReported
   }
   reachable SurplusFiresWhileBoundaryOff {
     boundaryOff
     and sawEveryFile
-    and hasSharedDir
-    and refs != CrossNs
+    and hasSharedDirective
+    and referencedFrom != OtherNamespace
     and surplusReported
   }
-  // Both at once, with boundary off: the state the README describes for a
-  // repository that takes the naming rule and nothing else.
+  // Boundary is off, boundary is silent, and the naming rule reports. The
+  // README describes this state for a repository that takes the naming rule
+  // and nothing else.
   reachable NamingRuleAloneStillReports {
     boundaryOff
     and not boundaryReported
@@ -142,27 +151,27 @@ spec BoundaryOff {
   }
 
   // --- rules.surplus: off stays the other switch ---------------------------
-  // It gates surplus and not boundary, so the two keys are independent in both
-  // directions rather than one implying the other.
+  // It gates surplus and not boundary. So the two keys are independent in
+  // both directions. Neither implies the other.
   invariant SurplusSilencedWhenOff { surplusReported => not surplusOff }
   reachable BoundaryFiresWhileSurplusOff {
     surplusOff
     and not boundaryOff
-    and scope == Private
-    and refs == CrossNs
+    and resolvedScope == Private
+    and referencedFrom == OtherNamespace
     and boundaryReported
   }
 
   // --- the reports keep their own guards ------------------------------------
-  // Dropping any one of these from the actions above breaks the matching
-  // invariant, which is what makes the guards rather than the defs the subject.
-  invariant BoundaryNeedsPrivate   { boundaryReported => scope == Private }
-  invariant BoundaryNeedsCrossNs   { boundaryReported => refs == CrossNs }
+  // Dropping any one of these guards from the actions above breaks the
+  // matching invariant. That makes the guards the subject, not the defs.
+  invariant BoundaryNeedsPrivate   { boundaryReported => resolvedScope == Private }
+  invariant BoundaryNeedsCrossNs   { boundaryReported => referencedFrom == OtherNamespace }
   invariant QualifyNeedsApplies    { qualifyReported => qualifyApplies() }
-  invariant QualifyNeedsBareName   { qualifyReported => not carries }
+  invariant QualifyNeedsBareName   { qualifyReported => not nameCarriesNamespace }
   invariant SurplusNeedsEveryFile  { surplusReported => sawEveryFile }
-  invariant SurplusNeedsDirective  { surplusReported => hasSharedDir }
-  invariant SurplusNeedsNoCrossUse { surplusReported => refs != CrossNs }
+  invariant SurplusNeedsDirective  { surplusReported => hasSharedDirective }
+  invariant SurplusNeedsNoCrossUse { surplusReported => referencedFrom != OtherNamespace }
   invariant ReportsImplyConfigured {
     boundaryReported or qualifyReported or surplusReported => configured
   }

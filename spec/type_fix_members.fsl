@@ -1,70 +1,74 @@
-// What a type's boundary fix does to the type's members, and that the run
-// still converges.
+// What the boundary fix of a type does to the members of the type. And that
+// the run still converges.
 //
-// The fix writes //declscope:shared on a type that crosses and took its private
-// scope from defaults.unexported. The directive reaches every member that
-// states no scope of its own, so the one edit decides three rules at once:
+// The fix writes //declscope:shared on a type that crosses and took its
+// private scope from defaults.unexported. The directive reaches every member
+// that states no scope of its own. So the one edit decides three rules at
+// once:
 //
-//   boundary  a member another namespace spells crossed with the type, and is
-//             settled by the same directive. fix_members.fsl proves its own fix
-//             is then dropped, not written beside the type's
-//   surplus   under strict, a member no other namespace reaches would come out
-//             widened for nothing, which is exactly what strict reports. The
-//             fix narrows it with //declscope:private in the same edit
-//             (surplusNarrowedByTypeFix)
-//   unused    a member's own //declscope:shared binds only while the type
-//             states no scope. Widened, the type gives the member that scope
-//             anyway, and the unused rule reports the author's directive, which
-//             no fix may delete. The fix is withheld there and the report is
-//             not, so the member that crosses takes its own fix
-//             (unboundAtScopeSite)
+//   boundary  A member that another namespace spells crossed with the type.
+//             The same directive settles it. fix_members.fsl proves that the
+//             own fix of the member is then dropped, not written beside the
+//             fix of the type.
+//   surplus   Under strict, a member that no other namespace reaches would
+//             come out widened for nothing. Strict reports exactly that. The
+//             fix narrows the member with //declscope:private in the same
+//             edit (surplusNarrowedByTypeFix).
+//   unused    The own //declscope:shared of a member binds only while the
+//             type states no scope. Once the type is widened, it gives the
+//             member that scope anyway. The unused rule then reports the
+//             directive of the author, and no fix may delete it. So the fix
+//             is withheld there, and the report is not. The member that
+//             crosses takes its own fix (unboundAtScopeSite).
 //
-// One member is judged, and a sibling stands for every other member, which
-// matters only through the directive it states: a sibling's //declscope:shared
-// withholds the type's fix just as the member's does, and the member then
-// takes its own fix where it crosses.
+// One member is judged. A sibling stands for every other member. A sibling
+// matters only through the directive it states. The //declscope:shared of a
+// sibling withholds the fix of the type, just as the member's own does. The
+// member then takes its own fix where it crosses.
 //
-// reach is surplus_strict.fsl's reach paths with the three that spell nothing
-// folded into Unspelled: the boundary rule reads only a spelled use, and every
-// other path keeps the member wide all the same. entryMixed and
-// surplusIgnored are the two reasons left for a member strict would otherwise
-// judge: another name on its line is reached or exported, or an ignore it
-// already carries answers the rule.
+// memberReach is the set of reach paths from surplus_strict.fsl. The three
+// paths that spell nothing are folded into ReachedUnspelled. The boundary
+// rule reads only a spelled use. Every other path keeps the member wide all
+// the same. Strict would otherwise judge the member. Two reasons are left
+// that stop it:
+//   - lineHasReachedOrExportedName: another name on its line is reached or
+//     exported.
+//   - hasSurplusIgnore: an ignore the member already carries answers the rule.
 //
-// The authored source is never assigned. What the run wrote is recorded in
-// typeFixed, memberNarrowed and memberFixed, and the "after" defs put the two
-// together, as in fix_members.fsl.
+// No action assigns the authored source after configuration. What the run
+// wrote is recorded in typeFixed, memberNarrowed and memberFixed. The "after"
+// defs put the two together, as in fix_members.fsl.
 //
-// ASSUME-1: the type is unexported, no directive is written on it or on its
-//   file, defaults.unexported is private, and another namespace spells it.
-//   That is the only case the fix is offered in; boundary_fix.fsl withholds
-//   it everywhere else. Spelled, the type keeps its new directive in use, so
-//   surplus loose never condemns it (modelling assumption)
+// ASSUME-1: the type is unexported. No directive is written on it or on its
+//   file. defaults.unexported is private. Another namespace spells the type.
+//   That is the only case where the fix is offered. boundary_fix.fsl
+//   withholds it everywhere else. Spelled, the type keeps its new directive
+//   in use. So surplus loose never condemns it (modelling assumption).
 // ASSUME-2: one member and one sibling are enough. Every member is judged
-//   alone except through the type's fix, which the sibling stands for
-//   (modelling assumption)
+//   alone, except through the fix of the type. The sibling stands for that
+//   (modelling assumption).
 fsl 5
 spec TypeFixMembers {
   enum Scope { Shared, Private }
-  enum Dir   { NoDir, DirShared, DirPrivate }
-  enum Mode  { Off, Loose, Strict }
-  enum Reach { Unreached, Spelled, Unspelled }
+  enum Directive { NoDirective, SharedDirective, PrivateDirective }
+  enum RuleMode { Off, Loose, Strict }
+  enum Reach { Unreached, SpelledElsewhere, ReachedUnspelled }
 
   state {
     phase: 0..2 = 0,
-    unusedMode: Mode = Strict,
-    surplusMode: Mode = Strict,
+    unusedMode: RuleMode = Strict,
+    surplusMode: RuleMode = Strict,
     seesAllFiles: Bool = true,
-    // The type's boundary report is answered by an ignore or the baseline, so
+    // An ignore or the baseline answers the boundary report of the type. So
     // the run writes no fix on it and subsumes nothing.
     typeAnswered: Bool = false,
     memberExported: Bool = false,
-    memberDir: Dir = NoDir,
-    reach: Reach = Unreached,
-    entryMixed: Bool = false,
-    surplusIgnored: Bool = false,
+    memberDirective: Directive = NoDirective,
+    memberReach: Reach = Unreached,
+    lineHasReachedOrExportedName: Bool = false,
+    hasSurplusIgnore: Bool = false,
     siblingExported: Bool = false,
-    siblingDir: Dir = NoDir,
+    siblingDirective: Directive = NoDirective,
     // What the run wrote.
     typeFixed: Bool = false,
     memberNarrowed: Bool = false,
@@ -72,92 +76,103 @@ spec TypeFixMembers {
     stalled: Bool = false
   }
 
-  // Two steps rather than one, so that no one action carries the product of
-  // every parameter.
-  action configureRules(u: Mode, s: Mode, sa: Bool, ta: Bool) {
+  // Configuration takes two steps, not one. So no one action carries the
+  // product of every parameter.
+  action configureRules(newUnusedMode: RuleMode, newSurplusMode: RuleMode,
+                        newSeesAllFiles: Bool, newTypeAnswered: Bool) {
     requires phase == 0
     phase = 1
-    unusedMode = u
-    surplusMode = s
-    seesAllFiles = sa
-    typeAnswered = ta
+    unusedMode = newUnusedMode
+    surplusMode = newSurplusMode
+    seesAllFiles = newSeesAllFiles
+    typeAnswered = newTypeAnswered
   }
-  action configureMembers(mx: Bool, md: Dir, r: Reach, em: Bool, si: Bool,
-                          sx: Bool, sd: Dir) {
+  action configureMembers(newMemberExported: Bool, newMemberDirective: Directive,
+                          newMemberReach: Reach,
+                          newLineHasReachedOrExportedName: Bool,
+                          newHasSurplusIgnore: Bool,
+                          newSiblingExported: Bool,
+                          newSiblingDirective: Directive) {
     requires phase == 1
     phase = 2
-    memberExported = mx
-    memberDir = md
-    reach = r
-    entryMixed = em
-    surplusIgnored = si
-    siblingExported = sx
-    siblingDir = sd
+    memberExported = newMemberExported
+    memberDirective = newMemberDirective
+    memberReach = newMemberReach
+    lineHasReachedOrExportedName = newLineHasReachedOrExportedName
+    hasSurplusIgnore = newHasSurplusIgnore
+    siblingExported = newSiblingExported
+    siblingDirective = newSiblingDirective
   }
   def configured() = phase == 2
 
   // --- scope resolution, for a member -------------------------------------
-  // Its own directive, its type's, then exportedness, then the default, which
-  // ASSUME-1 fixes at private. No file directive is written.
-  def stated(d: Dir) = if d == DirShared then Shared else Private
-  def scopeOf(d: Dir, td: Dir, x: Bool) =
-    if d != NoDir then stated(d)
-    else if td != NoDir then stated(td)
-    else if x then Shared
+  // The order is: its own directive, the directive of its type, exportedness,
+  // then the default. ASSUME-1 fixes the default at private. No file
+  // directive is written.
+  def scopeStatedBy(directive: Directive) =
+    if directive == SharedDirective then Shared else Private
+  def scopeOf(own: Directive, onType: Directive, isExported: Bool) =
+    if own != NoDirective then scopeStatedBy(own)
+    else if onType != NoDirective then scopeStatedBy(onType)
+    else if isExported then Shared
     else Private
   // The scope a member would take without its own directive, under the
-  // configuration in force, and whether it is the same under every
-  // configuration: it is not when only defaults.unexported decides it.
-  def outerFixed(td: Dir, x: Bool) = td != NoDir or x
-  def outerScope(td: Dir, x: Bool) = scopeOf(NoDir, td, x)
-  // unused_modes.fsl's two judgments of one directive: loose reports one that
-  // binds nothing under any configuration, strict also one that restates the
-  // scope in force.
-  def unusedReports(d: Dir, td: Dir, x: Bool) =
-    d != NoDir
+  // configuration in force. And whether that scope is the same under every
+  // configuration. It is not when only defaults.unexported decides it.
+  def outerScopeIsConfigIndependent(onType: Directive, isExported: Bool) =
+    onType != NoDirective or isExported
+  def outerScope(onType: Directive, isExported: Bool) =
+    scopeOf(NoDirective, onType, isExported)
+  // The two judgments of one directive in unused_modes.fsl. Loose reports a
+  // directive that binds nothing under any configuration. Strict also
+  // reports one that restates the scope in force.
+  def unusedReports(own: Directive, onType: Directive, isExported: Bool) =
+    own != NoDirective
     and (
-      (unusedMode == Loose and outerFixed(td, x) and stated(d) == outerScope(td, x))
-      or (unusedMode == Strict and stated(d) == outerScope(td, x))
+      (unusedMode == Loose
+        and outerScopeIsConfigIndependent(onType, isExported)
+        and scopeStatedBy(own) == outerScope(onType, isExported))
+      or (unusedMode == Strict
+        and scopeStatedBy(own) == outerScope(onType, isExported))
     )
 
   // --- the pre-fix source, which every guard reads -------------------------
   def memberCrossesBefore() =
-    scopeOf(memberDir, NoDir, memberExported) == Private
-    and reach == Spelled
+    scopeOf(memberDirective, NoDirective, memberExported) == Private
+    and memberReach == SpelledElsewhere
 
-  // A directive a member states that binds today and would bind nothing under
-  // the widened type.
-  def unbinds(d: Dir, x: Bool) =
-    unusedReports(d, DirShared, x) and not unusedReports(d, NoDir, x)
+  // A directive of a member that binds today and would bind nothing under the
+  // widened type.
+  def unbinds(own: Directive, isExported: Bool) =
+    unusedReports(own, SharedDirective, isExported)
+    and not unusedReports(own, NoDirective, isExported)
   def unbindsAMember() =
-    unbinds(memberDir, memberExported)
-    or unbinds(siblingDir, siblingExported)
+    unbinds(memberDirective, memberExported)
+    or unbinds(siblingDirective, siblingExported)
 
   def typeFixable() =
     configured()
     and not typeAnswered
     and not unbindsAMember()
 
-  // What surplus strict asks of the member besides where its scope comes
-  // from: strict is on, the pass reads every file, and the member is
-  // unexported, reached from no other namespace, alone on its line and
-  // carries no surplus ignore.
-  def strictJudges() =
+  // What surplus strict asks of the member, apart from where its scope comes
+  // from. Strict is on. The pass reads every file. The member is unexported
+  // and reached from no other namespace. No name on its line is reached or
+  // exported. It carries no surplus ignore.
+  def strictAppliesToMember() =
     surplusMode == Strict
     and seesAllFiles
     and not memberExported
-    and reach == Unreached
-    and not entryMixed
-    and not surplusIgnored
+    and memberReach == Unreached
+    and not lineHasReachedOrExportedName
+    and not hasSurplusIgnore
 
-  // surplusNarrowedByTypeFix: under strict, and only by a pass that reads
-  // every file, an unexported member that states no scope, that nothing
-  // reaches from another namespace, that shares its line with nothing
-  // reached, and that carries no ignore answering surplus.
-  def narrowWanted() = strictJudges() and memberDir == NoDir
+  // surplusNarrowedByTypeFix narrows a member that strict would judge and
+  // that states no scope of its own.
+  def narrowingWanted() = strictAppliesToMember() and memberDirective == NoDirective
 
   // A pass that reported and did not fix.
-  action reportOnly() {
+  action reportWithoutFix() {
     requires configured()
     stalled = true
   }
@@ -166,91 +181,101 @@ spec TypeFixMembers {
     requires typeFixable()
     requires not typeFixed
     typeFixed = true
-    memberNarrowed = narrowWanted()
+    memberNarrowed = narrowingWanted()
   }
   fair action fixMember() {
     requires configured()
     requires not memberFixed
     requires memberCrossesBefore()
-    requires memberDir == NoDir
-    // fix_members.fsl's subsumption: the type's fix, when the run writes
-    // one, settles the member, and the member's own would bind nothing.
+    requires memberDirective == NoDirective
+    // The subsumption from fix_members.fsl. When the run writes a fix on the
+    // type, that fix settles the member. The own fix of the member would then
+    // bind nothing.
     requires not typeFixable()
     memberFixed = true
   }
 
   // --- what the source says once the run has finished ----------------------
-  def typeDirAfter() = if typeFixed then DirShared else NoDir
-  def memberDirAfter() =
-    if memberNarrowed then DirPrivate
-    else if memberFixed then DirShared
-    else memberDir
+  def typeDirectiveAfter() = if typeFixed then SharedDirective else NoDirective
+  def memberDirectiveAfter() =
+    if memberNarrowed then PrivateDirective
+    else if memberFixed then SharedDirective
+    else memberDirective
   def memberCrossesAfter() =
-    scopeOf(memberDirAfter(), typeDirAfter(), memberExported) == Private
-    and reach == Spelled
+    scopeOf(memberDirectiveAfter(), typeDirectiveAfter(), memberExported) == Private
+    and memberReach == SpelledElsewhere
 
-  // surplus strict on the member, over the fixed source: it takes shared scope
-  // from the type's directive alone, and nothing excuses it.
-  def strictAfter() =
-    strictJudges()
-    and memberDirAfter() == NoDir
-    and typeDirAfter() == DirShared
+  // surplus strict on the member, over the fixed source. The member takes
+  // shared scope from the directive of the type alone, and nothing excuses it.
+  def strictReportsAfter() =
+    strictAppliesToMember()
+    and memberDirectiveAfter() == NoDirective
+    and typeDirectiveAfter() == SharedDirective
 
-  // --- auxiliary: nothing assigns the inputs once configured, so each guard
-  // still holds of the state it fired in.
+  // --- auxiliary ------------------------------------------------------------
+  // Nothing assigns the inputs once they are configured. So each guard still
+  // holds of the state it fired in.
   invariant FixImpliesConfigured {
     (typeFixed or memberFixed or stalled) => configured()
   }
   invariant TypeFixRecordsItsGuard { typeFixed => typeFixable() }
-  invariant NarrowingRecordsItsGuard { memberNarrowed == (typeFixed and narrowWanted()) }
+  invariant NarrowingRecordsItsGuard {
+    memberNarrowed == (typeFixed and narrowingWanted())
+  }
   invariant MemberFixRecordsItsGuard {
     memberFixed =>
       memberCrossesBefore()
-      and memberDir == NoDir
+      and memberDirective == NoDirective
       and not typeFixable()
   }
 
-  // --- what the run leaves ---------------------------------------------------
-  // (a) No boundary report is left on the type, nor on a member a fix was
-  // written for.
-  invariant TypeFixSettles { typeFixed => typeDirAfter() == DirShared }
+  // --- what the run leaves: boundary ----------------------------------------
+  // No boundary report is left on the type. None is left on a member a fix
+  // was written for.
+  invariant TypeFixSettles { typeFixed => typeDirectiveAfter() == SharedDirective }
   invariant MemberCrossingSettled {
-    (typeFixed or memberFixed) and memberDir == NoDir => not memberCrossesAfter()
+    (typeFixed or memberFixed) and memberDirective == NoDirective
+      => not memberCrossesAfter()
   }
-  // (d) and no member is narrowed that another namespace spells: no boundary
-  // report the run did not start with.
+  // No member that another namespace spells is narrowed. So there is no
+  // boundary report the run did not start with.
   invariant NoNewBoundary { memberCrossesAfter() => memberCrossesBefore() }
 
-  // (b) Neither inserted directive binds nothing, under either unused mode.
-  // The type's is judged against the default, which ASSUME-1 fixes.
+  // --- what the run leaves: unused ------------------------------------------
+  // Neither inserted directive binds nothing, under either unused mode. The
+  // directive of the type is judged against the default. ASSUME-1 fixes that
+  // default.
   invariant InsertedTypeDirectiveBinds {
-    typeFixed => not unusedReports(DirShared, NoDir, false)
+    typeFixed => not unusedReports(SharedDirective, NoDirective, false)
   }
   invariant InsertedMemberDirectiveBinds {
     (memberNarrowed or memberFixed)
-    => not unusedReports(memberDirAfter(), typeDirAfter(), memberExported)
+      => not unusedReports(memberDirectiveAfter(), typeDirectiveAfter(), memberExported)
   }
-  // An authored directive the run leaves reported by unused was reported
-  // before the run as well.
-  def keepsItsReport(d: Dir, x: Bool) =
-    unusedReports(d, typeDirAfter(), x) => unusedReports(d, NoDir, x)
+  // unused reports an authored directive after the run only if it reported
+  // that directive before the run as well.
+  def keepsItsReport(own: Directive, isExported: Bool) =
+    unusedReports(own, typeDirectiveAfter(), isExported)
+      => unusedReports(own, NoDirective, isExported)
 
-  // And no directive the author wrote is left binding nothing that bound
-  // something before. This is the guard the implementation lacked.
+  // No directive the author wrote is left binding nothing if it bound
+  // something before. unboundAtScopeSite is the guard that ensures this.
   invariant AuthoredDirectivesKeepTheirReport {
-    keepsItsReport(memberDir, memberExported)
-    and keepsItsReport(siblingDir, siblingExported)
+    keepsItsReport(memberDirective, memberExported)
+    and keepsItsReport(siblingDirective, siblingExported)
   }
 
-  // (c) surplus strict does not report a member the type's new directive
-  // widens. Before the run it never could: the member's scope came from no
-  // enclosing directive.
-  invariant StrictSilentAfter { not strictAfter() }
+  // --- what the run leaves: surplus -----------------------------------------
+  // surplus strict does not report a member that the new directive of the
+  // type widens. Before the run it never could. No enclosing directive gave
+  // the member its scope.
+  invariant StrictSilentAfter { not strictReportsAfter() }
 
-  // (e) The author's own directive is never overwritten, and the member never
+  // --- what the run leaves: the edits ---------------------------------------
+  // The own directive of the author is never overwritten. The member never
   // carries two insertions.
   invariant NeverOverwritesTheAuthor {
-    (memberNarrowed or memberFixed) => memberDir == NoDir
+    (memberNarrowed or memberFixed) => memberDirective == NoDirective
   }
   invariant OneInsertionPerMember { not (memberNarrowed and memberFixed) }
 
@@ -262,13 +287,13 @@ spec TypeFixMembers {
   reachable NarrowedWithTheType {
     memberNarrowed
     and unusedMode == Strict
-    and not strictAfter()
+    and not strictReportsAfter()
     and not memberCrossesAfter()
   }
   reachable SettledByTheType {
     typeFixed
     and not memberFixed
-    and memberDir == NoDir
+    and memberDirective == NoDirective
     and not memberExported
     and memberCrossesBefore()
     and not memberCrossesAfter()
@@ -278,10 +303,10 @@ spec TypeFixMembers {
     and surplusMode == Strict
     and seesAllFiles
     and not memberExported
-    and memberDir == NoDir
-    and reach == Unspelled
-    and not entryMixed
-    and not surplusIgnored
+    and memberDirective == NoDirective
+    and memberReach == ReachedUnspelled
+    and not lineHasReachedOrExportedName
+    and not hasSurplusIgnore
     and not memberNarrowed
   }
   reachable WidenedInAMixedEntry {
@@ -289,10 +314,10 @@ spec TypeFixMembers {
     and surplusMode == Strict
     and seesAllFiles
     and not memberExported
-    and memberDir == NoDir
-    and reach == Unreached
-    and entryMixed
-    and not surplusIgnored
+    and memberDirective == NoDirective
+    and memberReach == Unreached
+    and lineHasReachedOrExportedName
+    and not hasSurplusIgnore
     and not memberNarrowed
   }
   reachable WidenedUnderAnIgnore {
@@ -300,10 +325,10 @@ spec TypeFixMembers {
     and surplusMode == Strict
     and seesAllFiles
     and not memberExported
-    and memberDir == NoDir
-    and reach == Unreached
-    and not entryMixed
-    and surplusIgnored
+    and memberDirective == NoDirective
+    and memberReach == Unreached
+    and not lineHasReachedOrExportedName
+    and hasSurplusIgnore
     and not memberNarrowed
   }
   reachable WidenedByABlindPass {
@@ -311,10 +336,10 @@ spec TypeFixMembers {
     and surplusMode == Strict
     and not seesAllFiles
     and not memberExported
-    and memberDir == NoDir
-    and reach == Unreached
-    and not entryMixed
-    and not surplusIgnored
+    and memberDirective == NoDirective
+    and memberReach == Unreached
+    and not lineHasReachedOrExportedName
+    and not hasSurplusIgnore
     and not memberNarrowed
   }
   reachable WidenedUnderLoose {
@@ -322,10 +347,10 @@ spec TypeFixMembers {
     and surplusMode == Loose
     and seesAllFiles
     and not memberExported
-    and memberDir == NoDir
-    and reach == Unreached
-    and not entryMixed
-    and not surplusIgnored
+    and memberDirective == NoDirective
+    and memberReach == Unreached
+    and not lineHasReachedOrExportedName
+    and not hasSurplusIgnore
     and not memberNarrowed
   }
   reachable ExportedMemberWidened {
@@ -333,56 +358,58 @@ spec TypeFixMembers {
     and surplusMode == Strict
     and seesAllFiles
     and memberExported
-    and memberDir == NoDir
-    and reach == Unreached
-    and not entryMixed
-    and not surplusIgnored
+    and memberDirective == NoDirective
+    and memberReach == Unreached
+    and not lineHasReachedOrExportedName
+    and not hasSurplusIgnore
     and not memberNarrowed
   }
   reachable OwnPrivateKept {
     typeFixed
-    and memberDir == DirPrivate
+    and memberDirective == PrivateDirective
     and not memberExported
     and unusedMode == Strict
-    and not unusedReports(memberDir, typeDirAfter(), memberExported)
+    and not unusedReports(memberDirective, typeDirectiveAfter(), memberExported)
   }
 
-  // The new guard: withheld over an unexported member's own shared, and the
-  // report kept.
+  // The guard from unboundAtScopeSite. The fix is withheld over the own
+  // shared directive of an unexported member, and the report is kept.
   reachable WithheldOverOwnShared {
     configured()
     and stalled
     and not typeFixed
     and not typeAnswered
-    and memberDir == DirShared
+    and memberDirective == SharedDirective
     and not memberExported
     and unusedMode != Off
   }
-  // Withheld because of the sibling, and the member that crosses takes its own.
+  // The sibling withholds the fix, and the member that crosses takes its own.
   reachable SiblingWithholdsAndMemberTakesItsOwn {
     memberFixed
     and not typeAnswered
-    and siblingDir == DirShared
+    and siblingDirective == SharedDirective
     and not siblingExported
     and unusedMode == Loose
     and not memberCrossesAfter()
   }
-  // The guard is no wider than it must be: with unused off, and over an
-  // exported member's directive that binds nothing already, the fix is offered.
+  // The guard is no wider than it must be. The fix is offered in two cases:
+  // with unused off, and over the directive of an exported member that
+  // already binds nothing.
   reachable FixedOverOwnSharedWhenUnusedOff {
     typeFixed
-    and memberDir == DirShared
+    and memberDirective == SharedDirective
     and not memberExported
     and unusedMode == Off
   }
   reachable FixedOverAnExportedOwnShared {
     typeFixed
-    and memberDir == DirShared
+    and memberDirective == SharedDirective
     and memberExported
     and unusedMode == Strict
-    and unusedReports(memberDir, NoDir, memberExported)
+    and unusedReports(memberDirective, NoDirective, memberExported)
   }
-  // An answered type writes nothing, so the member's fix is not subsumed.
+  // An answered type writes nothing. So the fix of the member is not
+  // subsumed.
   reachable MemberFixedWhereTypeAnswered {
     memberFixed
     and typeAnswered
@@ -401,7 +428,8 @@ spec TypeFixMembers {
     decreases if typeFixed then 0 else 1
   }
   leadsTo MemberEventuallySettled {
-    configured() and memberCrossesBefore() and memberDir == NoDir ~> not memberCrossesAfter()
+    configured() and memberCrossesBefore() and memberDirective == NoDirective
+      ~> not memberCrossesAfter()
     helpful fixType()
     helpful fixMember()
     decreases if memberCrossesAfter() then 1 else 0

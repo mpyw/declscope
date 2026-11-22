@@ -1,122 +1,142 @@
 // Two directive insertions in one run must not converge.
 //
-// Every fix in a run is generated from the same pre-fix state, so no fix sees
-// what another is about to write — the shape rename_siblings.fsl already holds
-// for renames. The insertions have their own way of converging: a directive
-// written on a type reaches the type's members, so a member fixed in the same
-// run is left carrying a directive that binds nothing, and the `unused` rule
-// reports what -fix has just written. That rule carries no fix, so a second
-// -fix does not clear it.
+// Every fix in a run is generated from the same pre-fix state. So no fix sees
+// what another is about to write. rename_siblings.fsl already holds this shape
+// for renames. The insertions converge in their own way. A directive written
+// on a type reaches the members of the type. A member fixed in the same run
+// is left with a directive that binds nothing. The `unused` rule then reports
+// what -fix has just written. That rule carries no fix, so a second -fix does
+// not clear it.
 //
-// The guard is that the wider insertion subsumes the narrower one: the member's
-// fix is dropped whenever the type is about to carry a directive of its own.
-// "About to" is narrower than "crosses and states no scope": the type's fix is
-// written only if its finding is reported, and internal/report.go marks the
-// type widened only after the ignores and the baseline let the finding through
-// (finding.widens, then subsumedByReport). A type whose finding the baseline
-// absorbs carries no fix, so its member is fixed on its own. An ignore needs no
-// input of its own: the type's ignores contain its members the way its scope
-// directive does (silencedByIgnore), so one that silences the type's boundary
-// finding silences the member's as well, and neither carries a fix.
-// The member's diagnostic is not — the crossing is real until the type's
-// directive lands — which is why nothing here says the member stops being
-// reported.
+// The guard: the wider insertion subsumes the narrower one. The fix of the
+// member is dropped whenever the type is about to carry a directive of its
+// own. "About to" is narrower than "crosses and states no scope". The fix of
+// the type is written only if its finding is reported. internal/report.go
+// marks the type widened only after the ignores and the baseline let the
+// finding through. See finding.widens, then subsumedByReport. A type whose
+// finding the baseline absorbs carries no fix. So its member is fixed on its
+// own.
 //
-// The authored directives are never assigned. They are the pre-fix source every
-// guard reads, and what a fix wrote is recorded beside them in typeFixed and
-// memberFixed; the "after" defs put the two together. Writing the insertion
-// into typeDir instead would let each fix read the other's edit, which is the
-// one thing -fix cannot do.
+// An ignore needs no input of its own. The ignores of a type contain its
+// members, the way its scope directive does (silencedByIgnore). So an ignore
+// that silences the boundary finding of the type silences the finding of the
+// member as well. Neither carries a fix.
 //
-// ASSUME-1: one type and one of its members are enough — this convergence needs
-//   exactly a container and something it contains (modelling assumption)
-// ASSUME-2: scope resolution here is a reduced copy of knobs.fsl's, without the
-//   var/const/type block level (modelling assumption). In the code a type's
-//   block reaches its members through container.BeneathScope() in
-//   bindAtScopeSite, the way typeDir does here; a block directive is a stated
-//   scope like typeDir, and withholds both fixes the same way, so it adds no
-//   case to the convergence this spec is about.
+// The diagnostic of the member is not dropped. The crossing is real until the
+// directive of the type lands. That is why nothing here says the member stops
+// being reported.
+//
+// Only configure assigns the authored directives. No fix does. They are the
+// pre-fix source that every guard reads. What a fix wrote is recorded beside them, in typeFixed
+// and memberFixed. The "after" defs put the two together. The rejected
+// alternative writes the insertion into typeDirective. Then each fix could
+// read the edit of the other. That is the one thing -fix cannot do.
+//
+// ASSUME-1: one type and one of its members are enough. This convergence
+//   needs exactly a container and something it contains (modelling
+//   assumption).
+// ASSUME-2: scope resolution here is a reduced copy of the one in knobs.fsl.
+//   It has no var/const/type block level (modelling assumption). In the code
+//   the block of a type reaches its members through container.BeneathScope()
+//   in bindAtScopeSite. typeDirective does the same here. A block directive
+//   is a stated scope like typeDirective. It withholds both fixes the same
+//   way. So it adds no case to the convergence this spec is about.
 fsl 5
 spec FixMembers {
   enum Scope { Shared, Private }
-  enum Dir   { NoDir, DirShared, DirPrivate }
-  enum Refs  { NoRefs, SameNs, CrossNs }
+  enum Directive { NoDirective, SharedDirective, PrivateDirective }
+  enum ReferencedFrom { Nowhere, SameNamespace, OtherNamespace }
 
   state {
     configured: Bool = false,
-    cfgUnexported: Scope = Private,
+    unexportedDefault: Scope = Private,
     typeExported: Bool = false,
     memberExported: Bool = false,
     // What the author wrote. A fix never assigns these.
-    typeDir: Dir = NoDir,
-    memberDir: Dir = NoDir,
-    fileDir: Dir = NoDir,
-    typeRefs: Refs = NoRefs,
-    memberRefs: Refs = NoRefs,
-    // The type's boundary finding matches a baseline entry, so it is not
+    typeDirective: Directive = NoDirective,
+    memberDirective: Directive = NoDirective,
+    fileDirective: Directive = NoDirective,
+    typeReferencedFrom: ReferencedFrom = Nowhere,
+    memberReferencedFrom: ReferencedFrom = Nowhere,
+    // The boundary finding of the type matches a baseline entry. So it is not
     // reported and carries no fix. The baseline keys each declaration
-    // separately, so it can absorb the type's finding and leave the member's.
+    // separately. So it can absorb the finding of the type and leave the
+    // finding of the member.
     typeBaselined: Bool = false,
     // What this run inserted.
     typeFixed: Bool = false,
     memberFixed: Bool = false,
-    // A pass that reported and did not fix — -fix off, or the fix withheld. It
-    // is what lets a run go on with a crossing pending, which is what makes
-    // `fair` on the two fix actions a claim rather than decoration.
+    // A pass that reported and did not fix. Either -fix is off, or the fix is
+    // withheld. It lets a run go on with a crossing pending. That makes `fair`
+    // on the two fix actions a claim, not decoration.
     stalled: Bool = false
   }
-  action configure(u: Scope, tx: Bool, mx: Bool,
-                   td: Dir, md: Dir, fd: Dir, tr: Refs, mr: Refs, tb: Bool) {
+  action configure(newUnexportedDefault: Scope,
+                   newTypeExported: Bool, newMemberExported: Bool,
+                   newTypeDirective: Directive, newMemberDirective: Directive,
+                   newFileDirective: Directive,
+                   newTypeReferencedFrom: ReferencedFrom,
+                   newMemberReferencedFrom: ReferencedFrom,
+                   newTypeBaselined: Bool) {
     requires not configured
     configured = true
-    cfgUnexported = u
-    typeExported = tx
-    memberExported = mx
-    typeDir = td
-    memberDir = md
-    fileDir = fd
-    typeRefs = tr
-    memberRefs = mr
-    typeBaselined = tb
+    unexportedDefault = newUnexportedDefault
+    typeExported = newTypeExported
+    memberExported = newMemberExported
+    typeDirective = newTypeDirective
+    memberDirective = newMemberDirective
+    fileDirective = newFileDirective
+    typeReferencedFrom = newTypeReferencedFrom
+    memberReferencedFrom = newMemberReferencedFrom
+    typeBaselined = newTypeBaselined
   }
 
-  // Exportedness decides the default and nothing else, as everywhere else.
-  def defaultScope(x: Bool) = if x then Shared else cfgUnexported
+  // Exportedness decides the default and nothing else, as in every spec.
+  def defaultScope(isExported: Bool) = if isExported then Shared else unexportedDefault
 
-  // The scope a directive states, or the scope of the next level out when it
-  // states none.
-  def pick(d: Dir, otherwise: Scope) =
-    if d == DirShared then Shared
-    else if d == DirPrivate then Private
+  // The scope a directive states. If it states none, the scope from the next
+  // level out.
+  def scopeOr(directive: Directive, otherwise: Scope) =
+    if directive == SharedDirective then Shared
+    else if directive == PrivateDirective then Private
     else otherwise
 
-  // The nearer directive if it states a scope, otherwise the farther one.
-  def orElse(nearer: Dir, farther: Dir) = if nearer != NoDir then nearer else farther
+  // The nearer directive if it states a scope. Otherwise the farther one.
+  def directiveOr(nearer: Directive, farther: Directive) =
+    if nearer != NoDirective then nearer else farther
 
-  def fileOrDefault(x: Bool) = pick(fileDir, defaultScope(x))
+  def fileOrDefault(isExported: Bool) = scopeOr(fileDirective, defaultScope(isExported))
 
   // --- the pre-fix source, which every guard reads -------------------------
-  def typeScope() = pick(typeDir, fileOrDefault(typeExported))
-  // The member's chain has the containing type in it, which is the whole
+  def typeScope() = scopeOr(typeDirective, fileOrDefault(typeExported))
+  // The chain of the member has the containing type in it. That is the whole
   // reason the two fixes can converge.
-  def memberScope() = pick(memberDir, pick(typeDir, fileOrDefault(memberExported)))
+  def memberScope() =
+    scopeOr(memberDirective,
+      scopeOr(typeDirective, fileOrDefault(memberExported)))
 
-  def typeCrosses()   = typeScope() == Private and typeRefs == CrossNs
-  def memberCrosses() = memberScope() == Private and memberRefs == CrossNs
+  def typeCrosses() =
+    typeScope() == Private
+    and typeReferencedFrom == OtherNamespace
+  def memberCrosses() =
+    memberScope() == Private
+    and memberReferencedFrom == OtherNamespace
 
-  // Whichever level stated the scope, if any. A fix is withheld for all of
-  // them, which is boundary_fix.fsl's subject and is restated here only so
-  // that the two fixes are guarded the way the implementation guards them.
-  def typeStated()   = orElse(typeDir, fileDir)
-  def memberStated() = orElse(memberDir, typeStated())
-  // The type carries the insertion: it crosses, nothing stated its scope, and
-  // its finding survived the baseline to be reported with its fix.
+  // The directive of the nearest level that stated the scope, if any. A fix
+  // is withheld for every such level. That is the subject of
+  // boundary_fix.fsl. It is restated here only to guard the two fixes the way
+  // the implementation guards them.
+  def typeStatedDirective() = directiveOr(typeDirective, fileDirective)
+  def memberStatedDirective() = directiveOr(memberDirective, typeStatedDirective())
+  // The type carries the insertion. It crosses, nothing stated its scope, and
+  // its finding survived the baseline. So the finding is reported with its
+  // fix.
   def typeWidens() =
     typeCrosses()
-    and typeStated() == NoDir
+    and typeStatedDirective() == NoDirective
     and not typeBaselined
 
-  action reportOnly() {
+  action reportWithoutFix() {
     requires configured
     stalled = true
   }
@@ -125,7 +145,7 @@ spec FixMembers {
     requires configured
     requires not typeFixed
     requires typeCrosses()
-    requires typeStated() == NoDir
+    requires typeStatedDirective() == NoDirective
     requires not typeBaselined
     typeFixed = true
   }
@@ -134,73 +154,83 @@ spec FixMembers {
     requires configured
     requires not memberFixed
     requires memberCrosses()
-    requires memberStated() == NoDir
-    // The guard this spec exists for. Deleting this line is the defect: both
-    // fixes then fire, and the member is left carrying an inert directive.
+    requires memberStatedDirective() == NoDirective
+    // The guard this spec exists for. Deleting this line is the defect. Both
+    // fixes then fire, and the member is left with an inert directive.
     requires not typeWidens()
     memberFixed = true
   }
 
   // --- what the source says once the run has finished ----------------------
-  def typeDirAfter()   = if typeFixed   then DirShared else typeDir
-  def memberDirAfter() = if memberFixed then DirShared else memberDir
+  def typeDirectiveAfter() = if typeFixed then SharedDirective else typeDirective
+  def memberDirectiveAfter() = if memberFixed then SharedDirective else memberDirective
 
-  // The scope the member takes from the levels outside its own directive, and
-  // whether that scope is the same under every configuration — it is not when
-  // defaults.unexported decides it. This is unused_bind.fsl's binding
-  // test, over the source the run leaves behind rather than the one it read.
-  def memberOuterFixed() =
-    typeDirAfter() != NoDir
-    or fileDir != NoDir
+  // The scope the member takes from the levels outside its own directive. And
+  // whether that scope is the same under every configuration. It is not when
+  // defaults.unexported decides it. This is the binding test of
+  // unused_bind.fsl. It reads the source the run leaves behind, not the
+  // source the run read.
+  def memberOuterScopeIsConfigIndependent() =
+    typeDirectiveAfter() != NoDirective
+    or fileDirective != NoDirective
     or memberExported
-  def memberOuterScope() = pick(typeDirAfter(), fileOrDefault(memberExported))
+  def memberOuterScope() = scopeOr(typeDirectiveAfter(), fileOrDefault(memberExported))
 
-  def typeOuterFixed() = fileDir != NoDir or typeExported
+  def typeOuterScopeIsConfigIndependent() =
+    fileDirective != NoDirective
+    or typeExported
   def typeOuterScope() = fileOrDefault(typeExported)
 
   // --- what the run leaves ---------------------------------------------------
-  def memberScopeAfter() = pick(memberDirAfter(), memberOuterScope())
-  def typeScopeAfter() = pick(typeDirAfter(), typeOuterScope())
-  def memberCrossesAfter() = memberScopeAfter() == Private and memberRefs == CrossNs
-  def typeCrossesAfter()   = typeScopeAfter() == Private and typeRefs == CrossNs
+  def memberScopeAfter() = scopeOr(memberDirectiveAfter(), memberOuterScope())
+  def typeScopeAfter() = scopeOr(typeDirectiveAfter(), typeOuterScope())
+  def memberCrossesAfter() =
+    memberScopeAfter() == Private
+    and memberReferencedFrom == OtherNamespace
+  def typeCrossesAfter() =
+    typeScopeAfter() == Private
+    and typeReferencedFrom == OtherNamespace
 
   invariant FixImpliesConfigured { (typeFixed or memberFixed) => configured }
 
-  // Auxiliary: no fix assigns the authored directives, so each guard still
+  // Auxiliary: no fix assigns the authored directives. So each guard still
   // holds of the state it fired in. Without these, induction would have to
-  // consider a run that inserted a directive where nothing crossed, and the
-  // claims below are not true of one.
+  // consider a run that inserted a directive where nothing crossed. The claims
+  // below are not true of such a run.
   invariant TypeFixRecordsItsGuard {
     typeFixed =>
       typeCrosses()
-      and typeStated() == NoDir
+      and typeStatedDirective() == NoDirective
       and not typeBaselined
   }
   invariant MemberFixRecordsItsGuard {
     memberFixed =>
       memberCrosses()
-      and memberStated() == NoDir
+      and memberStatedDirective() == NoDirective
       and not typeWidens()
   }
 
-  // The claim: no directive this run inserted binds nothing. Expanded rather
-  // than routed through memberInert, so that mutating the binding test moves
-  // only one side of the implication and the invariant can actually fail.
+  // The claim: no directive this run inserted binds nothing. The binding test
+  // is expanded here, not routed through a def. So a mutation of the binding
+  // test moves only one side of the implication, and the invariant can
+  // actually fail.
   invariant InsertedMemberDirectiveBinds {
     memberFixed =>
-      not (memberOuterFixed() and Shared == memberOuterScope())
+      not (memberOuterScopeIsConfigIndependent() and Shared == memberOuterScope())
   }
   invariant InsertedTypeDirectiveBinds {
-    typeFixed => not (typeOuterFixed() and Shared == typeOuterScope())
+    typeFixed =>
+      not (typeOuterScopeIsConfigIndependent() and Shared == typeOuterScope())
   }
 
-  // And the fixes still do their job: what each one writes settles the
+  // And the fixes still do their job. What each one writes settles the
   // crossing it was written for.
   invariant TypeFixSettles   { typeFixed   => not typeCrossesAfter() }
   invariant MemberFixSettles { memberFixed => not memberCrossesAfter() }
 
-  // The guards are load-bearing: without these a spurious insertion, or one
-  // written over the author's own directive, would go unnoticed.
+  // The guards are load-bearing. Without these, two defects would go
+  // unnoticed: a spurious insertion, and one written over the own directive of
+  // the author.
   trans FixTypeOnlyWhereNeeded {
     not old(typeFixed) and typeFixed => old(typeCrosses())
   }
@@ -208,80 +238,83 @@ spec FixMembers {
     not old(memberFixed) and memberFixed => old(memberCrosses())
   }
   trans FixNeverClobbersDirective {
-    (not old(typeFixed) and typeFixed => old(typeStated()) == NoDir)
-    and (not old(memberFixed) and memberFixed => old(memberStated()) == NoDir)
+    (not old(typeFixed) and typeFixed => old(typeStatedDirective()) == NoDirective)
+    and (not old(memberFixed) and memberFixed => old(memberStatedDirective()) == NoDirective)
   }
 
-  // The convergence itself, which is the state the guard has to survive: both
-  // cross, neither states a scope, and only the wider directive is written.
+  // The convergence itself. The guard has to survive this state. Both cross,
+  // neither states a scope, and only the wider directive is written.
   reachable BothCross {
     configured
     and typeCrosses()
     and memberCrosses()
-    and typeStated() == NoDir
-    and memberStated() == NoDir
+    and typeStatedDirective() == NoDirective
+    and memberStatedDirective() == NoDirective
   }
-  // memberCrosses reads the authored source, which no fix assigns, so it still
-  // says what the member did before the run: it crossed, nothing was written on
-  // it, and the type's directive settled it.
+  // memberCrosses reads the authored source, and no fix assigns that. So it
+  // still says what the member did before the run. The member crossed,
+  // nothing was written on it, and the directive of the type settled it.
   reachable OnlyTheWiderFixIsWritten {
     typeFixed
     and not memberFixed
     and memberCrosses()
-    and memberStated() == NoDir
+    and memberStatedDirective() == NoDirective
     and not memberCrossesAfter()
   }
 
-  // The narrower fix is not disabled, only subsumed: where the type does not
-  // cross, the member carries its own directive and it binds.
+  // The narrower fix is not disabled, only subsumed. Where the type does not
+  // cross, the member carries its own directive, and that directive binds.
   reachable MemberFixedWhereTypeDoesNotCross {
     memberFixed
     and not typeFixed
     and not typeCrosses()
-    and memberRefs == CrossNs
+    and memberReferencedFrom == OtherNamespace
     and not memberCrossesAfter()
   }
   // Nor is it disabled where the type crosses but the baseline absorbs the
-  // type's finding: no fix is written on the type, so the member carries its
-  // own, and it binds and settles the member's crossing.
+  // finding of the type. No fix is written on the type. So the member
+  // carries its own fix. It binds and settles the crossing of the member.
   reachable MemberFixedWhereTypeIsBaselined {
     memberFixed
     and not typeFixed
     and typeBaselined
     and typeCrosses()
-    and typeStated() == NoDir
+    and typeStatedDirective() == NoDirective
     and not memberCrossesAfter()
   }
-  // A member whose type states its own scope is withheld already, by the rule
-  // boundary_fix.fsl proves. Pinned here so that the subsumption guard is not
-  // the only thing keeping the member quiet.
+  // A member whose type states its own scope is already withheld, by the rule
+  // that boundary_fix.fsl proves. This witness shows such a state is
+  // reachable. It is reachable even without that guard, so it does not pin
+  // it. FixNeverClobbersDirective does.
   reachable MemberWithheldUnderTypeDirective {
     configured
-    and typeDir == DirPrivate
-    and memberDir == NoDir
+    and typeDirective == PrivateDirective
+    and memberDirective == NoDirective
     and memberCrosses()
     and not memberFixed
     and stalled
   }
 
-  // The stall itself. Without it nothing reads `stalled` and the assignment
-  // recording it could be deleted with no verdict moving.
+  // The stall itself. Without it, nothing reads `stalled`. The assignment
+  // that records it could then be deleted with no verdict moving.
   reachable CrossingSurvivesAPassWithoutFix {
     stalled
     and memberCrosses()
-    and memberStated() == NoDir
+    and memberStatedDirective() == NoDirective
   }
 
-  // Whichever of the two fixes applies, the member stops crossing: the type's
-  // directive reaches it when the type is fixed, and its own does otherwise.
+  // Whichever of the two fixes applies, the member stops crossing. The
+  // directive of the type reaches it when the type is fixed. Otherwise its
+  // own directive does.
   leadsTo MemberEventuallySettled {
-    configured and memberCrosses() and memberStated() == NoDir ~> not memberCrossesAfter()
+    configured and memberCrosses() and memberStatedDirective() == NoDirective
+      ~> not memberCrossesAfter()
     helpful fixType()
     helpful fixMember()
     decreases if memberCrossesAfter() then 1 else 0
   }
   leadsTo TypeEventuallySettled {
-    configured and typeCrosses() and typeStated() == NoDir and not typeBaselined
+    configured and typeCrosses() and typeStatedDirective() == NoDirective and not typeBaselined
       ~> not typeCrossesAfter()
     helpful fixType()
     decreases if typeCrossesAfter() then 1 else 0
