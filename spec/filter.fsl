@@ -30,11 +30,17 @@ spec Filter {
   state {
     configured: Bool = false,
     // The only list: which of the three patterns it holds.
-    o0: Bool = false, o1: Bool = false, o2: Bool = false,
+    o0: Bool = false,
+    o1: Bool = false,
+    o2: Bool = false,
     // The omit list, over the same three patterns.
-    x0: Bool = false, x1: Bool = false, x2: Bool = false,
+    x0: Bool = false,
+    x1: Bool = false,
+    x2: Bool = false,
     // Which of the three this file matches.
-    m0: Bool = false, m1: Bool = false, m2: Bool = false,
+    m0: Bool = false,
+    m1: Bool = false,
+    m2: Bool = false,
     // Recording the decision is what makes the guards below load-bearing.
     // An invariant written over the defs alone would hold however the actions
     // were guarded, and deleting a guard would not break it.
@@ -42,8 +48,10 @@ spec Filter {
     admitted: Bool = false,
     // The other order, subtract then narrow, recorded stage by stage.
     // afterOmit is what the first stage leaves for the second to narrow.
-    omitted: Bool = false, afterOmit: Bool = false,
-    reordered: Bool = false, reorderedAdmitted: Bool = false
+    omitted: Bool = false,
+    afterOmit: Bool = false,
+    reordered: Bool = false,
+    reorderedAdmitted: Bool = false
   }
 
   action configure(a0: Bool, a1: Bool, a2: Bool,
@@ -51,9 +59,15 @@ spec Filter {
                    c0: Bool, c1: Bool, c2: Bool) {
     requires not configured
     configured = true
-    o0 = a0  o1 = a1  o2 = a2
-    x0 = b0  x1 = b1  x2 = b2
-    m0 = c0  m1 = c1  m2 = c2
+    o0 = a0
+    o1 = a1
+    o2 = a2
+    x0 = b0
+    x1 = b1
+    x2 = b2
+    m0 = c0
+    m1 = c1
+    m2 = c2
   }
 
   // An empty only list places no restriction. This is the one asymmetry worth
@@ -119,15 +133,18 @@ spec Filter {
   invariant AdmittedEscapedOmit    { decided and admitted => not omitHit() }
   invariant DecisionNeedsConfig    { decided => configured }
 
+  // What the first stage of the other order recorded. OrderDoesNotMatter
+  // needs it to be proved by induction: without it, a state where afterOmit
+  // disagrees with the omit list is not ruled out.
+  invariant OmitStageRecordsOmit {
+    omitted => configured and (afterOmit == not omitHit())
+  }
   // Order is not a degree of freedom. Subtracting omit from the only set and
   // narrowing what omit left to the only set decide the file alike. The two
   // sides are recorded by different actions, so this compares two
   // computations rather than re-spelling keeps(). It is a trans, checked on
   // the step that finishes the second pipeline, because the first pipeline's
   // decision is settled by then and nothing assigns either record again.
-  invariant OmitStageRecordsOmit {
-    omitted => configured and (afterOmit == not omitHit())
-  }
   trans OrderDoesNotMatter {
     not old(reordered) and reordered => (reorderedAdmitted == admitted)
   }
@@ -135,61 +152,124 @@ spec Filter {
   // is not vacuous: one that only admits and one that omit removes from
   // inside only.
   reachable BothOrdersAdmitWhatSurvivesBoth {
-    decided and reordered and admitted and o0 and m0 and x1 and not m1
+    decided
+    and reordered
+    and admitted
+    and o0
+    and m0
+    and x1
+    and not m1
   }
   reachable BothOrdersRejectWhatOmitRemovesInsideOnly {
-    decided and reordered and not admitted and o0 and m0 and x0
+    decided
+    and reordered
+    and not admitted
+    and o0
+    and m0
+    and x0
   }
 
   // --- neither list: everything is read -------------------------------------
   reachable NoListsAdmitsAFileMatchingNothing {
-    decided and admitted and onlyEmpty() and omitEmpty()
-    and not m0 and not m1 and not m2
+    decided
+    and admitted
+    and onlyEmpty()
+    and omitEmpty()
+    and not m0
+    and not m1
+    and not m2
   }
 
   // --- only alone narrows ---------------------------------------------------
   reachable OnlyAloneAdmitsAMatch {
-    decided and admitted and omitEmpty() and o1 and m1
+    decided
+    and admitted
+    and omitEmpty()
+    and o1
+    and m1
   }
   reachable OnlyAloneRejectsANonMatch {
-    decided and not admitted and omitEmpty()
-    and o0 and not m0 and not m1 and not m2
+    decided
+    and not admitted
+    and omitEmpty()
+    and o0
+    and not m0
+    and not m1
+    and not m2
   }
   // Any of them is enough: the file matches the second pattern and not the
   // first, and is still in.
   reachable OnlyMatchesAnyOfSeveral {
-    decided and admitted and omitEmpty()
-    and o0 and o1 and not m0 and m1
+    decided
+    and admitted
+    and omitEmpty()
+    and o0
+    and o1
+    and not m0
+    and m1
   }
   // A listed pattern the file does not match decides nothing on its own.
   reachable UnmatchedOnlyPatternDoesNotAdmit {
-    decided and not admitted and omitEmpty() and o0 and o1 and not m0 and not m1
+    decided
+    and not admitted
+    and omitEmpty()
+    and o0
+    and o1
+    and not m0
+    and not m1
   }
 
   // --- omit alone subtracts, which is what exclude used to do ---------------
   reachable OmitAloneRejectsAMatch {
-    decided and not admitted and onlyEmpty() and x2 and m2
+    decided
+    and not admitted
+    and onlyEmpty()
+    and x2
+    and m2
   }
   reachable OmitAloneAdmitsANonMatch {
-    decided and admitted and onlyEmpty() and x0 and not m0
+    decided
+    and admitted
+    and onlyEmpty()
+    and x0
+    and not m0
   }
   reachable OmitMatchesAnyOfSeveral {
-    decided and not admitted and onlyEmpty()
-    and x0 and x1 and not m0 and m1
+    decided
+    and not admitted
+    and onlyEmpty()
+    and x0
+    and x1
+    and not m0
+    and m1
   }
 
   // --- both lists: omit still bites inside only, and only still narrows -----
-  // The pair is what stops one list from swallowing the other. Drop either
-  // test from admit() and one of these stops being reachable.
+  // The pair is what stops one list from swallowing the other. Each is a file
+  // both lists speak about, and each is rejected by a different list.
   reachable OmitStillBitesInsideOnly {
-    decided and not admitted and o0 and m0 and x0
+    decided
+    and not admitted
+    and o0
+    and m0
+    and x0
   }
   reachable OnlyStillNarrowsAlongsideOmit {
-    decided and not admitted and o0 and x1
-    and not m0 and not m1 and m2
+    decided
+    and not admitted
+    and o0
+    and x1
+    and not m0
+    and not m1
+    and m2
   }
   reachable BothListsAdmitWhatSurvivesBoth {
-    decided and admitted and o0 and m0 and x1 and not m1
+    decided
+    and admitted
+    and o0
+    and m0
+    and x1
+    and not m1
   }
 
   // --- omit is the stronger of the two --------------------------------------

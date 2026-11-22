@@ -13,7 +13,7 @@
 // two readings agree. Outer is the repository root, Near is the file beside
 // the package, and Mid is a directory between them.
 //
-// Reach is not modelled here. only and omit are path sets rather than values,
+// filter is not modelled here. only and omit are path sets rather than values,
 // they compose by union and intersection rather than by overriding, and
 // filter_chain.fsl is where that is proved.
 fsl 5
@@ -35,42 +35,51 @@ spec ConfigInherit {
   state {
     configured: Bool = false,
     // rules.naming.qualify, stated or not at each of the three levels.
-    qOuter: Stated = Unset, qMid: Stated = Unset, qNear: Stated = Unset,
+    qOuter: Stated = Unset,
+    qMid: Stated = Unset,
+    qNear: Stated = Unset,
     // rules.naming.vocabulary, two namespaces over two levels. Two namespaces
     // are what separates "the maps merge" from "the nearer map replaces the
     // other", and two levels are enough to see it.
-    aOuter: Word = NoWord, aNear: Word = NoWord,
-    bOuter: Flag = Off, bNear: Flag = Off,
+    aOuter: Word = NoWord,
+    aNear: Word = NoWord,
+    bOuter: Flag = Off,
+    bNear: Flag = Off,
     // Recording the resolution keeps the chain load-bearing: an invariant over
     // the defs alone would hold however resolve() was written.
     resolved: Bool = false,
-    qValue: Mode = Never, qFrom: Level = Builtin,
-    aValue: Word = NoWord, bValue: Flag = Off
+    qValue: Mode = Never,
+    qFrom: Level = Builtin,
+    aValue: Word = NoWord,
+    bValue: Flag = Off
   }
 
   action configure(qo: Stated, qm: Stated, qn: Stated,
                    ao: Word, an: Word, bo: Flag, bn: Flag) {
     requires not configured
     configured = true
-    qOuter = qo  qMid = qm  qNear = qn
-    aOuter = ao  aNear = an
-    bOuter = bo  bNear = bn
+    qOuter = qo
+    qMid = qm
+    qNear = qn
+    aOuter = ao
+    aNear = an
+    bOuter = bo
+    bNear = bn
   }
 
   def valueOf(s: Stated) = if s == AsAlways then Always else Never
 
-  // The nearest level that states the key, and nothing nearer than that.
-  def qEff() =
-    if qNear != Unset then valueOf(qNear)
-    else if qMid != Unset then valueOf(qMid)
-    else if qOuter != Unset then valueOf(qOuter)
-    else Never
+  // One step of the lookup: a level that states the key decides it, and a
+  // level that does not passes the question to the level above.
+  def valueOr(s: Stated, otherwise: Mode) =
+    if s != Unset then valueOf(s) else otherwise
+  def sourceOr(s: Stated, here: Level, otherwise: Level) =
+    if s != Unset then here else otherwise
 
-  def qSource() =
-    if qNear != Unset then Near
-    else if qMid != Unset then Mid
-    else if qOuter != Unset then Outer
-    else Builtin
+  // The nearest level that states the key, and nothing nearer than that. The
+  // built-in default is Never.
+  def qEff() = valueOr(qNear, valueOr(qMid, valueOr(qOuter, Never)))
+  def qSource() = sourceOr(qNear, Near, sourceOr(qMid, Mid, sourceOr(qOuter, Outer, Builtin)))
 
   // A map merges per key. The nearer file wins the keys it states, and the
   // keys it does not state keep the value from above. Replacing the whole map
@@ -92,7 +101,8 @@ spec ConfigInherit {
 
   // --- a stated key wins over everything above it ---------------------------
   invariant NearestStatedWins {
-    resolved and qNear != Unset => qValue == valueOf(qNear) and qFrom == Near
+    resolved and qNear != Unset
+      => qValue == valueOf(qNear) and qFrom == Near
   }
   invariant MidWinsWhenNearIsSilent {
     resolved and qNear == Unset and qMid != Unset
@@ -113,16 +123,28 @@ spec ConfigInherit {
   // Each level is witnessed supplying the value while the others differ, so a
   // resolution that read only one of them would be caught.
   reachable NearSupplies {
-    resolved and qFrom == Near and qNear == AsAlways
-    and qMid == AsNever and qOuter == AsNever and qValue == Always
+    resolved
+    and qFrom == Near
+    and qNear == AsAlways
+    and qMid == AsNever
+    and qOuter == AsNever
+    and qValue == Always
   }
   reachable MidSupplies {
-    resolved and qFrom == Mid and qNear == Unset
-    and qMid == AsAlways and qOuter == AsNever and qValue == Always
+    resolved
+    and qFrom == Mid
+    and qNear == Unset
+    and qMid == AsAlways
+    and qOuter == AsNever
+    and qValue == Always
   }
   reachable OuterSupplies {
-    resolved and qFrom == Outer and qNear == Unset and qMid == Unset
-    and qOuter == AsAlways and qValue == Always
+    resolved
+    and qFrom == Outer
+    and qNear == Unset
+    and qMid == Unset
+    and qOuter == AsAlways
+    and qValue == Always
   }
   reachable BuiltinSupplies {
     resolved and qFrom == Builtin and qValue == Never
@@ -130,20 +152,30 @@ spec ConfigInherit {
   // A nearer file may relax as well as tighten. The README says a subtree can
   // do either, and this is that sentence made checkable.
   reachable NearerRelaxes {
-    resolved and qOuter == AsAlways and qNear == AsNever and qValue == Never
+    resolved
+    and qOuter == AsAlways
+    and qNear == AsNever
+    and qValue == Never
   }
 
   // --- the map merges rather than replacing ---------------------------------
   // The one that matters: the root states a, the nested file states b, and
   // both survive. A map that replaced would lose a.
   reachable BothNamespacesSurvive {
-    resolved and aOuter == Wx and aNear == NoWord
-    and bOuter == Off and bNear == On
-    and aValue == Wx and bValue == On
+    resolved
+    and aOuter == Wx
+    and aNear == NoWord
+    and bOuter == Off
+    and bNear == On
+    and aValue == Wx
+    and bValue == On
   }
   // And on the one key they both state, the nearer file wins.
   reachable NearerWinsTheSharedKey {
-    resolved and aOuter == Wx and aNear == Wy and aValue == Wy
+    resolved
+    and aOuter == Wx
+    and aNear == Wy
+    and aValue == Wy
   }
   invariant StatedNearOwnsItsKey {
     resolved and aNear != NoWord => aValue == aNear

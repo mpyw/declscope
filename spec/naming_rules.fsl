@@ -50,7 +50,8 @@
 // its receiver, which names the unit holding its type: when that unit is the
 // file the method is written in, the namespace is already at the call site and
 // the rule stays out. Only a method filed in another namespace than its type is
-// asked to carry the one it is written in (internal/subject.go foreignMethod).
+// asked to carry the one it is written in (target.foreignMethod in
+// internal/subject.go).
 // A method whose receiver names no type the pass indexed has no second
 // namespace to disagree with, so it counts as colocated.
 //
@@ -71,19 +72,25 @@ spec NamingRules {
   enum Carry   { Absent, Inside, AtStart, Equal }
 
   state {
-    configured: Bool = false, cfgQualify: Qualify = Never,
-    cfgExportedNames: Bool = false, manyNs: Bool = false,
-    kind: Kind = Decl, exported: Bool = false,
-    canPrefix: Bool = true, isCore: Bool = false,
-    carry: Carry = Absent, fixed: Bool = false,
-    // fixOn is rules.naming.fix. Off by default, as in internal/options.go.
+    configured: Bool = false,
+    cfgQualify: Qualify = Never,
+    cfgExportedNames: Bool = false,
+    manyNs: Bool = false,
+    kind: Kind = Decl,
+    exported: Bool = false,
+    canPrefix: Bool = true,
+    isCore: Bool = false,
+    carry: Carry = Absent,
+    fixed: Bool = false,
+    // fixOn is rules.naming.fix. Off by default, as Options.NamingFix is in
+    // internal/options.go.
     fixOn: Bool = false,
-    // renameOffered stands for everything internal/rename.go safeToRename
+    // renameOffered stands for everything safeToRename in internal/rename.go
     // withholds beyond exportedness: a collision in any scope or on a type that
-    // holds the method, a name a directive or an assembly or cgo file spells as
-    // text, a file of the package the pass does not see, and a name another fix
-    // has already taken. The violation is reported either way; only the fix is
-    // withheld.
+    // holds the method, a name a directive spells as text, an assembly or cgo
+    // file anywhere in the package, a file of the package the pass does not
+    // see, and a name another fix has already taken. The violation is reported
+    // either way; only the fix is withheld.
     renameOffered: Bool = true,
     // stalled records a pass that reported without fixing — -fix off,
     // rules.naming.fix off, or the rename withheld. It is what lets a run go
@@ -96,19 +103,32 @@ spec NamingRules {
                    k: Kind, x: Bool, p: Bool, c: Bool, y: Carry, ro: Bool,
                    f: Bool) {
     requires not configured
-    configured = true  cfgQualify = q
-    cfgExportedNames = e  manyNs = m
-    kind = k  exported = x  canPrefix = p  isCore = c  carry = y
-    renameOffered = ro  fixOn = f
+    configured = true
+    cfgQualify = q
+    cfgExportedNames = e
+    manyNs = m
+    kind = k
+    exported = x
+    canPrefix = p
+    isCore = c
+    carry = y
+    renameOffered = ro
+    fixOn = f
   }
 
   // A pass that reports and does not fix, which may repeat forever.
-  action reportOnly() { requires configured  stalled = true }
+  action reportOnly() {
+    requires configured
+    stalled = true
+  }
 
   def qualifyRequired() = cfgQualify == Always or (cfgQualify == OnDemand and manyNs)
   def reachedKind() = kind == Decl or kind == ForeignMethod
-  def named() = reachedKind() and canPrefix and not isCore
-                and (not exported or cfgExportedNames)
+  def named() =
+    reachedKind()
+    and canPrefix
+    and not isCore
+    and (not exported or cfgExportedNames)
   def carries() = carry != Absent
   def qualifyFires() = named() and qualifyRequired() and not carries()
   def fixable() = not exported and renameOffered
@@ -116,8 +136,11 @@ spec NamingRules {
   def fixOffered() = fixOn and fixable()
 
   fair action fixQualify() {
-    requires configured  requires qualifyFires()  requires fixOffered()
-    carry = AtStart  fixed = true
+    requires configured
+    requires qualifyFires()
+    requires fixOffered()
+    carry = AtStart
+    fixed = true
   }
 
   invariant FixImpliesConfigured { fixed => configured }
@@ -147,106 +170,191 @@ spec NamingRules {
 
   reachable QualifyCanFire { configured and qualifyFires() }
 
+  // Pins the reachables below share. A namespace that can take a prefix and
+  // is not the core, and the strictest setting with the namespace nowhere in
+  // the name: the state where the rule fires unless something else stops it.
+  def prefixableNamespace() = canPrefix and not isCore
+  def alwaysWithoutNamespace() = cfgQualify == Always and carry == Absent
+
   // The relaxation itself: the namespace sits inside the name, the rule is at
   // its strictest, and nothing is reported.
   reachable InsideSilentUnderAlways {
-    configured and kind == Decl and canPrefix and not isCore and not exported
-    and cfgQualify == Always and carry == Inside and not qualifyFires()
+    configured
+    and kind == Decl
+    and prefixableNamespace()
+    and not exported
+    and cfgQualify == Always
+    and carry == Inside
+    and not qualifyFires()
   }
   // The negative control for the release that demanded a prefix: under that
   // rule this same state reported. If containment is ever narrowed back to a
   // prefix test, this witness goes unreachable and the spec fails.
   reachable InsideWouldHaveFiredBefore {
-    configured and named() and qualifyRequired()
-    and carry == Inside and not qualifyFires()
+    configured
+    and named()
+    and qualifyRequired()
+    and carry == Inside
+    and not qualifyFires()
   }
   // A name identical to its namespace carries it, whichever way the rule is set.
   reachable EqualSilentUnderAlways {
-    configured and kind == Decl and canPrefix and not isCore and not exported
-    and cfgQualify == Always and carry == Equal and not qualifyFires()
+    configured
+    and kind == Decl
+    and prefixableNamespace()
+    and not exported
+    and cfgQualify == Always
+    and carry == Equal
+    and not qualifyFires()
   }
 
   // Each silence below pins every other reason for silence, so that the one it
   // is named for is the one being witnessed.
   reachable ExportedSilentByDefault {
-    configured and kind == Decl and canPrefix and not isCore and exported
-    and not cfgExportedNames and cfgQualify == Always and carry == Absent
+    configured
+    and kind == Decl
+    and prefixableNamespace()
+    and exported
+    and not cfgExportedNames
+    and alwaysWithoutNamespace()
     and not qualifyFires()
   }
   reachable ExportedReportedWithoutFix {
-    configured and kind == Decl and canPrefix and not isCore and exported
-    and cfgExportedNames and cfgQualify == Always and carry == Absent
-    and qualifyFires() and not fixable()
+    configured
+    and kind == Decl
+    and prefixableNamespace()
+    and exported
+    and cfgExportedNames
+    and alwaysWithoutNamespace()
+    and qualifyFires()
+    and not fixable()
   }
   reachable CoreSilentUnderAlways {
-    configured and kind == Decl and canPrefix and isCore and not exported
-    and cfgQualify == Always and carry == Absent and not qualifyFires()
+    configured
+    and kind == Decl
+    and canPrefix
+    and isCore
+    and not exported
+    and alwaysWithoutNamespace()
+    and not qualifyFires()
   }
   reachable MembersAreNeverNamed {
-    configured and kind == Member and canPrefix and not isCore and not exported
-    and cfgQualify == Always and carry == Absent and not qualifyFires()
+    configured
+    and kind == Member
+    and prefixableNamespace()
+    and not exported
+    and alwaysWithoutNamespace()
+    and not qualifyFires()
   }
   // A method written beside its type: func (u user) greet() in user.go.
   reachable ColocatedMethodNeverNamed {
-    configured and kind == ColocatedMethod and canPrefix
-    and not isCore and not exported
-    and cfgQualify == Always and carry == Absent and not qualifyFires()
+    configured
+    and kind == ColocatedMethod
+    and prefixableNamespace()
+    and not exported
+    and alwaysWithoutNamespace()
+    and not qualifyFires()
   }
   // The same method filed in query.go while its type is in statement.go.
   reachable ForeignMethodNamed {
-    configured and kind == ForeignMethod and canPrefix
-    and not isCore and not exported
-    and cfgQualify == Always and carry == Absent and qualifyFires()
+    configured
+    and kind == ForeignMethod
+    and prefixableNamespace()
+    and not exported
+    and alwaysWithoutNamespace()
+    and qualifyFires()
   }
   // func main in package main: unexported, and still silent.
   reachable ToolchainNameSilentUnderAlways {
-    configured and kind == ToolchainFunc and canPrefix and not isCore
+    configured
+    and kind == ToolchainFunc
+    and prefixableNamespace()
     and not exported
-    and cfgQualify == Always and carry == Absent and not qualifyFires()
+    and alwaysWithoutNamespace()
+    and not qualifyFires()
   }
   // TestGreet in user_test.go: exported, and silent even with
   // rules.naming.exported on, which would otherwise reach it.
   reachable TestFunctionSilentUnderExportedNames {
-    configured and kind == ToolchainFunc and canPrefix and not isCore
-    and exported and cfgExportedNames
-    and cfgQualify == Always and carry == Absent and not qualifyFires()
+    configured
+    and kind == ToolchainFunc
+    and prefixableNamespace()
+    and exported
+    and cfgExportedNames
+    and alwaysWithoutNamespace()
+    and not qualifyFires()
   }
   reachable UnprefixableNamespaceNeverNamed {
-    configured and kind == Decl and not canPrefix and not isCore and not exported
-    and cfgQualify == Always and carry == Absent and not qualifyFires()
+    configured
+    and kind == Decl
+    and not canPrefix
+    and not isCore
+    and not exported
+    and alwaysWithoutNamespace()
+    and not qualifyFires()
   }
   reachable OnDemandSilentInSingleNamespace {
-    configured and kind == Decl and canPrefix and not isCore and not exported
-    and cfgQualify == OnDemand and not manyNs and carry == Absent
+    configured
+    and kind == Decl
+    and prefixableNamespace()
+    and not exported
+    and cfgQualify == OnDemand
+    and not manyNs
+    and carry == Absent
     and not qualifyFires()
   }
   reachable NeverSilent {
-    configured and kind == Decl and canPrefix and not isCore and not exported
-    and cfgQualify == Never and carry == Absent and not qualifyFires()
+    configured
+    and kind == Decl
+    and prefixableNamespace()
+    and not exported
+    and cfgQualify == Never
+    and carry == Absent
+    and not qualifyFires()
   }
   // ondemand with a second namespace: the setting declscope holds itself to
   // (.declscope-strict.yaml). The shipped default is Never — its silence is
   // NeverSilent above — so this is the combination a codebase that opts in
   // actually runs under, and without it that combination is never exercised.
   reachable OnDemandBitesWithSecondNamespace {
-    configured and kind == Decl and canPrefix and not isCore and not exported
-    and cfgQualify == OnDemand and manyNs and carry == Absent and qualifyFires()
+    configured
+    and kind == Decl
+    and prefixableNamespace()
+    and not exported
+    and cfgQualify == OnDemand
+    and manyNs
+    and carry == Absent
+    and qualifyFires()
   }
   // naming.exported and the ondemand namespace count are independent gates:
   // surplus to exported names does not change *when* the namespace is required.
   reachable ExportedNamesBiteUnderAlwaysSingleNamespace {
-    configured and kind == Decl and canPrefix and not isCore and exported
-    and cfgExportedNames and cfgQualify == Always and not manyNs
-    and carry == Absent and qualifyFires()
+    configured
+    and kind == Decl
+    and prefixableNamespace()
+    and exported
+    and cfgExportedNames
+    and alwaysWithoutNamespace()
+    and not manyNs
+    and qualifyFires()
   }
   reachable ExportedNamesSilentInSingleNamespace {
-    configured and kind == Decl and canPrefix and not isCore and exported
-    and cfgExportedNames and cfgQualify == OnDemand and not manyNs
-    and carry == Absent and not qualifyFires()
+    configured
+    and kind == Decl
+    and prefixableNamespace()
+    and exported
+    and cfgExportedNames
+    and cfgQualify == OnDemand
+    and not manyNs
+    and carry == Absent
+    and not qualifyFires()
   }
   // Reported, with the rename withheld for a reason other than exportedness.
   reachable ReportedWithRenameWithheld {
-    configured and qualifyFires() and not exported and not renameOffered
+    configured
+    and qualifyFires()
+    and not exported
+    and not renameOffered
     and not fixable()
   }
   // Without this the fix need never record itself, and every property about
@@ -256,13 +364,20 @@ spec NamingRules {
   // The default: the rule fires, the guard would allow the rename, and the
   // switch is off. The report stands with no fix offered.
   reachable ReportedWithFixOff {
-    configured and not fixOn and qualifyFires() and fixable()
+    configured
+    and not fixOn
+    and qualifyFires()
+    and fixable()
     and not fixOffered()
   }
   // A pass under the default leaves the violation in place, and nothing is
   // renamed.
   reachable FixOffLeavesTheReport {
-    stalled and not fixOn and qualifyFires() and fixable() and not fixed
+    stalled
+    and not fixOn
+    and qualifyFires()
+    and fixable()
+    and not fixed
   }
   // The stall itself, which is the state the leadsTo below has to escape.
   // Without these nothing reads `stalled`, and the assignment recording it
@@ -275,7 +390,8 @@ spec NamingRules {
   }
 
   leadsTo QualifyEventuallyFixed {
-    configured and qualifyFires() and fixOffered() ~> not qualifyFires()
+    configured and qualifyFires() and fixOffered()
+      ~> not qualifyFires()
     helpful fixQualify()
     decreases if qualifyFires() then 1 else 0
   }

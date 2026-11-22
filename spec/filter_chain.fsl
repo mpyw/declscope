@@ -28,18 +28,25 @@ spec FilterChain {
     configured: Bool = false,
     // Which lists each level states. An empty list places no restriction,
     // which for only is a rule rather than a consequence (filter.fsl).
-    oOnlyEmpty: Bool = true, oOmitEmpty: Bool = true,
-    nOnlyEmpty: Bool = true, nOmitEmpty: Bool = true,
+    oOnlyEmpty: Bool = true,
+    oOmitEmpty: Bool = true,
+    nOnlyEmpty: Bool = true,
+    nOmitEmpty: Bool = true,
     // Two files, because the warning below is about there being no file left.
     // For each: does it match the outer level's only, the outer's omit, the
     // nearer level's only, the nearer's omit.
-    f1oOnly: Bool = false, f1oOmit: Bool = false,
-    f1nOnly: Bool = false, f1nOmit: Bool = false,
-    f2oOnly: Bool = false, f2oOmit: Bool = false,
-    f2nOnly: Bool = false, f2nOmit: Bool = false,
+    f1oOnly: Bool = false,
+    f1oOmit: Bool = false,
+    f1nOnly: Bool = false,
+    f1nOmit: Bool = false,
+    f2oOnly: Bool = false,
+    f2oOmit: Bool = false,
+    f2nOnly: Bool = false,
+    f2nOmit: Bool = false,
     // Recording the outcome keeps the guards load-bearing.
     decided: Bool = false,
-    kept1: Bool = false, kept2: Bool = false,
+    kept1: Bool = false,
+    kept2: Bool = false,
     warned: Bool = false
   }
 
@@ -54,29 +61,63 @@ spec FilterChain {
     requires ne => (not c1 and not c2)
     requires me => (not d1 and not d2)
     configured = true
-    oOnlyEmpty = oe  oOmitEmpty = xe  nOnlyEmpty = ne  nOmitEmpty = me
-    f1oOnly = a1  f1oOmit = b1  f1nOnly = c1  f1nOmit = d1
-    f2oOnly = a2  f2oOmit = b2  f2nOnly = c2  f2nOmit = d2
+    oOnlyEmpty = oe
+    oOmitEmpty = xe
+    nOnlyEmpty = ne
+    nOmitEmpty = me
+    f1oOnly = a1
+    f1oOmit = b1
+    f1nOnly = c1
+    f1nOmit = d1
+    f2oOnly = a2
+    f2oOmit = b2
+    f2nOnly = c2
+    f2nOmit = d2
   }
 
+  // Each def below takes one file's four match results: its match against the
+  // outer only, the outer omit, the nearer only and the nearer omit. The 1 and
+  // 2 forms apply it to the two files.
+
   // One level's verdict on one file, which is filter.fsl's rule.
-  def outerKeeps1() = (oOnlyEmpty or f1oOnly) and not f1oOmit
-  def outerKeeps2() = (oOnlyEmpty or f2oOnly) and not f2oOmit
+  def outerKeeps(outerOnly: Bool, outerOmit: Bool) =
+    (oOnlyEmpty or outerOnly) and not outerOmit
+  def outerKeeps1() = outerKeeps(f1oOnly, f1oOmit)
+  def outerKeeps2() = outerKeeps(f2oOnly, f2oOmit)
 
   // The chain: only intersects, omit unions.
-  def chainPassesOnly1() = (oOnlyEmpty or f1oOnly) and (nOnlyEmpty or f1nOnly)
-  def chainPassesOnly2() = (oOnlyEmpty or f2oOnly) and (nOnlyEmpty or f2nOnly)
-  def chainOmits1() = f1oOmit or f1nOmit
-  def chainOmits2() = f2oOmit or f2nOmit
-  def chainKeeps1() = chainPassesOnly1() and not chainOmits1()
-  def chainKeeps2() = chainPassesOnly2() and not chainOmits2()
+  def chainPassesOnly(outerOnly: Bool, nearerOnly: Bool) =
+    (oOnlyEmpty or outerOnly) and (nOnlyEmpty or nearerOnly)
+  def chainOmits(outerOmit: Bool, nearerOmit: Bool) = outerOmit or nearerOmit
+  def chainKeeps(outerOnly: Bool, outerOmit: Bool,
+                 nearerOnly: Bool, nearerOmit: Bool) =
+    chainPassesOnly(outerOnly, nearerOnly)
+    and not chainOmits(outerOmit, nearerOmit)
+  def chainKeeps1() = chainKeeps(f1oOnly, f1oOmit, f1nOnly, f1nOmit)
+  def chainKeeps2() = chainKeeps(f2oOnly, f2oOmit, f2nOnly, f2nOmit)
 
   // A file the nearest config's only admits and no omit removes, which the
   // chain drops anyway: only an only above can have done it. A file an omit
   // removes is not counted, since the omit is the author's own choice and the
   // report names an only above as the cause (Options.CancelledAbove).
-  def cancelled1() = not nOnlyEmpty and f1nOnly and not chainOmits1() and not chainPassesOnly1()
-  def cancelled2() = not nOnlyEmpty and f2nOnly and not chainOmits2() and not chainPassesOnly2()
+  def cancelled(outerOnly: Bool, outerOmit: Bool,
+                nearerOnly: Bool, nearerOmit: Bool) =
+    not nOnlyEmpty
+    and nearerOnly
+    and not chainOmits(outerOmit, nearerOmit)
+    and not chainPassesOnly(outerOnly, nearerOnly)
+  def cancelled1() = cancelled(f1oOnly, f1oOmit, f1nOnly, f1nOmit)
+  def cancelled2() = cancelled(f2oOnly, f2oOmit, f2nOnly, f2nOmit)
+
+  // The cause the report names, spelled from the inputs rather than through
+  // cancelled(): the nearer only admits the file, the outer only does not,
+  // and neither omit removes it.
+  def removedByTheOnlyAbove(outerOnly: Bool, outerOmit: Bool,
+                            nearerOnly: Bool, nearerOmit: Bool) =
+    nearerOnly
+    and not outerOnly
+    and not outerOmit
+    and not nearerOmit
 
   action decide() {
     requires configured
@@ -90,7 +131,9 @@ spec FilterChain {
     // its omit leaves are all removed by an only above it, and so that config
     // can never take effect. Nobody writes a filter for a subtree they meant
     // to exclude.
-    warned = not chainKeeps1() and not chainKeeps2() and (cancelled1() or cancelled2())
+    warned = not chainKeeps1()
+             and not chainKeeps2()
+             and (cancelled1() or cancelled2())
   }
 
   invariant DecisionNeedsConfig { decided => configured }
@@ -103,23 +146,39 @@ spec FilterChain {
   }
   // Stated the two ways it can be broken, so that a repair to one is not
   // mistaken for a repair to both.
-  invariant OuterOmitIsFinal   { decided and f1oOmit => not kept1 }
+  invariant OuterOmitIsFinal { decided and f1oOmit => not kept1 }
   invariant OuterOnlyIsAnUpperBound {
     decided and not oOnlyEmpty and not f1oOnly => not kept1
   }
 
   // --- and the nearer file still does its job -------------------------------
   reachable NearerOmitSubtractsFurther {
-    decided and outerKeeps1() and f1nOmit and not kept1
+    decided
+    and outerKeeps1()
+    and f1nOmit
+    and not kept1
   }
   reachable NearerOnlyNarrowsFurther {
-    decided and outerKeeps1() and not nOnlyEmpty and not f1nOnly and not kept1
+    decided
+    and outerKeeps1()
+    and not nOnlyEmpty
+    and not f1nOnly
+    and not kept1
   }
   reachable NearerStatingNothingChangesNothing {
-    decided and nOnlyEmpty and nOmitEmpty and outerKeeps1() and kept1
+    decided
+    and nOnlyEmpty
+    and nOmitEmpty
+    and outerKeeps1()
+    and kept1
   }
   reachable BothLevelsAdmit {
-    decided and not oOnlyEmpty and f1oOnly and not nOnlyEmpty and f1nOnly and kept1
+    decided
+    and not oOnlyEmpty
+    and f1oOnly
+    and not nOnlyEmpty
+    and f1nOnly
+    and kept1
   }
 
   // --- the two levels are anchored separately -------------------------------
@@ -135,51 +194,79 @@ spec FilterChain {
   // --- the warning ----------------------------------------------------------
   // Intersecting two only lists that do not overlap leaves nothing to read.
   invariant WarnedExactlyWhenTheNearestOnlyIsCancelled {
-    decided => (warned == (not kept1 and not kept2 and (cancelled1() or cancelled2())))
+    decided => (warned == (not kept1
+                           and not kept2
+                           and (cancelled1() or cancelled2())))
   }
   // The report's message is true: where it fires, an only above the nearest
   // config removed a file that config's only admits and no omit removes.
   invariant WarnedOnlyWhereAnOnlyAboveRemoves {
     decided and warned => not oOnlyEmpty and (
-      (f1nOnly and not f1oOnly and not f1oOmit and not f1nOmit) or
-      (f2nOnly and not f2oOnly and not f2oOmit and not f2nOmit))
+      removedByTheOnlyAbove(f1oOnly, f1oOmit, f1nOnly, f1nOmit) or
+      removedByTheOnlyAbove(f2oOnly, f2oOmit, f2nOnly, f2nOmit))
   }
   invariant ReadingSomethingNeverWarns { decided and (kept1 or kept2) => not warned }
   reachable NearestOnlyCancelledByTheOneAbove {
-    decided and not oOnlyEmpty and not nOnlyEmpty
-    and f1nOnly and not f1oOnly
-    and f2nOnly and not f2oOnly
+    decided
+    and not oOnlyEmpty
+    and not nOnlyEmpty
+    and f1nOnly
+    and not f1oOnly
+    and f2nOnly
+    and not f2oOnly
     and warned
   }
   // The cases that must stay quiet, which is what keeps the report rare.
   // A root only that excludes a subtree with no config of its own is the
   // setting working, not a mistake.
   reachable NothingReadAndNoNearestOnlyStaysQuiet {
-    decided and not oOnlyEmpty and nOnlyEmpty
-    and not f1oOnly and not f2oOnly
-    and not kept1 and not kept2 and not warned
+    decided
+    and not oOnlyEmpty
+    and nOnlyEmpty
+    and not f1oOnly
+    and not f2oOnly
+    and not kept1
+    and not kept2
+    and not warned
   }
   // An omit that empties a package is equally deliberate.
   reachable OmitEmptiedThePackageQuietly {
-    decided and oOnlyEmpty and nOnlyEmpty and not oOmitEmpty
-    and f1oOmit and f2oOmit and not warned
+    decided
+    and oOnlyEmpty
+    and nOnlyEmpty
+    and not oOmitEmpty
+    and f1oOmit
+    and f2oOmit
+    and not warned
   }
   reachable ReadsSomethingAndDoesNotWarn { decided and kept1 and not warned }
   // The nearest config's own omit removes what its only matches. No only
   // above is the cause, so nothing is said, even where an only above would
   // also have removed the files.
   reachable NearestOmitEmptiedItsOnlyQuietly {
-    decided and not nOnlyEmpty and f1nOnly and f2nOnly
-    and f1nOmit and f2nOmit
-    and not oOnlyEmpty and not f1oOnly and not f2oOnly
+    decided
+    and not nOnlyEmpty
+    and f1nOnly
+    and f2nOnly
+    and f1nOmit
+    and f2nOmit
+    and not oOnlyEmpty
+    and not f1oOnly
+    and not f2oOnly
     and not warned
   }
   // One file is omitted and the only above removes the other: the report
   // fires, and its cause is the only above.
   reachable CancelledBesideAnOmit {
-    decided and not oOnlyEmpty and not nOnlyEmpty
-    and f1nOnly and not f1oOnly and not f1nOmit and not f1oOmit
-    and f2nOnly and f2nOmit
+    decided
+    and not oOnlyEmpty
+    and not nOnlyEmpty
+    and f1nOnly
+    and not f1oOnly
+    and not f1nOmit
+    and not f1oOmit
+    and f2nOnly
+    and f2nOmit
     and warned
   }
 }
