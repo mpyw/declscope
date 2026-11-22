@@ -76,20 +76,20 @@
 fsl 5
 spec UnusedModes {
   enum Scope { Shared, Private }
-  enum Dir   { NoDir, DirShared, DirPrivate }
+  enum Directive   { NoDirective, SharedDirective, PrivateDirective }
   enum Mode  { Off, Loose, Strict }
 
   state {
     phase: 0..5 = 0,
     mode: Mode = Loose,
     stated: Scope = Shared,
-    cfgUnexported: Scope = Private,
+    unexportedDefault: Scope = Private,
     aPresent: Bool = false,
     aExported: Bool = false,
-    aOuter: Dir = NoDir,
+    aOuter: Directive = NoDirective,
     bPresent: Bool = false,
     bExported: Bool = false,
-    bOuter: Dir = NoDir,
+    bOuter: Directive = NoDirective,
     boundaryOn: Bool = true,
     surplusOn: Bool = true,
     aCrosses: Bool = false,
@@ -118,11 +118,11 @@ spec UnusedModes {
     phase = 1
     mode = givenMode
     stated = givenStated
-    cfgUnexported = givenCfgUnexported
+    unexportedDefault = givenCfgUnexported
     boundaryOn = givenBoundaryOn
     surplusOn = givenSurplusOn
   }
-  action configureTaker(givenTakerPresent: Bool, givenTakerExported: Bool, givenTakerOuter: Dir) {
+  action configureTaker(givenTakerPresent: Bool, givenTakerExported: Bool, givenTakerOuter: Directive) {
     requires phase == 1
     phase = 2
     aPresent = givenTakerPresent
@@ -131,7 +131,7 @@ spec UnusedModes {
   }
   action configureShadowed(givenShadowedPresent: Bool,
                            givenShadowedExported: Bool,
-                           givenShadowedOuter: Dir) {
+                           givenShadowedOuter: Directive) {
     requires phase == 2
     phase = 3
     bPresent = givenShadowedPresent
@@ -162,12 +162,12 @@ spec UnusedModes {
 
   // The scope from the next level out, and whether it is the same under every
   // configuration. These are outerFixed and outerScope of unused_bind.fsl.
-  def outerFixed(outer: Dir, isExported: Bool) = outer != NoDir or isExported
-  def outerScope(outer: Dir, isExported: Bool) =
-    if outer == DirShared then Shared
-    else if outer == DirPrivate then Private
+  def outerFixed(outer: Directive, isExported: Bool) = outer != NoDirective or isExported
+  def outerScope(outer: Directive, isExported: Bool) =
+    if outer == SharedDirective then Shared
+    else if outer == PrivateDirective then Private
     else if isExported then Shared
-    else cfgUnexported
+    else unexportedDefault
 
   // loose: bound when a takes a scope it could not have had under any
   // configuration. b is shadowed, so it binds nothing to this directive.
@@ -259,7 +259,7 @@ spec UnusedModes {
     phase == 5
     and mode == Off
     and aPresent
-    and aOuter == DirPrivate
+    and aOuter == PrivateDirective
     and stated == Private
     and not bPresent
     and not reported
@@ -274,8 +274,8 @@ spec UnusedModes {
     and mode == Loose
     and aPresent
     and not aExported
-    and aOuter == NoDir
-    and cfgUnexported == Private
+    and aOuter == NoDirective
+    and unexportedDefault == Private
     and stated == Private
     and not bPresent
     and not reported
@@ -285,8 +285,8 @@ spec UnusedModes {
     and mode == Strict
     and aPresent
     and not aExported
-    and aOuter == NoDir
-    and cfgUnexported == Private
+    and aOuter == NoDirective
+    and unexportedDefault == Private
     and stated == Private
     and not bPresent
     and reported
@@ -298,8 +298,8 @@ spec UnusedModes {
     and mode == Strict
     and aPresent
     and not aExported
-    and aOuter == NoDir
-    and cfgUnexported == Shared
+    and aOuter == NoDirective
+    and unexportedDefault == Shared
     and stated == Private
     and not bPresent
     and not reported
@@ -309,8 +309,8 @@ spec UnusedModes {
     and mode == Strict
     and aPresent
     and not aExported
-    and aOuter == NoDir
-    and cfgUnexported == Shared
+    and aOuter == NoDirective
+    and unexportedDefault == Shared
     and stated == Shared
     and not bPresent
     and reported
@@ -322,7 +322,7 @@ spec UnusedModes {
     phase == 5
     and mode == Loose
     and aPresent
-    and aOuter == DirPrivate
+    and aOuter == PrivateDirective
     and stated == Private
     and reported
     and not fixed
@@ -331,7 +331,7 @@ spec UnusedModes {
     phase == 5
     and mode == Strict
     and aPresent
-    and aOuter == DirPrivate
+    and aOuter == PrivateDirective
     and stated == Private
     and not bPresent
     and reported
@@ -346,8 +346,8 @@ spec UnusedModes {
     and not aPresent
     and bPresent
     and not bExported
-    and bOuter == NoDir
-    and cfgUnexported == Private
+    and bOuter == NoDirective
+    and unexportedDefault == Private
     and stated == Shared
     and reported
     and not fixed
@@ -358,8 +358,8 @@ spec UnusedModes {
     and not aPresent
     and bPresent
     and not bExported
-    and bOuter == NoDir
-    and cfgUnexported == Private
+    and bOuter == NoDirective
+    and unexportedDefault == Private
     and stated == Private
     and fixed
   }
@@ -415,7 +415,7 @@ spec UnusedModes {
     and mode == Strict
     and stated == Shared
     and aExported
-    and aOuter == NoDir
+    and aOuter == NoDirective
     and boundaryOn
     and aCrosses
     and noOtherReason()
@@ -534,7 +534,7 @@ spec UnusedModes {
     and mode == Strict
     and aPresent
     and aExported
-    and aOuter == NoDir
+    and aOuter == NoDirective
     and stated == Private
     and not bPresent
     and not reported

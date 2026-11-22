@@ -28,7 +28,7 @@
 // directive that the spec overrides. Then comes the type's, for a field. Then
 // comes the file's. Skipping the block would judge a spec's private under a
 // shared block against the file. It would call that private inert, where
-// deleting it widens the spec. outerDir is the nearest of these levels,
+// deleting it widens the spec. outerDirective is the nearest of these levels,
 // whichever level that is.
 //
 // So the scope outside this directive is FIXED in two cases. An outer level
@@ -50,14 +50,14 @@
 fsl 5
 spec UnusedBind {
   enum Scope { Shared, Private }
-  enum Dir   { NoDir, DirShared, DirPrivate }
+  enum Directive   { NoDirective, SharedDirective, PrivateDirective }
 
   state {
     configured: Bool = false,
     // What this directive names, and what the levels outside it say.
     stated: Scope = Shared,
-    outerDir: Dir = NoDir,
-    cfgUnexported: Scope = Private,
+    outerDirective: Directive = NoDirective,
+    unexportedDefault: Scope = Private,
     // The declaration the directive is written on, if any.
     hasTarget: Bool = false,
     targetExported: Bool = false,
@@ -72,7 +72,7 @@ spec UnusedBind {
     bound: Bool = false
   }
   action configure(givenStated: Scope,
-                   givenOuterDir: Dir,
+                   givenOuterDirective: Directive,
                    givenCfgUnexported: Scope,
                    givenHasTarget: Bool,
                    givenTargetExported: Bool,
@@ -85,8 +85,8 @@ spec UnusedBind {
     requires not configured
     configured = true
     stated = givenStated
-    outerDir = givenOuterDir
-    cfgUnexported = givenCfgUnexported
+    outerDirective = givenOuterDirective
+    unexportedDefault = givenCfgUnexported
     hasTarget = givenHasTarget
     targetExported = givenTargetExported
     firstPresent = givenFirstPresent
@@ -97,12 +97,12 @@ spec UnusedBind {
     secondShadowed = givenSecondShadowed
   }
 
-  def outerFixed(isExported: Bool) = outerDir != NoDir or isExported
+  def outerFixed(isExported: Bool) = outerDirective != NoDirective or isExported
   def outerScope(isExported: Bool) =
-    if outerDir == DirShared then Shared
-    else if outerDir == DirPrivate then Private
+    if outerDirective == SharedDirective then Shared
+    else if outerDirective == PrivateDirective then Private
     else if isExported then Shared
-    else cfgUnexported
+    else unexportedDefault
   def inert(isExported: Bool) = outerFixed(isExported) and stated == outerScope(isExported)
 
   // What binds. Either the declaration the directive sits on, or an enclosed
@@ -150,16 +150,16 @@ spec UnusedBind {
   reachable UnexportedBindsSharedUnderSharedDefault {
     onTargetAlone()
     and not targetExported
-    and outerDir == NoDir
-    and cfgUnexported == Shared
+    and outerDirective == NoDirective
+    and unexportedDefault == Shared
     and stated == Shared
     and bound
   }
   reachable UnexportedBindsPrivateUnderPrivateDefault {
     onTargetAlone()
     and not targetExported
-    and outerDir == NoDir
-    and cfgUnexported == Private
+    and outerDirective == NoDirective
+    and unexportedDefault == Private
     and stated == Private
     and bound
   }
@@ -169,21 +169,21 @@ spec UnusedBind {
   reachable ExportedSharedIsInert {
     onTargetAlone()
     and targetExported
-    and outerDir == NoDir
+    and outerDirective == NoDirective
     and stated == Shared
     and reported()
   }
   reachable ExportedSharedBindsUnderPrivateOuter {
     onTargetAlone()
     and targetExported
-    and outerDir == DirPrivate
+    and outerDirective == PrivateDirective
     and stated == Shared
     and bound
   }
   reachable ExportedNarrowedByPrivateBinds {
     onTargetAlone()
     and targetExported
-    and outerDir == NoDir
+    and outerDirective == NoDirective
     and stated == Private
     and bound
   }
@@ -192,7 +192,7 @@ spec UnusedBind {
   reachable SpecNarrowingItsBlockBinds {
     onTargetAlone()
     and not targetExported
-    and outerDir == DirShared
+    and outerDirective == SharedDirective
     and stated == Private
     and bound
   }
@@ -200,7 +200,7 @@ spec UnusedBind {
   reachable RestatingOuterIsInert {
     onTargetAlone()
     and not targetExported
-    and outerDir == DirPrivate
+    and outerDirective == PrivateDirective
     and stated == Private
     and reported()
   }
@@ -211,7 +211,7 @@ spec UnusedBind {
     and hasTarget
     and targetExported
     and stated == Shared
-    and outerDir == NoDir
+    and outerDirective == NoDirective
     and firstPresent
     and not firstExported
     and not firstShadowed
@@ -221,7 +221,7 @@ spec UnusedBind {
   reachable UsedViaSecondOnly {
     configured
     and not hasTarget
-    and outerDir == NoDir
+    and outerDirective == NoDirective
     and firstPresent
     and firstShadowed
     and secondPresent
@@ -233,7 +233,7 @@ spec UnusedBind {
     onTargetAlone()
     and targetExported
     and stated == Shared
-    and outerDir == NoDir
+    and outerDirective == NoDirective
     and reported()
   }
   reachable UnusedBecauseAllShadowed {

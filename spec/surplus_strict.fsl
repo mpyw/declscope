@@ -160,7 +160,7 @@ spec SurplusStrict {
 
   def exported() = source == Exported
   def ownDirective() = source == OwnDirective
-  def cfgUnexported() = if source == SharedDefault then Shared else Private
+  def unexportedDefault() = if source == SharedDefault then Shared else Private
   def entryMixed() = shape == MixedEntry
   def carriesMembers() = shape == MembersQuiet or shape == MembersKeep
   def membersKeep() = shape == MembersKeep
@@ -195,7 +195,7 @@ spec SurplusStrict {
   def widened() =
     dependsOnDirective()
     and not exported()
-    and cfgUnexported() == Private
+    and unexportedDefault() == Private
   // Every suppressor of the strict finding except where the scope came from.
   // The finding before the fix and the one after it share these.
   def strictUnsuppressed() =
@@ -236,13 +236,13 @@ spec SurplusStrict {
     if fixed then Private
     else if dependsOnDirective() then Shared
     else if exported() then Shared
-    else cfgUnexported()
+    else unexportedDefault()
   // The binding test of unused_bind.fsl, over the fixed code. Here outerScope
   // is the scope the declaration would take from outside its own directive.
   // And outerFixed is whether that scope is the same under every
   // configuration.
   def outerFixed() = enclosing() or exported()
-  def outerScope() = if outerFixed() then Shared else cfgUnexported()
+  def outerScope() = if outerFixed() then Shared else unexportedDefault()
   def insertedInert() = outerFixed() and Private == outerScope()
 
   // Once narrowed, the declaration has its own directive. So the enclosing
@@ -280,7 +280,7 @@ spec SurplusStrict {
   invariant StrictImpliesEnclosing          { strictReported => enclosing() }
   invariant NeverReportsOwnDirective        { strictReported => not ownDirective() }
   invariant NeverReportsExported            { strictReported => not exported() }
-  invariant NeverReportsUnderSharedDefault  { strictReported => cfgUnexported() == Private }
+  invariant NeverReportsUnderSharedDefault  { strictReported => unexportedDefault() == Private }
   invariant NeverReportsMixedEntry          { strictReported => not entryMixed() }
   invariant NeverNarrowsAReachedMember {
     strictReported => not (carriesMembers() and membersKeep())
@@ -469,7 +469,7 @@ spec SurplusStrict {
   reachable SilentOnOwnDirective {
     strictArmed()
     and source == OwnDirective
-    and cfgUnexported() == Private
+    and unexportedDefault() == Private
     and not reachable()
     and shape == Plain
     and not strictFires()
@@ -477,7 +477,7 @@ spec SurplusStrict {
   reachable SilentOnExported {
     strictArmed()
     and source == Exported
-    and cfgUnexported() == Private
+    and unexportedDefault() == Private
     and not reachable()
     and shape == Plain
     and not strictFires()
@@ -487,7 +487,7 @@ spec SurplusStrict {
     and enclosing()
     and not ownDirective()
     and not exported()
-    and cfgUnexported() == Shared
+    and unexportedDefault() == Shared
     and not reachable()
     and shape == Plain
     and not strictFires()
@@ -495,7 +495,7 @@ spec SurplusStrict {
   reachable SilentWithoutEnclosing {
     strictArmed()
     and source == NoEnclosing
-    and cfgUnexported() == Private
+    and unexportedDefault() == Private
     and not reachable()
     and shape == Plain
     and not strictFires()
