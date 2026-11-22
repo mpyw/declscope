@@ -6,11 +6,11 @@
 // Two fixes clash when their declarations lower to one name (Foo and FOO both
 // become foo). The fixes that stand claim their names in order: the released
 // ones first, then the rest, each group by position (verdictsFirst), and a
-// fix that finds its name claimed loses it:
-// its fix is withheld, and settling starts again. A loser keeps its name, so
-// settling can then withhold its winner, which leaves the loser withheld for a
-// name that no fix takes. Such a loser is released, claims first from then
-// on, and settling starts again. Each loser is released once.
+// fix that finds its name claimed loses it: its fix is withheld, and settling
+// starts again. A loser keeps its name, so settling can then withhold its
+// winner, which leaves the loser withheld for a name that no fix takes. Such a
+// loser is released, claims first from then on, and settling starts again.
+// Each loser is released once.
 //
 //   Terminates  every round adds a loser or releases one for good
 //   Honest      once it ends, a loser still withheld, and never released, has
@@ -62,14 +62,22 @@ spec ShrinkClaim {
     or (c12 and ((a == 1 and b == 2) or (a == 2 and b == 1)))
   def mayStand(d: Decl, s: Bool) = s => (eligible[d] and not lost[d])
   // Claim order: released fixes first, then by position.
-  def before(w: Decl, d: Decl) = (first[w] and not first[d]) or (first[w] == first[d] and w < d)
-  def anyClash() = exists a: Decl { exists b: Decl { standing[a] and standing[b] and clashing(a, b) } }
+  def before(w: Decl, d: Decl) =
+    (first[w] and not first[d])
+    or (first[w] == first[d] and w < d)
+  def anyClash() = exists a: Decl { exists b: Decl {
+    standing[a] and standing[b] and clashing(a, b)
+  } }
   def freeOf(d: Decl) = not (exists w: Decl { standing[w] and clashing(d, w) })
+  // A loser not yet released whose name no standing fix takes.
+  def releasable(d: Decl) = lost[d] and not first[d] and freeOf(d)
 
   // Step 2, abstracted: any fix set that leaves the losers out.
   fair action settle(s0: Bool, s1: Bool, s2: Bool) {
     requires phase == 1
-    requires mayStand(0, s0) and mayStand(1, s1) and mayStand(2, s2)
+    requires mayStand(0, s0)
+    requires mayStand(1, s1)
+    requires mayStand(2, s2)
     standing[0] = s0
     standing[1] = s1
     standing[2] = s2
@@ -78,7 +86,10 @@ spec ShrinkClaim {
   // Step 3: the later of two clashing claimants loses.
   fair action lose(d: Decl, w: Decl) {
     requires phase == 2
-    requires standing[d] and standing[w] and clashing(d, w) and before(w, d)
+    requires standing[d]
+    requires standing[w]
+    requires clashing(d, w)
+    requires before(w, d)
     lost[d] = true
     phase = 1
   }
@@ -86,7 +97,7 @@ spec ShrinkClaim {
   fair action release(d: Decl) {
     requires phase == 2
     requires not anyClash()
-    requires lost[d] and not first[d] and freeOf(d)
+    requires releasable(d)
     lost[d] = false
     first[d] = true
     phase = 1
@@ -94,7 +105,7 @@ spec ShrinkClaim {
   fair action finish() {
     requires phase == 2
     requires not anyClash()
-    requires not (exists d: Decl { lost[d] and not first[d] and freeOf(d) })
+    requires not (exists d: Decl { releasable(d) })
     phase = 3
   }
 
@@ -116,10 +127,14 @@ spec ShrinkClaim {
   }
 
   // Each settle counts one down, each round adds a loser or releases one for
-  // good, and finish ends it.
+  // good, and finish ends it. A release costs 16 and gives back 4 and 1, a
+  // loss costs 4 and gives back 1, and a settle costs 1.
+  def unreleased() = count(d: Decl where not first[d])
+  def notLost() = count(d: Decl where not lost[d])
+  def awaitingSettle() = if phase == 1 then 1 else 0
   leadsTo Terminates {
     phase >= 1 ~> phase == 3
-    decreases 16 * count(d: Decl where not first[d]) + 4 * count(d: Decl where not lost[d]) + count(d: Decl where d == 0 and phase == 1)
+    decreases 16 * unreleased() + 4 * notLost() + awaitingSettle()
   }
 
   // Wrap and WRAP: WRAP loses, keeps its name and keeps Wrap, so nothing

@@ -7,10 +7,9 @@
 // different standards, and that difference is the point of the model:
 //
 //   the report may be wrong where a use is possible but not provable: a
-//     method or field whose name alone a build-excluded file of another
-//     package writes, a field a literal or conversion through a type
-//     parameter may write, or a range a nested module's build may read
-//     through a copy of other source
+//     method or field that a build-excluded file of another package may use,
+//     a field a literal or conversion through a type parameter may write, or
+//     a range a nested module's build may read through a copy of other source
 //   an escape into an interface is taken as a use and reported not at all,
 //     and so is a struct tag, which declares a use through reflection.
 //     fmt, encoding/json and reflect find methods and fields at run time,
@@ -27,21 +26,24 @@
 //               a plugin looking up a symbol of package main, a module the
 //               build reads that this run could not load, a package that
 //               failed to load, assembly or cgo naming a Go symbol, or a
-//               copy of other source a nested module builds. Each is
-//               possible only outside Placement Internal,
-//               which is what the range restriction buys, where the
-//               declaration is exposed, or where the tool sees the
-//               NestedBuild doubt
-//   exposed     a method or field of a type the exported API of an importable
-//               package reaches. Another module cannot name the type, but it
-//               can hold a value of it (pub.Get().Method()), so the internal
-//               rule proves nothing about its methods and fields. The tool
-//               sees this, the way surplus sees an exported carrier
+//               copy of other source a nested module builds. Each is possible
+//               only outside Placement Internal, which is what the range
+//               restriction buys, where the declaration is exposed, or where
+//               the tool sees the NestedBuild doubt
 //   unprovenUse a use the loaded code leaves only a trace of: through
 //               reflection or an interface found at run time, from a
 //               build-excluded file, or by a literal or conversion through a
 //               type parameter whose type set cannot be computed (#309).
 //               Possible only where the tool sees a Doubt
+//
+// One input is seen, and is not a use the tool can find, but still silences
+// the report:
+//
+//   exposed     a method or field of a type the exported API of an importable
+//               package reaches. Another module cannot name the type, but it
+//               can hold a value of it (pub.Get().Method()), so the internal
+//               rule proves nothing about its methods and fields. The tool
+//               sees this, the way surplus sees an exported carrier
 //
 // ASSUME-1: one exported declaration is enough. A fix renames only
 //   identifiers of its own package, and changes no reference, so it cannot
@@ -55,20 +57,25 @@ spec Shrink {
   // in whether an escape into an empty interface reaches them: a type's name
   // is read by %T, reflect.Type.Name and gob.Register.
   enum Kind { Value, Type, Method, Field }
-  // Where the declaration sits. Only Internal is in range, and each other
-  // value is one way run.skip or module.Range cannot vouch for every
-  // importer, so the package is not judged:
+  // Where the declaration sits. Only Internal is in range. Each other value
+  // is one way the tool cannot vouch for every importer, so nothing about
+  // the package is reported:
   //   NotInternal   outside internal/, or under an internal/ whose parent
   //                 lies above the module: another module may import it
+  //                 (module.Range)
   //   MainPkg       package main, which a plugin looks symbols up in
+  //                 (run.skip)
   //   NonGoFiles    the package holds non-Go files (assembly for any
   //                 GOARCH, among others) or uses cgo, which name Go
-  //                 symbols where go/types never reads
+  //                 symbols where go/types never reads (run.skip)
   //   UnreadModule  a nested module that may import it failed to load, the
   //                 main build list could not be read, or the build reads
-  //                 a module in the range from elsewhere. A nested module
-  //                 that loads is read, and its uses count as Spelled
-  //   LoadError     a package failed to load, so an importer is unread
+  //                 a module in the range from elsewhere (module.Range). A
+  //                 nested module that loads is read, and its uses count as
+  //                 Spelled
+  //   LoadError     a package of the module does not type-check. module.Load
+  //                 then refuses the whole run, so nothing is reported for
+  //                 any package
   // A package the patterns name but ./... leaves out is not loaded at all,
   // so it has no declaration to judge here.
   enum Placement { Internal, NotInternal, MainPkg, NonGoFiles, UnreadModule, LoadError }
@@ -83,13 +90,18 @@ spec Shrink {
   //                      ReportedTestOnly is narrower than modelled here
   //   ExcludedQualified  a build-excluded file imports the package and writes
   //                      pkg.Name, which only a package-level name can be
+  //                      (exclusions.qualifies)
   enum Outside { None, Spelled, ExtTestOnly, ExcludedQualified }
   // What the tool sees short of a spelled use.
   //   Escapes       the type, or its owner, escapes into an empty interface,
   //                 directly or through a field, element, key or pointer. It
   //                 is read as a use (escapes() below), not as a doubt
-  //   ExcludedName  a build-excluded file of another package writes the name
-  //                 where no import pins it: x.Name, or a dot import
+  //   ExcludedName  a build-excluded file of another package may use it
+  //                 (exclusions.mayUse). For a method, a field or an
+  //                 embedded type, any such file that may hold a value of
+  //                 the package's types counts, since Go uses those without
+  //                 writing their names. Any other declaration counts only
+  //                 where the file writes its name under a dot import
   //   Guessed       a composite literal or a struct conversion in another
   //                 package goes through a type parameter whose type set
   //                 cannot be computed, and may write the field, or the
@@ -103,11 +115,23 @@ spec Shrink {
 
   state {
     phase: 0..3 = 0,
-    kind: Kind = Value, placement: Placement = Internal, exposed: Bool = false, hiddenUse: Bool = false,
-    outside: Outside = None, doubt: Doubt = NoDoubt, unprovenUse: Bool = false, staticSatisfaction: Bool = false,
-    excludedSamePkg: Bool = false, generatedRef: Bool = false, renameUnsafe: Bool = false, kept: Bool = false,
+    kind: Kind = Value,
+    placement: Placement = Internal,
+    exposed: Bool = false,
+    hiddenUse: Bool = false,
+    outside: Outside = None,
+    doubt: Doubt = NoDoubt,
+    unprovenUse: Bool = false,
+    staticSatisfaction: Bool = false,
+    excludedSamePkg: Bool = false,
+    generatedRef: Bool = false,
+    renameUnsafe: Bool = false,
+    kept: Bool = false,
     exported: Bool = true,
-    reported: Bool = false, reportedTestOnly: Bool = false, fixed: Bool = false, stalled: Bool = false
+    reported: Bool = false,
+    reportedTestOnly: Bool = false,
+    fixed: Bool = false,
+    stalled: Bool = false
   }
 
   // Three steps rather than one: one action with every parameter is the
@@ -116,7 +140,11 @@ spec Shrink {
     requires phase == 0
     // Only a method or a field is reached through a value.
     requires not (ex and (k == Value or k == Type))
-    phase = 1  kind = k  placement = p  exposed = ex  hiddenUse = h
+    phase = 1
+    kind = k
+    placement = p
+    exposed = ex
+    hiddenUse = h
   }
   action configureUse(o: Outside, d: Doubt, dyn: Bool, sat: Bool) {
     requires phase == 1
@@ -136,31 +164,42 @@ spec Shrink {
     // declaration through a value, or is a nested module's build the tool
     // sees and cannot read through.
     requires not (hiddenUse and placement == Internal and not exposed and d != NestedBuild)
-    phase = 2  outside = o  doubt = d  unprovenUse = dyn  staticSatisfaction = sat
+    phase = 2
+    outside = o
+    doubt = d
+    unprovenUse = dyn
+    staticSatisfaction = sat
   }
   // The four things inside the package that stop a rename. ex is a
   // build-excluded file of the package that writes or linknames the name,
   // or, for a member, may use it. gen is a reference the rename cannot
   // rewrite: a generated file or an example function of the package naming
   // the declaration, or, for a package-level string var, `-ldflags -X`
-  // (run.linkerSet). A regeneration would put the old name back, go vet
-  // checks that ExampleF still names F, and the linker ignores a -X whose
-  // name is gone, so a release silently loses the value. un is the rename
-  // guard (ASSUME-2). kp is an exported declaration that
-  // keeps its name handing the type out: unexporting it would leave that
-  // declaration returning a type its callers cannot name. Which declarations
-  // keep their names is settled across the package; shrink_settle.fsl is that
-  // model, and here it is one input.
+  // (candidate.linkerSet). A regeneration would put the old name back, go
+  // vet checks that ExampleF still names F, and the linker ignores a -X
+  // whose name is gone, so a release silently loses the value. un is the
+  // rename guard (ASSUME-2). kp is an exported declaration that keeps its
+  // name handing the type out: unexporting it would leave that declaration
+  // returning a type its callers cannot name. Which declarations keep their
+  // names is settled across the package; shrink_settle.fsl is that model,
+  // and here it is one input.
   action configureFix(ex: Bool, gen: Bool, un: Bool, kp: Bool) {
     requires phase == 2
     requires not (kp and kind != Type)
-    phase = 3  excludedSamePkg = ex  generatedRef = gen  renameUnsafe = un  kept = kp
+    phase = 3
+    excludedSamePkg = ex
+    generatedRef = gen
+    renameUnsafe = un
+    kept = kp
   }
 
   def configured() = phase == 3
 
   // A pass that ran and neither reported nor fixed, which may repeat forever.
-  action pass() { requires configured()  stalled = true }
+  action pass() {
+    requires configured()
+    stalled = true
+  }
 
   // --- what the tool reads ------------------------------------------------
   def inRange() = placement == Internal
@@ -168,9 +207,22 @@ spec Shrink {
   def satisfied() = kind == Method and staticSatisfaction
   // An escape is a use, like a static satisfaction.
   def escapes() = doubt == Escapes
-  def fires() = exported and inRange() and not exposed and outside == None and not satisfied() and not escapes()
-  def testOnlyFires() = exported and inRange() and not exposed and outside == ExtTestOnly and not satisfied() and not escapes()
-  def fixBlocked() = doubt != NoDoubt or excludedSamePkg or generatedRef or renameUnsafe or kept
+  // Every condition for a report but the use from outside: the declaration
+  // is still exported, sits in range, and nothing the tool sees silences it.
+  def noSilencingReason() =
+    exported
+    and inRange()
+    and not exposed
+    and not satisfied()
+    and not escapes()
+  def fires() = noSilencingReason() and outside == None
+  def testOnlyFires() = noSilencingReason() and outside == ExtTestOnly
+  def fixBlocked() =
+    doubt != NoDoubt
+    or excludedSamePkg
+    or generatedRef
+    or renameUnsafe
+    or kept
   def fixable() = fires() and not fixBlocked()
 
   // --- the truth the tool never reads -------------------------------------
@@ -179,16 +231,24 @@ spec Shrink {
   def fixBreaks() = usedOutside() or breaksInside()
 
   fair action report() {
-    requires configured()  requires not reported  requires fires()
+    requires configured()
+    requires not reported
+    requires fires()
     reported = true
   }
   fair action reportTestOnly() {
-    requires configured()  requires not reportedTestOnly  requires testOnlyFires()
+    requires configured()
+    requires not reportedTestOnly
+    requires testOnlyFires()
     reportedTestOnly = true
   }
   fair action fix() {
-    requires configured()  requires reported  requires not fixed  requires fixable()
-    fixed = true  exported = false
+    requires configured()
+    requires reported
+    requires not fixed
+    requires fixable()
+    fixed = true
+    exported = false
   }
 
   // Nothing is judged before the configuration is complete, and a fix follows
@@ -197,18 +257,27 @@ spec Shrink {
     (reported or reportedTestOnly or fixed or stalled) => configured()
   }
   invariant FixFollowsReport { fixed => reported }
-  // The configuration keeps what configure required of it: nothing hides an
-  // importer inside the range, and an unproven use leaves a trace.
+  // Each input keeps its initial value until its configure step sets it.
   invariant PlacementUnsetBeforeItsStep {
-    phase == 0 => kind == Value and placement == Internal and not exposed and not hiddenUse
+    phase == 0 => kind == Value
+                  and placement == Internal
+                  and not exposed
+                  and not hiddenUse
   }
   invariant UseUnsetBeforeItsStep {
-    phase <= 1 => outside == None and doubt == NoDoubt
-                  and not unprovenUse and not staticSatisfaction
+    phase <= 1 => outside == None
+                  and doubt == NoDoubt
+                  and not unprovenUse
+                  and not staticSatisfaction
   }
   invariant FixInputsUnsetBeforeTheirStep {
-    phase <= 2 => not excludedSamePkg and not generatedRef and not renameUnsafe and not kept
+    phase <= 2 => not excludedSamePkg
+                  and not generatedRef
+                  and not renameUnsafe
+                  and not kept
   }
+  // The configuration keeps what configure required of it: nothing hides an
+  // importer inside the range, and an unproven use leaves a trace.
   invariant NothingHiddenInRangeUnlessSeen {
     (phase >= 2 and hiddenUse) => placement != Internal or exposed or doubt == NestedBuild
   }
@@ -267,82 +336,141 @@ spec Shrink {
   // Each fix blocker withholds the fix and leaves the report, witnessed alone
   // with every other one off.
   def onlyBlocker() = configured() and fires()
+  // None of the four things inside the package that stop a rename is set.
+  def noInsideBlocker() =
+    not excludedSamePkg
+    and not generatedRef
+    and not renameUnsafe
+    and not kept
   reachable WithheldOnExcludedName {
-    onlyBlocker() and doubt == ExcludedName
-    and not excludedSamePkg and not generatedRef and not renameUnsafe and not kept and not fixable()
+    onlyBlocker()
+    and doubt == ExcludedName
+    and noInsideBlocker()
+    and not fixable()
   }
   // A literal through a type parameter may write the field. The report
   // stays, and may be wrong, and the fix is withheld.
   reachable WithheldOnGuessedWrite {
-    onlyBlocker() and doubt == Guessed and unprovenUse and reported
-    and not excludedSamePkg and not generatedRef and not renameUnsafe and not kept and not fixable()
+    onlyBlocker()
+    and doubt == Guessed
+    and unprovenUse
+    and reported
+    and noInsideBlocker()
+    and not fixable()
   }
   // An embedded field a type names is guessed the same way.
   reachable WithheldOnGuessedEmbeddedType {
-    onlyBlocker() and kind == Type and doubt == Guessed
-    and not excludedSamePkg and not generatedRef and not renameUnsafe and not kept and not fixable()
+    onlyBlocker()
+    and kind == Type
+    and doubt == Guessed
+    and noInsideBlocker()
+    and not fixable()
   }
   reachable WithheldOnExcludedSamePackage {
-    onlyBlocker() and doubt == NoDoubt
-    and excludedSamePkg and not generatedRef and not renameUnsafe and not kept and not fixable()
+    onlyBlocker()
+    and doubt == NoDoubt
+    and excludedSamePkg
+    and not generatedRef
+    and not renameUnsafe
+    and not kept
+    and not fixable()
   }
   reachable WithheldOnGeneratedReference {
-    onlyBlocker() and doubt == NoDoubt
-    and not excludedSamePkg and generatedRef and not renameUnsafe and not kept and not fixable()
+    onlyBlocker()
+    and doubt == NoDoubt
+    and not excludedSamePkg
+    and generatedRef
+    and not renameUnsafe
+    and not kept
+    and not fixable()
   }
   reachable WithheldOnUnsafeRename {
-    onlyBlocker() and doubt == NoDoubt
-    and not excludedSamePkg and not generatedRef and renameUnsafe and not kept and not fixable()
+    onlyBlocker()
+    and doubt == NoDoubt
+    and not excludedSamePkg
+    and not generatedRef
+    and renameUnsafe
+    and not kept
+    and not fixable()
   }
   // A nested module's build may use the declaration through a copy of other
   // source. The report stays, and may be wrong, and the fix is withheld.
   reachable WithheldOnNestedBuild {
-    onlyBlocker() and doubt == NestedBuild and hiddenUse and reported
-    and not excludedSamePkg and not generatedRef and not renameUnsafe and not kept and not fixable()
+    onlyBlocker()
+    and doubt == NestedBuild
+    and hiddenUse
+    and reported
+    and noInsideBlocker()
+    and not fixable()
   }
   reachable WithheldOnKeptByAnExport {
-    onlyBlocker() and doubt == NoDoubt
-    and not excludedSamePkg and not generatedRef and not renameUnsafe and kept and not fixable()
+    onlyBlocker()
+    and doubt == NoDoubt
+    and not excludedSamePkg
+    and not generatedRef
+    and not renameUnsafe
+    and kept
+    and not fixable()
   }
   // An escape is a use for a type too, whose name reflect reads, and the
   // report stays out.
   reachable SilentOnTypeEscape {
-    configured() and inRange() and not exposed and outside == None and kind == Type
-    and doubt == Escapes and not fires()
+    configured()
+    and inRange()
+    and not exposed
+    and outside == None
+    and kind == Type
+    and doubt == Escapes
+    and not fires()
   }
 
   // Each reason for silence, witnessed with the declaration otherwise unused.
-  def unusedInRange() = configured() and exported and outside == None and not satisfied()
   reachable SilentOnStaticSatisfaction {
-    configured() and inRange() and not exposed and outside == None and kind == Method
-    and staticSatisfaction and not fires()
+    configured()
+    and inRange()
+    and not exposed
+    and outside == None
+    and kind == Method
+    and staticSatisfaction
+    and not fires()
   }
   reachable SilentWhenExposedAlone {
-    configured() and inRange() and exposed and outside == None
-    and not satisfied() and not fires()
+    configured()
+    and inRange()
+    and exposed
+    and outside == None
+    and not satisfied()
+    and not fires()
   }
   reachable SilentOnSpelledUse {
-    configured() and inRange() and not exposed and outside == Spelled
-    and not satisfied() and not fires()
+    configured()
+    and inRange()
+    and not exposed
+    and outside == Spelled
+    and not satisfied()
+    and not fires()
   }
   reachable SilentOnExcludedQualifiedUse {
-    configured() and inRange() and not exposed and outside == ExcludedQualified and not fires()
+    configured()
+    and inRange()
+    and not exposed
+    and outside == ExcludedQualified
+    and not fires()
   }
-  reachable SilentOutsideInternal {
-    configured() and placement == NotInternal and outside == None and not fires()
-  }
-  reachable SilentInMain {
-    configured() and placement == MainPkg and outside == None and not fires()
-  }
-  reachable SilentOnNonGoFiles {
-    configured() and placement == NonGoFiles and outside == None and not fires()
-  }
-  reachable SilentOverUnreadModule {
-    configured() and placement == UnreadModule and outside == None and not fires()
-  }
-  reachable SilentOnLoadError {
-    configured() and placement == LoadError and outside == None and not fires()
-  }
+  // A placement out of range, with no use the loaded code shows.
+  def silentAt(p: Placement) = configured() and placement == p and outside == None and not fires()
+  reachable SilentOutsideInternal { silentAt(NotInternal) }
+  reachable SilentInMain { silentAt(MainPkg) }
+  reachable SilentOnNonGoFiles { silentAt(NonGoFiles) }
+  reachable SilentOverUnreadModule { silentAt(UnreadModule) }
+  reachable SilentOnLoadError { silentAt(LoadError) }
+
+  // The rule fires on an exported declaration nothing outside uses.
+  def unusedInRange() =
+    configured()
+    and exported
+    and outside == None
+    and not satisfied()
   reachable CanFireUnused { unusedInRange() and inRange() and fires() }
 
   reachable PendingReportSurvivesAPass { stalled and fires() and not reported }

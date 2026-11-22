@@ -64,20 +64,31 @@ spec ShrinkIgnore {
 
   state {
     phase: 0..3 = 0,
-    kind: Kind = Member, free: Bool = false, constrained: Bool = false,
-    otherFree: Bool = false, otherConstrained: Bool = false, reach: Bool = false,
+    kind: Kind = Member,
+    free: Bool = false,
+    constrained: Bool = false,
+    otherFree: Bool = false,
+    otherConstrained: Bool = false,
+    reach: Bool = false,
     // reported*: the declaration would be reported without the ignore.
     // unused*: the run reports the ignore unused.
-    reportedIn: Bool = false, reportedOut: Bool = false,
-    unusedIn: Bool = false, unusedOut: Bool = false
+    reportedIn: Bool = false,
+    reportedOut: Bool = false,
+    unusedIn: Bool = false,
+    unusedOut: Bool = false
   }
 
   action configure(k: Kind, f: Bool, c: Bool, of: Bool, oc: Bool, r: Bool) {
     requires phase == 0
     // ASSUME-2.
     requires not (c or oc) or r
-    phase = 1  kind = k  free = f  constrained = c
-    otherFree = of  otherConstrained = oc  reach = r
+    phase = 1
+    kind = k
+    free = f
+    constrained = c
+    otherFree = of
+    otherConstrained = oc
+    reach = r
   }
 
   // What each run sees as a use.
@@ -105,7 +116,9 @@ spec ShrinkIgnore {
 
   // --- the two properties -------------------------------------------------------
   // One ignore passes every configuration where any of them needs it.
-  invariant OnePassesEvery { (phase == 3 and needed()) => not unusedIn and not unusedOut }
+  invariant OnePassesEvery {
+    (phase == 3 and needed()) => not unusedIn and not unusedOut
+  }
   // An ignore no configuration needs is reported by one of them.
   invariant StaleIsCaught { (phase == 3 and not needed()) => unusedIn or unusedOut }
 
@@ -126,10 +139,12 @@ spec ShrinkIgnore {
   // Auxiliary: each run records its judgment of inputs never assigned again.
   invariant ConstrainedUseReaches { (constrained or otherConstrained) => reach }
   invariant InRecordsItsJudgment {
-    phase >= 2 => (reportedIn == not seenIn() and unusedIn == (seenIn() and not keptIn()))
+    phase >= 2 => (reportedIn == not seenIn()
+                   and unusedIn == (seenIn() and not keptIn()))
   }
   invariant OutRecordsItsJudgment {
-    phase == 3 => (reportedOut == not seenOut() and unusedOut == seenOut())
+    phase == 3 => (reportedOut == not seenOut()
+                   and unusedOut == seenOut())
   }
   invariant JudgedInFirst { (unusedIn or reportedIn) => phase >= 2 }
   invariant JudgedOutLast { (unusedOut or reportedOut) => phase == 3 }
@@ -138,47 +153,89 @@ spec ShrinkIgnore {
   // #165: a field set only behind a tag. Out reports it, In sees the use, and
   // the ignore passes both.
   reachable ConstrainedMemberKept {
-    phase == 3 and kind == Member and constrained and not free
-    and not otherFree and not otherConstrained
-    and not reportedIn and reportedOut and not unusedIn and not unusedOut
+    phase == 3
+    and kind == Member
+    and constrained
+    and not free
+    and not otherFree
+    and not otherConstrained
+    and not reportedIn
+    and reportedOut
+    and not unusedIn
+    and not unusedOut
   }
   // #171: the code behind the tag only passes a value to an interface. In sees
   // an escape, Out sees nothing, and the ignore passes both.
   reachable EscapeBehindConstraintKept {
-    phase == 3 and kind == Member and not constrained and not free
-    and not otherFree and otherConstrained
-    and not reportedIn and reportedOut and not unusedIn and not unusedOut
+    phase == 3
+    and kind == Member
+    and not constrained
+    and not free
+    and not otherFree
+    and otherConstrained
+    and not reportedIn
+    and reportedOut
+    and not unusedIn
+    and not unusedOut
   }
   // suve's SplitSpec: named and escaped behind the tag alike.
   reachable SpelledAndEscapedBehindConstraintKept {
-    phase == 3 and kind == Member and constrained and otherConstrained
-    and not free and not otherFree
-    and reportedOut and not unusedIn and not unusedOut
+    phase == 3
+    and kind == Member
+    and constrained
+    and otherConstrained
+    and not free
+    and not otherFree
+    and reportedOut
+    and not unusedIn
+    and not unusedOut
   }
   // An unconstrained file spells it too: no run needs the ignore, and In says so.
   reachable FreeUseCaughtIn {
-    phase == 3 and kind == Member and constrained and free
-    and unusedIn and unusedOut
+    phase == 3
+    and kind == Member
+    and constrained
+    and free
+    and unusedIn
+    and unusedOut
   }
   // An escape every configuration reads, beside a use behind the tag. In
   // cannot tell the escape's origin and keeps the ignore. Out sees the escape,
   // has nothing to silence, and reports the stale ignore.
   reachable OtherFreeUseCaughtOut {
-    phase == 3 and kind == Member and constrained and not free and otherFree
-    and not reportedOut and not unusedIn and unusedOut
+    phase == 3
+    and kind == Member
+    and constrained
+    and not free
+    and otherFree
+    and not reportedOut
+    and not unusedIn
+    and unusedOut
   }
   // A function used only behind a tag: Out reads the qualified name, so no run
   // needs the ignore.
   reachable ConstrainedNonMemberCaught {
-    phase == 3 and kind == Other and constrained and not free
-    and not otherFree and not otherConstrained
-    and not reportedOut and unusedIn and unusedOut
+    phase == 3
+    and kind == Other
+    and constrained
+    and not free
+    and not otherFree
+    and not otherConstrained
+    and not reportedOut
+    and unusedIn
+    and unusedOut
   }
   // Nothing uses it: both runs report it, and the ignore silences both.
   reachable UnusedDeclarationSilenced {
-    phase == 3 and not free and not constrained
-    and not otherFree and not otherConstrained
-    and reportedIn and reportedOut and not unusedIn and not unusedOut
+    phase == 3
+    and not free
+    and not constrained
+    and not otherFree
+    and not otherConstrained
+    and reportedIn
+    and reportedOut
+    and not unusedIn
+    and not unusedOut
   }
 
   leadsTo BothRunsJudge {

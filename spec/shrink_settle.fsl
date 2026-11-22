@@ -119,14 +119,17 @@ spec ShrinkSettle {
 
   invariant FixedOnlyWhenJudged { forall d: Decl { fixable[d] => fixable0[d] } }
   // Before settling starts, the fix set is the judgment itself.
-  invariant UnsettledBeforeStart { phase == 0 => forall d: Decl { fixable[d] == fixable0[d] } }
+  invariant UnsettledBeforeStart {
+    phase == 0 => forall d: Decl { fixable[d] == fixable0[d] }
+  }
 
   // Once settling starts, the fix set only shrinks.
   trans FixesOnlyShrink {
     old(phase) >= 1 => forall d: Decl { fixable[d] => old(fixable[d]) }
   }
   trans SetFrozen {
-    old(phase) >= 1 => typeUsed == old(typeUsed) and forall d: Decl { inSet[d] == old(inSet[d]) }
+    old(phase) >= 1 => typeUsed == old(typeUsed)
+                       and forall d: Decl { inSet[d] == old(inSet[d]) }
   }
   trans CarriesFrozen {
     old(phase) >= 1 => forall a: Decl { forall b: Decl {
@@ -158,32 +161,59 @@ spec ShrinkSettle {
 
   // A type kept through another kept type: the chain settles in two steps.
   reachable ChainKept {
-    phase == 2 and not fixable0[0] and fixable0[1] and fixable0[2]
-    and carries.contains(0, 1) and carries.contains(1, 2)
-    and not fixable[1] and not fixable[2]
+    phase == 2
+    and not fixable0[0]
+    and fixable0[1]
+    and fixable0[2]
+    and carries.contains(0, 1)
+    and carries.contains(1, 2)
+    and not fixable[1]
+    and not fixable[2]
   }
   // A declaration and the type it returns go together: nothing that keeps its
   // name carries either.
   reachable FixedTogether {
-    phase == 2 and fixable0[0] and fixable0[1] and carries.contains(0, 1)
-    and fixable[0] and fixable[1]
+    phase == 2
+    and fixable0[0]
+    and fixable0[1]
+    and carries.contains(0, 1)
+    and fixable[0]
+    and fixable[1]
   }
   // One value of a set keeps its name, so the other does too.
   reachable SetKeptWhole {
-    phase == 2 and inSet[0] and inSet[1] and not fixable0[0] and fixable0[1]
-    and not typeUsed and not carries.contains(0, 1) and not carries.contains(2, 1)
+    phase == 2
+    and inSet[0]
+    and inSet[1]
+    and not fixable0[0]
+    and fixable0[1]
+    and not typeUsed
+    and not carries.contains(0, 1)
+    and not carries.contains(2, 1)
     and not fixable[1]
   }
   // A set nothing keeps is fixed whole.
   reachable SetFixedWhole {
-    phase == 2 and inSet[0] and inSet[1] and fixable[0] and fixable[1]
+    phase == 2
+    and inSet[0]
+    and inSet[1]
+    and fixable[0]
+    and fixable[1]
   }
   // The values of a used type go with it.
   reachable SetDroppedWithType {
-    phase == 2 and inSet[0] and inSet[1] and fixable0[0] and typeUsed and not fixable[0]
+    phase == 2
+    and inSet[0]
+    and inSet[1]
+    and fixable0[0]
+    and typeUsed
+    and not fixable[0]
   }
   // A type that returns itself keeps nothing.
   reachable SelfCarryKeepsNothing {
-    phase == 2 and fixable0[0] and carries.contains(0, 0) and fixable[0]
+    phase == 2
+    and fixable0[0]
+    and carries.contains(0, 0)
+    and fixable[0]
   }
 }
