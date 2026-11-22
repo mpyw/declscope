@@ -8,7 +8,9 @@
 //   (modelling assumption)
 fsl 5
 spec RenameSiblings {
-  enum Name { NameA, NameB, NameT }
+  // NameA and NameB are the two declarations' names before any fix. FreeName
+  // is held by nothing in the package.
+  enum Name { NameA, NameB, FreeName }
 
   state {
     configured: Bool = false,
@@ -16,41 +18,41 @@ spec RenameSiblings {
     nameA: Name = NameA,
     nameB: Name = NameB,
     // Names in the state the fixes were generated from
-    origA: Name = NameA,
-    origB: Name = NameB,
+    originalA: Name = NameA,
+    originalB: Name = NameB,
     // What each fix renames to
-    tgtA: Name = NameA,
-    tgtB: Name = NameB,
+    targetA: Name = NameA,
+    targetB: Name = NameB,
     appliedA: Bool = false,
     appliedB: Bool = false
   }
 
-  action configure(ta: Name, tb: Name) {
+  action configure(targetForA: Name, targetForB: Name) {
     requires not configured
     configured = true
-    tgtA = ta
-    tgtB = tb
+    targetA = targetForA
+    targetB = targetForB
   }
 
   // The guard modeled here: the target must not already be a package-scope
   // name. "Already" means in the state the fixes were generated from, which
   // is why a sibling's target is invisible.
-  def freeInOriginalState(n: Name) = n != origA and n != origB
+  def freeInOriginalState(name: Name) = name != originalA and name != originalB
 
   action fixA() {
     requires configured
     requires not appliedA
-    requires tgtA != origA
-    requires freeInOriginalState(tgtA)
-    nameA = tgtA
+    requires targetA != originalA
+    requires freeInOriginalState(targetA)
+    nameA = targetA
     appliedA = true
   }
   action fixB() {
     requires configured
     requires not appliedB
-    requires tgtB != origB
-    requires freeInOriginalState(tgtB)
-    nameB = tgtB
+    requires targetB != originalB
+    requires freeInOriginalState(targetB)
+    nameB = targetB
     appliedB = true
   }
 

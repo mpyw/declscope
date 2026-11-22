@@ -14,70 +14,84 @@
 //   assumption)
 fsl 5
 spec RenameSound {
-  enum NameId { OldName, NewName, OtherName }
-  enum Bind   { Unbound, BindsOld, BindsNew, BindsOther }
-  enum Target { ToDecl, ToLocal, ToFile, ToOtherPkg, ToUniverse, Unresolved }
+  enum Name    { OldName, NewName, OtherName }
+  // What a scope binds the name to, if anything.
+  enum Binding { Unbound, BindsOld, BindsNew, BindsOther }
+  // Where a reference to a name resolves.
+  enum Resolution {
+    ToDeclaration,       // The declaration being renamed
+    ToLocal,             // A local, parameter, result or type parameter
+    ToImport,            // An import of the file
+    ToOtherDeclaration,  // Another package-scope declaration
+    ToPredeclared,       // The universe: len, error, string, ...
+    Unresolved
+  }
 
   state {
-    configured:  Bool = false,
-    declName:    NameId = OldName,  // The declaration's current name
-    localAt:     Bind = Unbound,    // What the innermost scope at the reference binds
-    fileAt:      Bind = Unbound,    // What that file's imports bind
-    otherPkg:    Bind = Unbound,    // Another package-scope declaration
-    universeNew: Bool = false,      // NewName is predeclared (len, error, string, ...)
-    renamed:     Bool = false,
+    configured:              Bool = false,
+    declarationName:         Name = OldName,      // The declaration's current name
+    localBinding:            Binding = Unbound,   // What the innermost scope at the reference binds
+    importBinding:           Binding = Unbound,   // What that file's imports bind
+    otherDeclarationBinding: Binding = Unbound,   // What another package-scope declaration binds
+    newNameIsPredeclared:    Bool = false,        // NewName is predeclared (len, error, string, ...)
+    renamed:                 Bool = false,
     // What a second site elsewhere in the package resolved NewName to before
     // the rename. Captured so the rename can be checked not to capture it.
-    elsewhereBefore: Target = Unresolved
+    elsewhereResolvedBefore: Resolution = Unresolved
   }
 
-  action configure(l: Bind, f: Bind, o: Bind, u: Bool) {
+  action configure(local: Binding, imported: Binding, otherDeclaration: Binding,
+                   predeclared: Bool) {
     requires not configured
     configured = true
-    localAt = l
-    fileAt = f
-    otherPkg = o
-    universeNew = u
+    localBinding = local
+    importBinding = imported
+    otherDeclarationBinding = otherDeclaration
+    newNameIsPredeclared = predeclared
   }
 
-  def bindOf(n: NameId) =
-    if n == OldName then BindsOld
-    else if n == NewName then BindsNew
+  def bindingOf(name: Name) =
+    if name == OldName then BindsOld
+    else if name == NewName then BindsNew
     else BindsOther
 
   // Resolution from the reference site, innermost scope first.
-  def resolve(n: NameId) =
-    if localAt == bindOf(n) then ToLocal
-    else if fileAt == bindOf(n) then ToFile
-    else if otherPkg == bindOf(n) then ToOtherPkg
-    else if n == declName then ToDecl
-    else if n == NewName and universeNew then ToUniverse
+  def resolveAtReference(name: Name) =
+    if localBinding == bindingOf(name) then ToLocal
+    else if importBinding == bindingOf(name) then ToImport
+    else if otherDeclarationBinding == bindingOf(name) then ToOtherDeclaration
+    else if name == declarationName then ToDeclaration
+    else if name == NewName and newNameIsPredeclared then ToPredeclared
     else Unresolved
 
   // A second site elsewhere in the package, with no local or import binding of
   // its own, resolving NewName.
   def resolveElsewhere() =
-    if otherPkg == BindsNew then ToOtherPkg
-    else if declName == NewName then ToDecl
-    else if universeNew then ToUniverse
+    if otherDeclarationBinding == BindsNew then ToOtherDeclaration
+    else if declarationName == NewName then ToDeclaration
+    else if newNameIsPredeclared then ToPredeclared
     else Unresolved
 
   // The guard modeled here: package scope only.
-  def guardPackageScopeOnly() = otherPkg != BindsNew
+  def guardPackageScopeOnly() = otherDeclarationBinding != BindsNew
 
   fair action rename() {
     requires configured
     requires not renamed
-    requires declName == OldName
-    requires resolve(OldName) == ToDecl   // The reference resolves correctly before
+    requires declarationName == OldName
+    // The reference resolves correctly before
+    requires resolveAtReference(OldName) == ToDeclaration
     requires guardPackageScopeOnly()
-    declName = NewName
+    declarationName = NewName
     renamed = true
-    elsewhereBefore = resolveElsewhere()   // Reads the pre-rename state
+    // Reads the pre-rename state
+    elsewhereResolvedBefore = resolveElsewhere()
   }
 
   // Soundness, part one: the reference to the declaration must still reach it.
-  invariant RenameKeepsReferenceOnTarget { renamed => resolve(NewName) == ToDecl }
+  invariant RenameKeepsReferenceOnTarget {
+    renamed => resolveAtReference(NewName) == ToDeclaration
+  }
 
   // Soundness, part two: a reference that already used the new name elsewhere
   // must not be captured by the renamed declaration. A package-level name
@@ -85,8 +99,8 @@ spec RenameSound {
   // here — the harm falls on everything else that wanted the predeclared name.
   invariant RenameCapturesNothingElsewhere {
     renamed
-      and elsewhereBefore != Unresolved
-      => resolveElsewhere() == elsewhereBefore
+      and elsewhereResolvedBefore != Unresolved
+      => resolveElsewhere() == elsewhereResolvedBefore
   }
 
   reachable RenameHappens { renamed }
