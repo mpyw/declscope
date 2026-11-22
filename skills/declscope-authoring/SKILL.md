@@ -208,6 +208,8 @@ Only the exact form `//declscope:name` is a directive: a line comment, no space 
 
 **Write the reason after `//`.** `//declscope:shared // rename.go reads it` and `//declscope:ignore boundary // why` are directives with reasons. Any other text after the name is read as an argument. `//declscope:ignore boundary because ...` is reported as an unknown rule.
 
+**Say who reads it in the reason.** When a few files read the declaration, name them: `// rename.go and surplus.go read it`. That tells the next reader where to look. When most files read it, or the set keeps changing, say its role instead: `// the model every stage reads`. A list of files that is always out of date is worse than no list. A reason that names files must be reread when code moves, as [Common changes](#common-changes) says.
+
 **A directive records a decision.** Write one only when it changes something, and say why. Under the default `unused: strict`, a directive that restates the scope already in force is reported.
 
 **Share a whole file only when the file exists to be shared.** A directive on a file or a block reaches everything inside it. Each exception then needs a directive of its own. A file-level `//declscope:shared` also makes every new declaration in the file start shared. So it should describe what the file is, not who happens to use it today.
