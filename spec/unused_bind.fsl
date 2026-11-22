@@ -1,169 +1,248 @@
-// When a scope directive binds, under rules.unused: loose. A
-// directive that binds nothing is reported by the unused rule, on the same
-// principle as an unused ignore: a directive that decides nothing should not
-// sit in the source claiming to.
+// When a scope directive binds, under rules.unused: loose. The unused rule
+// reports a directive that binds nothing. The principle is the same as for an
+// unused ignore. A directive that decides nothing should not sit in the
+// source and claim to decide something.
 //
-// A directive binds a declaration when the scope it names is one that
-// declaration could not have had anyway: under ANY configuration, and given
-// whatever the levels outside this directive already say. Both quantifiers
-// matter for loose:
+// A directive binds a declaration when it names a scope that the declaration
+// could not have had anyway. That must hold under ANY configuration. It must
+// also hold whatever the levels outside this directive already say. Both
+// quantifiers matter for loose:
 //
-//   - Over configurations, so that the report does not read the current one.
-//     A change of defaults.unexported then changes no report, and a directive
-//     recording a deliberate `private` that today's default also gives is
-//     kept. rules.unused: strict is the default and reads the current
-//     configuration. It also reports a directive naming the
-//     scope the declaration would have without it today, and one line of YAML
-//     changes what it reports. unused_modes.fsl models strict and off beside
-//     loose, and its loose is this spec's.
-//   - Over enclosing directives, not only exportedness. Asking only whether
-//     the name is exported would call //declscope:shared under an enclosing
-//     `private` inert, although it is the one thing that widens an exported
-//     declaration back, so a codebase could narrow and never widen again.
+//   - Over configurations, so that the report does not read the current
+//     configuration. Then a change of defaults.unexported changes no report.
+//     A directive that records a deliberate `private` is kept, even when
+//     today's default also gives private. rules.unused: strict is the
+//     default, and it reads the current configuration. It also reports a
+//     directive that names the scope the declaration would have without it
+//     today. So under strict, one line of YAML changes what it reports.
+//     unused_modes.fsl models strict and off beside loose. Its loose is this
+//     spec's.
+//   - Over enclosing directives, not only exportedness. Suppose the test asked
+//     only whether the name is exported. Then it would call
+//     //declscope:shared under an enclosing `private` inert. But that
+//     directive is the one thing that widens an exported declaration back. So
+//     a codebase could narrow and never widen again.
 //
-// "The levels outside" are every level a deletion would fall through to. For a
-// spec that states its own scope, the first of them is the block's directive
-// the spec overrides, then the type's for a field, then the file's. Skipping
-// the block judges a spec's private under a shared block against the file,
-// and calls it inert where deleting it widens the spec. outerDir is the
-// nearest of them, whichever level that is.
+// "The levels outside" are every level that a deletion would fall through to.
+// Take a spec that states its own scope. The first such level is the block's
+// directive that the spec overrides. Then comes the type's, for a field. Then
+// comes the file's. Skipping the block would judge a spec's private under a
+// shared block against the file. It would call that private inert, where
+// deleting it widens the spec. outerDirective is the nearest of these levels,
+// whichever level that is.
 //
-// So: the scope outside this directive is FIXED when an outer level states one,
-// or when the declaration is exported and nothing does (exported carries no
-// boundary under every configuration). It is not fixed when defaults.unexported
-// decides, since that may be either scope.
+// So the scope outside this directive is FIXED in two cases. An outer level
+// states one. Or nothing does, and the declaration is exported. (Exported
+// carries no boundary under every configuration.) The scope is not fixed when
+// defaults.unexported decides, since that may be either scope.
 //
-// The reach is a disjunction: the declaration the directive sits on, when there
-// is one, plus what it encloses. One binding is enough. Two enclosed
-// declarations are modelled because one cannot distinguish "nothing to bind"
-// from "this one had nothing to bind".
+// The reach is a disjunction. It is the declaration the directive sits on, if
+// there is one, plus what the directive encloses. One binding is enough. The
+// model has two enclosed declarations. With one, it could not tell "nothing
+// to bind" from "this one had nothing to bind".
 //
-// The judgment is one deterministic step, and UsedExactlyWhenSomethingBinds
-// pins both directions. A binding that is only allowed to happen would prove
-// that nothing bindable is never called used, and nothing about the reverse:
-// a design in which an enclosed declaration never binds would still verify,
-// and that design reports a directive that decides something.
+// The judgment is one deterministic step. UsedExactlyWhenSomethingBinds pins
+// both directions. Suppose a binding were only allowed to happen. That would
+// prove only that a directive with nothing bindable is never called used. It
+// would prove nothing about the reverse. A design where an enclosed
+// declaration never binds would still verify. And that design reports a
+// directive that decides something.
 fsl 5
 spec UnusedBind {
   enum Scope { Shared, Private }
-  enum Dir   { NoDir, DirShared, DirPrivate }
+  enum Directive   { NoDirective, SharedDirective, PrivateDirective }
 
   state {
     configured: Bool = false,
-    // what this directive names, and what the levels outside it say
-    stated: Scope = Shared, outerDir: Dir = NoDir, cfgUnexported: Scope = Private,
-    // the declaration the directive is written on, if any
-    hasTarget: Bool = false, targetExported: Bool = false,
-    // two declarations within its reach, each possibly shadowed by a nearer one
-    aPresent: Bool = false, aExported: Bool = false, aShadowed: Bool = false,
-    bPresent: Bool = false, bExported: Bool = false, bShadowed: Bool = false,
-    judged: Bool = false, bound: Bool = false
+    // What this directive names, and what the levels outside it say.
+    stated: Scope = Shared,
+    outerDirective: Directive = NoDirective,
+    unexportedDefault: Scope = Private,
+    // The declaration the directive is written on, if any.
+    hasTarget: Bool = false,
+    targetExported: Bool = false,
+    // Two declarations within its reach. A nearer directive may shadow each.
+    firstPresent: Bool = false,
+    firstExported: Bool = false,
+    firstShadowed: Bool = false,
+    secondPresent: Bool = false,
+    secondExported: Bool = false,
+    secondShadowed: Bool = false,
+    judged: Bool = false,
+    bound: Bool = false
   }
-  action configure(st: Scope, od: Dir, cu: Scope,
-                   ht: Bool, tx: Bool,
-                   ap: Bool, ax: Bool, ash: Bool,
-                   bp: Bool, bx: Bool, bsh: Bool) {
+  action configure(givenStated: Scope,
+                   givenOuterDirective: Directive,
+                   givenCfgUnexported: Scope,
+                   givenHasTarget: Bool,
+                   givenTargetExported: Bool,
+                   givenFirstPresent: Bool,
+                   givenFirstExported: Bool,
+                   givenFirstShadowed: Bool,
+                   givenSecondPresent: Bool,
+                   givenSecondExported: Bool,
+                   givenSecondShadowed: Bool) {
     requires not configured
     configured = true
-    stated = st  outerDir = od  cfgUnexported = cu
-    hasTarget = ht  targetExported = tx
-    aPresent = ap  aExported = ax  aShadowed = ash
-    bPresent = bp  bExported = bx  bShadowed = bsh
+    stated = givenStated
+    outerDirective = givenOuterDirective
+    unexportedDefault = givenCfgUnexported
+    hasTarget = givenHasTarget
+    targetExported = givenTargetExported
+    firstPresent = givenFirstPresent
+    firstExported = givenFirstExported
+    firstShadowed = givenFirstShadowed
+    secondPresent = givenSecondPresent
+    secondExported = givenSecondExported
+    secondShadowed = givenSecondShadowed
   }
 
-  def outerFixed(x: Bool) = outerDir != NoDir or x
-  def outerScope(x: Bool) =
-    if outerDir == DirShared then Shared
-    else if outerDir == DirPrivate then Private
-    else if x then Shared
-    else cfgUnexported
-  def inert(x: Bool) = outerFixed(x) and stated == outerScope(x)
+  def outerFixed(isExported: Bool) = outerDirective != NoDirective or isExported
+  def outerScope(isExported: Bool) =
+    if outerDirective == SharedDirective then Shared
+    else if outerDirective == PrivateDirective then Private
+    else if isExported then Shared
+    else unexportedDefault
+  def inert(isExported: Bool) = outerFixed(isExported) and stated == outerScope(isExported)
 
-  // What binds: the declaration the directive sits on, or an enclosed one that
-  // no nearer directive shadows, whose scope the directive decides.
+  // What binds. Either the declaration the directive sits on, or an enclosed
+  // one that no nearer directive shadows. The directive decides its scope.
   def targetBinds() = hasTarget and not inert(targetExported)
-  def aBinds() = aPresent and not aShadowed and not inert(aExported)
-  def bBinds() = bPresent and not bShadowed and not inert(bExported)
+  def firstBinds() = firstPresent and not firstShadowed and not inert(firstExported)
+  def secondBinds() = secondPresent and not secondShadowed and not inert(secondExported)
 
   action judge() {
-    requires configured  requires not judged
+    requires configured
+    requires not judged
     judged = true
-    bound = targetBinds() or aBinds() or bBinds()
+    bound = targetBinds() or firstBinds() or secondBinds()
   }
   def reported() = judged and not bound
 
   invariant JudgedOnlyOnceConfigured { judged => configured }
   invariant BoundOnlyOnceJudged { bound => judged }
-  // Expanded rather than routed through the defs above, so that mutating inert
-  // or a reach moves only one side and the invariant can actually fail. Both
-  // directions: a directive is used when anything in its reach binds, and
-  // reported when nothing does, a shadowed declaration included.
+  // Expanded, not routed through the defs above. Then a mutation of inert or
+  // of a reach moves only one side, and the invariant can actually fail. It
+  // pins both directions. A directive is used when anything in its reach
+  // binds. It is reported when nothing does, a shadowed declaration included.
   invariant UsedExactlyWhenSomethingBinds {
     judged => bound ==
-      ((hasTarget and not (outerFixed(targetExported) and stated == outerScope(targetExported)))
-       or (aPresent and not aShadowed
-           and not (outerFixed(aExported) and stated == outerScope(aExported)))
-       or (bPresent and not bShadowed
-           and not (outerFixed(bExported) and stated == outerScope(bExported))))
+      ((hasTarget
+        and not (outerFixed(targetExported) and stated == outerScope(targetExported)))
+       or (firstPresent
+           and not firstShadowed
+           and not (outerFixed(firstExported) and stated == outerScope(firstExported)))
+       or (secondPresent
+           and not secondShadowed
+           and not (outerFixed(secondExported) and stated == outerScope(secondExported))))
   }
 
+  // The directive sits on a declaration and encloses nothing.
+  def onTargetAlone() =
+    configured
+    and hasTarget
+    and not firstPresent
+    and not secondPresent
+
   // --- the two quantifiers -------------------------------------------------
-  // Over configurations: an unexported declaration takes defaults.unexported,
-  // which may be either scope, so neither spelling is ever inert on one.
+  // Over configurations. An unexported declaration takes defaults.unexported,
+  // which may be either scope. So neither spelling is ever inert on one.
   reachable UnexportedBindsSharedUnderSharedDefault {
-    configured and hasTarget and not targetExported and outerDir == NoDir
-    and cfgUnexported == Shared and stated == Shared
-    and not aPresent and not bPresent and bound
+    onTargetAlone()
+    and not targetExported
+    and outerDirective == NoDirective
+    and unexportedDefault == Shared
+    and stated == Shared
+    and bound
   }
   reachable UnexportedBindsPrivateUnderPrivateDefault {
-    configured and hasTarget and not targetExported and outerDir == NoDir
-    and cfgUnexported == Private and stated == Private
-    and not aPresent and not bPresent and bound
+    onTargetAlone()
+    and not targetExported
+    and outerDirective == NoDirective
+    and unexportedDefault == Private
+    and stated == Private
+    and bound
   }
-  // Over enclosing directives: shared on an exported declaration is inert with
-  // nothing outside it, and binds under an enclosing private — the surplus
-  // that an exportedness-only test would have called dead.
+  // Over enclosing directives. shared on an exported declaration is inert
+  // with nothing outside it. It binds under an enclosing private. A test of
+  // exportedness alone would have called that surplus dead.
   reachable ExportedSharedIsInert {
-    configured and hasTarget and targetExported and outerDir == NoDir
-    and stated == Shared and not aPresent and not bPresent and reported()
+    onTargetAlone()
+    and targetExported
+    and outerDirective == NoDirective
+    and stated == Shared
+    and reported()
   }
   reachable ExportedSharedBindsUnderPrivateOuter {
-    configured and hasTarget and targetExported and outerDir == DirPrivate
-    and stated == Shared and not aPresent and not bPresent and bound
+    onTargetAlone()
+    and targetExported
+    and outerDirective == PrivateDirective
+    and stated == Shared
+    and bound
   }
   reachable ExportedNarrowedByPrivateBinds {
-    configured and hasTarget and targetExported and outerDir == NoDir
-    and stated == Private and not aPresent and not bPresent and bound
+    onTargetAlone()
+    and targetExported
+    and outerDirective == NoDirective
+    and stated == Private
+    and bound
   }
-  // A spec's private under a shared block binds, whatever the file says:
-  // the block is the level a deletion falls through to.
+  // A spec's private under a shared block binds, whatever the file says. The
+  // block is the level a deletion falls through to.
   reachable SpecNarrowingItsBlockBinds {
-    configured and hasTarget and not targetExported and outerDir == DirShared
-    and stated == Private and not aPresent and not bPresent and bound
+    onTargetAlone()
+    and not targetExported
+    and outerDirective == SharedDirective
+    and stated == Private
+    and bound
   }
   // Restating what the enclosing level already said decides nothing either.
   reachable RestatingOuterIsInert {
-    configured and hasTarget and not targetExported and outerDir == DirPrivate
-    and stated == Private and not aPresent and not bPresent and reported()
+    onTargetAlone()
+    and not targetExported
+    and outerDirective == PrivateDirective
+    and stated == Private
+    and reported()
   }
 
   // --- the reach ------------------------------------------------------------
   reachable UsedViaFirstEnclosedOnly {
-    configured and hasTarget and targetExported and stated == Shared
-    and outerDir == NoDir
-    and aPresent and not aExported and not aShadowed and not bPresent and bound
+    configured
+    and hasTarget
+    and targetExported
+    and stated == Shared
+    and outerDirective == NoDirective
+    and firstPresent
+    and not firstExported
+    and not firstShadowed
+    and not secondPresent
+    and bound
   }
   reachable UsedViaSecondOnly {
-    configured and not hasTarget and outerDir == NoDir
-    and aPresent and aShadowed and bPresent and not bExported and not bShadowed
+    configured
+    and not hasTarget
+    and outerDirective == NoDirective
+    and firstPresent
+    and firstShadowed
+    and secondPresent
+    and not secondExported
+    and not secondShadowed
     and bound
   }
   reachable UnusedOnExportedLeaf {
-    configured and hasTarget and targetExported and stated == Shared
-    and outerDir == NoDir and not aPresent and not bPresent and reported()
+    onTargetAlone()
+    and targetExported
+    and stated == Shared
+    and outerDirective == NoDirective
+    and reported()
   }
   reachable UnusedBecauseAllShadowed {
-    configured and not hasTarget and aPresent and aShadowed
-    and bPresent and bShadowed and reported()
+    configured
+    and not hasTarget
+    and firstPresent
+    and firstShadowed
+    and secondPresent
+    and secondShadowed
+    and reported()
   }
 }
