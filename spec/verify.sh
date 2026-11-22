@@ -53,7 +53,7 @@ done
 ## the code is not.
 shared() {
   {
-    sed -n '/^  enum Scope/,/^  enum Refs/p' "$1"
+    sed -n '/^  enum Scope/,/^  enum ReferencedFrom/p' "$1"
     sed -n '/def defaultScope/,/def boundaryFires/p' "$1"
   } | grep -v '^[[:space:]]*//' | grep -v '^[[:space:]]*$'
 }
