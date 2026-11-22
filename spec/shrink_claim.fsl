@@ -1,24 +1,25 @@
-// shrink_claim models how declscope shrink claims new names once the types
-// of one package settle: steps 3 and 4 of run.judge in
-// internal/shrink/shrink.go. shrink_settle.fsl is step 2, and is abstracted
-// here to any choice of standing fixes that leaves every loser out.
+// shrink_claim models how declscope shrink claims new names once the
+// types of one package settle. That is steps 3 and 4 of run.judge in
+// internal/shrink/shrink.go. Step 2 is shrink_settle.fsl. Here it is
+// abstracted to any choice of standing fixes that leaves every loser out.
 //
-// Two fixes clash when their declarations lower to one name (Foo and FOO both
-// become foo). The fixes that stand claim their names in order: the released
-// ones first, then the rest, each group by position (verdictsFirst), and a
-// fix that finds its name claimed loses it: its fix is withheld, and settling
-// starts again. A loser keeps its name, so settling can then withhold its
-// winner, which leaves the loser withheld for a name that no fix takes. Such a
-// loser is released, claims first from then on, and settling starts again.
-// Each loser is released once.
+// Two fixes clash when their declarations lower to one name. For example,
+// Foo and FOO both become foo. The fixes that stand claim their names in
+// order. The released ones claim first, then the rest. Each group goes by
+// position (verdictsFirst). A fix that finds its name claimed loses it. Its
+// fix is withheld, and settling starts again. A loser keeps its name. So
+// settling can then withhold its winner. That leaves the loser withheld for
+// a name that no fix takes. Such a loser is released. It claims first from
+// then on, and settling starts again. Each loser is released once.
 //
-//   Terminates  every round adds a loser or releases one for good
-//   Honest      once it ends, a loser still withheld, and never released, has
-//               its name taken by a fix that stands, so its report reads true,
-//               and the next run, with the fix applied, reads it the same
+//   Terminates  Every round adds a loser or releases one for good.
+//   Honest      Once it ends, take a loser that is still withheld and was
+//               never released. A fix that stands has taken its name. So
+//               its report reads true. The next run, with the fix applied,
+//               reads it the same.
 //
-// A released loser that loses again is left withheld, true or not: releasing
-// it twice would let two fixes that clash take turns without end.
+// A released loser that loses again stays withheld, true or not. Releasing
+// it twice would let two clashing fixes take turns without end.
 fsl 5
 spec ShrinkClaim {
   type Decl = 0..2
@@ -43,7 +44,7 @@ spec ShrinkClaim {
     forall d: Decl { first[d] = false }
   }
 
-  // What judging leaves fixable, and which fixes clash, in one step, so the
+  // One step sets what judging leaves fixable and which fixes clash. So the
   // witnesses below fit the default depth.
   action configure(e0: Bool, e1: Bool, e2: Bool, k01: Bool, k02: Bool, k12: Bool) {
     requires phase == 0
@@ -126,9 +127,11 @@ spec ShrinkClaim {
     }
   }
 
-  // Each settle counts one down, each round adds a loser or releases one for
-  // good, and finish ends it. A release costs 16 and gives back 4 and 1, a
-  // loss costs 4 and gives back 1, and a settle costs 1.
+  // Each settle counts one down. Each round adds a loser or releases one
+  // for good. finish ends it. The weights make every step count down:
+  //   release  -16 for the release, +4 for one less loser, +1 for phase 1
+  //   lose     -4 for one more loser, +1 for phase 1
+  //   settle   -1 for leaving phase 1
   def unreleased() = count(d: Decl where not first[d])
   def notLost() = count(d: Decl where not lost[d])
   def awaitingSettle() = if phase == 1 then 1 else 0
@@ -137,8 +140,8 @@ spec ShrinkClaim {
     decreases 16 * unreleased() + 4 * notLost() + awaitingSettle()
   }
 
-  // Wrap and WRAP: WRAP loses, keeps its name and keeps Wrap, so nothing
-  // stands. WRAP is released and claims first, and stands.
+  // Wrap and WRAP. WRAP loses, keeps its name, and so keeps Wrap. Then
+  // nothing stands. WRAP is released, claims first, and stands.
   reachable ReleasedStands {
     phase == 3 and first[1] and standing[1]
   }

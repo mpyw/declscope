@@ -1,45 +1,51 @@
 // shrink_settle models how declscope shrink settles which types of one
-// package keep their names: step 2 of run.judge in internal/shrink/shrink.go.
+// package keep their names. That is step 2 of run.judge in
+// internal/shrink/shrink.go.
 //
-// Each declaration is first judged on its own, and fixable0 says it would be
-// unexported. A declaration that keeps its name holds every type it carries,
-// by returning it, taking it, or holding it in an exported field or method.
-// Unexporting such a type would leave that declaration handing out a type its
-// callers cannot name. carries is that relation, one step at a time: a type
-// kept this way keeps its name too, and carries further on the next step.
+// Each declaration is first judged on its own. fixable0 says the judgment
+// would unexport it. A declaration that keeps its name holds every type it
+// carries. It carries a type by returning it, taking it, or holding it in
+// an exported field or method. Unexporting such a type would leave that
+// declaration handing out a type its callers cannot name. carries is that
+// relation, one step at a time. A type kept this way keeps its name too,
+// and carries further on the next step.
 //
-// settle takes one type out of the fix set when a declaration outside it,
-// other than itself, carries it. It is the only move, so the fix set only
-// shrinks, and the loop ends (Settles). Once no settle is enabled the
-// judgment is done, and two properties hold:
+// settle takes one type out of the fix set when a declaration outside the
+// set carries it. That declaration is never the type itself. settle is the
+// only move, so the fix set only shrinks, and the loop ends (Settles). Once
+// no move is enabled, the judgment is done, and two properties hold:
 //
-//   Sound  no fixed declaration is carried by one that keeps its name, so no
-//          exported declaration is left handing out an unexported type
-//   Tight  every declaration judged fixable but not fixed has a carrier that
+//   Sound  No fixed declaration is carried by one that keeps its name. So
+//          no exported declaration is left handing out an unexported type.
+//   Tight  Every declaration judged fixable but not fixed has a carrier that
 //          keeps its name. A second run, after the fixes, finds the same
-//          carrier and holds it again, so one run of -fix settles the package
+//          carrier and holds the type again. So one run of -fix settles the
+//          package.
 //
-// A carrier is never fixable, so a type carrying itself keeps nothing, and the
-// model needs no rule against it (SelfCarryKeepsNothing).
+// A carrier is never fixable. So a type that carries itself keeps nothing,
+// and the model needs no rule against it (SelfCarryKeepsNothing).
 //
 // A const set (#179) adds two moves. inSet marks the values of one const
-// block of one type, and typeUsed says that type was found used. drop takes a
-// value of a used type out, since it is not reported at all. hold takes a
-// value out when another value of its set keeps its name. Both only take
-// fixes away, like settle, so the loop still ends, and one more property
-// holds:
+// block of one type. typeUsed says that type was found used.
 //
-//   Whole  a set is fixed whole or kept whole, never split between exported
-//          and unexported values
+//   drop  It takes a value of a used type out, since that value is not
+//         reported at all.
+//   hold  It takes a value out when another value of its set keeps its name.
 //
-// Tight widens to the two new reasons. A value held for a sibling is held
-// again by the next run, since the sibling still keeps its name. Whether the
-// type is used comes from the evidence, which this model takes as given:
-// typeUsed is configured, not derived.
+// Both only take fixes away, like settle. So the loop still ends, and one
+// more property holds:
 //
-// Rename clashes are left out, and are shrink_claim.fsl's. Names are claimed
-// only once this settles, and a clash or a released loser starts it again
-// from the judgment, with the losers left out.
+//   Whole  A set is fixed whole or kept whole. It is never split between
+//          exported and unexported values.
+//
+// Tight widens to the two new reasons. The next run holds a value for its
+// sibling again, since the sibling still keeps its name. Whether the type is
+// used comes from the evidence. This model takes it as given: typeUsed is
+// configured, not derived.
+//
+// Rename clashes are left out. They belong to shrink_claim.fsl. Names are
+// claimed only once this settles. A clash or a released loser starts it
+// again from the judgment, with the losers left out.
 fsl 5
 spec ShrinkSettle {
   type Decl = 0..2
@@ -60,7 +66,7 @@ spec ShrinkSettle {
   }
 
   // The judgment of each declaration on its own, and what carries what. A
-  // self-edge is allowed: a method of T can return T.
+  // self-edge is allowed, since a method of T can return T.
   action configure(d: Decl, f: Bool) {
     requires phase == 0
     fixable0[d] = f
@@ -159,7 +165,7 @@ spec ShrinkSettle {
     decreases count(d: Decl where fixable[d])
   }
 
-  // A type kept through another kept type: the chain settles in two steps.
+  // A type kept through another kept type. The chain settles in two steps.
   reachable ChainKept {
     phase == 2
     and not fixable0[0]
@@ -170,8 +176,8 @@ spec ShrinkSettle {
     and not fixable[1]
     and not fixable[2]
   }
-  // A declaration and the type it returns go together: nothing that keeps its
-  // name carries either.
+  // A declaration and the type it returns go together. Nothing that keeps
+  // its name carries either of them.
   reachable FixedTogether {
     phase == 2
     and fixable0[0]
