@@ -1,185 +1,300 @@
-// filter composes down the chain of config files, and it composes differently
-// from every other key. only and omit are path sets rather than values, so a
-// nested file adds to them rather than replacing them:
+// filter composes down the chain of config files. It composes differently
+// from every other key. only and omit are path sets, not values. So a nested
+// file adds to them and does not replace them:
 //
-//   only  intersects  — each level may narrow further, never widen
-//   omit  unions      — each level may subtract more, never put back
+//   only  intersects: each level may narrow further, never widen
+//   omit  unions:     each level may subtract more, never put back
 //
-// Together those give one property worth having: a config file can only ever
-// shrink what the analysis reads. An omit written at the repository root holds
-// everywhere below it, and no nested file can quietly undo it. MonotoneDown is
-// that sentence.
+// Together those give one useful property. A config file can only ever shrink
+// what the analysis reads. An omit at the repository root holds everywhere
+// below it. No nested file can quietly undo it. MonotoneDown states this.
 //
 // A .gitignore is not monotone, because ! lets a deeper file undo a shallower
-// one. filter has no negation, so union and intersection give monotonicity for
-// free rather than needing a rule to enforce it.
+// one. filter has no negation. So union and intersection give monotonicity
+// for free, and no extra rule has to enforce it.
 //
-// Each level's patterns are anchored to that level's own directory, so "gen/**"
-// in the root and "gen/**" in a nested file name different directories. That is
-// why the two levels' match results are separate inputs here rather than one:
-// a file may match the outer pattern, the nearer one, both, or neither, and no
-// combination is ruled out by the spelling.
+// Each level's patterns are anchored to that level's own directory. So
+// "gen/**" in the root and "gen/**" in a nested file name different
+// directories. That is why each level's match result is a separate input
+// here. A file may match the outer pattern, the nearer one, both, or neither.
+// The spelling rules out no combination.
 //
-// Whether a pattern matches a path at all is filter.go's subject, and the set
-// algebra within one level is filter.fsl's. This spec is the chain.
+// Whether a pattern matches a path is the subject of filter.go. The set
+// algebra within one level is the subject of filter.fsl. This spec is the
+// chain.
 fsl 5
 spec FilterChain {
   state {
     configured: Bool = false,
-    // Which lists each level states. An empty list places no restriction,
-    // which for only is a rule rather than a consequence (filter.fsl).
-    oOnlyEmpty: Bool = true, oOmitEmpty: Bool = true,
-    nOnlyEmpty: Bool = true, nOmitEmpty: Bool = true,
-    // Two files, because the warning below is about there being no file left.
-    // For each: does it match the outer level's only, the outer's omit, the
-    // nearer level's only, the nearer's omit.
-    f1oOnly: Bool = false, f1oOmit: Bool = false,
-    f1nOnly: Bool = false, f1nOmit: Bool = false,
-    f2oOnly: Bool = false, f2oOmit: Bool = false,
-    f2nOnly: Bool = false, f2nOmit: Bool = false,
-    // Recording the outcome keeps the guards load-bearing.
+    // Which lists each level states. An empty list places no restriction.
+    // For only, that is a rule, not a consequence (filter.fsl).
+    outerOnlyEmpty: Bool = true,
+    outerOmitEmpty: Bool = true,
+    nearerOnlyEmpty: Bool = true,
+    nearerOmitEmpty: Bool = true,
+    // Two files, because the warning below is about no file being left.
+    // For each file: does it match the outer only, the outer omit, the nearer
+    // only, and the nearer omit?
+    file1MatchesOuterOnly: Bool = false,
+    file1MatchesOuterOmit: Bool = false,
+    file1MatchesNearerOnly: Bool = false,
+    file1MatchesNearerOmit: Bool = false,
+    file2MatchesOuterOnly: Bool = false,
+    file2MatchesOuterOmit: Bool = false,
+    file2MatchesNearerOnly: Bool = false,
+    file2MatchesNearerOmit: Bool = false,
+    // The outcome is recorded, and that keeps the guards load-bearing.
     decided: Bool = false,
-    kept1: Bool = false, kept2: Bool = false,
+    file1Kept: Bool = false,
+    file2Kept: Bool = false,
     warned: Bool = false
   }
 
-  action configure(oe: Bool, xe: Bool, ne: Bool, me: Bool,
-                   a1: Bool, b1: Bool, c1: Bool, d1: Bool,
-                   a2: Bool, b2: Bool, c2: Bool, d2: Bool) {
+  action configure(givenOuterOnlyEmpty: Bool,
+                   givenOuterOmitEmpty: Bool,
+                   givenNearerOnlyEmpty: Bool,
+                   givenNearerOmitEmpty: Bool,
+                   givenFile1MatchesOuterOnly: Bool,
+                   givenFile1MatchesOuterOmit: Bool,
+                   givenFile1MatchesNearerOnly: Bool,
+                   givenFile1MatchesNearerOmit: Bool,
+                   givenFile2MatchesOuterOnly: Bool,
+                   givenFile2MatchesOuterOmit: Bool,
+                   givenFile2MatchesNearerOnly: Bool,
+                   givenFile2MatchesNearerOmit: Bool) {
     requires not configured
-    // An empty list is matched by nothing. Without this the model would hold
-    // states no config can produce, and a property could pass on them alone.
-    requires oe => (not a1 and not a2)
-    requires xe => (not b1 and not b2)
-    requires ne => (not c1 and not c2)
-    requires me => (not d1 and not d2)
+    // Nothing matches an empty list. Without these guards the model would
+    // hold states no config can produce. A property could pass on them alone.
+    requires givenOuterOnlyEmpty
+      => (not givenFile1MatchesOuterOnly and not givenFile2MatchesOuterOnly)
+    requires givenOuterOmitEmpty
+      => (not givenFile1MatchesOuterOmit and not givenFile2MatchesOuterOmit)
+    requires givenNearerOnlyEmpty
+      => (not givenFile1MatchesNearerOnly and not givenFile2MatchesNearerOnly)
+    requires givenNearerOmitEmpty
+      => (not givenFile1MatchesNearerOmit and not givenFile2MatchesNearerOmit)
     configured = true
-    oOnlyEmpty = oe  oOmitEmpty = xe  nOnlyEmpty = ne  nOmitEmpty = me
-    f1oOnly = a1  f1oOmit = b1  f1nOnly = c1  f1nOmit = d1
-    f2oOnly = a2  f2oOmit = b2  f2nOnly = c2  f2nOmit = d2
+    outerOnlyEmpty = givenOuterOnlyEmpty
+    outerOmitEmpty = givenOuterOmitEmpty
+    nearerOnlyEmpty = givenNearerOnlyEmpty
+    nearerOmitEmpty = givenNearerOmitEmpty
+    file1MatchesOuterOnly = givenFile1MatchesOuterOnly
+    file1MatchesOuterOmit = givenFile1MatchesOuterOmit
+    file1MatchesNearerOnly = givenFile1MatchesNearerOnly
+    file1MatchesNearerOmit = givenFile1MatchesNearerOmit
+    file2MatchesOuterOnly = givenFile2MatchesOuterOnly
+    file2MatchesOuterOmit = givenFile2MatchesOuterOmit
+    file2MatchesNearerOnly = givenFile2MatchesNearerOnly
+    file2MatchesNearerOmit = givenFile2MatchesNearerOmit
   }
 
-  // One level's verdict on one file, which is filter.fsl's rule.
-  def outerKeeps1() = (oOnlyEmpty or f1oOnly) and not f1oOmit
-  def outerKeeps2() = (oOnlyEmpty or f2oOnly) and not f2oOmit
+  // Each def below takes one file's four match results. They are its match
+  // against the outer only, the outer omit, the nearer only and the nearer
+  // omit. The forms ending in 1 and 2 apply it to the two files.
+
+  // One level's verdict on one file. This is the rule of filter.fsl.
+  def outerKeeps(outerOnly: Bool, outerOmit: Bool) =
+    (outerOnlyEmpty or outerOnly) and not outerOmit
+  def outerKeeps1() = outerKeeps(file1MatchesOuterOnly, file1MatchesOuterOmit)
+  def outerKeeps2() = outerKeeps(file2MatchesOuterOnly, file2MatchesOuterOmit)
 
   // The chain: only intersects, omit unions.
-  def chainPassesOnly1() = (oOnlyEmpty or f1oOnly) and (nOnlyEmpty or f1nOnly)
-  def chainPassesOnly2() = (oOnlyEmpty or f2oOnly) and (nOnlyEmpty or f2nOnly)
-  def chainOmits1() = f1oOmit or f1nOmit
-  def chainOmits2() = f2oOmit or f2nOmit
-  def chainKeeps1() = chainPassesOnly1() and not chainOmits1()
-  def chainKeeps2() = chainPassesOnly2() and not chainOmits2()
+  def chainPassesOnly(outerOnly: Bool, nearerOnly: Bool) =
+    (outerOnlyEmpty or outerOnly) and (nearerOnlyEmpty or nearerOnly)
+  def chainOmits(outerOmit: Bool, nearerOmit: Bool) = outerOmit or nearerOmit
+  def chainKeeps(outerOnly: Bool, outerOmit: Bool,
+                 nearerOnly: Bool, nearerOmit: Bool) =
+    chainPassesOnly(outerOnly, nearerOnly)
+    and not chainOmits(outerOmit, nearerOmit)
+  def chainKeeps1() =
+    chainKeeps(file1MatchesOuterOnly, file1MatchesOuterOmit,
+               file1MatchesNearerOnly, file1MatchesNearerOmit)
+  def chainKeeps2() =
+    chainKeeps(file2MatchesOuterOnly, file2MatchesOuterOmit,
+               file2MatchesNearerOnly, file2MatchesNearerOmit)
 
-  // A file the nearest config's only admits and no omit removes, which the
-  // chain drops anyway: only an only above can have done it. A file an omit
-  // removes is not counted, since the omit is the author's own choice and the
+  // The nearest config's only admits the file, and no omit removes it. The
+  // chain drops it anyway. Only an only above can have done that. A file an
+  // omit removes does not count. The omit is the author's own choice, and the
   // report names an only above as the cause (Options.CancelledAbove).
-  def cancelled1() = not nOnlyEmpty and f1nOnly and not chainOmits1() and not chainPassesOnly1()
-  def cancelled2() = not nOnlyEmpty and f2nOnly and not chainOmits2() and not chainPassesOnly2()
+  def cancelled(outerOnly: Bool, outerOmit: Bool,
+                nearerOnly: Bool, nearerOmit: Bool) =
+    not nearerOnlyEmpty
+    and nearerOnly
+    and not chainOmits(outerOmit, nearerOmit)
+    and not chainPassesOnly(outerOnly, nearerOnly)
+  def cancelled1() =
+    cancelled(file1MatchesOuterOnly, file1MatchesOuterOmit,
+              file1MatchesNearerOnly, file1MatchesNearerOmit)
+  def cancelled2() =
+    cancelled(file2MatchesOuterOnly, file2MatchesOuterOmit,
+              file2MatchesNearerOnly, file2MatchesNearerOmit)
+
+  // The cause the report names, spelled from the inputs and not through
+  // cancelled(). The nearer only admits the file, the outer only does not,
+  // and neither omit removes it.
+  def removedByTheOnlyAbove(outerOnly: Bool, outerOmit: Bool,
+                            nearerOnly: Bool, nearerOmit: Bool) =
+    nearerOnly
+    and not outerOnly
+    and not outerOmit
+    and not nearerOmit
 
   action decide() {
     requires configured
     requires not decided
     decided = true
-    kept1 = chainKeeps1()
-    kept2 = chainKeeps2()
-    // A package with nothing to read is usually the point: a root only naming
-    // one subtree excludes every package outside it. What is worth saying is
-    // narrower. The nearest config states an only, the files it matches and
-    // its omit leaves are all removed by an only above it, and so that config
-    // can never take effect. Nobody writes a filter for a subtree they meant
-    // to exclude.
-    warned = not chainKeeps1() and not chainKeeps2() and (cancelled1() or cancelled2())
+    file1Kept = chainKeeps1()
+    file2Kept = chainKeeps2()
+    // A package with nothing to read is usually the point. A root only that
+    // names one subtree excludes every package outside it. The case worth
+    // reporting is narrower. The nearest config states an only. An only above
+    // it removes every file that only matches and its omit leaves. So that
+    // config can never take effect. Nobody writes a filter for a subtree they
+    // meant to exclude.
+    warned = not chainKeeps1()
+             and not chainKeeps2()
+             and (cancelled1() or cancelled2())
   }
 
   invariant DecisionNeedsConfig { decided => configured }
 
   // --- the property the whole design is for ---------------------------------
-  // A nested config cannot widen. Whatever the nearer file says, a file the
-  // outer level alone would have dropped stays dropped.
+  // A nested config cannot widen. Take a file the outer level alone would
+  // drop. It stays dropped, whatever the nearer file says.
   invariant MonotoneDown {
-    decided => (kept1 => outerKeeps1()) and (kept2 => outerKeeps2())
+    decided
+      => (file1Kept => outerKeeps1()) and (file2Kept => outerKeeps2())
   }
-  // Stated the two ways it can be broken, so that a repair to one is not
-  // mistaken for a repair to both.
-  invariant OuterOmitIsFinal   { decided and f1oOmit => not kept1 }
+  // MonotoneDown, stated for each of the two ways it can break. Then a repair
+  // to one is not mistaken for a repair to both.
+  invariant OuterOmitIsFinal { decided and file1MatchesOuterOmit => not file1Kept }
   invariant OuterOnlyIsAnUpperBound {
-    decided and not oOnlyEmpty and not f1oOnly => not kept1
+    decided and not outerOnlyEmpty and not file1MatchesOuterOnly
+      => not file1Kept
   }
 
   // --- and the nearer file still does its job -------------------------------
   reachable NearerOmitSubtractsFurther {
-    decided and outerKeeps1() and f1nOmit and not kept1
+    decided
+    and outerKeeps1()
+    and file1MatchesNearerOmit
+    and not file1Kept
   }
   reachable NearerOnlyNarrowsFurther {
-    decided and outerKeeps1() and not nOnlyEmpty and not f1nOnly and not kept1
+    decided
+    and outerKeeps1()
+    and not nearerOnlyEmpty
+    and not file1MatchesNearerOnly
+    and not file1Kept
   }
   reachable NearerStatingNothingChangesNothing {
-    decided and nOnlyEmpty and nOmitEmpty and outerKeeps1() and kept1
+    decided
+    and nearerOnlyEmpty
+    and nearerOmitEmpty
+    and outerKeeps1()
+    and file1Kept
   }
   reachable BothLevelsAdmit {
-    decided and not oOnlyEmpty and f1oOnly and not nOnlyEmpty and f1nOnly and kept1
+    decided
+    and not outerOnlyEmpty
+    and file1MatchesOuterOnly
+    and not nearerOnlyEmpty
+    and file1MatchesNearerOnly
+    and file1Kept
   }
 
   // --- the two levels are anchored separately -------------------------------
-  // The same line in two files names two directories, so matching one says
+  // The same line in two files names two directories. So matching one says
   // nothing about the other. Both asymmetries are reachable.
   reachable MatchesOuterPatternOnly {
-    decided and f1oOnly and not f1nOnly
+    decided and file1MatchesOuterOnly and not file1MatchesNearerOnly
   }
   reachable MatchesNearerPatternOnly {
-    decided and f1nOnly and not f1oOnly
+    decided and file1MatchesNearerOnly and not file1MatchesOuterOnly
   }
 
   // --- the warning ----------------------------------------------------------
   // Intersecting two only lists that do not overlap leaves nothing to read.
   invariant WarnedExactlyWhenTheNearestOnlyIsCancelled {
-    decided => (warned == (not kept1 and not kept2 and (cancelled1() or cancelled2())))
+    decided => (warned == (not file1Kept
+                           and not file2Kept
+                           and (cancelled1() or cancelled2())))
   }
-  // The report's message is true: where it fires, an only above the nearest
-  // config removed a file that config's only admits and no omit removes.
+  // The report's message is true. Where it fires, an only above the nearest
+  // config removed a file. That config's only admits the file, and no omit
+  // removes it.
   invariant WarnedOnlyWhereAnOnlyAboveRemoves {
-    decided and warned => not oOnlyEmpty and (
-      (f1nOnly and not f1oOnly and not f1oOmit and not f1nOmit) or
-      (f2nOnly and not f2oOnly and not f2oOmit and not f2nOmit))
+    decided and warned => not outerOnlyEmpty and (
+      removedByTheOnlyAbove(file1MatchesOuterOnly, file1MatchesOuterOmit,
+                            file1MatchesNearerOnly, file1MatchesNearerOmit) or
+      removedByTheOnlyAbove(file2MatchesOuterOnly, file2MatchesOuterOmit,
+                            file2MatchesNearerOnly, file2MatchesNearerOmit))
   }
-  invariant ReadingSomethingNeverWarns { decided and (kept1 or kept2) => not warned }
+  invariant ReadingSomethingNeverWarns {
+    decided and (file1Kept or file2Kept) => not warned
+  }
   reachable NearestOnlyCancelledByTheOneAbove {
-    decided and not oOnlyEmpty and not nOnlyEmpty
-    and f1nOnly and not f1oOnly
-    and f2nOnly and not f2oOnly
+    decided
+    and not outerOnlyEmpty
+    and not nearerOnlyEmpty
+    and file1MatchesNearerOnly
+    and not file1MatchesOuterOnly
+    and file2MatchesNearerOnly
+    and not file2MatchesOuterOnly
     and warned
   }
-  // The cases that must stay quiet, which is what keeps the report rare.
-  // A root only that excludes a subtree with no config of its own is the
-  // setting working, not a mistake.
+  // The cases that must stay quiet. They keep the report rare. A root only
+  // can exclude a subtree with no config of its own. That is the setting
+  // working, not a mistake.
   reachable NothingReadAndNoNearestOnlyStaysQuiet {
-    decided and not oOnlyEmpty and nOnlyEmpty
-    and not f1oOnly and not f2oOnly
-    and not kept1 and not kept2 and not warned
+    decided
+    and not outerOnlyEmpty
+    and nearerOnlyEmpty
+    and not file1MatchesOuterOnly
+    and not file2MatchesOuterOnly
+    and not file1Kept
+    and not file2Kept
+    and not warned
   }
   // An omit that empties a package is equally deliberate.
   reachable OmitEmptiedThePackageQuietly {
-    decided and oOnlyEmpty and nOnlyEmpty and not oOmitEmpty
-    and f1oOmit and f2oOmit and not warned
-  }
-  reachable ReadsSomethingAndDoesNotWarn { decided and kept1 and not warned }
-  // The nearest config's own omit removes what its only matches. No only
-  // above is the cause, so nothing is said, even where an only above would
-  // also have removed the files.
-  reachable NearestOmitEmptiedItsOnlyQuietly {
-    decided and not nOnlyEmpty and f1nOnly and f2nOnly
-    and f1nOmit and f2nOmit
-    and not oOnlyEmpty and not f1oOnly and not f2oOnly
+    decided
+    and outerOnlyEmpty
+    and nearerOnlyEmpty
+    and not outerOmitEmpty
+    and file1MatchesOuterOmit
+    and file2MatchesOuterOmit
     and not warned
   }
-  // One file is omitted and the only above removes the other: the report
-  // fires, and its cause is the only above.
+  reachable ReadsSomethingAndDoesNotWarn { decided and file1Kept and not warned }
+  // The nearest config's own omit removes what its only matches. No only
+  // above is the cause, so nothing is reported. This holds even where an only
+  // above would also have removed the files.
+  reachable NearestOmitEmptiedItsOnlyQuietly {
+    decided
+    and not nearerOnlyEmpty
+    and file1MatchesNearerOnly
+    and file2MatchesNearerOnly
+    and file1MatchesNearerOmit
+    and file2MatchesNearerOmit
+    and not outerOnlyEmpty
+    and not file1MatchesOuterOnly
+    and not file2MatchesOuterOnly
+    and not warned
+  }
+  // An omit removes one file, and the only above removes the other. The
+  // report fires, and its cause is the only above.
   reachable CancelledBesideAnOmit {
-    decided and not oOnlyEmpty and not nOnlyEmpty
-    and f1nOnly and not f1oOnly and not f1nOmit and not f1oOmit
-    and f2nOnly and f2nOmit
+    decided
+    and not outerOnlyEmpty
+    and not nearerOnlyEmpty
+    and file1MatchesNearerOnly
+    and not file1MatchesOuterOnly
+    and not file1MatchesNearerOmit
+    and not file1MatchesOuterOmit
+    and file2MatchesNearerOnly
+    and file2MatchesNearerOmit
     and warned
   }
 }
