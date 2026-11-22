@@ -13,7 +13,7 @@
 //
 // Resolution order: declaration > var/const/type block (package-level specs
 // only) > containing type, and through it the block the type sits in (members
-// only) > file > config.
+// only) > file > exportedness > defaults.unexported.
 fsl 5
 spec Knobs {
   enum Scope { Shared, Private }
@@ -25,10 +25,14 @@ spec Knobs {
   enum Refs  { NoRefs, SameNs, CrossNs }
 
   state {
-    configured: Bool = false, cfgUnexported: Scope = Private,
-    kind: Kind = Pkg, exported: Bool = false,
-    declDir: Dir = NoDir, blockDir: Dir = NoDir,
-    typeDir: Dir = NoDir, fileDir: Dir = NoDir,
+    configured: Bool = false,
+    cfgUnexported: Scope = Private,
+    kind: Kind = Pkg,
+    exported: Bool = false,
+    declDir: Dir = NoDir,
+    blockDir: Dir = NoDir,
+    typeDir: Dir = NoDir,
+    fileDir: Dir = NoDir,
     refs: Refs = NoRefs,
     // reported records that the boundary check fired. Without it every
     // invariant here would be a tautology over the defs: a spec whose only
@@ -40,9 +44,14 @@ spec Knobs {
   action configure(u: Scope, k: Kind, x: Bool,
                    dd: Dir, bd: Dir, td: Dir, fd: Dir, r: Refs) {
     requires not configured
-    configured = true  cfgUnexported = u
-    kind = k  exported = x
-    declDir = dd  blockDir = bd  typeDir = td  fileDir = fd
+    configured = true
+    cfgUnexported = u
+    kind = k
+    exported = x
+    declDir = dd
+    blockDir = bd
+    typeDir = td
+    fileDir = fd
     refs = r
   }
 
@@ -54,37 +63,49 @@ spec Knobs {
   // boundary reports on API that every importer reaches.
   def defaultScope() = if exported then Shared else cfgUnexported
 
+  // The nearer directive if it states a scope, otherwise the farther one.
+  def orElse(nearer: Dir, farther: Dir) = if nearer != NoDir then nearer else farther
+
   // What contains a member: its type, and through the type the var/const/type
-  // block the type is declared in — addGenDeclToCollection merges the block
-  // into the spec's own directive and passes that as the member's container, so
-  // a block reaches a member even though it never reaches a method with a
+  // block the type is declared in. addGenDeclToCollection merges the block
+  // into the spec's own directive and passes that as the member's container,
+  // so a block reaches a member even though it never reaches a method with a
   // receiver.
-  def contained() =
-    if kind == Member then (if typeDir != NoDir then typeDir else blockDir)
-    else NoDir
+  def contained() = if kind == Member then orElse(typeDir, blockDir) else NoDir
 
   // A parenthesized var/const/type block reaches only the specs it holds, so
-  // only a package-level declaration has one: a member is not a spec of a block,
-  // and a method is never in one. Decl.Merge lets a spec's own scope replace the
-  // block's, which puts the block directly under the declaration.
+  // only a package-level declaration has one: a member is not a spec of a
+  // block, and a method is never in one. Decl.Merge lets a spec's own scope
+  // replace the block's, which puts the block directly under the declaration.
   def blockOf() = if kind == Pkg then blockDir else NoDir
 
+  // The scope a directive states, or the scope of the next level out when it
+  // states none.
+  def pick(d: Dir, otherwise: Scope) =
+    if d == DirShared then Shared
+    else if d == DirPrivate then Private
+    else otherwise
+
+  // The first level that states a scope decides it, nearest first.
   def effScope() =
-    if declDir == DirShared then Shared
-    else if declDir == DirPrivate then Private
-    else if blockOf() == DirShared then Shared
-    else if blockOf() == DirPrivate then Private
-    else if contained() == DirShared then Shared
-    else if contained() == DirPrivate then Private
-    else if fileDir == DirShared then Shared
-    else if fileDir == DirPrivate then Private
-    else defaultScope()
+    pick(declDir, pick(blockOf(), pick(contained(), pick(fileDir, defaultScope()))))
 
   def boundaryFires() = effScope() == Private and refs == CrossNs
 
-  // The two guards internal/finding.go applies (findingsOf and boundaryFinding) before a boundary is reported:
-  // the scope test, and a reference from another namespace. Each invariant
-  // below fails if its guard is dropped.
+  // No level states a scope, or none but the one named.
+  def noDirective() =
+    declDir == NoDir
+    and blockDir == NoDir
+    and typeDir == NoDir
+    and fileDir == NoDir
+  def onlyDeclDir() = blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
+  def onlyBlockDir() = declDir == NoDir and typeDir == NoDir and fileDir == NoDir
+  def onlyTypeDir() = declDir == NoDir and blockDir == NoDir and fileDir == NoDir
+  def onlyFileDir() = declDir == NoDir and blockDir == NoDir and typeDir == NoDir
+
+  // The two guards internal/finding.go applies before a boundary is reported:
+  // the scope test in findingsOf, and a reference from another namespace in
+  // boundaryFinding. Each invariant below fails if its guard is dropped.
   action reportBoundary() {
     requires configured
     requires effScope() == Private
@@ -94,8 +115,11 @@ spec Knobs {
   invariant ReportImpliesConfigured    { reported => configured }
   // An exported declaration is reported only where a directive narrowed it.
   invariant ExportedFiresOnlyWhenStated {
-    reported and exported => declDir == DirPrivate or blockOf() == DirPrivate
-                             or contained() == DirPrivate or fileDir == DirPrivate
+    reported and exported =>
+      declDir == DirPrivate
+      or blockOf() == DirPrivate
+      or contained() == DirPrivate
+      or fileDir == DirPrivate
   }
   invariant SameNamespaceNeverCrosses  { reported => refs != SameNs }
   invariant NoRefsNeverCrosses         { reported => refs != NoRefs }
@@ -106,34 +130,58 @@ spec Knobs {
   // The kind is pinned in each: a semantics that resolved one kind differently
   // would still satisfy a reachable that left it free.
   reachable ConfigBitesOnPkg {
-    configured and kind == Pkg and cfgUnexported == Private
-    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
-    and not exported and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Pkg
+    and cfgUnexported == Private
+    and noDirective()
+    and not exported
+    and refs == CrossNs
+    and boundaryFires()
   }
   reachable ConfigBitesOnMember {
-    configured and kind == Member and cfgUnexported == Private
-    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
-    and not exported and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Member
+    and cfgUnexported == Private
+    and noDirective()
+    and not exported
+    and refs == CrossNs
+    and boundaryFires()
   }
   reachable ConfigBitesOnMethod {
-    configured and kind == Method and cfgUnexported == Private
-    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
-    and not exported and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Method
+    and cfgUnexported == Private
+    and noDirective()
+    and not exported
+    and refs == CrossNs
+    and boundaryFires()
   }
   reachable ConfigSilencesPkg {
-    configured and kind == Pkg and cfgUnexported == Shared
-    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
-    and not exported and refs == CrossNs and not boundaryFires()
+    configured
+    and kind == Pkg
+    and cfgUnexported == Shared
+    and noDirective()
+    and not exported
+    and refs == CrossNs
+    and not boundaryFires()
   }
   reachable ConfigSilencesMember {
-    configured and kind == Member and cfgUnexported == Shared
-    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
-    and not exported and refs == CrossNs and not boundaryFires()
+    configured
+    and kind == Member
+    and cfgUnexported == Shared
+    and noDirective()
+    and not exported
+    and refs == CrossNs
+    and not boundaryFires()
   }
   reachable ConfigSilencesMethod {
-    configured and kind == Method and cfgUnexported == Shared
-    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
-    and not exported and refs == CrossNs and not boundaryFires()
+    configured
+    and kind == Method
+    and cfgUnexported == Shared
+    and noDirective()
+    and not exported
+    and refs == CrossNs
+    and not boundaryFires()
   }
 
   // --- the declaration's and the file's directives bite, per kind -------------
@@ -142,103 +190,182 @@ spec Knobs {
   // that let the file reach package-level declarations alone, or ignored a
   // method's own directive, fails one of these.
   reachable DeclDirBitesOnMethod {
-    configured and kind == Method and declDir == DirPrivate
-    and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
-    and cfgUnexported == Shared and not exported
-    and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Method
+    and declDir == DirPrivate
+    and onlyDeclDir()
+    and cfgUnexported == Shared
+    and not exported
+    and refs == CrossNs
+    and boundaryFires()
   }
   reachable DeclDirSilencesMethod {
-    configured and kind == Method and declDir == DirShared
-    and blockDir == NoDir and typeDir == NoDir and fileDir == NoDir
-    and cfgUnexported == Private and not exported
-    and refs == CrossNs and not boundaryFires()
+    configured
+    and kind == Method
+    and declDir == DirShared
+    and onlyDeclDir()
+    and cfgUnexported == Private
+    and not exported
+    and refs == CrossNs
+    and not boundaryFires()
   }
   reachable FileDirBitesOnMember {
-    configured and kind == Member and fileDir == DirPrivate
-    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
-    and cfgUnexported == Shared and not exported
-    and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Member
+    and fileDir == DirPrivate
+    and onlyFileDir()
+    and cfgUnexported == Shared
+    and not exported
+    and refs == CrossNs
+    and boundaryFires()
   }
   reachable FileDirSilencesMember {
-    configured and kind == Member and fileDir == DirShared
-    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
-    and cfgUnexported == Private and not exported
-    and refs == CrossNs and not boundaryFires()
+    configured
+    and kind == Member
+    and fileDir == DirShared
+    and onlyFileDir()
+    and cfgUnexported == Private
+    and not exported
+    and refs == CrossNs
+    and not boundaryFires()
   }
   reachable FileDirBitesOnMethod {
-    configured and kind == Method and fileDir == DirPrivate
-    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
-    and cfgUnexported == Shared and not exported
-    and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Method
+    and fileDir == DirPrivate
+    and onlyFileDir()
+    and cfgUnexported == Shared
+    and not exported
+    and refs == CrossNs
+    and boundaryFires()
   }
   reachable FileDirSilencesMethod {
-    configured and kind == Method and fileDir == DirShared
-    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
-    and cfgUnexported == Private and not exported
-    and refs == CrossNs and not boundaryFires()
+    configured
+    and kind == Method
+    and fileDir == DirShared
+    and onlyFileDir()
+    and cfgUnexported == Private
+    and not exported
+    and refs == CrossNs
+    and not boundaryFires()
   }
 
   // --- the levels beat one another, each witnessed by a conflict -------------
   reachable DeclDirBeatsFileDir {
-    configured and kind == Pkg and declDir == DirPrivate and fileDir == DirShared
-    and not exported and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Pkg
+    and declDir == DirPrivate
+    and fileDir == DirShared
+    and not exported
+    and refs == CrossNs
+    and boundaryFires()
   }
   reachable DeclDirBeatsTypeDir {
-    configured and kind == Member and declDir == DirPrivate and typeDir == DirShared
-    and not exported and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Member
+    and declDir == DirPrivate
+    and typeDir == DirShared
+    and not exported
+    and refs == CrossNs
+    and boundaryFires()
   }
   reachable TypeDirBeatsFileDir {
-    configured and kind == Member and declDir == NoDir
-    and typeDir == DirShared and fileDir == DirPrivate
-    and not exported and refs == CrossNs and not boundaryFires()
+    configured
+    and kind == Member
+    and declDir == NoDir
+    and typeDir == DirShared
+    and fileDir == DirPrivate
+    and not exported
+    and refs == CrossNs
+    and not boundaryFires()
   }
   reachable FileDirBeatsConfig {
-    configured and kind == Pkg and declDir == NoDir and typeDir == NoDir
-    and fileDir == DirPrivate and cfgUnexported == Shared
-    and not exported and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Pkg
+    and declDir == NoDir
+    and typeDir == NoDir
+    and fileDir == DirPrivate
+    and cfgUnexported == Shared
+    and not exported
+    and refs == CrossNs
+    and boundaryFires()
   }
 
   // --- the block's directive reaches its specs, and members through a type ---
   // It never reaches a method with a receiver, which is in no block.
   reachable DeclDirBeatsBlockDir {
-    configured and kind == Pkg and declDir == DirPrivate and blockDir == DirShared
-    and not exported and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Pkg
+    and declDir == DirPrivate
+    and blockDir == DirShared
+    and not exported
+    and refs == CrossNs
+    and boundaryFires()
   }
   reachable BlockDirBeatsFileDir {
-    configured and kind == Pkg and declDir == NoDir
-    and blockDir == DirShared and fileDir == DirPrivate
-    and not exported and refs == CrossNs and not boundaryFires()
+    configured
+    and kind == Pkg
+    and declDir == NoDir
+    and blockDir == DirShared
+    and fileDir == DirPrivate
+    and not exported
+    and refs == CrossNs
+    and not boundaryFires()
   }
   reachable BlockDirReachesMemberThroughItsType {
-    configured and kind == Member and blockDir == DirShared
-    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
-    and cfgUnexported == Private and not exported
-    and refs == CrossNs and not boundaryFires()
+    configured
+    and kind == Member
+    and blockDir == DirShared
+    and onlyBlockDir()
+    and cfgUnexported == Private
+    and not exported
+    and refs == CrossNs
+    and not boundaryFires()
   }
   reachable TypeDirBeatsBlockDirOnMember {
-    configured and kind == Member and declDir == NoDir
-    and typeDir == DirPrivate and blockDir == DirShared
-    and fileDir == NoDir and not exported
-    and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Member
+    and declDir == NoDir
+    and typeDir == DirPrivate
+    and blockDir == DirShared
+    and fileDir == NoDir
+    and not exported
+    and refs == CrossNs
+    and boundaryFires()
   }
   reachable BlockDirInertOnMethod {
-    configured and kind == Method and blockDir == DirShared
-    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
-    and cfgUnexported == Private and not exported
-    and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Method
+    and blockDir == DirShared
+    and onlyBlockDir()
+    and cfgUnexported == Private
+    and not exported
+    and refs == CrossNs
+    and boundaryFires()
   }
+
   // --- the type's directive reaches members and nothing else ----------------
   // Behavioural, not a restatement: the declaration still fires, so a semantics
   // that let the type's directive through would be caught here.
   reachable TypeDirInertOnPkg {
-    configured and kind == Pkg and typeDir == DirShared
-    and declDir == NoDir and blockDir == NoDir and fileDir == NoDir and cfgUnexported == Private
-    and not exported and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Pkg
+    and typeDir == DirShared
+    and onlyTypeDir()
+    and cfgUnexported == Private
+    and not exported
+    and refs == CrossNs
+    and boundaryFires()
   }
   reachable TypeDirInertOnMethod {
-    configured and kind == Method and typeDir == DirShared
-    and declDir == NoDir and blockDir == NoDir and fileDir == NoDir and cfgUnexported == Private
-    and not exported and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Method
+    and typeDir == DirShared
+    and onlyTypeDir()
+    and cfgUnexported == Private
+    and not exported
+    and refs == CrossNs
+    and boundaryFires()
   }
 
   // --- exportedness --------------------------------------------------------
@@ -246,34 +373,53 @@ spec Knobs {
   // pair is what makes exportedness a default rather than an exemption: the
   // author can still say what the analysis will not guess.
   reachable ExportedSilentByDefault {
-    configured and kind == Pkg and exported
-    and declDir == NoDir and blockDir == NoDir and fileDir == NoDir
-    and cfgUnexported == Private and refs == CrossNs and not boundaryFires()
+    configured
+    and kind == Pkg
+    and exported
+    and declDir == NoDir
+    and blockDir == NoDir
+    and fileDir == NoDir
+    and cfgUnexported == Private
+    and refs == CrossNs
+    and not boundaryFires()
   }
   reachable ExportedNarrowedWhenStated {
-    configured and kind == Pkg and exported and declDir == DirPrivate
-    and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Pkg
+    and exported
+    and declDir == DirPrivate
+    and refs == CrossNs
+    and boundaryFires()
   }
   // An exported declaration carries no boundary by default, whatever its owner
   // or the configuration says: the DTO whose members are capitalized for a
   // serializer is protected by a directive on its type, not by a guess.
   reachable ExportedMemberSilentByDefault {
-    configured and kind == Member and exported
-    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
-    and fileDir == NoDir and cfgUnexported == Private
-    and refs == CrossNs and not boundaryFires()
+    configured
+    and kind == Member
+    and exported
+    and noDirective()
+    and cfgUnexported == Private
+    and refs == CrossNs
+    and not boundaryFires()
   }
   reachable ExportedMethodSilentByDefault {
-    configured and kind == Method and exported
-    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
-    and fileDir == NoDir and cfgUnexported == Private
-    and refs == CrossNs and not boundaryFires()
+    configured
+    and kind == Method
+    and exported
+    and noDirective()
+    and cfgUnexported == Private
+    and refs == CrossNs
+    and not boundaryFires()
   }
   // ... and the type's directive is what brings an exported member back in.
   reachable TypeDirBindsExportedMember {
-    configured and kind == Member and exported and typeDir == DirPrivate
-    and declDir == NoDir and blockDir == NoDir and fileDir == NoDir
-    and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Member
+    and exported
+    and typeDir == DirPrivate
+    and onlyTypeDir()
+    and refs == CrossNs
+    and boundaryFires()
   }
-
 }

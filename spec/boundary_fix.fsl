@@ -7,8 +7,12 @@
 // rather than a decision, and a directive on the declaration would outrank it.
 // But it would leave the outer directive reaching one declaration fewer, which
 // can make that directive unused: a report the fix created. So the fix is
-// withheld at every level that stated a scope, as FixNeverClobbersDirective and
-// the FixWithheldUnder* witnesses pin.
+// withheld at every level that stated a scope, as FixNeverClobbersDirective
+// pins.
+//
+// The scope model, the enums and the defs from defaultScope to boundaryFires,
+// is knobs.fsl's, copied verbatim. spec/verify.sh fails if the two copies
+// differ.
 fsl 5
 spec BoundaryFix {
   enum Scope { Shared, Private }
@@ -19,11 +23,16 @@ spec BoundaryFix {
   enum Refs  { NoRefs, SameNs, CrossNs }
 
   state {
-    configured: Bool = false, cfgUnexported: Scope = Private,
-    kind: Kind = Pkg, exported: Bool = false,
-    declDir: Dir = NoDir, blockDir: Dir = NoDir,
-    typeDir: Dir = NoDir, fileDir: Dir = NoDir,
-    refs: Refs = NoRefs, fixed: Bool = false,
+    configured: Bool = false,
+    cfgUnexported: Scope = Private,
+    kind: Kind = Pkg,
+    exported: Bool = false,
+    declDir: Dir = NoDir,
+    blockDir: Dir = NoDir,
+    typeDir: Dir = NoDir,
+    fileDir: Dir = NoDir,
+    refs: Refs = NoRefs,
+    fixed: Bool = false,
     // A pass that reported and did not fix — -fix off, or the fix withheld. It
     // is what lets a run go on forever with a crossing pending, which is what
     // makes `fair` on fixBoundary a claim rather than decoration.
@@ -32,11 +41,17 @@ spec BoundaryFix {
   action configure(u: Scope, k: Kind, x: Bool,
                    dd: Dir, bd: Dir, td: Dir, fd: Dir, r: Refs) {
     requires not configured
-    configured = true  cfgUnexported = u
-    kind = k  exported = x
-    declDir = dd  blockDir = bd  typeDir = td  fileDir = fd
+    configured = true
+    cfgUnexported = u
+    kind = k
+    exported = x
+    declDir = dd
+    blockDir = bd
+    typeDir = td
+    fileDir = fd
     refs = r
   }
+
   // Exportedness decides the default and nothing else: an exported declaration
   // has no boundary unless a directive gives it one. Asking instead whether it
   // is reachable from outside the package is a question a single-package
@@ -44,43 +59,55 @@ spec BoundaryFix {
   // embedding, an alias or an interface it satisfies — and guessing produced
   // boundary reports on API that every importer reaches.
   def defaultScope() = if exported then Shared else cfgUnexported
+
+  // The nearer directive if it states a scope, otherwise the farther one.
+  def orElse(nearer: Dir, farther: Dir) = if nearer != NoDir then nearer else farther
+
   // What contains a member: its type, and through the type the var/const/type
-  // block the type is declared in — addGenDeclToCollection merges the block
-  // into the spec's own directive and passes that as the member's container, so
-  // a block reaches a member even though it never reaches a method with a
+  // block the type is declared in. addGenDeclToCollection merges the block
+  // into the spec's own directive and passes that as the member's container,
+  // so a block reaches a member even though it never reaches a method with a
   // receiver.
-  def contained() =
-    if kind == Member then (if typeDir != NoDir then typeDir else blockDir)
-    else NoDir
+  def contained() = if kind == Member then orElse(typeDir, blockDir) else NoDir
+
+  // A parenthesized var/const/type block reaches only the specs it holds, so
+  // only a package-level declaration has one: a member is not a spec of a
+  // block, and a method is never in one. Decl.Merge lets a spec's own scope
+  // replace the block's, which puts the block directly under the declaration.
   def blockOf() = if kind == Pkg then blockDir else NoDir
+
+  // The scope a directive states, or the scope of the next level out when it
+  // states none.
+  def pick(d: Dir, otherwise: Scope) =
+    if d == DirShared then Shared
+    else if d == DirPrivate then Private
+    else otherwise
+
+  // The first level that states a scope decides it, nearest first.
   def effScope() =
-    if declDir == DirShared then Shared
-    else if declDir == DirPrivate then Private
-    else if blockOf() == DirShared then Shared
-    else if blockOf() == DirPrivate then Private
-    else if contained() == DirShared then Shared
-    else if contained() == DirPrivate then Private
-    else if fileDir == DirShared then Shared
-    else if fileDir == DirPrivate then Private
-    else defaultScope()
+    pick(declDir, pick(blockOf(), pick(contained(), pick(fileDir, defaultScope()))))
+
   def boundaryFires() = effScope() == Private and refs == CrossNs
 
   // Whichever level stated the scope, if any. The fix is withheld for all of
   // them, not only for the declaration's own: inserting a directive under an
   // outer one leaves that one binding a declaration fewer, which can make it
   // unused — a diagnostic that did not exist before the fix ran, which is what
-  // -fix must never produce.
-  def stated() =
-    if declDir != NoDir then declDir
-    else if blockOf() != NoDir then blockOf()
-    else if contained() != NoDir then contained()
-    else fileDir
+  // -fix must never produce. In the code this is boundaryFinding's test
+  // `t.boundAt != boundAtDefault`.
+  def stated() = orElse(declDir, orElse(blockOf(), orElse(contained(), fileDir)))
 
-  action reportOnly() { requires configured  stalled = true }
+  action reportOnly() {
+    requires configured
+    stalled = true
+  }
 
   fair action fixBoundary() {
-    requires configured  requires boundaryFires()  requires stated() == NoDir
-    declDir = DirShared  fixed = true
+    requires configured
+    requires boundaryFires()
+    requires stated() == NoDir
+    declDir = DirShared
+    fixed = true
   }
 
   // Auxiliary: a fix happens only after configuration, and is recorded by the
@@ -95,89 +122,157 @@ spec BoundaryFix {
   trans FixNeverClobbersDirective { not old(fixed) and fixed => old(stated()) == NoDir }
 
   reachable BoundaryCanFire { configured and boundaryFires() }
-  // A scope stated at any level withholds the fix, so the reachables below pin
-  // the withholding rather than an override.
+
+  // The FixWithheld* witnesses below are states in which a boundary fires
+  // under a stated scope and no fix has been written. They are reachable
+  // whether or not fixBoundary checks stated(), so they do not pin the
+  // withholding themselves. FixNeverClobbersDirective does; these show it is
+  // checked in the states where its guard decides.
   reachable FixWithheldUnderTypeDirective {
-    configured and kind == Member and typeDir == DirPrivate
-    and declDir == NoDir and boundaryFires() and not fixed
+    configured
+    and kind == Member
+    and typeDir == DirPrivate
+    and declDir == NoDir
+    and boundaryFires()
+    and not fixed
   }
   reachable FixWithheldUnderFileDirective {
-    configured and kind == Pkg and fileDir == DirPrivate
-    and declDir == NoDir and boundaryFires() and not fixed
+    configured
+    and kind == Pkg
+    and fileDir == DirPrivate
+    and declDir == NoDir
+    and boundaryFires()
+    and not fixed
   }
   // The file's directive reaches every kind. Each of these pins every nearer
   // level and a shared default, so only the file can make it cross: a
   // semantics that let the file reach package-level declarations alone would
   // leave a member and a method with nothing to withhold.
   reachable FixWithheldUnderFileDirectiveOnMember {
-    configured and kind == Member and fileDir == DirPrivate
-    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
-    and cfgUnexported == Shared and not exported
-    and boundaryFires() and not fixed
+    configured
+    and kind == Member
+    and fileDir == DirPrivate
+    and declDir == NoDir
+    and blockDir == NoDir
+    and typeDir == NoDir
+    and cfgUnexported == Shared
+    and not exported
+    and boundaryFires()
+    and not fixed
   }
   reachable FixWithheldUnderFileDirectiveOnMethod {
-    configured and kind == Method and fileDir == DirPrivate
-    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
-    and cfgUnexported == Shared and not exported
-    and boundaryFires() and not fixed
+    configured
+    and kind == Method
+    and fileDir == DirPrivate
+    and declDir == NoDir
+    and blockDir == NoDir
+    and typeDir == NoDir
+    and cfgUnexported == Shared
+    and not exported
+    and boundaryFires()
+    and not fixed
   }
   // The exportedness dimension has to do work here too: without these the
   // default could ignore exportedness and this spec would not notice.
   // An exported declaration narrowed by its own directive does cross, and the
   // fix is withheld because the directive is the author's.
   reachable ExportedNarrowedNeverFixed {
-    configured and exported and kind == Pkg and declDir == DirPrivate
-    and refs == CrossNs and boundaryFires() and not fixed
+    configured
+    and exported
+    and kind == Pkg
+    and declDir == DirPrivate
+    and refs == CrossNs
+    and boundaryFires()
+    and not fixed
   }
   reachable ExportedMemberWithheldUnderTypeDirective {
-    configured and kind == Member and exported and typeDir == DirPrivate
-    and declDir == NoDir and boundaryFires() and not fixed
+    configured
+    and kind == Member
+    and exported
+    and typeDir == DirPrivate
+    and declDir == NoDir
+    and boundaryFires()
+    and not fixed
   }
   // A declaration that states its own scope presents the fix with the one case
   // it must refuse. Without a witness, FixNeverClobbersDirective is only ever
   // checked against states where the guard was never tested.
   reachable FixWithheldOverOwnDirective {
-    configured and boundaryFires() and declDir == DirPrivate and not fixed
+    configured
+    and boundaryFires()
+    and declDir == DirPrivate
+    and not fixed
   }
   // defaults.unexported must reach this spec too, not only knobs: under a
   // shared default there is no crossing to fix in the first place.
   // One per kind: a semantics in which one kind ignored defaults.unexported
   // would still satisfy a witness that left the kind free.
   reachable SharedDefaultLeavesNothingToFix {
-    configured and kind == Pkg and cfgUnexported == Shared and stated() == NoDir
-    and not exported and refs == CrossNs and not boundaryFires()
+    configured
+    and kind == Pkg
+    and cfgUnexported == Shared
+    and stated() == NoDir
+    and not exported
+    and refs == CrossNs
+    and not boundaryFires()
   }
   reachable SharedDefaultLeavesNothingToFixOnMember {
-    configured and kind == Member and cfgUnexported == Shared and stated() == NoDir
-    and not exported and refs == CrossNs and not boundaryFires()
+    configured
+    and kind == Member
+    and cfgUnexported == Shared
+    and stated() == NoDir
+    and not exported
+    and refs == CrossNs
+    and not boundaryFires()
   }
   reachable SharedDefaultLeavesNothingToFixOnMethod {
-    configured and kind == Method and cfgUnexported == Shared and stated() == NoDir
-    and not exported and refs == CrossNs and not boundaryFires()
+    configured
+    and kind == Method
+    and cfgUnexported == Shared
+    and stated() == NoDir
+    and not exported
+    and refs == CrossNs
+    and not boundaryFires()
   }
 
   // The block level and exportedness must do work here too, not only in knobs:
   // without these, defaultScope() could ignore exportedness and blockDir could
   // go unread, and this spec would not notice.
   reachable BoundaryFromBlockDirectiveFires {
-    configured and kind == Pkg and blockDir == DirPrivate
-    and declDir == NoDir and typeDir == NoDir and fileDir == NoDir
-    and cfgUnexported == Shared and refs == CrossNs and boundaryFires()
+    configured
+    and kind == Pkg
+    and blockDir == DirPrivate
+    and declDir == NoDir
+    and typeDir == NoDir
+    and fileDir == NoDir
+    and cfgUnexported == Shared
+    and refs == CrossNs
+    and boundaryFires()
   }
   reachable ExportedNeverCrossesByDefault {
-    configured and exported and kind == Pkg
-    and declDir == NoDir and blockDir == NoDir and typeDir == NoDir
-    and fileDir == NoDir and cfgUnexported == Private
-    and refs == CrossNs and not boundaryFires()
+    configured
+    and exported
+    and kind == Pkg
+    and declDir == NoDir
+    and blockDir == NoDir
+    and typeDir == NoDir
+    and fileDir == NoDir
+    and cfgUnexported == Private
+    and refs == CrossNs
+    and not boundaryFires()
   }
 
   // The stall itself. Without it nothing reads `stalled` and the assignment
   // recording it could be deleted with no verdict moving.
   reachable CrossingSurvivesAPassWithoutFix {
-    stalled and boundaryFires() and stated() == NoDir
+    stalled
+    and boundaryFires()
+    and stated() == NoDir
   }
   reachable WithheldFixSurvivesAPass {
-    stalled and boundaryFires() and stated() != NoDir
+    stalled
+    and boundaryFires()
+    and stated() != NoDir
   }
 
   leadsTo BoundaryEventuallyFixed {

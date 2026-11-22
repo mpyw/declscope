@@ -52,15 +52,23 @@ spec TypeFixMembers {
 
   state {
     phase: 0..2 = 0,
-    unusedMode: Mode = Strict, surplusMode: Mode = Strict, seesAllFiles: Bool = true,
+    unusedMode: Mode = Strict,
+    surplusMode: Mode = Strict,
+    seesAllFiles: Bool = true,
     // The type's boundary report is answered by an ignore or the baseline, so
     // the run writes no fix on it and subsumes nothing.
     typeAnswered: Bool = false,
-    memberExported: Bool = false, memberDir: Dir = NoDir, reach: Reach = Unreached,
-    entryMixed: Bool = false, surplusIgnored: Bool = false,
-    siblingExported: Bool = false, siblingDir: Dir = NoDir,
+    memberExported: Bool = false,
+    memberDir: Dir = NoDir,
+    reach: Reach = Unreached,
+    entryMixed: Bool = false,
+    surplusIgnored: Bool = false,
+    siblingExported: Bool = false,
+    siblingDir: Dir = NoDir,
     // What the run wrote.
-    typeFixed: Bool = false, memberNarrowed: Bool = false, memberFixed: Bool = false,
+    typeFixed: Bool = false,
+    memberNarrowed: Bool = false,
+    memberFixed: Bool = false,
     stalled: Bool = false
   }
 
@@ -68,13 +76,23 @@ spec TypeFixMembers {
   // every parameter.
   action configureRules(u: Mode, s: Mode, sa: Bool, ta: Bool) {
     requires phase == 0
-    phase = 1  unusedMode = u  surplusMode = s  seesAllFiles = sa  typeAnswered = ta
+    phase = 1
+    unusedMode = u
+    surplusMode = s
+    seesAllFiles = sa
+    typeAnswered = ta
   }
-  action configureMembers(mx: Bool, md: Dir, r: Reach, em: Bool, si: Bool, sx: Bool, sd: Dir) {
+  action configureMembers(mx: Bool, md: Dir, r: Reach, em: Bool, si: Bool,
+                          sx: Bool, sd: Dir) {
     requires phase == 1
     phase = 2
-    memberExported = mx  memberDir = md  reach = r  entryMixed = em  surplusIgnored = si
-    siblingExported = sx  siblingDir = sd
+    memberExported = mx
+    memberDir = md
+    reach = r
+    entryMixed = em
+    surplusIgnored = si
+    siblingExported = sx
+    siblingDir = sd
   }
   def configured() = phase == 2
 
@@ -97,39 +115,64 @@ spec TypeFixMembers {
   // scope in force.
   def unusedReports(d: Dir, td: Dir, x: Bool) =
     d != NoDir
-    and (unusedMode == Loose and outerFixed(td, x) and stated(d) == outerScope(td, x)
-         or unusedMode == Strict and stated(d) == outerScope(td, x))
+    and (
+      (unusedMode == Loose and outerFixed(td, x) and stated(d) == outerScope(td, x))
+      or (unusedMode == Strict and stated(d) == outerScope(td, x))
+    )
 
   // --- the pre-fix source, which every guard reads -------------------------
-  def memberCrossesBefore() = scopeOf(memberDir, NoDir, memberExported) == Private and reach == Spelled
+  def memberCrossesBefore() =
+    scopeOf(memberDir, NoDir, memberExported) == Private
+    and reach == Spelled
 
   // A directive a member states that binds today and would bind nothing under
   // the widened type.
   def unbinds(d: Dir, x: Bool) =
     unusedReports(d, DirShared, x) and not unusedReports(d, NoDir, x)
-  def unbindsAMember() = unbinds(memberDir, memberExported) or unbinds(siblingDir, siblingExported)
+  def unbindsAMember() =
+    unbinds(memberDir, memberExported)
+    or unbinds(siblingDir, siblingExported)
 
-  def typeFixable() = configured() and not typeAnswered and not unbindsAMember()
+  def typeFixable() =
+    configured()
+    and not typeAnswered
+    and not unbindsAMember()
+
+  // What surplus strict asks of the member besides where its scope comes
+  // from: strict is on, the pass reads every file, and the member is
+  // unexported, reached from no other namespace, alone on its line and
+  // carries no surplus ignore.
+  def strictJudges() =
+    surplusMode == Strict
+    and seesAllFiles
+    and not memberExported
+    and reach == Unreached
+    and not entryMixed
+    and not surplusIgnored
 
   // surplusNarrowedByTypeFix: under strict, and only by a pass that reads
   // every file, an unexported member that states no scope, that nothing
   // reaches from another namespace, that shares its line with nothing
   // reached, and that carries no ignore answering surplus.
-  def narrowWanted() =
-    surplusMode == Strict and seesAllFiles and not memberExported and memberDir == NoDir
-    and reach == Unreached and not entryMixed and not surplusIgnored
+  def narrowWanted() = strictJudges() and memberDir == NoDir
 
   // A pass that reported and did not fix.
-  action reportOnly() { requires configured()  stalled = true }
+  action reportOnly() {
+    requires configured()
+    stalled = true
+  }
 
   fair action fixType() {
-    requires typeFixable()  requires not typeFixed
+    requires typeFixable()
+    requires not typeFixed
     typeFixed = true
     memberNarrowed = narrowWanted()
   }
   fair action fixMember() {
-    requires configured()  requires not memberFixed
-    requires memberCrossesBefore()  requires memberDir == NoDir
+    requires configured()
+    requires not memberFixed
+    requires memberCrossesBefore()
+    requires memberDir == NoDir
     // fix_members.fsl's subsumption: the type's fix, when the run writes
     // one, settles the member, and the member's own would bind nothing.
     requires not typeFixable()
@@ -143,22 +186,28 @@ spec TypeFixMembers {
     else if memberFixed then DirShared
     else memberDir
   def memberCrossesAfter() =
-    scopeOf(memberDirAfter(), typeDirAfter(), memberExported) == Private and reach == Spelled
+    scopeOf(memberDirAfter(), typeDirAfter(), memberExported) == Private
+    and reach == Spelled
 
   // surplus strict on the member, over the fixed source: it takes shared scope
   // from the type's directive alone, and nothing excuses it.
   def strictAfter() =
-    surplusMode == Strict and seesAllFiles and memberDirAfter() == NoDir
-    and typeDirAfter() == DirShared and not memberExported
-    and reach == Unreached and not entryMixed and not surplusIgnored
+    strictJudges()
+    and memberDirAfter() == NoDir
+    and typeDirAfter() == DirShared
 
   // --- auxiliary: nothing assigns the inputs once configured, so each guard
   // still holds of the state it fired in.
-  invariant FixImpliesConfigured { (typeFixed or memberFixed or stalled) => configured() }
+  invariant FixImpliesConfigured {
+    (typeFixed or memberFixed or stalled) => configured()
+  }
   invariant TypeFixRecordsItsGuard { typeFixed => typeFixable() }
   invariant NarrowingRecordsItsGuard { memberNarrowed == (typeFixed and narrowWanted()) }
   invariant MemberFixRecordsItsGuard {
-    memberFixed => memberCrossesBefore() and memberDir == NoDir and not typeFixable()
+    memberFixed =>
+      memberCrossesBefore()
+      and memberDir == NoDir
+      and not typeFixable()
   }
 
   // --- what the run leaves ---------------------------------------------------
@@ -181,11 +230,16 @@ spec TypeFixMembers {
     (memberNarrowed or memberFixed)
     => not unusedReports(memberDirAfter(), typeDirAfter(), memberExported)
   }
+  // An authored directive the run leaves reported by unused was reported
+  // before the run as well.
+  def keepsItsReport(d: Dir, x: Bool) =
+    unusedReports(d, typeDirAfter(), x) => unusedReports(d, NoDir, x)
+
   // And no directive the author wrote is left binding nothing that bound
   // something before. This is the guard the implementation lacked.
   invariant AuthoredDirectivesKeepTheirReport {
-    (unusedReports(memberDir, typeDirAfter(), memberExported) => unusedReports(memberDir, NoDir, memberExported))
-    and (unusedReports(siblingDir, typeDirAfter(), siblingExported) => unusedReports(siblingDir, NoDir, siblingExported))
+    keepsItsReport(memberDir, memberExported)
+    and keepsItsReport(siblingDir, siblingExported)
   }
 
   // (c) surplus strict does not report a member the type's new directive
@@ -195,73 +249,151 @@ spec TypeFixMembers {
 
   // (e) The author's own directive is never overwritten, and the member never
   // carries two insertions.
-  invariant NeverOverwritesTheAuthor { (memberNarrowed or memberFixed) => memberDir == NoDir }
+  invariant NeverOverwritesTheAuthor {
+    (memberNarrowed or memberFixed) => memberDir == NoDir
+  }
   invariant OneInsertionPerMember { not (memberNarrowed and memberFixed) }
 
-  trans FixTypeOnlyWhereFixable { not old(typeFixed) and typeFixed => old(typeFixable()) }
+  trans FixTypeOnlyWhereFixable {
+    not old(typeFixed) and typeFixed => old(typeFixable())
+  }
 
   // --- witnesses, each with every other reason pinned ---------------------
   reachable NarrowedWithTheType {
-    memberNarrowed and unusedMode == Strict and not strictAfter() and not memberCrossesAfter()
+    memberNarrowed
+    and unusedMode == Strict
+    and not strictAfter()
+    and not memberCrossesAfter()
   }
   reachable SettledByTheType {
-    typeFixed and not memberFixed and memberDir == NoDir and not memberExported
-    and memberCrossesBefore() and not memberCrossesAfter()
+    typeFixed
+    and not memberFixed
+    and memberDir == NoDir
+    and not memberExported
+    and memberCrossesBefore()
+    and not memberCrossesAfter()
   }
   reachable WidenedOverAnUnspelledReach {
-    typeFixed and surplusMode == Strict and seesAllFiles and not memberExported and memberDir == NoDir
-    and reach == Unspelled and not entryMixed and not surplusIgnored and not memberNarrowed
+    typeFixed
+    and surplusMode == Strict
+    and seesAllFiles
+    and not memberExported
+    and memberDir == NoDir
+    and reach == Unspelled
+    and not entryMixed
+    and not surplusIgnored
+    and not memberNarrowed
   }
   reachable WidenedInAMixedEntry {
-    typeFixed and surplusMode == Strict and seesAllFiles and not memberExported and memberDir == NoDir
-    and reach == Unreached and entryMixed and not surplusIgnored and not memberNarrowed
+    typeFixed
+    and surplusMode == Strict
+    and seesAllFiles
+    and not memberExported
+    and memberDir == NoDir
+    and reach == Unreached
+    and entryMixed
+    and not surplusIgnored
+    and not memberNarrowed
   }
   reachable WidenedUnderAnIgnore {
-    typeFixed and surplusMode == Strict and seesAllFiles and not memberExported and memberDir == NoDir
-    and reach == Unreached and not entryMixed and surplusIgnored and not memberNarrowed
+    typeFixed
+    and surplusMode == Strict
+    and seesAllFiles
+    and not memberExported
+    and memberDir == NoDir
+    and reach == Unreached
+    and not entryMixed
+    and surplusIgnored
+    and not memberNarrowed
   }
   reachable WidenedByABlindPass {
-    typeFixed and surplusMode == Strict and not seesAllFiles and not memberExported and memberDir == NoDir
-    and reach == Unreached and not entryMixed and not surplusIgnored and not memberNarrowed
+    typeFixed
+    and surplusMode == Strict
+    and not seesAllFiles
+    and not memberExported
+    and memberDir == NoDir
+    and reach == Unreached
+    and not entryMixed
+    and not surplusIgnored
+    and not memberNarrowed
   }
   reachable WidenedUnderLoose {
-    typeFixed and surplusMode == Loose and seesAllFiles and not memberExported and memberDir == NoDir
-    and reach == Unreached and not entryMixed and not surplusIgnored and not memberNarrowed
+    typeFixed
+    and surplusMode == Loose
+    and seesAllFiles
+    and not memberExported
+    and memberDir == NoDir
+    and reach == Unreached
+    and not entryMixed
+    and not surplusIgnored
+    and not memberNarrowed
   }
   reachable ExportedMemberWidened {
-    typeFixed and surplusMode == Strict and seesAllFiles and memberExported and memberDir == NoDir
-    and reach == Unreached and not entryMixed and not surplusIgnored and not memberNarrowed
+    typeFixed
+    and surplusMode == Strict
+    and seesAllFiles
+    and memberExported
+    and memberDir == NoDir
+    and reach == Unreached
+    and not entryMixed
+    and not surplusIgnored
+    and not memberNarrowed
   }
   reachable OwnPrivateKept {
-    typeFixed and memberDir == DirPrivate and not memberExported and unusedMode == Strict
+    typeFixed
+    and memberDir == DirPrivate
+    and not memberExported
+    and unusedMode == Strict
     and not unusedReports(memberDir, typeDirAfter(), memberExported)
   }
 
   // The new guard: withheld over an unexported member's own shared, and the
   // report kept.
   reachable WithheldOverOwnShared {
-    configured() and stalled and not typeFixed and not typeAnswered
-    and memberDir == DirShared and not memberExported and unusedMode != Off
+    configured()
+    and stalled
+    and not typeFixed
+    and not typeAnswered
+    and memberDir == DirShared
+    and not memberExported
+    and unusedMode != Off
   }
   // Withheld because of the sibling, and the member that crosses takes its own.
   reachable SiblingWithholdsAndMemberTakesItsOwn {
-    memberFixed and not typeAnswered and siblingDir == DirShared and not siblingExported
-    and unusedMode == Loose and not memberCrossesAfter()
+    memberFixed
+    and not typeAnswered
+    and siblingDir == DirShared
+    and not siblingExported
+    and unusedMode == Loose
+    and not memberCrossesAfter()
   }
   // The guard is no wider than it must be: with unused off, and over an
   // exported member's directive that binds nothing already, the fix is offered.
   reachable FixedOverOwnSharedWhenUnusedOff {
-    typeFixed and memberDir == DirShared and not memberExported and unusedMode == Off
+    typeFixed
+    and memberDir == DirShared
+    and not memberExported
+    and unusedMode == Off
   }
   reachable FixedOverAnExportedOwnShared {
-    typeFixed and memberDir == DirShared and memberExported and unusedMode == Strict
+    typeFixed
+    and memberDir == DirShared
+    and memberExported
+    and unusedMode == Strict
     and unusedReports(memberDir, NoDir, memberExported)
   }
   // An answered type writes nothing, so the member's fix is not subsumed.
   reachable MemberFixedWhereTypeAnswered {
-    memberFixed and typeAnswered and not unbindsAMember() and not memberCrossesAfter()
+    memberFixed
+    and typeAnswered
+    and not unbindsAMember()
+    and not memberCrossesAfter()
   }
-  reachable PendingSurvivesAPass { stalled and typeFixable() and not typeFixed }
+  reachable PendingSurvivesAPass {
+    stalled
+    and typeFixable()
+    and not typeFixed
+  }
 
   leadsTo TypeEventuallyFixed {
     typeFixable() ~> typeFixed

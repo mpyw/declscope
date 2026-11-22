@@ -38,9 +38,13 @@ spec BoundaryOff {
     boundaryOff: Bool = false,
     surplusOff: Bool = false,
     // What each rule reads.
-    scope: Scope = Private, refs: Refs = NoRefs,
-    qualify: Mode = Never, carries: Bool = false, twoNamespaces: Bool = false,
-    hasSharedDir: Bool = false, sawEveryFile: Bool = false,
+    scope: Scope = Private,
+    refs: Refs = NoRefs,
+    qualify: Mode = Never,
+    carries: Bool = false,
+    twoNamespaces: Bool = false,
+    hasSharedDir: Bool = false,
+    sawEveryFile: Bool = false,
     // Recording each report keeps the guards load-bearing. An invariant over
     // the defs alone would be a tautology, and deleting a guard would not
     // break it.
@@ -53,10 +57,15 @@ spec BoundaryOff {
                    q: Mode, c: Bool, two: Bool, pd: Bool, saw: Bool) {
     requires not configured
     configured = true
-    boundaryOff = bo  surplusOff = as_
-    scope = sc  refs = r
-    qualify = q  carries = c  twoNamespaces = two
-    hasSharedDir = pd  sawEveryFile = saw
+    boundaryOff = bo
+    surplusOff = as_
+    scope = sc
+    refs = r
+    qualify = q
+    carries = c
+    twoNamespaces = two
+    hasSharedDir = pd
+    sawEveryFile = saw
   }
 
   // The naming rule applies always, never, or once a second namespace exists.
@@ -94,28 +103,42 @@ spec BoundaryOff {
   // --- the switch bites, in both directions ---------------------------------
   invariant BoundarySilencedWhenOff { boundaryReported => not boundaryOff }
   reachable BoundaryFiresWhenOn {
-    not boundaryOff and scope == Private and refs == CrossNs and boundaryReported
+    not boundaryOff
+    and scope == Private
+    and refs == CrossNs
+    and boundaryReported
   }
   // The same configuration, with the switch on, stays quiet. Without this the
   // invariant above would hold for a rule that never fired at all.
   reachable BoundarySilentOnTheSameConfiguration {
-    boundaryOff and scope == Private and refs == CrossNs and not boundaryReported
+    boundaryOff
+    and scope == Private
+    and refs == CrossNs
+    and not boundaryReported
   }
 
   // --- and touches nothing else ---------------------------------------------
   // Each of these fails the moment boundaryOff is added to another rule's
   // guard, which is the change this spec is here to catch.
   reachable QualifyFiresWhileBoundaryOff {
-    boundaryOff and qualifyApplies() and not carries and qualifyReported
+    boundaryOff
+    and qualifyApplies()
+    and not carries
+    and qualifyReported
   }
   reachable SurplusFiresWhileBoundaryOff {
-    boundaryOff and sawEveryFile and hasSharedDir and refs != CrossNs
+    boundaryOff
+    and sawEveryFile
+    and hasSharedDir
+    and refs != CrossNs
     and surplusReported
   }
   // Both at once, with boundary off: the state the README describes for a
   // repository that takes the naming rule and nothing else.
   reachable NamingRuleAloneStillReports {
-    boundaryOff and not boundaryReported and qualifyReported
+    boundaryOff
+    and not boundaryReported
+    and qualifyReported
   }
 
   // --- rules.surplus: off stays the other switch ---------------------------
@@ -123,7 +146,10 @@ spec BoundaryOff {
   // directions rather than one implying the other.
   invariant SurplusSilencedWhenOff { surplusReported => not surplusOff }
   reachable BoundaryFiresWhileSurplusOff {
-    surplusOff and not boundaryOff and scope == Private and refs == CrossNs
+    surplusOff
+    and not boundaryOff
+    and scope == Private
+    and refs == CrossNs
     and boundaryReported
   }
 
