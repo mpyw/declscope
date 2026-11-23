@@ -1303,6 +1303,17 @@ MOVD example·com∕app∕internal∕cpu·HasFast(SB), R0
 <td>
 
 ```go
+// internal/user/testdata/prog/main.go
+func main() { fmt.Println(user.Format(1)) }
+```
+
+</td>
+<td>Reported: <code>(no fix: a file in a directory ./... skips uses it)</code>. <code>./...</code> skips <code>testdata</code>, directories starting with <code>.</code> or <code>_</code>, and ones an <code>ignore</code> directive names. As with a name only external tests use, a use from there is no use, so the report stays. But <code>go build</code> compiles a package there when it is named, so the fix would break it. A <code>//go:linkname</code> or an assembly file there counts the same way</td>
+</tr>
+<tr>
+<td>
+
+```go
 // internal/user/user.go
 type Status string
 

@@ -43,11 +43,12 @@ type Module struct {
 	Pkgs  []*packages.Package
 	Paths []string
 	// Excluded is every Go file of the main modules and the loaded nested
-	// ones that the build did not compile.
+	// ones that the build did not compile. One under a directory ./...
+	// skips is marked Skipped.
 	Excluded []*excluded.File
-	// Assembly is the path of every assembly (.s) file of the main modules
-	// and the loaded nested ones, compiled or not, where ./... reads files.
-	Assembly []string
+	// Assembly is every assembly (.s) file of the main modules and the
+	// loaded nested ones, compiled or not.
+	Assembly []AssemblyFile
 
 	// Importers are the nested modules this run loaded to read what they use.
 	// Their packages are never judged.
@@ -79,6 +80,13 @@ type Module struct {
 	// doubtAll says why every fix is withheld, or is empty: the build list of
 	// a nested module could not be read.
 	doubtAll string
+}
+
+// AssemblyFile is one assembly (.s) file. Skipped says that it sits under a
+// directory ./... skips, as excluded.File.Skipped does.
+type AssemblyFile struct {
+	Path    string
+	Skipped bool
 }
 
 // builtModule is one module of a build list: its path, and where the build
@@ -206,7 +214,7 @@ func Load(dir string) (*Module, error) {
 type loaded struct {
 	imp      Importer
 	excluded []*excluded.File
-	assembly []string
+	assembly []AssemblyFile
 	why      string
 	built    []builtModule
 	unbuilt  string
@@ -443,7 +451,7 @@ func (m *Module) loadImporter(n nestedModule, mode packages.LoadMode) loaded {
 	// Its build-excluded files are read as the main modules' are, so a name
 	// written under a tag this run does not set still counts.
 	var xs []*excluded.File
-	var asm []string
+	var asm []AssemblyFile
 	if err := m.walkTree(n.dir, compiledFiles(own), token.NewFileSet(), false, &xs, &asm); err != nil {
 		l.why = err.Error()
 		return l
@@ -1026,13 +1034,20 @@ func ErrorLine(pkg *packages.Package, cwd string) string {
 // every nested module, in each main module's tree.
 //
 // A package whose files are all excluded under this GOOS is not in the load
-// at all, so reading only IgnoredFiles would miss it. Files are read only
-// where ./... reads them, which go help packages lists: not under a directory
-// named vendor or testdata, one starting with . or _, a nested module, or a
-// directory an ignore directive in the module's go.mod names. A file outside
-// those is code another build configuration compiles. A file inside them is
-// not part of the module's build at all: nothing may import a vendored path,
-// and nothing under testdata or an ignored directory is a package of it.
+// at all, so reading only IgnoredFiles would miss it. A file is code another
+// build configuration compiles.
+//
+// So is a file under a directory ./... skips (go help packages): one named
+// testdata, one starting with . or _, or one an ignore directive in the
+// module's go.mod names. ./... and the load leave it out, but it belongs to
+// the module, and go build ./x/testdata/prog compiles it, so it may import
+// an internal package. It is read and marked Skipped, so that what it names
+// withholds a fix without counting as a use, as an external test's use
+// does. A file there that does not parse is passed over: no build compiles
+// it, and testdata holds such files on purpose. An assembly file there is
+// marked the same way. Only two kinds of directory are not read: a vendor
+// directory, since nothing may import a path through one, and a nested
+// module, which is another module.
 //
 // The walk itself goes everywhere but .git, since it is also looking for
 // go.mod files. A nested module in testdata/tools or _tools/gen is no part
@@ -1051,11 +1066,11 @@ func (m *Module) walk() error {
 }
 
 // walkTree walks the tree of one module, rooted at root, adding the files its
-// build excludes to into, and the path of every assembly file to asm,
+// build excludes to into, and every assembly file to asm,
 // compiled or not. record says whether the go.mod files below root are
 // recorded as nested modules: a main module's walk records them, at any
 // depth, so a nested module's own walk has nothing left to record.
-func (m *Module) walkTree(root string, compiled map[string]bool, fset *token.FileSet, record bool, into *[]*excluded.File, asm *[]string) error {
+func (m *Module) walkTree(root string, compiled map[string]bool, fset *token.FileSet, record bool, into *[]*excluded.File, asm *[]AssemblyFile) error {
 	ignored, err := ignoreDirectives(root)
 	if err != nil {
 		return err
@@ -1063,10 +1078,11 @@ func (m *Module) walkTree(root string, compiled map[string]bool, fset *token.Fil
 	isMain := func(dir string) bool {
 		return slices.ContainsFunc(m.mains, func(mm mainModule) bool { return mm.dir == dir })
 	}
-	// unread holds the directories whose Go files ./... does not read.
-	var unread []string
-	under := func(path string) bool {
-		return slices.ContainsFunc(unread, func(dir string) bool {
+	// unread holds the directories whose Go files are not read at all, and
+	// skipped those whose Go files ./... does not read.
+	var unread, skipped []string
+	under := func(dirs []string, path string) bool {
+		return slices.ContainsFunc(dirs, func(dir string) bool {
 			return strings.HasPrefix(path, dir+string(filepath.Separator))
 		})
 	}
@@ -1094,18 +1110,22 @@ func (m *Module) walkTree(root string, compiled map[string]bool, fset *token.Fil
 				return nil
 			}
 			rel, _ := filepath.Rel(root, path)
-			if name == "testdata" || name == "vendor" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") || ignored.matches(rel) {
+			switch {
+			case name == "vendor":
 				unread = append(unread, path)
+			case name == "testdata" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") || ignored.matches(rel):
+				skipped = append(skipped, path)
 			}
 			return nil
 		}
-		if under(path) {
+		if under(unread, path) {
 			return nil
 		}
+		isSkipped := under(skipped, path)
 		// Assembly names Go symbols by text, in any package it is linked
 		// with, whether this build assembles it or not.
 		if strings.HasSuffix(path, ".s") {
-			*asm = append(*asm, path)
+			*asm = append(*asm, AssemblyFile{Path: path, Skipped: isSkipped})
 			return nil
 		}
 		if !strings.HasSuffix(path, ".go") || compiled[path] {
@@ -1113,8 +1133,12 @@ func (m *Module) walkTree(root string, compiled map[string]bool, fset *token.Fil
 		}
 		f, err := excluded.Read(fset, path)
 		if err != nil {
+			if isSkipped {
+				return nil
+			}
 			return fmt.Errorf("reading %s, which the build excludes: %w", path, err)
 		}
+		f.Skipped = isSkipped
 		*into = append(*into, f)
 		return nil
 	})
