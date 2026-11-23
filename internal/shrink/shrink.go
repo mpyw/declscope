@@ -500,10 +500,12 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 			vs[i].lost, first[vs[i]] = false, true
 			continue
 		}
-		// A kept declaration whose name a fix takes reads as taken, the way
-		// the next run, with the fix applied, reads it.
+		// A declaration that settling withheld, and whose name a fix takes,
+		// reads as taken, the way the next run, with the fix applied, reads
+		// it: a kept type, and a value of a const block that another value
+		// holds alike. One withheld before settling has no plan.
 		for _, v := range vs {
-			if v.kept && !claims.free(v.plan) {
+			if v.f.Withheld != "" && !claims.free(v.plan) {
 				v.f.Withheld = v.plan.taken
 			}
 		}
