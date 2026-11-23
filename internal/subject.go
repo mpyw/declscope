@@ -491,7 +491,9 @@ type unseenFiles struct {
 // t's name. A field is crossed into by position too, by an unkeyed literal
 // that names only a type: the field's struct, an alias of it, a type defined
 // over it, a named pointer to it, or a constraint whose type set holds it,
-// written as P{1}. Those names come from implicitfield.Sets, the reading the
+// written as P{1}. So is one that names a slice, array or map type holding
+// the struct, written as Items{{1}}: the inner literal leaves its type out.
+// Those names come from implicitfield.Sets, the reading the
 // reference index takes, so the two cannot disagree about which literal
 // reaches a field. A guessed type set counts, since this errs toward a
 // crossing.
@@ -516,9 +518,12 @@ func (c *collection) mayCrossUnseen(pass *analysis.Pass, t *target) bool {
 				continue
 			}
 			holders, _ := c.typeSets.Literal(tn.Type())
+			elided := c.typeSets.Elided(tn.Type())
 			if _, isIface := tn.Type().Underlying().(*types.Interface); isIface {
 				holders, _ = c.typeSets.Constrained(tn.Type())
+				elided = c.typeSets.ElidedConstrained(tn.Type())
 			}
+			holders = append(holders, elided...)
 			for _, h := range holders {
 				st := h.Underlying().(*types.Struct)
 				for i := range st.NumFields() {

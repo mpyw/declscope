@@ -41,7 +41,13 @@
 //                 boundary message names the level that decided. That level
 //                 moves. A file the build excludes is read for its names
 //                 alone. So a's name written there (aCrossesExcluded) counts
-//                 like a crossing the pass sees (aCrosses). Under
+//                 like a crossing the pass sees (aCrosses). For a field, a
+//                 type name an unkeyed literal fills it through counts as
+//                 its name. That is its struct, an alias of it, a type
+//                 defined over it, a named pointer to it, a constraint whose
+//                 type set holds it, or a slice, array or map type that holds
+//                 it, written as Items{{1}}. unused_ignore_unseen.fsl lists
+//                 the same names. Under
 //                 //declscope:shared, or with boundary off, there is no
 //                 boundary report to change. There a crossing withholds
 //                 nothing.

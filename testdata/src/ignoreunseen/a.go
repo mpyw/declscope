@@ -78,3 +78,32 @@ type aBoxes interface{ aBox }
 func C() int { return aSlot{w: 1}.w + aDerived{v: 2}.v + aBox{u: 3}.u + len([]aPSlot{}) + boxed[aBox]() }
 
 func boxed[P aBoxes]() int { return 0 }
+
+// tagged.go writes aItems{{1}}. The inner literal leaves out aItem and fills
+// t by position, so the file names only aItems, a named slice.
+type aItem struct {
+	//declscope:ignore boundary // tagged.go writes it by position, through aItems
+	t int
+}
+
+type aItems []aItem
+
+// The same through a map key, and through a pointer element two literals
+// deep. The file names only aKeyed and aGrid.
+type aKey struct {
+	//declscope:ignore boundary // tagged.go writes it by position, through aKeyed
+	s int
+}
+
+type aKeyed map[aKey]bool
+
+type aCell struct {
+	//declscope:ignore boundary // tagged.go writes it by position, through aGrid
+	r int
+}
+
+type aGrid [][]*aCell
+
+func D() int {
+	return aItem{t: 1}.t + aKey{s: 2}.s + aCell{r: 3}.r + len(aItems{}) + len(aKeyed{}) + len(aGrid{})
+}
