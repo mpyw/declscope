@@ -14,8 +14,9 @@
 //     pass.Files at all. Nothing type-checked them. No scope lookup can
 //     answer for them. The directory listing is the only evidence.
 //   - A non-Go source file is not even read for its names.
-//   - A file the fix does edit can still write the name where the edit does
-//     not reach: in the text of a //go:linkname or //export directive.
+//   - Any Go file can still write the name where the edit does not reach:
+//     in the text of a //go:linkname or //export directive. The fix edits
+//     identifiers, and the directive is a comment.
 //
 // ASSUME-1: one other file is enough. Soundness over a directory is the
 //   conjunction over each file in it (modelling assumption).
@@ -23,8 +24,9 @@
 //   the rename would take, does both, or does neither. The spelling does not
 //   matter. Only the name it collides with matters (modelling assumption).
 // ASSUME-3: a directive that names a local name as text is modeled once, by
-//   the name it writes. Its file is collected or not. The fix never rewrites
-//   the text either way (modelling assumption).
+//   the name it writes and by where it is. It is in a file of the pass,
+//   collected or not, or in the other file, whatever kind that file is. The
+//   fix never rewrites the text either way (modelling assumption).
 fsl 5
 spec RenameReach {
   // Why a file of this package can sit outside the set the fix edits.
@@ -41,9 +43,9 @@ spec RenameReach {
   //     Go symbols as text, as in TEXT ·add(SB). Nothing reads it for them.
   enum FileKind { Rewritten, Uncollected, UnseenTest, BuildExcluded, NonGo }
 
-  // The local name that a //go:linkname or //export directive names, in a
-  // file of the pass. The rename edits identifiers. The directive's text is
-  // a comment. So the fix never edits it, whichever file holds it.
+  // The local name that a //go:linkname or //export directive names. The
+  // rename edits identifiers. The directive's text is a comment. So the fix
+  // never edits it, whichever file holds it.
   enum DirectiveText { NoDirective, NamesOldName, NamesOtherName }
 
   state {
@@ -52,23 +54,28 @@ spec RenameReach {
     writesOldName:   Bool = false,  // The file writes the name being renamed away
     declaresNewName: Bool = false,  // The file declares the name the rename would take
     directive:       DirectiveText = NoDirective,
+    directiveInFile: Bool = false,  // The other file holds the directive, not a file of the pass
     renamed:         Bool = false
   }
 
   action configure(kindOfFile: FileKind, writesOld: Bool, declaresNew: Bool,
-                   directiveText: DirectiveText) {
+                   directiveText: DirectiveText, inFile: Bool) {
     requires not configured
     configured = true
     fileKind = kindOfFile
     writesOldName = writesOld
     declaresNewName = declaresNew
     directive = directiveText
+    directiveInFile = inFile
   }
 
   // The type checker read every file in pass.Files. So the package-level
   // declarations of such a file are in Pkg.Scope(), whether or not the
   // collection kept the file.
   def typeChecked() = fileKind == Rewritten or fileKind == Uncollected
+
+  // The directive is in a file of the pass. linknamed reads every such file.
+  def directiveInPass() = not directiveInFile or typeChecked()
 
   // The guard as implemented. It has one row per reason a file sits outside.
   def guardAsImplemented() =
@@ -88,10 +95,18 @@ spec RenameReach {
     // it, so the guard cannot ask what it writes. Reading .s files for ·name
     // is rejected. A spelling the scan misses would be a broken link.
     and fileKind != NonGo
-    // linknamed: a directive names the old name as text. A directive that
-    // names the new name needs a declaration of it. Pkg.Scope() already
-    // finds that declaration.
-    and directive != NamesOldName
+    // linknamed: a directive in a file of the pass names the old name as
+    // text. A directive that names the new name needs a declaration of it.
+    // Pkg.Scope() already finds that declaration, or the excluded file
+    // declares it and unseenFiles.names holds it.
+    and not (directiveInPass() and directive == NamesOldName)
+    // unseenFiles.linknamed: a directive in a build-excluded file names the
+    // old name. The file's identifiers do not show it, since the directive is
+    // a comment. Without this row, NoStaleText fails: the build that keeps
+    // the file fails with "//go:linkname must refer to declared function or
+    // variable". An unseen test file and a non-Go file withhold every rename
+    // already.
+    and not (fileKind == BuildExcluded and directiveInFile and directive == NamesOldName)
 
   fair action rename() {
     requires configured
@@ -142,6 +157,13 @@ spec RenameReach {
   // withhold the rename.
   reachable RenameBesideOtherDirective {
     renamed
+      and directive == NamesOtherName
+  }
+  // The same holds for a directive in a build-excluded file.
+  reachable RenameBesideExcludedOtherDirective {
+    renamed
+      and fileKind == BuildExcluded
+      and directiveInFile
       and directive == NamesOtherName
   }
 }
