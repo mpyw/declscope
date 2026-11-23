@@ -30,6 +30,18 @@
 //                        too (carrierRoots, exclusions.writes), so the same
 //                        holds there.
 //
+// One more kind of name is no use from outside at all:
+//
+//   extTestSpelledConstrained
+//                        A file behind the constraint is an external test of
+//                        the package (package pkg_test in its directory),
+//                        and it writes pkg.Name. In reads it as an external
+//                        test, and reports the declaration as used only by
+//                        external tests. Out reads it the same way
+//                        (exclusions.extTestWrites). It once read the file
+//                        as another package, which is a use for Other. Then
+//                        In needed the ignore and Out called it unused.
+//
 // One more input says whether the files behind the constraint reach the
 // declaration:
 //
@@ -64,7 +76,7 @@
 //   More constraints make more configurations. Each one is In or Out for
 //   that file (modelling assumption).
 // ASSUME-2: a constrained file that uses the declaration reaches its
-//   package, whether it uses it by name or not. A use is made through an
+//   package, whether it uses it by name or not. So does an external test. A use is made through an
 //   import (modelling assumption, a requirement of configure).
 // ASSUME-3: a constrained file uses a declaration other than a member by
 //   writing pkg.Name, either its own or a carrier's. So Out reads that use
@@ -90,6 +102,7 @@ spec ShrinkIgnore {
     otherUseFree: Bool = false,
     otherUseConstrained: Bool = false,
     carrierSpelledConstrained: Bool = false,
+    extTestSpelledConstrained: Bool = false,
     constrainedReaches: Bool = false,
     // wouldReportIn and wouldReportOut: the run would report the
     // declaration without the ignore.
@@ -107,11 +120,12 @@ spec ShrinkIgnore {
     newOtherUseFree: Bool,
     newOtherUseConstrained: Bool,
     newCarrierSpelledConstrained: Bool,
+    newExtTestSpelledConstrained: Bool,
     newConstrainedReaches: Bool
   ) {
     requires phase == 0
     // ASSUME-2.
-    requires not (newSpelledConstrained or newOtherUseConstrained or newCarrierSpelledConstrained)
+    requires not (newSpelledConstrained or newOtherUseConstrained or newCarrierSpelledConstrained or newExtTestSpelledConstrained)
              or newConstrainedReaches
     phase = 1
     kind = newKind
@@ -120,10 +134,12 @@ spec ShrinkIgnore {
     otherUseFree = newOtherUseFree
     otherUseConstrained = newOtherUseConstrained
     carrierSpelledConstrained = newCarrierSpelledConstrained
+    extTestSpelledConstrained = newExtTestSpelledConstrained
     constrainedReaches = newConstrainedReaches
   }
 
-  // What each run sees as a use.
+  // What each run sees as a use. A name an external test writes is not one
+  // in either run.
   def seenIn() =
     spelledFree
     or spelledConstrained
@@ -179,7 +195,7 @@ spec ShrinkIgnore {
   // Auxiliary. Each run records its judgment. The inputs of that judgment
   // are never assigned again.
   invariant ConstrainedUseReaches {
-    (spelledConstrained or otherUseConstrained or carrierSpelledConstrained) => constrainedReaches
+    (spelledConstrained or otherUseConstrained or carrierSpelledConstrained or extTestSpelledConstrained) => constrainedReaches
   }
   invariant InRecordsItsJudgment {
     phase >= 2 => (wouldReportIn == not seenIn()
@@ -286,6 +302,22 @@ spec ShrinkIgnore {
     and not wouldReportOut
     and ignoreUnusedIn
     and ignoreUnusedOut
+  }
+  // A function only a tagged external test calls. Both runs report it as
+  // used only by external tests, and the ignore silences both.
+  reachable ConstrainedExtTestKept {
+    phase == 3
+    and kind == Other
+    and extTestSpelledConstrained
+    and not spelledFree
+    and not spelledConstrained
+    and not otherUseFree
+    and not otherUseConstrained
+    and not carrierSpelledConstrained
+    and wouldReportIn
+    and wouldReportOut
+    and not ignoreUnusedIn
+    and not ignoreUnusedOut
   }
   // Nothing uses it. Both runs report it, and the ignore silences both.
   reachable UnusedDeclarationSilenced {
