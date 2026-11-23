@@ -1283,6 +1283,17 @@ var _ = user.Format
 <tr>
 <td>
 
+```text
+// fast/fast_arm64.s
+MOVD example·com∕app∕internal∕cpu·HasFast(SB), R0
+```
+
+</td>
+<td>Not reported. Assembly in another package that names <code>cpu.HasFast</code> uses it, for any architecture</td>
+</tr>
+<tr>
+<td>
+
 ```go
 // internal/user/user.go
 type Status string
