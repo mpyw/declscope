@@ -22,6 +22,14 @@
 // Whether a pattern matches a path is the subject of filter.go. The set
 // algebra within one level is the subject of filter.fsl. This spec is the
 // chain.
+//
+// MODEL: two levels. The warning below is about the nearest config that
+// states an only. The code takes the last config in the chain that states
+// one (Options.NearestOnly). With two levels, a nearer level that states no
+// only leaves the outer one, and nothing is above it to cancel it. So "the
+// nearest config" and "the nearest config that states an only" give the same
+// verdicts here. Telling them apart takes a third level, which this spec does
+// not model.
 fsl 5
 spec FilterChain {
   state {
@@ -64,7 +72,8 @@ spec FilterChain {
                    givenFile2MatchesNearerOmit: Bool) {
     requires not configured
     // Nothing matches an empty list. Without these guards the model would
-    // hold states no config can produce. A property could pass on them alone.
+    // hold states no config can produce. An invariant could then fail on a
+    // state that cannot occur. A witness could be found only in such a state.
     requires givenOuterOnlyEmpty
       => (not givenFile1MatchesOuterOnly and not givenFile2MatchesOuterOnly)
     requires givenOuterOmitEmpty
@@ -113,10 +122,11 @@ spec FilterChain {
     chainKeeps(file2MatchesOuterOnly, file2MatchesOuterOmit,
                file2MatchesNearerOnly, file2MatchesNearerOmit)
 
-  // The nearest config's only admits the file, and no omit removes it. The
-  // chain drops it anyway. Only an only above can have done that. A file an
-  // omit removes does not count. The omit is the author's own choice, and the
-  // report names an only above as the cause (Options.CancelledAbove).
+  // The nearest config that states an only admits the file, and no omit
+  // removes it. The chain drops it anyway. Only an only above can have done
+  // that. A file an omit removes does not count. The omit is the author's own
+  // choice, and the report names an only above as the cause
+  // (Options.CancelledAbove).
   def cancelled(outerOnly: Bool, outerOmit: Bool,
                 nearerOnly: Bool, nearerOmit: Bool) =
     not nearerOnlyEmpty
@@ -148,9 +158,9 @@ spec FilterChain {
     file2Kept = chainKeeps2()
     // A package with nothing to read is usually the point. A root only that
     // names one subtree excludes every package outside it. The case worth
-    // reporting is narrower. The nearest config states an only. An only above
-    // it removes every file that only matches and its omit leaves. So that
-    // config can never take effect. Nobody writes a filter for a subtree they
+    // reporting is narrower. Take the nearest config that states an only. An
+    // only above it removes every file that only matches and its omit leaves.
+    // So that config can never take effect. Nobody writes a filter for a subtree they
     // meant to exclude.
     warned = not chainKeeps1()
              and not chainKeeps2()
@@ -222,8 +232,8 @@ spec FilterChain {
                            and (cancelled1() or cancelled2())))
   }
   // The report's message is true. Where it fires, an only above the nearest
-  // config removed a file. That config's only admits the file, and no omit
-  // removes it.
+  // config that states an only removed a file. That config's only admits the
+  // file, and no omit removes it.
   invariant WarnedOnlyWhereAnOnlyAboveRemoves {
     decided and warned => not outerOnlyEmpty and (
       removedByTheOnlyAbove(file1MatchesOuterOnly, file1MatchesOuterOmit,
@@ -268,9 +278,10 @@ spec FilterChain {
     and not warned
   }
   reachable ReadsSomethingAndDoesNotWarn { decided and file1Kept and not warned }
-  // The nearest config's own omit removes what its only matches. No only
-  // above is the cause, so nothing is reported. This holds even where an only
-  // above would also have removed the files.
+  // The nearest config that states an only has an omit. That omit removes
+  // what its only matches. No only above is the cause, so nothing is
+  // reported. This holds even where an only above would also have removed
+  // the files.
   reachable NearestOmitEmptiedItsOnlyQuietly {
     decided
     and not nearerOnlyEmpty

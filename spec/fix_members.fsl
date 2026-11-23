@@ -313,6 +313,12 @@ spec FixMembers {
     helpful fixMember()
     decreases if memberCrossesAfter() then 1 else 0
   }
+  // The model always offers the fix of the type where it crosses and nothing
+  // states its scope. The code withholds it in one more case. Widening the
+  // type could leave a member's own //declscope:shared binding nothing
+  // (unboundAtScopeSite in internal/scopesite.go). This spec does not model
+  // that case. So this response is proved only where the fix is offered.
+  // Issue #407 tracks the README claim.
   leadsTo TypeEventuallySettled {
     configured and typeCrosses() and typeStatedDirective() == NoDirective and not typeBaselined
       ~> not typeCrossesAfter()

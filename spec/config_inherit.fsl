@@ -209,8 +209,24 @@ spec ConfigInherit {
     resolved and vocabularyAAtNear == NoWord
       => resolvedVocabularyA == vocabularyAAtOuter
   }
-  // Neither namespace can take the other's value. A merge written over one
-  // shared slot would allow that.
+  // Namespace B inherits the same way. Without this, B could ignore the
+  // outer level and no property here would change.
+  invariant UnstatedNearInheritsNamespaceB {
+    resolved and vocabularyBAtNear == Absent
+      => resolvedVocabularyB == vocabularyBAtOuter
+  }
+  // The root states B, the nested file does not, and B survives.
+  reachable NamespaceBInheritedFromOuter {
+    resolved
+    and vocabularyBAtOuter == Present
+    and vocabularyBAtNear == Absent
+    and resolvedVocabularyB == Present
+  }
+  // What this checks: each namespace's result is the value of one of its own
+  // two levels. What it does not check: that one namespace cannot take the
+  // other's value. A holds a Word and B holds a Presence. So the types
+  // already keep them apart, and that half holds by typing alone. Issue #407
+  // tracks the README claim this is cited for.
   invariant NamespacesDoNotBleed {
     resolved
       => (resolvedVocabularyA == vocabularyAAtNear

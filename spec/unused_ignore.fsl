@@ -143,7 +143,9 @@ spec UnusedIgnore {
   }
 
   // --- off says nothing ----------------------------------------------------------
-  invariant OffReportsNothing { mode == Off => not ignoreReported and not otherReported }
+  invariant OffReportsNothing {
+    mode == Off => not ignoreReported and not otherReported and not fileIgnoreReported
+  }
 
   // --- no ignore exempts itself --------------------------------------------------
   // Alone, an ignore is reported exactly when it silenced nothing. What it
@@ -224,6 +226,20 @@ spec UnusedIgnore {
     and otherSilenced
     and not ignoreReported
     and not otherReported
+  }
+  // J silenced something, so it has no report for I to answer. I names
+  // unused and silenced nothing. So I is reported.
+  reachable NothingToAnswerLeavesIgnoreReported {
+    phase == 2
+    and mode == Loose
+    and level == Declaration
+    and ignoreNames == Unused
+    and not ignoreSilenced
+    and otherPresent
+    and otherNames == OtherRules
+    and otherSilenced
+    and not fileIgnorePresent
+    and ignoreReported
   }
   reachable BareSiblingDoesNotAnswer {
     phase == 2

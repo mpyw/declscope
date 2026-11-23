@@ -141,6 +141,17 @@ spec BoundaryFix {
   trans FixNeverClobbersDirective {
     not old(fixed) and fixed => old(statedDirective()) == NoDirective
   }
+  // The same rule with each level spelled out. FixNeverClobbersDirective reads
+  // statedDirective(), so a level dropped from that def would pass it. This one
+  // names every level that reaches the kind. A block never reaches a method,
+  // and a type reaches only its members.
+  trans FixFindsEveryLevelUnstated {
+    not old(fixed) and fixed =>
+      old(declDirective) == NoDirective
+      and old(fileDirective) == NoDirective
+      and (old(kind) == Method or old(blockDirective) == NoDirective)
+      and (old(kind) != Member or old(typeDirective) == NoDirective)
+  }
 
   reachable BoundaryCanFire { configured and boundaryFires() }
 
@@ -157,11 +168,17 @@ spec BoundaryFix {
     and boundaryFires()
     and not fixed
   }
+  // Every nearer level and the default are pinned. So only the file can make
+  // it cross.
   reachable FixWithheldUnderFileDirective {
     configured
     and kind == PackageLevel
     and fileDirective == PrivateDirective
     and declDirective == NoDirective
+    and blockDirective == NoDirective
+    and typeDirective == NoDirective
+    and unexportedDefault == Shared
+    and not exported
     and boundaryFires()
     and not fixed
   }

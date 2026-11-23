@@ -52,10 +52,10 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 	// point: a root only naming one subtree excludes every package outside
 	// it, and an omit naming a directory empties it. Neither is worth saying.
 	//
-	// One shape is worth saying. When the config beside the package states an
-	// only, and the files it matches and its omit leaves are all removed by an
-	// only above it, that config can never take effect. Nobody writes a filter for a subtree they
-	// meant to exclude, so it is a mistake rather than a choice.
+	// One shape is worth saying. Take the nearest config that states an only.
+	// If an only above it removes every file that only matches and the omit
+	// leaves, that config can never take effect. Nobody writes a filter for a
+	// subtree they meant to exclude, so it is a mistake rather than a choice.
 	var considered, cancelled int
 	var kept []*ast.File
 	for _, f := range pass.Files {
@@ -103,8 +103,8 @@ func collectFiles(pass *analysis.Pass, opts Options) *collection {
 		seen[fi.key()] = true
 	}
 	c.namespaces = len(seen)
-	// Nothing was read, and the config beside the package is the reason it
-	// could not be: its only matched files that an only above it removed.
+	// Nothing was read, and the nearest config that states an only is the
+	// reason. Its only matched files that an only above it removed.
 	if len(kept) == 0 && cancelled > 0 && considered > 0 {
 		if p, ok := opts.NearestOnly(); ok && len(pass.Files) > 0 {
 			c.filterWarning = &directive.Problem{
