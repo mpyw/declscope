@@ -470,6 +470,7 @@ The `unused` rule reports a directive that changes nothing. A directive that dec
 - Under `strict`, a directive that `loose` keeps also stays when deleting it would make a nearer directive redundant.
 - `off` still leaves the `directive` rule on.
 - An ignore of `boundary` is not reported where a file the build leaves out names a declaration it reaches, or for a field, its type: a literal written by position names only the type. That file may cross into it under another build tag, where the ignore silences the crossing. The run that reads the file still reports an ignore with nothing to silence.
+- An ignore of `surplus` is not reported where a file the build leaves out writes any name of the package. That file stands `surplus` down for the whole package, and the run that reads it judges the rule, where the ignore may silence a report. That run still reports an ignore with nothing to silence.
 
 > [!WARNING]
 > Under `strict`, changing `defaults.unexported` changes the reports. With `unexported: shared`, every `//declscope:shared` on an unexported declaration that nothing else widens is reported, and one `-fix` run deletes them. `loose` never reports a directive only because it names the current default.

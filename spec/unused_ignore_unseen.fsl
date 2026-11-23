@@ -14,6 +14,9 @@
 //   Boundary  boundary, named or bare. It silences a crossing into the
 //             declaration from another namespace. A crossing is made where
 //             the declaration is used. So it can be in the constrained file
+//   Surplus   surplus, named or bare. It is judged on the declaration. But
+//             a constrained file that writes any name of the package stands
+//             the rule down for the whole package in Out. In judges it
 //   Other     only rules judged on the declaration itself, such as qualify.
 //             Every configuration judges these alike
 //
@@ -40,6 +43,9 @@
 //                             field through. That is its struct, an alias
 //                             of it, a type defined over it, a named pointer
 //                             to it, or a constraint whose type set holds it
+//   writesAnyName             the constrained file writes some name of the
+//                             package. Any name stands surplus down in Out
+//   surplusFires              In's surplus finding on the declaration fires
 //   otherFires                the Other finding fires
 //
 // Out keeps a Boundary ignore that the unseen file may answer
@@ -48,7 +54,13 @@
 // file, and may find there the crossing the ignore answers. Those names alone
 // decide. So a name written from the declaration's own namespace keeps the
 // ignore too. A keyed literal of the type keeps it as well. In reads every
-// file, and reports such an ignore where nothing crosses. A pass may be
+// file, and reports such an ignore where nothing crosses.
+//
+// Out keeps a Surplus ignore while the constrained file stands the rule down
+// there (collection.surplusBlindOnlyToExcluded). In judges the rule, and
+// reports the ignore where the rule finds nothing. Other sources that stand
+// surplus down, such as cgo or assembly, stand it down in every
+// configuration. They are outside this model. A pass may be
 // unable to read a file at all, or may miss in-package tests. That pass
 // stands the whole check down instead (unseenFiles.all). That case is outside
 // this model.
@@ -64,7 +76,7 @@
 //   report
 fsl 5
 spec UnusedIgnoreUnseen {
-  enum Rule { Boundary, Other }
+  enum Rule { Boundary, Surplus, Other }
 
   state {
     phase: 0..3 = 0,
@@ -75,6 +87,8 @@ spec UnusedIgnoreUnseen {
     writesName: Bool = false,
     isField: Bool = false,
     writesTypeName: Bool = false,
+    writesAnyName: Bool = false,
+    surplusFires: Bool = false,
     otherFires: Bool = false,
     // silencedIn and silencedOut: the run has a finding for the ignore to
     // silence. unusedIn and unusedOut: the run reports the ignore unused.
@@ -91,12 +105,17 @@ spec UnusedIgnoreUnseen {
                    givenWritesName: Bool,
                    givenIsField: Bool,
                    givenWritesTypeName: Bool,
+                   givenWritesAnyName: Bool,
+                   givenSurplusFires: Bool,
                    givenOtherFires: Bool) {
     requires phase == 0
     // A crossing by name writes the declaration's name there. An unkeyed
     // crossing fills a field, and writes one of the field's type names.
     requires not givenUnseenCrossingByName or givenWritesName
     requires not givenUnseenCrossingByPosition or (givenIsField and givenWritesTypeName)
+    // The declaration's name and its type names are names of the package.
+    requires not givenWritesName or givenWritesAnyName
+    requires not givenWritesTypeName or givenWritesAnyName
     phase = 1
     rule = givenRule
     seenCrossing = givenSeenCrossing
@@ -105,16 +124,27 @@ spec UnusedIgnoreUnseen {
     writesName = givenWritesName
     isField = givenIsField
     writesTypeName = givenWritesTypeName
+    writesAnyName = givenWritesAnyName
+    surplusFires = givenSurplusFires
     otherFires = givenOtherFires
   }
 
   // What each run has for the ignore to silence.
   def inHasFinding() =
     if rule == Boundary then seenCrossing or unseenCrossingByName or unseenCrossingByPosition
+    else if rule == Surplus then surplusFires
     else otherFires
-  def outHasFinding() = if rule == Boundary then seenCrossing else otherFires
-  // Out keeps a Boundary ignore that the unseen file may answer.
-  def outKeeps() = rule == Boundary and (writesName or (isField and writesTypeName))
+  // Out judges surplus only where the constrained file writes no name. That
+  // file then holds no use, so Out finds what In finds.
+  def outHasFinding() =
+    if rule == Boundary then seenCrossing
+    else if rule == Surplus then surplusFires and not writesAnyName
+    else otherFires
+  // Out keeps a Boundary ignore that the unseen file may answer, and a
+  // Surplus ignore while that file stands the rule down.
+  def outKeeps() =
+    (rule == Boundary and (writesName or (isField and writesTypeName)))
+    or (rule == Surplus and writesAnyName)
 
   fair action judgeIn() {
     requires phase == 1
@@ -141,12 +171,14 @@ spec UnusedIgnoreUnseen {
   // In reads every file. So it keeps nothing it does not silence.
   invariant InKeepsNothing    { phase >= 2 => (unusedIn == not silencedIn) }
   // Out keeps only a Boundary ignore whose declaration the unseen file names.
-  // For a field, it also keeps one whose type the file names. Expanded, not
-  // routed through outKeeps(). Then a mutation of the guard moves one side
-  // only, and the invariant can fail.
+  // For a field, it also keeps one whose type the file names. Besides those,
+  // it keeps only a Surplus ignore while the unseen file stands the rule
+  // down. Expanded, not routed through outKeeps(). Then a mutation of the
+  // guard moves one side only, and the invariant can fail.
   invariant OutKeepsOnlyWrittenBoundary {
     (phase == 3 and not silencedOut and not unusedOut)
-    => (rule == Boundary and (writesName or (isField and writesTypeName)))
+    => ((rule == Boundary and (writesName or (isField and writesTypeName)))
+        or (rule == Surplus and writesAnyName))
   }
   // The rules judged on the declaration are judged alike in both runs.
   invariant OtherIsConfigurationFree {
@@ -157,6 +189,7 @@ spec UnusedIgnoreUnseen {
   // assigned again.
   invariant UnseenNamedIsNamed { unseenCrossingByName => writesName }
   invariant UnseenUnkeyedIsAField { unseenCrossingByPosition => (isField and writesTypeName) }
+  invariant WrittenNamesAreNames { (writesName or writesTypeName) => writesAnyName }
   invariant InRecordsItsJudgment {
     phase >= 2 => (silencedIn == inHasFinding() and unusedIn == not inHasFinding())
   }
@@ -239,6 +272,38 @@ spec UnusedIgnoreUnseen {
     and silencedIn
     and silencedOut
   }
+  // The constrained file stands surplus down in Out. In reads it, judges the
+  // rule, and the ignore silences its finding. Out keeps the ignore for In.
+  reachable SurplusKeptWhileStoodDown {
+    phase == 3
+    and rule == Surplus
+    and writesAnyName
+    and surplusFires
+    and silencedIn
+    and not silencedOut
+    and not unusedIn
+    and not unusedOut
+  }
+  // The same, where In finds nothing for the ignore to silence. In reports
+  // it.
+  reachable SurplusStaleCaughtIn {
+    phase == 3
+    and rule == Surplus
+    and writesAnyName
+    and not surplusFires
+    and unusedIn
+    and not unusedOut
+  }
+  // The constrained file writes no name. Both runs judge surplus alike.
+  reachable SurplusJudgedAlikeWithoutNames {
+    phase == 3
+    and rule == Surplus
+    and not writesAnyName
+    and surplusFires
+    and silencedIn
+    and silencedOut
+  }
+
   // An ignore of another rule is judged on the declaration, names or not.
   reachable OtherNamedStillReported {
     phase == 3

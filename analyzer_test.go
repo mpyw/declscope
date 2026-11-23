@@ -99,6 +99,15 @@ func TestIgnoreUnseen(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ignoreunseen")
 }
 
+// TestIgnoreUnseenSurplus checks that an ignore of surplus is not unused in a
+// run where a build-excluded file of the package stands the rule down: the
+// run that reads the file judges the rule, and the ignore silences its
+// report there. Run it with GOFLAGS=-tags=integration too, which reads the
+// file and needs the ignore.
+func TestIgnoreUnseenSurplus(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "ignoreunseensurplus")
+}
+
 // TestIgnoreUnseenTest checks the same where the excluded file is the
 // package's only test file. No variant sees it, so the non-test variant reads
 // it for its names and still reports an ignore it gives no job.
