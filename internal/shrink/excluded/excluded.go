@@ -23,6 +23,11 @@ type File struct {
 	Dir, Package string
 	// Syntax is the parsed file, comments included.
 	Syntax *ast.File
+	// Skipped says that the file sits under a directory ./... skips:
+	// testdata, one starting with . or _, or one an ignore directive names.
+	// go build compiles it only when it is named, as a test does. So what it
+	// names is no use of the package, but a fix must not break it.
+	Skipped bool
 
 	// imports maps the name each import is spelled with to its path. A dot
 	// import is recorded under ".", and one with no name of its own under "",

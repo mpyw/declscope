@@ -242,25 +242,26 @@ func TestShrinkModuleUnderInternal(t *testing.T) {
 }
 
 // TestShrinkSkipsWhatGoSkips pins that the walk for build-excluded files
-// skips what ./... skips. A testdata file naming a declaration is no use.
+// skips a vendor directory, as ./... does: nothing may import a path through
+// one. Other directories ./... skips are read, and
+// internal/shrink/testdata/skipped-dirs pins them.
 func TestShrinkSkipsWhatGoSkips(t *testing.T) {
 	root := shrinkModule(t)
 	// ignore directives, one for a directory at the root only and one for a
 	// directory of that name anywhere, as go help go.mod describes them.
 	writeTree(t, root, "go.mod", testModule+"\nignore (\n\t./gen\n\tstatic\n)\n")
 	for _, dir := range []string{
-		"internal/a/testdata", "internal/a/.hidden", "internal/a/_skipped", "vendor/example.com/v",
-		// ./... skips a vendor directory at any depth, and nothing may import
-		// a path through one.
+		"vendor/example.com/v",
+		// ./... skips a vendor directory at any depth.
 		"internal/a/vendor/w",
-		"gen", "web/static",
 	} {
 		writeTree(t, root, dir+"/x.go", "//go:build never\n\npackage x\n\nimport \"example.com/declscopetest/internal/a\"\n\nvar _ = a.Lonely\n")
 	}
-	// An ignored directory is not read at all, so a file there that does not
-	// parse refuses nothing, as it does not for go vet.
+	// A file that does not parse in a directory ./... skips refuses nothing,
+	// as it does not for go vet: no build compiles it.
 	writeTree(t, root, "gen/broken.go", "package gen\n\nthis is not Go\n")
-	// ./gen names the root's gen only, so this one is read.
+	writeTree(t, root, "internal/a/testdata/broken.go", "package broken\n\nthis is not Go\n")
+	// ./gen names the root's gen only, so this one is read as usual.
 	writeTree(t, root, "internal/gen/x.go", "//go:build never\n\npackage gen\n\nimport \"example.com/declscopetest/internal/a\"\n\nvar _ = a.Taken\n")
 	out, code := runIn(t, bin, root, "shrink")
 	if code != 3 || !strings.Contains(out, "func Lonely is exported, but nothing outside") {

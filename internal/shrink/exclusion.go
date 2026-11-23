@@ -40,7 +40,9 @@ type exclusions struct {
 	linknamed map[string]bool
 	// importing is every file of another package that imports the package,
 	// and dotImporting every one that imports it into its own scope.
-	importing, dotImporting []*excluded.File
+	// skippedImporting is every one of the first kind that sits under a
+	// directory ./... skips, which is kept out of importing.
+	importing, dotImporting, skippedImporting []*excluded.File
 	// reached says whether a file of another package imports a path that
 	// reaches the package (module.Reaches), or belongs to a loaded package
 	// that does.
@@ -89,7 +91,11 @@ func (r *run) exclusionsOf(p *packages.Package) *exclusions {
 			continue
 		}
 		paths := x.ImportPaths()
-		if slices.Contains(paths, p.PkgPath) {
+		switch {
+		case !slices.Contains(paths, p.PkgPath):
+		case x.Skipped:
+			near.skippedImporting = append(near.skippedImporting, x)
+		default:
 			near.importing = append(near.importing, x)
 		}
 		if x.DotImports(p.PkgPath) {
@@ -124,6 +130,19 @@ func (near *exclusions) qualifies(c *candidate) bool {
 func (near *exclusions) writes(p *packages.Package, name string) bool {
 	return slices.ContainsFunc(near.importing, func(x *excluded.File) bool {
 		return x.Qualifies(p.PkgPath, p.Types.Name(), name)
+	})
+}
+
+// skippedWrites reports whether a file of another package under a directory
+// ./... skips imports the candidate's package and writes pkg.Name. go build
+// compiles it only when it is named, as a test does, so that is no use. The
+// report stays, as it does for a name only external tests use, but the
+// rename would break the file.
+//
+//declscope:shared // the core withholds the fix on it
+func (near *exclusions) skippedWrites(c *candidate) bool {
+	return slices.ContainsFunc(near.skippedImporting, func(x *excluded.File) bool {
+		return x.Qualifies(c.pkg.PkgPath, c.pkg.Types.Name(), c.obj.Name())
 	})
 }
 

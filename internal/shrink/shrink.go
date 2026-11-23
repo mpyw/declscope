@@ -775,6 +775,9 @@ func (r *run) withheld(c *candidate) string {
 		applies func() bool
 	}{
 		{"a literal or conversion through a type parameter whose type set cannot be computed may write it", func() bool { return r.ev.guessed[c.key] }},
+		{"a file in a directory ./... skips uses it", func() bool {
+			return r.ev.skipped[c.key] || !c.kind.member() && r.exclusionsOf(c.pkg).skippedWrites(c)
+		}},
 		{"a build-excluded file of another package may use it", func() bool { return r.exclusionsOf(c.pkg).mayUse(c, r.usedImplicitly) }},
 		{"a build-excluded file of its package names it", func() bool { return r.exclusionsOf(c.pkg).ownWrites(c.obj.Name()) }},
 		{"a build-excluded file of its package may use it", func() bool { return r.exclusionsOf(c.pkg).ownMayUse(c, r.usedImplicitly) }},

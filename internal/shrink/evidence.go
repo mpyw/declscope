@@ -51,6 +51,10 @@ type evidence struct {
 	// names by its own name: ExampleF, ExampleT_M. go vet checks that the
 	// name resolves, and the rename cannot rename a function's name.
 	example map[string]bool
+	// skipped is every declaration that only a file under a directory ./...
+	// skips links by name, by //go:linkname or from assembly. As with an
+	// external test, that is no use, but the rename would break the file.
+	skipped map[string]bool
 	// satisfied is every method a static interface satisfaction needs.
 	satisfied map[string]bool
 	// paired is every field a struct conversion or an identical unnamed
@@ -99,7 +103,7 @@ type evidenceSite struct {
 //declscope:shared // the core collects it once per run
 func collectEvidence(m *module.Module) (ev *evidence, err error) {
 	ev = &evidence{
-		outside: map[string]bool{}, everywhere: map[string]bool{}, extTest: map[string]bool{}, generated: map[string]bool{}, example: map[string]bool{},
+		outside: map[string]bool{}, everywhere: map[string]bool{}, extTest: map[string]bool{}, generated: map[string]bool{}, example: map[string]bool{}, skipped: map[string]bool{},
 		satisfied: map[string]bool{}, paired: map[string]bool{}, escaped: map[string]bool{}, guessed: map[string]bool{},
 		exposed: map[string]bool{}, sites: map[string][]evidenceSite{},
 		inModule: map[string]bool{}, keys: map[types.Object]string{},
@@ -584,16 +588,21 @@ func (ev *evidence) markRequired(m *module.Module, iface *types.Interface, t typ
 
 // linknames records every declaration a //go:linkname anywhere in the
 // module pulls by its import path, compiled or not, and every one an
-// assembly file of the module names (evidenceAssembly).
+// assembly file of the module names (evidenceAssembly). A name that only
+// files under a directory ./... skips link goes to skipped instead.
 func (ev *evidence) linknames(m *module.Module) error {
+	// byPath holds, per path and name, whether a file outside the skipped
+	// directories links it.
 	byPath := map[string]map[string]bool{}
-	add := func(path, name string) {
-		if byPath[path] == nil {
-			byPath[path] = map[string]bool{}
+	adder := func(skipped bool) func(path, name string) {
+		return func(path, name string) {
+			if byPath[path] == nil {
+				byPath[path] = map[string]bool{}
+			}
+			byPath[path][name] = byPath[path][name] || !skipped
 		}
-		byPath[path][name] = true
 	}
-	addFile := func(file *ast.File) {
+	addFile := func(file *ast.File, add func(path, name string)) {
 		for _, g := range file.Comments {
 			for _, c := range g.List {
 				d, ok := ast.ParseDirective(c.Pos(), c.Text)
@@ -616,30 +625,30 @@ func (ev *evidence) linknames(m *module.Module) error {
 	}
 	for _, p := range m.Widest() {
 		for _, f := range p.Syntax {
-			addFile(f)
+			addFile(f, adder(false))
 		}
 	}
 	for _, imp := range m.Importers {
 		for _, p := range imp.Pkgs {
 			for _, f := range p.Syntax {
-				addFile(f)
+				addFile(f, adder(false))
 			}
 		}
 	}
 	for _, x := range m.Excluded {
-		addFile(x.Syntax)
+		addFile(x.Syntax, adder(x.Skipped))
 	}
-	for _, path := range m.Assembly {
-		src, err := os.ReadFile(path)
+	for _, a := range m.Assembly {
+		src, err := os.ReadFile(a.Path)
 		if err != nil {
 			return err
 		}
-		evidenceAssembly(string(src), add)
+		evidenceAssembly(string(src), adder(a.Skipped))
 	}
 	for path, names := range byPath {
 		for _, p := range m.Variants(path) {
 			scope := p.Types.Scope()
-			for name := range names {
+			for name, used := range names {
 				typ, member, isMember := evidenceLinknameMember(name)
 				obj := scope.Lookup(typ)
 				if obj == nil {
@@ -647,15 +656,20 @@ func (ev *evidence) linknames(m *module.Module) error {
 				}
 				// Which file writes a linkname is not kept, so it counts as
 				// a use in every configuration.
-				key := keyOf(m.Fset, obj)
-				ev.outside[key], ev.everywhere[key] = true, true
+				mark := func(key string) {
+					if used {
+						ev.outside[key], ev.everywhere[key] = true, true
+					} else {
+						ev.skipped[key] = true
+					}
+				}
+				mark(keyOf(m.Fset, obj))
 				if !isMember {
 					continue
 				}
 				// path.T.M spells T as well, so the type keeps its name too.
 				if found, _, _ := types.LookupFieldOrMethod(obj.Type(), true, p.Types, member); found != nil {
-					key := keyOf(m.Fset, origin(found))
-					ev.outside[key], ev.everywhere[key] = true, true
+					mark(keyOf(m.Fset, origin(found)))
 				}
 			}
 		}

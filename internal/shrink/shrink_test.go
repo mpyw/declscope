@@ -168,6 +168,34 @@ func TestShrinkAssemblyUnreadable(t *testing.T) {
 	}
 }
 
+// TestShrinkSkippedDirs pins that a package in a directory ./... skips
+// (testdata, one starting with . or _, one an ignore directive names) still
+// uses what it names: go build compiles it when it is named. go vet ./...
+// does not, so the fixes are applied to a copy and each one is built.
+func TestShrinkSkippedDirs(t *testing.T) {
+	findings := shrinkCheck(t, "testdata/skipped-dirs")
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS("testdata/skipped-dirs")); err != nil {
+		t.Fatal(err)
+	}
+	res, err := shrink.Run(dir, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Findings) != len(findings) {
+		t.Fatalf("the copy has %d findings, want %d", len(res.Findings), len(findings))
+	}
+	if err := shrink.Apply(res.Findings); err != nil {
+		t.Fatal(err)
+	}
+	// gen/broken.go does not parse, so gen is left out: no build compiles it.
+	build := exec.Command("go", "build", "-o", os.DevNull, "./internal/a/testdata/prog", "./internal/a/testdata/asmprog", "./internal/a/.hidden", "./internal/a/_skipped", "./web/static")
+	build.Dir = dir
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build after the fix: %v\n%s", err, out)
+	}
+}
+
 // TestShrinkFixWithheld pins the reports whose fix is withheld for a reason
 // other than the rename: build-excluded and generated files, example
 // functions, and -ldflags -X.
