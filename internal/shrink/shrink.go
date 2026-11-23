@@ -784,7 +784,9 @@ func (r *run) withheld(c *candidate) string {
 		{"a build-excluded file of its package names it", func() bool { return r.exclusionsOf(c.pkg).ownWrites(c.obj.Name()) }},
 		{"a build-excluded file of its package may use it", func() bool { return r.exclusionsOf(c.pkg).ownMayUse(c, r.usedImplicitly) }},
 		{"a generated file names it", func() bool { return r.ev.generated[c.key] }},
-		{"an example function names it", func() bool { return r.ev.example[c.key] }},
+		{"an example function names it", func() bool {
+			return r.ev.example[c.key] || !c.kind.member() && r.exclusionsOf(c.pkg).ownExample(c.obj.Name())
+		}},
 		{"a string variable may be set by -ldflags -X, which names it", c.linkerSet},
 	}
 	for _, reason := range reasons {

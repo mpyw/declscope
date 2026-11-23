@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"golang.org/x/tools/go/packages"
 
@@ -38,6 +39,10 @@ type exclusions struct {
 	// bind with //go:linkname or //export.
 	own       []*excluded.File
 	linknamed map[string]bool
+	// examples is every name an example function of their test files names
+	// first: F in ExampleF, T in ExampleT_M. extTestExamples is the same for
+	// extTests.
+	examples, extTestExamples map[string]bool
 	// importing is every file of another package that imports the package,
 	// and dotImporting every one that imports it into its own scope. The
 	// package's external tests are not among them. skippedImporting is
@@ -93,6 +98,7 @@ func (r *run) exclusionsOf(p *packages.Package) *exclusions {
 	}
 	near.linknamed = directive.Linknamed(syntax)
 	extTest := exclusionPlace{own.dir, own.pkg + "_test"}
+	near.examples = exclusionExamples(near.own)
 	for _, x := range r.mod.Excluded {
 		at := exclusionPlace{x.Dir, x.Package}
 		if at == own {
@@ -120,6 +126,7 @@ func (r *run) exclusionsOf(p *packages.Package) *exclusions {
 				slices.ContainsFunc(paths, func(path string) bool { return r.mod.Reaches(path, p.PkgPath) })
 		}
 	}
+	near.extTestExamples = exclusionExamples(near.extTests)
 	cache.byPath[p.PkgPath] = near
 	return near
 }
@@ -158,16 +165,17 @@ func (near *exclusions) skippedWrites(c *candidate) bool {
 }
 
 // extTestWrites reports whether a build-excluded file of the package's
-// external test package writes the candidate's name: pkg.Name, or Name under
-// a dot import. The configuration that builds the file reports the candidate
-// as used only by external tests, and so does this one.
+// external test package writes the candidate's name: pkg.Name, Name under a
+// dot import, or an example function named for it. The configuration that
+// builds the file reports the candidate as used only by external tests, and
+// so does this one.
 //
 //declscope:shared // the core reports it as used only by external tests
 func (near *exclusions) extTestWrites(c *candidate) bool {
 	return slices.ContainsFunc(near.extTests, func(x *excluded.File) bool {
 		return x.Qualifies(c.pkg.PkgPath, c.pkg.Types.Name(), c.obj.Name()) ||
 			x.DotImports(c.pkg.PkgPath) && x.Writes(c.obj.Name())
-	})
+	}) || near.extTestExamples[c.obj.Name()]
 }
 
 // mayUse reports whether a build-excluded file of another package may use
@@ -208,6 +216,44 @@ func (near *exclusions) ownMayUse(c *candidate, usedImplicitly func(*candidate) 
 //declscope:shared // the core asks it about the name, and rename.go about the new name
 func (near *exclusions) ownWrites(name string) bool {
 	return slices.ContainsFunc(near.own, func(x *excluded.File) bool { return x.Writes(name) })
+}
+
+// ownExample reports whether an example function in a build-excluded test
+// file of the package itself names name: ExampleName, or ExampleName_M. go
+// vet checks that the name resolves in the configuration that builds the
+// file, and the rename cannot rename a function's name.
+//
+// A field or method needs no such check: any build-excluded file of its
+// package already withholds its fix (ownMayUse).
+//
+//declscope:shared // the core withholds the fix on it
+func (near *exclusions) ownExample(name string) bool {
+	return near.examples[name]
+}
+
+// exclusionExamples returns every name an example function of the test
+// files among files names first, as evidence.examples reads one: ExampleF
+// names F, and ExampleT_M names T.
+func exclusionExamples(files []*excluded.File) map[string]bool {
+	names := map[string]bool{}
+	for _, x := range files {
+		if !x.Test {
+			continue
+		}
+		for _, decl := range x.Syntax.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Recv != nil {
+				continue
+			}
+			rest, ok := strings.CutPrefix(fn.Name.Name, "Example")
+			if !ok || rest == "" {
+				continue
+			}
+			first, _, _ := strings.Cut(rest, "_")
+			names[first] = true
+		}
+	}
+	return names
 }
 
 // ownLinknames reports whether a build-excluded file of the package itself
