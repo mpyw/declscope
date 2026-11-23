@@ -385,25 +385,29 @@ func (c *collection) rewordedAtScopeSite(opts Options, d directive.Decl, narrowe
 	return messageOfScopeSite(s, redundant) != messageOfScopeSite(&after, redundant)
 }
 
-// unboundAtScopeSite reports whether widening typ, as a boundary fix on it
-// does, would leave a directive one of its members states binding nothing.
+// unboundAtScopeSite reports whether giving typ the scope to, as a boundary
+// fix on it (shared) or surplus strict's fix (private) does, would leave a
+// directive one of its members states binding nothing.
 //
-// The fix is offered only where nothing stated the type's scope, so a member's
-// own //declscope:shared binds only because the member is unexported and would
-// otherwise take defaults.unexported. Once the type carries
-// //declscope:shared, the member has that scope without it, and the unused
-// rule reports the directive under either mode. Deleting it is not the fix's
-// to do: it records the author's decision. A //declscope:private keeps
-// binding, and a directive that binds nothing today, such as an exported
-// member's //declscope:shared, is reported the same after.
+// Either fix is offered only where the type does not have to already, so a
+// member's own directive naming to binds only because the member would
+// otherwise take the type's scope. A //declscope:shared on a member binds
+// while the type takes private from defaults.unexported, and a
+// //declscope:private on a member binds while the type takes shared from an
+// enclosing directive. Once the type carries to, the member has that scope
+// without its directive, and the unused rule reports it under either mode.
+// Deleting it is not the fix's to do: it records the author's decision. A
+// directive naming the other scope keeps binding, and a directive that binds
+// nothing today, such as an exported member's //declscope:shared, is
+// reported the same after.
 //
-//declscope:shared // finding.go withholds a type's boundary fix that would unbind one
-func (c *collection) unboundAtScopeSite(opts Options, typ *target) bool {
+//declscope:shared // finding.go and surplus.go withhold a type's fix that would unbind one
+func (c *collection) unboundAtScopeSite(opts Options, typ *target, to scope.Scope) bool {
 	if !opts.Unused.Reports() {
 		return false
 	}
 	return slices.ContainsFunc(c.targets, func(m *target) bool {
-		return m.contained && m.ownerObj == typ.obj && m.boundAt == boundAtDecl && m.decided && m.scope == scope.Shared
+		return m.contained && m.ownerObj == typ.obj && m.boundAt == boundAtDecl && m.decided && m.scope == to
 	})
 }
 

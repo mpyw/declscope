@@ -1145,6 +1145,13 @@ Every enclosing directive is judged the same way.
 | A `var`, `const` or `type` block | Each spec |
 | The file | Each declaration in the file, and each member of a type that states no scope |
 
+The fix is withheld where it would leave a directive deciding nothing. The report stays, without a fix.
+
+| Case | Fix |
+| --- | --- |
+| Narrowing would leave the enclosing directive deciding nothing | None. Delete the directive instead |
+| A type one of whose members states `//declscope:private` | None on the type while `rules.unused` is on. Narrowed, the type would give the member that scope anyway, and the next run would report the member's directive as unused |
+
 `strict` is the default. `loose` checks only directives as a whole; select it explicitly if that is the policy your repository wants.
 
 > [!TIP]

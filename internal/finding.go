@@ -173,7 +173,7 @@ func (c *collection) boundaryFinding(pass *analysis.Pass, opts Options, t *targe
 	// member's //declscope:shared that the widened type would leave binding
 	// nothing withholds the fix for the same reason, and nothing then subsumes
 	// the fix of a member that crosses, so each such member gets its own.
-	if t.kind == kindType && c.unboundAtScopeSite(opts, t) {
+	if t.kind == kindType && c.unboundAtScopeSite(opts, t, scope.Shared) {
 		return f, true
 	}
 	fix := c.directiveInsertionFix(pass, t, scope.Shared)

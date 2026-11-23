@@ -21,3 +21,14 @@ var (
 )
 
 var _ = userLocal
+
+// userBox takes the file's package too, and nothing else names it. Its field
+// states //declscope:private, which binds only while the type is shared. With
+// the unused rule off nothing reports that directive once the type is
+// narrowed, so the fix is offered.
+type userBox struct { // want `type userBox takes shared scope`
+	//declscope:private
+	count int
+}
+
+var _ = userBox{}.count
