@@ -203,6 +203,21 @@ var fixCases = []fixCase{
 		},
 	},
 
+	{
+		// The type is spelled from another namespace only in a test file, and
+		// its field from a non-test file. The non-test variant sees no
+		// crossing on the type, so it would fix the field; the test variant
+		// fixes the type, which reaches the field. The driver applies both,
+		// and the field's directive binds nothing. The non-test variant
+		// defers to the test variant, which sees every file.
+		name: "type crossing only from a test file, field crossing from a non-test file",
+		files: map[string]string{
+			"user.go":       "package x\n\ntype widget struct {\n\tcount int\n}\n\nfunc UserNew() widget { return widget{} }\n",
+			"order.go":      "package x\n\nfunc OrderRun() int { return UserNew().count }\n",
+			"order_test.go": "package x\n\nimport \"testing\"\n\nfunc TestOrder(t *testing.T) {\n\tvar w widget\n\t_ = w\n}\n",
+		},
+	},
+
 	// rules.unused: strict deletes a directive naming the scope its
 	// declarations would have without it. Deleting several in one run must
 	// leave every scope where it was, and change no other report.

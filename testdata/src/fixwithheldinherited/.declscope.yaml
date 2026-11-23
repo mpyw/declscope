@@ -1,0 +1,5 @@
+# Under a shared default every private below binds, so no unused report gets
+# in the way. Every crossing takes private from a level above the
+# declaration, so none of them may carry a fix.
+defaults:
+  unexported: shared

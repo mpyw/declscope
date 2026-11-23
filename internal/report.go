@@ -9,6 +9,7 @@ import (
 	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/directive"
 	"github.com/mpyw/declscope/internal/rule"
+	"github.com/mpyw/declscope/internal/scope"
 )
 
 // pendingReport is one target's surviving findings, held until every target
@@ -39,8 +40,25 @@ type pendingReport struct {
 // in its file withholds the fix already — and in that case nothing stated the
 // type's scope either, so the type carries the insertion whenever it crosses
 // at all.
-func subsumedByReport(t *target, f finding, widened map[types.Object]bool) bool {
-	return f.rule == rule.Boundary && t.contained && t.ownerObj != nil && widened[t.ownerObj]
+//
+// The same run can also hold another pass over the package: -fix applies what
+// every variant offers, and the test variant sees crossings the non-test
+// variant does not. A type spelled from another namespace only in a test file
+// is widened by the test variant alone, and this pass would never learn of it.
+// So a pass that does not see every file (unseenFiles.all) drops the fix of
+// every member whose type the default left private: only such a type can be
+// widened at all. The test variant sees every file and decides on its own,
+// offering the member's fix exactly where its type is not widened. This is
+// the deferral that renames and directive removals already make.
+func (c *collection) subsumedByReport(pass *analysis.Pass, t *target, f finding, widened map[types.Object]bool) bool {
+	if f.rule != rule.Boundary || !t.contained || t.ownerObj == nil {
+		return false
+	}
+	if widened[t.ownerObj] {
+		return true
+	}
+	owner := c.byObj[t.ownerObj]
+	return owner != nil && owner.scope == scope.Private && owner.boundAt == boundAtDefault && c.unseen(pass).all
 }
 
 // report renders every diagnostic of the pass.
@@ -80,7 +98,7 @@ func (c *collection) report(pass *analysis.Pass, opts Options) {
 
 	for _, p := range pending {
 		for _, f := range p.findings {
-			if subsumedByReport(p.t, f, widened) {
+			if c.subsumedByReport(pass, p.t, f, widened) {
 				f.fixes = nil
 			}
 			pass.Report(analysis.Diagnostic{

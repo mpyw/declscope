@@ -364,6 +364,13 @@ func TestSuggestedFixSurplusNarrowsWithTypeFix(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixsurplusnarrow")
 }
 
+// TestSuggestedFixWithheldInherited checks that no boundary fix is offered
+// where the private scope came from the file, the type or the block, for
+// each kind. No file has a golden, so any fix fails the test.
+func TestSuggestedFixWithheldInherited(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixwithheldinherited")
+}
+
 // TestSuggestedFixTypeOverOwnShared checks that a boundary fix on a type is
 // withheld where widening the type would leave a member's own
 // //declscope:shared binding nothing, and that the member crossing beside it

@@ -32,6 +32,14 @@
 // alternative writes the insertion into typeDirective. Then each fix could
 // read the edit of the other. That is the one thing -fix cannot do.
 //
+// One run can hold two passes over the package. -fix applies what every
+// variant offers. The test variant sees every file. The non-test variant does
+// not see the in-package test files, so it misses a crossing written only in
+// one, and it cannot see what the test variant is about to write.
+// fixMemberInPartialPass is its member fix. fixType and fixMember are the
+// fixes of the pass that sees every file: the test variant, or the only
+// variant when the package has no test file.
+//
 // ASSUME-1: one type and one of its members are enough. This convergence
 //   needs exactly a container and something it contains (modelling
 //   assumption).
@@ -41,6 +49,12 @@
 //   in bindAtScopeSite. typeDirective does the same here. A block directive
 //   is a stated scope like typeDirective. It withholds both fixes the same
 //   way. So it adds no case to the convergence this spec is about.
+// ASSUME-3: only the type's crossing can be written only in a test file.
+//   A member crossing only there would only take a fix away from the
+//   non-test variant. The non-test variant's type fix is not modeled: it is
+//   the same edit as fixType, since the test variant sees the same crossing.
+//   A test file that the build excludes is not modeled: no variant sees it,
+//   so the two variants agree about it (modelling assumption).
 fsl 5
 spec FixMembers {
   enum Scope { Shared, Private }
@@ -63,6 +77,12 @@ spec FixMembers {
     // separately. So it can absorb the finding of the type and leave the
     // finding of the member.
     typeBaselined: Bool = false,
+    // The package has an in-package test file that the test variant sees. So
+    // the non-test variant does not see every file (unseenFiles.all).
+    testFileSeen: Bool = false,
+    // The type's crossing is written only in a test file. Only the test
+    // variant sees it.
+    typeCrossesOnlyInTest: Bool = false,
     // What this run inserted.
     typeFixed: Bool = false,
     memberFixed: Bool = false,
@@ -77,8 +97,11 @@ spec FixMembers {
                    newFileDirective: Directive,
                    newTypeReferencedFrom: ReferencedFrom,
                    newMemberReferencedFrom: ReferencedFrom,
-                   newTypeBaselined: Bool) {
+                   newTypeBaselined: Bool, newTestFileSeen: Bool,
+                   newTypeCrossesOnlyInTest: Bool) {
     requires not configured
+    // A crossing only a test file writes needs a test file.
+    requires newTestFileSeen or not newTypeCrossesOnlyInTest
     configured = true
     unexportedDefault = newUnexportedDefault
     typeExported = newTypeExported
@@ -89,6 +112,8 @@ spec FixMembers {
     typeReferencedFrom = newTypeReferencedFrom
     memberReferencedFrom = newMemberReferencedFrom
     typeBaselined = newTypeBaselined
+    testFileSeen = newTestFileSeen
+    typeCrossesOnlyInTest = newTypeCrossesOnlyInTest
   }
 
   // Exportedness decides the default and nothing else, as in every spec.
@@ -136,6 +161,18 @@ spec FixMembers {
     and typeStatedDirective() == NoDirective
     and not typeBaselined
 
+  // --- what the non-test variant sees -------------------------------------
+  def typeCrossesInPartialPass() = typeCrosses() and not typeCrossesOnlyInTest
+  def typeWidensInPartialPass() =
+    typeCrossesInPartialPass()
+    and typeStatedDirective() == NoDirective
+    and not typeBaselined
+  // The type could be widened by some pass: the default made it private, and
+  // nothing stated its scope.
+  def typeMayWiden() =
+    typeScope() == Private
+    and typeStatedDirective() == NoDirective
+
   action reportWithoutFix() {
     requires configured
     stalled = true
@@ -158,6 +195,24 @@ spec FixMembers {
     // The guard this spec exists for. Deleting this line is the defect. Both
     // fixes then fire, and the member is left with an inert directive.
     requires not typeWidens()
+    memberFixed = true
+  }
+
+  // The non-test variant exists only beside the test variant here. Without a
+  // test file it is the pass that sees every file, which fixMember models.
+  // Its fix is not fair: the test variant's fixes are enough.
+  action fixMemberInPartialPass() {
+    requires configured
+    requires testFileSeen
+    requires not memberFixed
+    requires memberCrosses()
+    requires memberStatedDirective() == NoDirective
+    requires not typeWidensInPartialPass()
+    // The guard for two variants (subsumedByReport). The test variant may
+    // widen the type for a crossing this pass cannot see. Deleting this line
+    // is the defect: both fixes fire, and the member's directive binds
+    // nothing.
+    requires not typeMayWiden()
     memberFixed = true
   }
 
@@ -282,6 +337,28 @@ spec FixMembers {
     and typeStatedDirective() == NoDirective
     and not memberCrossesAfter()
   }
+  // The guard for two variants does not take the member's fix away. The
+  // type crosses only in a test file and its crossing is baselined, so the
+  // test variant does not widen it. It fixes the member instead.
+  reachable MemberFixedBesideTestOnlyTypeCrossing {
+    memberFixed
+    and not typeFixed
+    and testFileSeen
+    and typeCrossesOnlyInTest
+    and typeCrosses()
+    and not memberCrossesAfter()
+  }
+  // The non-test variant still fixes a member whose type cannot widen, such
+  // as a member of an exported type.
+  reachable MemberFixedByPartialPass {
+    configured
+    and testFileSeen
+    and memberCrosses()
+    and memberStatedDirective() == NoDirective
+    and not typeMayWiden()
+    and memberFixed
+  }
+
   // A member whose type states its own scope is already withheld, by the rule
   // that boundary_fix.fsl proves. This witness shows such a state is
   // reachable. It is reachable even without that guard, so it does not pin
