@@ -19,6 +19,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -463,6 +464,15 @@ type unseenFiles struct {
 	//declscope:shared // rename.go and scopesite.go check names against it; surplus.go defers on any
 	names map[string]bool
 
+	// linknamed is every local name a //go:linkname or //export directive in
+	// an unseen file that was read binds. names misses it, since a directive
+	// is a comment. A rename of such a name is withheld: the build that keeps
+	// the file would fail, as the directive would name a declaration that is
+	// gone. Like names, it is complete only while all is false.
+	//
+	//declscope:shared // rename.go withholds the rename on it
+	linknamed map[string]bool
+
 	// nonGo is whether the package holds a source file that is not Go, in
 	// this build or in another. Assembly for another GOARCH is in
 	// IgnoredFiles, and names the package's symbols in the build that holds
@@ -540,7 +550,7 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 	if c.unseenScan != nil {
 		return c.unseenScan
 	}
-	u := &unseenFiles{names: make(map[string]bool)}
+	u := &unseenFiles{names: make(map[string]bool), linknamed: make(map[string]bool)}
 	c.unseenScan = u
 
 	dir, inPass, holdsTests, onlyTests := "", make(map[string]bool), false, true
@@ -637,8 +647,10 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 			u.all = true
 			return u
 		}
-		// Only the names are read, so the parser need not resolve them.
-		if f, err = parser.ParseFile(fset, p, nil, parser.SkipObjectResolution); err != nil {
+		// Only the names are read, so the parser need not resolve them. The
+		// comments are read for the //go:linkname and //export directives,
+		// which name a declaration as text.
+		if f, err = parser.ParseFile(fset, p, nil, parser.SkipObjectResolution|parser.ParseComments); err != nil {
 			u.all = true
 			return u
 		}
@@ -648,6 +660,7 @@ func (c *collection) unseen(pass *analysis.Pass) *unseenFiles {
 			}
 			return true
 		})
+		maps.Copy(u.linknamed, directive.Linknamed([]*ast.File{f}))
 	}
 	return u
 }
@@ -666,7 +679,8 @@ var nonGoExts = map[string]bool{
 }
 
 // linknamed returns every local name bound by a //go:linkname or //export
-// directive in any file of the pass, collected or not. The directive names
+// directive in any file of the pass, collected or not. A file the pass does
+// not see is read by unseen (unseenFiles.linknamed). The directive names
 // the object as text, from code the analysis does not read, so the surplus
 // rule cannot call it unused and a rename cannot follow it.
 func (c *collection) linknamed(pass *analysis.Pass) map[string]bool {

@@ -55,7 +55,7 @@ func TestSuggestedFixQualifyFixturesOptIn(t *testing.T) {
 	for _, pkg := range []string{
 		"fixqualify", "fixembedded", "fixembeddedgeneric", "fixcapture", "fixforeignmethod",
 		"fixembedder", "fixembeddedsurface", "fixsiblings", "fixoutside", "fixlinkname",
-		"fixtestvariant", "fixexcluded", "fixtestexcluded",
+		"fixtestvariant", "fixexcluded", "fixexcludedlinkname", "fixtestexcluded",
 	} {
 		results := analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, pkg)
 		if qualifyFixCount(results) == 0 {
@@ -184,6 +184,15 @@ func TestSuggestedFixTestVariant(t *testing.T) {
 // the file. A declaration it does not mention is still renamed.
 func TestSuggestedFixExcluded(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixexcluded")
+}
+
+// TestSuggestedFixExcludedLinkname checks that a //go:linkname or //export
+// in a file the build excludes withholds the rename of the name it binds, as
+// one in a file of the pass does. The directive is a comment, so the
+// identifiers the excluded file writes do not show it. A declaration it does
+// not name is still renamed.
+func TestSuggestedFixExcludedLinkname(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixexcludedlinkname")
 }
 
 // TestSuggestedFixTestExcluded checks the two together, with the test file

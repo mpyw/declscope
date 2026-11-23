@@ -173,12 +173,15 @@ func (c *collection) safeToRename(pass *analysis.Pass, t *target, newName string
 	// withholds every rename, since the test variant sees every file and
 	// decides on its own. A build-excluded file withholds only a rename that
 	// disturbs an identifier it writes: no variant will ever see that file, so
-	// withholding wholesale would disable the fix for the whole package.
+	// withholding wholesale would disable the fix for the whole package. A
+	// //go:linkname or //export directive in that file names the target in a
+	// comment, not an identifier, so it is checked on its own. declscope
+	// shrink closed the same gap in #200.
 	u := c.unseen(pass)
 	if u.all {
 		return false
 	}
-	return !u.names[t.obj.Name()] && !u.names[newName]
+	return !u.names[t.obj.Name()] && !u.names[newName] && !u.linknamed[t.obj.Name()]
 }
 
 // reserveForRename records that a fix emitted in this pass renames something to name.
