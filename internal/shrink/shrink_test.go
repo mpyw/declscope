@@ -120,6 +120,32 @@ func TestShrinkConstSets(t *testing.T) { shrinkCheck(t, "testdata/const-sets") }
 // structs sharing one underlying type.
 func TestShrinkTypeParamSets(t *testing.T) { shrinkCheck(t, "testdata/typeparam-sets") }
 
+// TestShrinkAssembly pins that assembly in another package naming a variable
+// is a use. Only the linker reads the name, and go vet does not link, so the
+// fixes are applied to a copy and every main package is linked.
+func TestShrinkAssembly(t *testing.T) {
+	findings := shrinkCheck(t, "testdata/assembly-uses")
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS("testdata/assembly-uses")); err != nil {
+		t.Fatal(err)
+	}
+	res, err := shrink.Run(dir, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Findings) != len(findings) {
+		t.Fatalf("the copy has %d findings, want %d", len(res.Findings), len(findings))
+	}
+	if err := shrink.Apply(res.Findings); err != nil {
+		t.Fatal(err)
+	}
+	build := exec.Command("go", "build", "-o", os.DevNull, "./...")
+	build.Dir = dir
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build after the fix: %v\n%s", err, out)
+	}
+}
+
 // TestShrinkFixWithheld pins the reports whose fix is withheld for a reason
 // other than the rename: build-excluded and generated files, example
 // functions, and -ldflags -X.

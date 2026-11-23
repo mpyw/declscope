@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"go/ast"
 	"go/types"
+	"os"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -132,7 +134,9 @@ func collectEvidence(m *module.Module) (ev *evidence, err error) {
 		roots = append(roots, reach.Tagged(imp.Pkgs)...)
 		ev.unnamedStructs(m, slices.Concat(imp.Pkgs, imp.Imported))
 	}
-	ev.linknames(m)
+	if err := ev.linknames(m); err != nil {
+		return nil, err
+	}
 	ev.unnamedStructs(m, m.Widest())
 	// What escapes into an interface: every conversion SSA sees, every type
 	// argument of a generic whose body it cannot see, and every struct type a
@@ -579,10 +583,17 @@ func (ev *evidence) markRequired(m *module.Module, iface *types.Interface, t typ
 }
 
 // linknames records every declaration a //go:linkname anywhere in the
-// module pulls by its import path, compiled or not.
-func (ev *evidence) linknames(m *module.Module) {
-	byPath := map[string]map[string]string{}
-	add := func(file *ast.File) {
+// module pulls by its import path, compiled or not, and every one an
+// assembly file of the module names (evidenceAssembly).
+func (ev *evidence) linknames(m *module.Module) error {
+	byPath := map[string]map[string]bool{}
+	add := func(path, name string) {
+		if byPath[path] == nil {
+			byPath[path] = map[string]bool{}
+		}
+		byPath[path][name] = true
+	}
+	addFile := func(file *ast.File) {
 		for _, g := range file.Comments {
 			for _, c := range g.List {
 				d, ok := ast.ParseDirective(c.Pos(), c.Text)
@@ -599,28 +610,31 @@ func (ev *evidence) linknames(m *module.Module) {
 				if !ok {
 					continue
 				}
-				path := target[:slash+1] + last
-				if byPath[path] == nil {
-					byPath[path] = map[string]string{}
-				}
-				byPath[path][name] = name
+				add(target[:slash+1]+last, name)
 			}
 		}
 	}
 	for _, p := range m.Widest() {
 		for _, f := range p.Syntax {
-			add(f)
+			addFile(f)
 		}
 	}
 	for _, imp := range m.Importers {
 		for _, p := range imp.Pkgs {
 			for _, f := range p.Syntax {
-				add(f)
+				addFile(f)
 			}
 		}
 	}
 	for _, x := range m.Excluded {
-		add(x.Syntax)
+		addFile(x.Syntax)
+	}
+	for _, path := range m.Assembly {
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		evidenceAssembly(string(src), add)
 	}
 	for path, names := range byPath {
 		for _, p := range m.Variants(path) {
@@ -644,6 +658,32 @@ func (ev *evidence) linknames(m *module.Module) {
 					ev.outside[key], ev.everywhere[key] = true, true
 				}
 			}
+		}
+	}
+	return nil
+}
+
+// evidenceAssemblySymbol is a symbol name in Go assembly: a package path
+// with each . spelled · and each / spelled ∕, then · and the name, such as
+// example·com∕m∕internal∕cpu·HasFast. A name of its own package starts with
+// a bare ·, which names no other package.
+var evidenceAssemblySymbol = regexp.MustCompile(`[\p{L}\p{N}_\-~·∕]+`)
+
+// evidenceAssembly passes every package path and name an assembly source
+// may name a symbol of to add, spelled as a linkname target spells them.
+// The linker resolves such a symbol in any package linked into the
+// program, so go/types never sees the use, and the rename would fail the
+// link. The path ends at some ·, and which one is not known from the text,
+// so every split is passed: only a path the module loads is looked up.
+func evidenceAssembly(src string, add func(path, name string)) {
+	for _, symbol := range evidenceAssemblySymbol.FindAllString(src, -1) {
+		for i := range len(symbol) {
+			rest, ok := strings.CutPrefix(symbol[i:], "·")
+			if !ok || i == 0 || rest == "" {
+				continue
+			}
+			path := strings.NewReplacer("·", ".", "∕", "/").Replace(symbol[:i])
+			add(path, strings.ReplaceAll(rest, "·", "."))
 		}
 	}
 }

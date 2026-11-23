@@ -45,6 +45,9 @@ type Module struct {
 	// Excluded is every Go file of the main modules and the loaded nested
 	// ones that the build did not compile.
 	Excluded []*excluded.File
+	// Assembly is the path of every assembly (.s) file of the main modules
+	// and the loaded nested ones, compiled or not, where ./... reads files.
+	Assembly []string
 
 	// Importers are the nested modules this run loaded to read what they use.
 	// Their packages are never judged.
@@ -203,6 +206,7 @@ func Load(dir string) (*Module, error) {
 type loaded struct {
 	imp      Importer
 	excluded []*excluded.File
+	assembly []string
 	why      string
 	built    []builtModule
 	unbuilt  string
@@ -251,6 +255,7 @@ func (m *Module) loadImporters(mode packages.LoadMode) {
 			continue
 		}
 		m.Excluded = append(m.Excluded, l.excluded...)
+		m.Assembly = append(m.Assembly, l.assembly...)
 		if len(l.imp.Pkgs) > 0 {
 			m.Importers = append(m.Importers, l.imp)
 		}
@@ -438,11 +443,12 @@ func (m *Module) loadImporter(n nestedModule, mode packages.LoadMode) loaded {
 	// Its build-excluded files are read as the main modules' are, so a name
 	// written under a tag this run does not set still counts.
 	var xs []*excluded.File
-	if err := m.walkTree(n.dir, compiledFiles(own), token.NewFileSet(), false, &xs); err != nil {
+	var asm []string
+	if err := m.walkTree(n.dir, compiledFiles(own), token.NewFileSet(), false, &xs, &asm); err != nil {
 		l.why = err.Error()
 		return l
 	}
-	l.imp, l.excluded = imp, xs
+	l.imp, l.excluded, l.assembly = imp, xs, asm
 	return l
 }
 
@@ -1016,8 +1022,8 @@ func ErrorLine(pkg *packages.Package, cwd string) string {
 	return line
 }
 
-// walk reads every Go file no loaded package holds, and every nested module,
-// in each main module's tree.
+// walk reads every Go file no loaded package holds, every assembly file, and
+// every nested module, in each main module's tree.
 //
 // A package whose files are all excluded under this GOOS is not in the load
 // at all, so reading only IgnoredFiles would miss it. Files are read only
@@ -1037,7 +1043,7 @@ func (m *Module) walk() error {
 	compiled := compiledFiles(m.Pkgs)
 	fset := token.NewFileSet()
 	for _, mm := range m.mains {
-		if err := m.walkTree(mm.dir, compiled, fset, true, &m.Excluded); err != nil {
+		if err := m.walkTree(mm.dir, compiled, fset, true, &m.Excluded, &m.Assembly); err != nil {
 			return err
 		}
 	}
@@ -1045,10 +1051,11 @@ func (m *Module) walk() error {
 }
 
 // walkTree walks the tree of one module, rooted at root, adding the files its
-// build excludes to into. record says whether the go.mod files below root are
+// build excludes to into, and the path of every assembly file to asm,
+// compiled or not. record says whether the go.mod files below root are
 // recorded as nested modules: a main module's walk records them, at any
 // depth, so a nested module's own walk has nothing left to record.
-func (m *Module) walkTree(root string, compiled map[string]bool, fset *token.FileSet, record bool, into *[]*excluded.File) error {
+func (m *Module) walkTree(root string, compiled map[string]bool, fset *token.FileSet, record bool, into *[]*excluded.File, asm *[]string) error {
 	ignored, err := ignoreDirectives(root)
 	if err != nil {
 		return err
@@ -1092,7 +1099,16 @@ func (m *Module) walkTree(root string, compiled map[string]bool, fset *token.Fil
 			}
 			return nil
 		}
-		if !strings.HasSuffix(path, ".go") || compiled[path] || under(path) {
+		if under(path) {
+			return nil
+		}
+		// Assembly names Go symbols by text, in any package it is linked
+		// with, whether this build assembles it or not.
+		if strings.HasSuffix(path, ".s") {
+			*asm = append(*asm, path)
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || compiled[path] {
 			return nil
 		}
 		f, err := excluded.Read(fset, path)
