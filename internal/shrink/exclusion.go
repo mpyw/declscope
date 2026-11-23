@@ -39,10 +39,16 @@ type exclusions struct {
 	own       []*excluded.File
 	linknamed map[string]bool
 	// importing is every file of another package that imports the package,
-	// and dotImporting every one that imports it into its own scope.
-	// skippedImporting is every one of the first kind that sits under a
-	// directory ./... skips, which is kept out of importing.
+	// and dotImporting every one that imports it into its own scope. The
+	// package's external tests are not among them. skippedImporting is
+	// every one of the first kind that sits under a directory ./... skips,
+	// which is kept out of importing.
 	importing, dotImporting, skippedImporting []*excluded.File
+	// extTests is every file of the package's external test package: in its
+	// directory, with the package's name and _test. The configuration that
+	// builds one reads its uses as external tests', not as another
+	// package's.
+	extTests []*excluded.File
 	// reached says whether a file of another package imports a path that
 	// reaches the package (module.Reaches), or belongs to a loaded package
 	// that does.
@@ -86,26 +92,30 @@ func (r *run) exclusionsOf(p *packages.Package) *exclusions {
 		syntax = append(syntax, x.Syntax)
 	}
 	near.linknamed = directive.Linknamed(syntax)
+	extTest := exclusionPlace{own.dir, own.pkg + "_test"}
 	for _, x := range r.mod.Excluded {
-		if (exclusionPlace{x.Dir, x.Package}) == own {
+		at := exclusionPlace{x.Dir, x.Package}
+		if at == own {
 			continue
 		}
 		paths := x.ImportPaths()
 		switch {
+		case at == extTest:
+			near.extTests = append(near.extTests, x)
 		case !slices.Contains(paths, p.PkgPath):
 		case x.Skipped:
 			near.skippedImporting = append(near.skippedImporting, x)
 		default:
 			near.importing = append(near.importing, x)
 		}
-		if x.DotImports(p.PkgPath) {
+		if at != extTest && x.DotImports(p.PkgPath) {
 			near.dotImporting = append(near.dotImporting, x)
 		}
 		if !near.reached {
 			// The file's compiled siblings count as much as its imports: a
 			// package-level variable of theirs may hold a value of the
 			// package's types.
-			sibling, loaded := cache.loadedAt[exclusionPlace{x.Dir, x.Package}]
+			sibling, loaded := cache.loadedAt[at]
 			near.reached = loaded && r.mod.Reaches(sibling, p.PkgPath) ||
 				slices.ContainsFunc(paths, func(path string) bool { return r.mod.Reaches(path, p.PkgPath) })
 		}
@@ -124,7 +134,8 @@ func (near *exclusions) qualifies(c *candidate) bool {
 }
 
 // writes reports whether a build-excluded file of another package imports p
-// and writes p.name.
+// and writes p.name. The package's external tests do not count: the
+// configuration that builds them reads no use from another package there.
 //
 //declscope:shared // the core asks it of each declaration that can carry a type
 func (near *exclusions) writes(p *packages.Package, name string) bool {
@@ -143,6 +154,19 @@ func (near *exclusions) writes(p *packages.Package, name string) bool {
 func (near *exclusions) skippedWrites(c *candidate) bool {
 	return slices.ContainsFunc(near.skippedImporting, func(x *excluded.File) bool {
 		return x.Qualifies(c.pkg.PkgPath, c.pkg.Types.Name(), c.obj.Name())
+	})
+}
+
+// extTestWrites reports whether a build-excluded file of the package's
+// external test package writes the candidate's name: pkg.Name, or Name under
+// a dot import. The configuration that builds the file reports the candidate
+// as used only by external tests, and so does this one.
+//
+//declscope:shared // the core reports it as used only by external tests
+func (near *exclusions) extTestWrites(c *candidate) bool {
+	return slices.ContainsFunc(near.extTests, func(x *excluded.File) bool {
+		return x.Qualifies(c.pkg.PkgPath, c.pkg.Types.Name(), c.obj.Name()) ||
+			x.DotImports(c.pkg.PkgPath) && x.Writes(c.obj.Name())
 	})
 }
 

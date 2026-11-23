@@ -453,7 +453,7 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 		if c.kind.member() && c.owner != nil {
 			v.f.Owner = c.owner.Name()
 		}
-		if r.ev.extTest[c.key] {
+		if r.ev.extTest[c.key] || !c.kind.member() && r.exclusionsOf(c.pkg).extTestWrites(c) {
 			// Exporting from an in-package _test.go file for the external
 			// tests is the export_test.go idiom, doing its job.
 			if c.testFile {
