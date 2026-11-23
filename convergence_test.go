@@ -202,6 +202,28 @@ var fixCases = []fixCase{
 			"order.go": "package x\n\nfunc orderRun() string {\n\te := entry{key: \"x\", note: \"y\"}\n\treturn e.key + e.note\n}\n\nvar _ = orderRun\n",
 		},
 	},
+	{
+		// The field's own //declscope:private binds only while the type takes
+		// shared from the file. Narrowing the type would leave it restating
+		// the type's scope, so strict's fix on the type is withheld.
+		name: "a type strict would narrow over a field that states private",
+		files: map[string]string{
+			"user.go": "//declscope:shared\n\npackage x\n\ntype userBox struct {\n\t//declscope:private\n\tcount int\n}\n\n" +
+				"func userHelper() int { return userBox{}.count }\n",
+			"order.go": "package x\n\nfunc orderRun() int { return userHelper() }\n\nvar _ = orderRun\n",
+		},
+	},
+	{
+		// Under loose the unused rule would report the field's directive
+		// too, and that report has no fix.
+		name:   "a type strict would narrow over a field that states private, under unused loose",
+		config: "rules:\n  unused: loose\n",
+		files: map[string]string{
+			"user.go": "//declscope:shared\n\npackage x\n\ntype userBox struct {\n\t//declscope:private\n\tcount int\n}\n\n" +
+				"func userHelper() int { return userBox{}.count }\n",
+			"order.go": "package x\n\nfunc orderRun() int { return userHelper() }\n\nvar _ = orderRun\n",
+		},
+	},
 
 	// rules.unused: strict deletes a directive naming the scope its
 	// declarations would have without it. Deleting several in one run must

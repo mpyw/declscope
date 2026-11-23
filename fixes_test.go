@@ -244,7 +244,8 @@ func TestSuggestedFixMembers(t *testing.T) {
 // the declaration, after a bare comment line under a doc comment, once for an
 // entry holding two names, and on a line of its own for a field that shared
 // one. A directive that narrowing would leave binding nothing withholds the
-// fix, so that file takes no edit. And a boundary fix on a type narrows, in
+// fix, so that file takes no edit, and so does a type one of whose fields
+// states //declscope:private. And a boundary fix on a type narrows, in
 // the same edit, each member the widened type would otherwise leave wide.
 func TestSuggestedFixSurplusStrict(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixsurplusstrict")
@@ -253,7 +254,9 @@ func TestSuggestedFixSurplusStrict(t *testing.T) {
 // TestSuggestedFixSurplusStrictUnusedOff checks that strict's fix is offered
 // under a directive that decides nothing when the unused rule is off. With
 // the rule on, that directive's report names what narrowing would change, and
-// fixsurplusstrict/restated.go pins that the fix is withheld there.
+// fixsurplusstrict/restated.go pins that the fix is withheld there. The same
+// holds for a type whose field states //declscope:private, which
+// fixsurplusstrict/member.go pins.
 func TestSuggestedFixSurplusStrictUnusedOff(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixsurplusstrictunusedoff")
 }

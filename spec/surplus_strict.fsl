@@ -57,10 +57,11 @@
 //                   not come from the declaration's own directive, from
 //                   exportedness, or from defaults.unexported
 //
-// The fix has five duties. It must bind. It must settle the report. It must
+// The fix has six duties. It must bind. It must settle the report. It must
 // start no boundary report on the declaration or on a member it narrows. It
 // must never make loose fire. It must never leave the directive binding
-// nothing. otherDecided is whether something else under the directive still
+// nothing. It must never leave a member's own directive binding nothing
+// either (memberStatesPrivate, below). otherDecided is whether something else under the directive still
 // takes a scope it could not have had otherwise. Where nothing does, the fix
 // is withheld and the report is not.
 //
@@ -72,6 +73,15 @@
 // rule is on and the report reads the narrowed declaration. A block's report
 // names each spec that takes its scope, for example. A type's report names
 // the type and never its fields. So a field narrowed under it rewords nothing.
+//
+// One more case withholds the fix: memberStatesPrivate. The declaration is a
+// type, and one of its members states its own //declscope:private. That
+// member does not take its scope through the type, so membersKeep never reads
+// it. Its directive binds only while the type is shared. Once the fix narrows
+// the type, the member has private anyway, and the unused rule reports the
+// member's directive. The directive is the author's, so the fix does not
+// delete it. It is withheld while unusedReports, that is, while the unused
+// rule is on. With the rule off nothing would report the directive.
 //
 // ASSUME-1: one declaration and its enclosing directive are enough. Everything
 //   else the directive reaches matters only through otherKeepsDirective and
@@ -108,6 +118,8 @@ spec SurplusStrict {
     otherDecided: Bool = false,
     restated: Bool = false,
     rewords: Bool = false,
+    memberStatesPrivate: Bool = false,
+    unusedReports: Bool = false,
     looseReported: Bool = false,
     strictReported: Bool = false,
     fixed: Bool = false,
@@ -140,7 +152,9 @@ spec SurplusStrict {
   action configureDirective(givenOtherKeepsDirective: Bool,
                             givenOtherDecided: Bool,
                             givenRestated: Bool,
-                            givenRewords: Bool) {
+                            givenRewords: Bool,
+                            givenMemberStatesPrivate: Bool,
+                            givenUnusedReports: Bool) {
     requires phase == 2
     // A restated directive has an enclosing directive to restate. So it is
     // never the file's, and nothing under it decides. Only its report can be
@@ -149,11 +163,21 @@ spec SurplusStrict {
     requires givenRestated => source != NoEnclosing
     requires givenRestated => not givenOtherDecided
     requires givenRewords => givenRestated
+    // Only the unused rule's report can be reworded.
+    requires givenRewords => givenUnusedReports
+    // Only a type has members. A type is never under a type's directive, it
+    // is never a mixed entry, and it is never main.
+    requires givenMemberStatesPrivate => level != OnType
+    requires givenMemberStatesPrivate => shape != MixedEntry
+    requires givenMemberStatesPrivate => shape != OwnerNarrowed
+    requires givenMemberStatesPrivate => shape != ToolchainNamed
     phase = 3
     otherKeepsDirective = givenOtherKeepsDirective
     otherDecided = givenOtherDecided
     restated = givenRestated
     rewords = givenRewords
+    memberStatesPrivate = givenMemberStatesPrivate
+    unusedReports = givenUnusedReports
   }
 
   def configured() = phase == 3
@@ -210,7 +234,13 @@ spec SurplusStrict {
     mode == Strict
     and widened()
     and strictUnsuppressed()
-  def fixable() = strictFires() and (otherDecided or (restated and not rewords))
+  // The fix would leave a member's //declscope:private binding nothing, and
+  // the unused rule would report it.
+  def unbindsAMember() = memberStatesPrivate and unusedReports
+  def fixable() =
+    strictFires()
+    and (otherDecided or (restated and not rewords))
+    and not unbindsAMember()
 
   fair action reportLoose() {
     requires configured()
@@ -263,6 +293,8 @@ spec SurplusStrict {
     and not otherKeepsDirective
     and (fixed or not keepsDirective())
   def directiveBindsAfter() = otherDecided or not fixed
+  // The member's //declscope:private binds while the type is shared.
+  def memberUnboundAfter() = memberStatesPrivate and scopeAfter() == Private
 
   // --- what the rule may say ----------------------------------------------
   // The property the rule exists to keep, for both findings.
@@ -299,6 +331,7 @@ spec SurplusStrict {
   invariant RestatedRecordsItsGuard {
     (restated => configured() and level != OnFile and source != NoEnclosing and not otherDecided)
     and (rewords => restated)
+    and (rewords => unusedReports)
   }
 
   // --- what the fix leaves -------------------------------------------------
@@ -309,6 +342,11 @@ spec SurplusStrict {
   // A directive the fix leaves binding nothing bound nothing before it.
   invariant FixKeepsTheDirectiveBound  { fixed => directiveBindsAfter() or restated }
   invariant FixNeverRewordsUnused      { fixed => not rewords }
+  // The fix never leaves a member's own directive binding nothing while the
+  // unused rule would report it.
+  invariant FixLeavesMemberDirectivesBound {
+    fixed => not (unusedReports and memberUnboundAfter())
+  }
 
   trans StrictOnlyWhereItFires { not old(strictReported) and strictReported => old(strictFires()) }
   trans FixOnlyWhereFixable    { not old(fixed) and fixed => old(fixable()) }
@@ -338,6 +376,21 @@ spec SurplusStrict {
     and restated
     and rewords
     and stalled
+  }
+
+  // A member states //declscope:private. The fix is withheld while the unused
+  // rule is on, and offered while it is off.
+  reachable WithheldOverAMemberThatStatesPrivate {
+    strictReported
+    and memberStatesPrivate
+    and unusedReports
+    and otherDecided
+    and stalled
+  }
+  reachable FixedOverAMemberUnderUnusedOff {
+    fixed
+    and memberStatesPrivate
+    and not unusedReports
   }
 
   // Under loose, a declaration strict would report goes unreported.

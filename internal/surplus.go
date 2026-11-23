@@ -667,6 +667,15 @@ func (c *collection) computeSurplusDeclarations(pass *analysis.Pass, opts Option
 			reworded[pos] = c.rewordedAtScopeSite(opts, names[0].boundBy, narrowed)
 		}
 		fixed := boundAfter[pos] || !boundBefore[pos] && !reworded[pos]
+		// Narrowing a type also decides what its members' own directives
+		// bind. A member's //declscope:private binds only while the type is
+		// shared, so the narrowed type would leave it binding nothing, and the
+		// unused rule would report what -fix had just made redundant. The
+		// directive records the author's decision, so the fix is withheld
+		// rather than deleting it, and the report stays.
+		if names[0].kind == kindType && c.unboundAtScopeSite(opts, names[0], scope.Private) {
+			fixed = false
+		}
 		for i, t := range names {
 			out[t] = surplusDeclaration{msg: surplusDeclarationMessage(t), fixed: fixed && i == 0, settledBy: settledBy[t]}
 		}
