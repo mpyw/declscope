@@ -146,6 +146,28 @@ func TestShrinkAssembly(t *testing.T) {
 	}
 }
 
+// TestShrinkAssemblyUnreadable pins that an assembly file shrink cannot read
+// stops the run with the error. Reporting without it would miss the names
+// it spells. The file is for another GOARCH, so go list skips it by name and
+// only shrink reads it.
+func TestShrinkAssemblyUnreadable(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root reads every file")
+	}
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS("testdata/assembly-uses")); err != nil {
+		t.Fatal(err)
+	}
+	locked := filepath.Join(dir, "fast", "fast_s390x.s")
+	if err := os.WriteFile(locked, []byte("// locked\n"), 0o200); err != nil {
+		t.Fatal(err)
+	}
+	_, err := shrink.Run(dir, nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "fast_s390x.s") {
+		t.Fatalf("err = %v, want the error reading fast_s390x.s", err)
+	}
+}
+
 // TestShrinkFixWithheld pins the reports whose fix is withheld for a reason
 // other than the rename: build-excluded and generated files, example
 // functions, and -ldflags -X.
