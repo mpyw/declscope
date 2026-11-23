@@ -174,9 +174,11 @@ func (c *collection) reportUnusedIgnores(pass *analysis.Pass, opts Options) {
 		return s.fileLevel && s.ig.Covers(rule.Unused) && moduleWideFiles[c.fileAt(pass, s.ig.Pos)]
 	}
 	// An ignore that may silence a crossing this pass cannot see has done its
-	// job in the configuration that reads the crossing file.
+	// job in the configuration that reads the crossing file. So has an ignore
+	// of surplus while that file alone stands the rule down here.
+	surplusUnjudged := opts.Surplus.Reports() && c.surplusBlindOnlyToExcluded(pass)
 	for _, s := range c.ignores {
-		if !s.used && c.ignoreMayCrossUnseen(pass, s) {
+		if !s.used && (c.ignoreMayCrossUnseen(pass, s) || surplusUnjudged && s.ig.Covers(rule.Surplus)) {
 			s.used = true
 		}
 	}
@@ -235,7 +237,11 @@ func (c *collection) reportUnusedIgnores(pass *analysis.Pass, opts Options) {
 // declaration's own namespace counts too. Such an ignore is still reported by
 // the configuration that reads the file, which sees that nothing crosses.
 // Every other rule is judged on the declaration, not on its uses, so an
-// unseen file cannot make an ignore of one of them needed.
+// unseen file cannot make an ignore of one of them needed. surplus differs in
+// one way: a build-excluded file of the package stands the whole rule down,
+// so a configuration that reads the file judges it and this one does not.
+// reportUnusedIgnores keeps every ignore of surplus while that is the only
+// reason it stands down.
 func (c *collection) ignoreMayCrossUnseen(pass *analysis.Pass, s *ignoreSite) bool {
 	if !s.ig.Covers(rule.Boundary) {
 		return false

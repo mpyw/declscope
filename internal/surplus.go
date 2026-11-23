@@ -233,7 +233,24 @@ func surplusMessage(rep *target, group []*target) string {
 //
 //declscope:shared // the survey reports whether the rule was asked at all
 func (c *collection) surplusSeesEveryFile(pass *analysis.Pass) bool {
-	if u := c.unseen(pass); u.all || len(u.names) > 0 || u.nonGo {
+	return len(c.unseen(pass).names) == 0 && c.surplusSeesAllButExcluded(pass)
+}
+
+// surplusBlindOnlyToExcluded reports whether the rule stands down for this
+// pass only because a build-excluded file of the package writes a name. A
+// configuration that reads that file judges the rule, so what this pass
+// cannot judge may be judged there.
+//
+//declscope:shared // ignore.go keeps an ignore of surplus that such a configuration may need
+func (c *collection) surplusBlindOnlyToExcluded(pass *analysis.Pass) bool {
+	return len(c.unseen(pass).names) > 0 && c.surplusSeesAllButExcluded(pass)
+}
+
+// surplusSeesAllButExcluded is surplusSeesEveryFile without the
+// build-excluded files: every other source the rule cannot read is one that
+// no configuration reads.
+func (c *collection) surplusSeesAllButExcluded(pass *analysis.Pass) bool {
+	if u := c.unseen(pass); u.all || u.nonGo {
 		return false
 	}
 	for _, f := range pass.Files {
