@@ -1,7 +1,7 @@
 // surplus.go implements the surplus rule: a //declscope:shared directive is
 // reported when declscope can see no use of what it widens from another
-// namespace. spec/surplus.fsl is the model; NeverReportsReachable is the
-// property everything here serves.
+// namespace. spec/surplus_strict.fsl is the model; NeverReportsReachable is
+// the property everything here serves.
 //
 // The rule is unlike the others in that it concludes from an absence. boundary
 // needs a use to find and qualify reads a name, but this rule reports because
@@ -11,22 +11,20 @@
 // holding something up breaks a package the analysis never saw. Every check
 // below therefore silences the rule on a doubt, and there is no fix.
 //
-// Every way a declaration is reached, and what answers for it (the spec's
-// names in parentheses, surplus.fsl's then surplus_strict.fsl's):
+// Every way a declaration is reached, and what answers for it (the value of
+// Reach in spec/surplus_strict.fsl in parentheses):
 //
 //   - another namespace spells the name, or an unkeyed literal of an exact
-//     type writes it -> c.refs (usedOutside, Spelled)
-//   - a method set satisfies an interface contract in the package
-//     (satisfaction, Satisfied)
+//     type writes it -> c.refs (Spelled)
+//   - a method set satisfies an interface contract in the package (Satisfied)
 //   - an exported type carries an unexported method out of the package, where
-//     an importer completes the satisfaction (carrierExposed, Carried)
+//     an importer completes the satisfaction (Carried)
 //   - a struct conversion writes fields pairwise, spelling none of them
-//     (conversion, Converted)
+//     (Converted)
 //   - an unkeyed literal may write a field through a guessed type set
-//     -> c.unkeyedGuessed (guessed, Guessed)
-//   - //go:linkname or //export names the declaration as text (linkname,
-//     Linknamed)
-//   - an importer reaches an exported name (exported; strict never judges one)
+//     -> c.unkeyedGuessed (Guessed)
+//   - //go:linkname or //export names the declaration as text (Linknamed)
+//   - an importer reaches an exported name (strict never judges one)
 //
 // seesAllFiles is separate, and not per declaration: an unread in-package
 // test file, a build-excluded file of this package, a generated or

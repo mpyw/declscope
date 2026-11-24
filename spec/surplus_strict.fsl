@@ -5,13 +5,13 @@
 // and anything under the file's. The fix inserts //declscope:private on that
 // one declaration.
 //
-// The property is surplus.fsl's. NeverReportsReachable says neither finding
+// NeverReportsReachable says neither finding
 // is made of a declaration that another namespace reaches. That fact is the
 // input reachedFromOtherNamespace, and no guard reads it. configureReach ties
 // it to the paths below, as hiddenUse works in shrink.fsl. A reach shows on
 // one of the paths, or it comes from a source the analysis never reads.
 // Both modes ask one function, surplusState.reachesOutside.
-// So the paths are surplus.fsl's too, less exportedness. strict never judges
+// So the paths are the ones it tests, less exportedness. strict never judges
 // an exported declaration (source == Exported). Here the paths are one
 // variable, because no property reads two at once:
 //
@@ -32,7 +32,8 @@
 // file, cgo, assembly or another non-Go file in the folder, an unread test
 // file, and a build-excluded file of this package. Such a source is not a
 // reach path. It switches the rule off for the whole package. That is
-// seesAllFiles, as in surplus.fsl.
+// seesAllFiles. The Go tests pin each path and seesAllFiles for loose (see
+// spec/README.md).
 //
 // The two findings are about one directive and one declaration under it.
 // otherKeepsDirective is whether anything else under the directive keeps it

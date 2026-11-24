@@ -1,14 +1,8 @@
 // The rename guard the implementation applies, and a proof that it is sound.
 //
-// rename_sound.fsl is the negative control. It models a guard that checks
-// package scope only. Its counterexamples list what a sound guard must check
-// beyond that. A control alone proves nothing about the code that exists.
-// Without a positive counterpart, safeToRename in internal/rename.go could
-// lose renameBoundByImport, and no spec would change verdict.
-//
-// This spec is that counterpart. It models the four scopes Go resolves
-// through, with one guard row for each. It proves the rename sound under
-// them. Dropping any one row makes this spec violated.
+// It models the four scopes Go resolves through, with one guard row for each.
+// It proves the rename sound under them. Dropping any one row makes this spec
+// violated. spec/README.md lists what each weaker guard lets through.
 //
 // safeToRename covers the four scopes with four calls:
 // Pkg.Scope().Lookup, types.Universe.Lookup, renameBoundByImport, and

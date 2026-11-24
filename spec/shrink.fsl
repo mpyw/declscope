@@ -68,7 +68,7 @@
 //   (modelling assumption).
 // ASSUME-2: renameUnsafe stands for the rename guard itself: scope capture,
 //   collisions and sibling targets. rename_guarded.fsl, rename_reach.fsl
-//   and rename_siblings.fsl hold what the guard must check (modelling
+//   and rename_reserved.fsl hold what the guard must check (modelling
 //   assumption).
 fsl 5
 spec Shrink {
