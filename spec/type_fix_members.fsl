@@ -39,6 +39,15 @@
 // wrote is recorded in typeFixed, memberNarrowed and memberFixed. The "after"
 // defs put the two together, as in fix_members.fsl.
 //
+// Where the fix of the type is withheld, its boundary report is kept
+// (ReportKeptWhereFixWithheld). The report does not read the guard of the fix.
+//
+// Some duties hold by a guard alone, so no property states them. Any property
+// would restate the guard. Witnesses show them instead. The fix never writes
+// over a member's own directive. It is withheld where it would leave an
+// authored directive binding nothing. It narrows the member that strict would
+// report.
+//
 // ASSUME-1: the type is unexported. No directive is written on it or on its
 //   file. defaults.unexported is private. Another namespace spells the type.
 //   That is the only case where the fix is offered. boundary_fix.fsl
@@ -62,6 +71,8 @@ spec TypeFixMembers {
     // An ignore or the baseline answers the boundary report of the type. So
     // the run writes no fix on it and subsumes nothing.
     typeAnswered: Bool = false,
+    // The boundary report of the type. ASSUME-1 says the type crosses.
+    typeReported: Bool = false,
     memberExported: Bool = false,
     memberDirective: Directive = NoDirective,
     memberReach: Reach = Unreached,
@@ -125,7 +136,8 @@ spec TypeFixMembers {
     scopeOf(NoDirective, onType, isExported)
   // The two judgments of one directive in unused_modes.fsl. Loose reports a
   // directive that binds nothing under any configuration. Strict also
-  // reports one that restates the scope in force.
+  // reports one that restates the scope in force. This is a hand copy of
+  // that rule. Nothing links the two, so change both together.
   def unusedReports(own: Directive, onType: Directive, isExported: Bool) =
     own != NoDirective
     and (
@@ -177,6 +189,15 @@ spec TypeFixMembers {
     stalled = true
   }
 
+  // The type crosses by ASSUME-1. An ignore or the baseline answers the
+  // report, so the run emits none then. Nothing else is read.
+  fair action reportType() {
+    requires configured()
+    requires not typeAnswered
+    requires not typeReported
+    typeReported = true
+  }
+
   fair action fixType() {
     requires typeFixable()
     requires not typeFixed
@@ -216,7 +237,7 @@ spec TypeFixMembers {
   // Nothing assigns the inputs once they are configured. So each guard still
   // holds of the state it fired in.
   invariant FixImpliesConfigured {
-    (typeFixed or memberFixed or stalled) => configured()
+    (typeFixed or memberFixed or stalled or typeReported) => configured()
   }
   invariant TypeFixRecordsItsGuard { typeFixed => typeFixable() }
   invariant NarrowingRecordsItsGuard {
@@ -230,9 +251,7 @@ spec TypeFixMembers {
   }
 
   // --- what the run leaves: boundary ----------------------------------------
-  // No boundary report is left on the type. None is left on a member a fix
-  // was written for.
-  invariant TypeFixSettles { typeFixed => typeDirectiveAfter() == SharedDirective }
+  // No boundary report is left on a member a fix was written for.
   invariant MemberCrossingSettled {
     (typeFixed or memberFixed) and memberDirective == NoDirective
       => not memberCrossesAfter()
@@ -242,46 +261,21 @@ spec TypeFixMembers {
   invariant NoNewBoundary { memberCrossesAfter() => memberCrossesBefore() }
 
   // --- what the run leaves: unused ------------------------------------------
-  // Neither inserted directive binds nothing, under either unused mode. The
-  // directive of the type is judged against the default. ASSUME-1 fixes that
-  // default.
-  invariant InsertedTypeDirectiveBinds {
-    typeFixed => not unusedReports(SharedDirective, NoDirective, false)
-  }
+  // The own fix of a member binds, under either unused mode. So it is never
+  // written beside the fix of the type.
+  //
+  // Two inserted directives always bind in this model, so no property states
+  // them. The directive of the type binds by ASSUME-1: the type takes private
+  // from the default, and the fix makes it shared. A narrowed member states
+  // private under the new shared directive of the type.
   invariant InsertedMemberDirectiveBinds {
-    (memberNarrowed or memberFixed)
+    memberFixed
       => not unusedReports(memberDirectiveAfter(), typeDirectiveAfter(), memberExported)
   }
-  // unused reports an authored directive after the run only if it reported
-  // that directive before the run as well.
-  def keepsItsReport(own: Directive, isExported: Bool) =
-    unusedReports(own, typeDirectiveAfter(), isExported)
-      => unusedReports(own, NoDirective, isExported)
-
-  // No directive the author wrote is left binding nothing if it bound
-  // something before. unboundAtScopeSite is the guard that ensures this.
-  invariant AuthoredDirectivesKeepTheirReport {
-    keepsItsReport(memberDirective, memberExported)
-    and keepsItsReport(siblingDirective, siblingExported)
-  }
-
-  // --- what the run leaves: surplus -----------------------------------------
-  // surplus strict does not report a member that the new directive of the
-  // type widens. Before the run it never could. No enclosing directive gave
-  // the member its scope.
-  invariant StrictSilentAfter { not strictReportsAfter() }
 
   // --- what the run leaves: the edits ---------------------------------------
-  // The own directive of the author is never overwritten. The member never
-  // carries two insertions.
-  invariant NeverOverwritesTheAuthor {
-    (memberNarrowed or memberFixed) => memberDirective == NoDirective
-  }
+  // The member never carries two insertions.
   invariant OneInsertionPerMember { not (memberNarrowed and memberFixed) }
-
-  trans FixTypeOnlyWhereFixable {
-    not old(typeFixed) and typeFixed => old(typeFixable())
-  }
 
   // --- witnesses, each with every other reason pinned ---------------------
   reachable NarrowedWithTheType {
@@ -377,10 +371,12 @@ spec TypeFixMembers {
   reachable WithheldOverOwnShared {
     configured()
     and stalled
-    and not typeFixed
+    and typeReported
+    and not typeFixable()
     and not typeAnswered
     and memberDirective == SharedDirective
     and not memberExported
+    and siblingDirective == NoDirective
     and unusedMode != Off
   }
   // The sibling withholds the fix, and the member that crosses takes its own.
@@ -400,6 +396,14 @@ spec TypeFixMembers {
     and memberDirective == SharedDirective
     and not memberExported
     and unusedMode == Off
+  }
+  // The fix of the type keeps the own directive of the author, even where
+  // strict would narrow the member without it.
+  reachable OwnSharedKeptWhereStrictApplies {
+    typeFixed
+    and memberDirective == SharedDirective
+    and memberDirectiveAfter() == SharedDirective
+    and strictAppliesToMember()
   }
   reachable FixedOverAnExportedOwnShared {
     typeFixed
@@ -422,10 +426,12 @@ spec TypeFixMembers {
     and not typeFixed
   }
 
-  leadsTo TypeEventuallyFixed {
-    typeFixable() ~> typeFixed
-    helpful fixType()
-    decreases if typeFixed then 0 else 1
+  // Where the fix of the type is withheld, its boundary report is still
+  // made.
+  leadsTo ReportKeptWhereFixWithheld {
+    configured() and not typeAnswered and not typeFixable() ~> typeReported
+    helpful reportType()
+    decreases if typeReported then 0 else 1
   }
   leadsTo MemberEventuallySettled {
     configured() and memberCrossesBefore() and memberDirective == NoDirective
