@@ -8,11 +8,13 @@
 // But the outer directive would then reach one declaration fewer. That can
 // make the outer directive unused, which is a report the fix created. So the
 // fix is withheld at every level that stated a scope.
-// FixNeverClobbersDirective pins that.
+// FixKeepsEveryDirectiveBound states that reason. It reads a binding test of
+// its own, not the guard.
 //
 // The scope model is copied verbatim from knobs.fsl: the enums, and the defs
-// from defaultScope to boundaryFires. spec/verify.sh fails if the two copies
-// differ.
+// from defaultScopeUnder to boundaryFires. spec/verify.sh fails if the two
+// copies differ. knobs.fsl holds the witnesses that each level and the
+// default change the scope. They are not repeated here.
 fsl 5
 spec BoundaryFix {
   enum Scope { Shared, Private }
@@ -62,7 +64,12 @@ spec BoundaryFix {
   // through an exported signature, an embedding, an alias or an interface it
   // satisfies. Guessing produced boundary reports on API that every importer
   // reaches.
-  def defaultScope() = if exported then Shared else unexportedDefault
+  //
+  // The defs below take each input that a property varies as a parameter.
+  // effectiveScope() passes the configured values. A property can then ask
+  // what the scope would be with one input changed.
+  def defaultScopeUnder(givenDefault: Scope) =
+    if exported then Shared else givenDefault
 
   // The nearer directive if it states a scope. Otherwise the farther one.
   def directiveOr(nearer: Directive, farther: Directive) =
@@ -73,16 +80,18 @@ spec BoundaryFix {
   // into the own directive of the spec. It passes the result as the container
   // of the members. So a block reaches a member. It never reaches a method
   // with a receiver.
-  def containerDirective() =
-    if kind == Member then directiveOr(typeDirective, blockDirective) else NoDirective
+  def containerDirectiveOf(givenType: Directive, givenBlock: Directive) =
+    if kind == Member then directiveOr(givenType, givenBlock) else NoDirective
+  def containerDirective() = containerDirectiveOf(typeDirective, blockDirective)
 
   // A parenthesized var/const/type block reaches only the specs it holds. So
   // only a package-level declaration has one. A member is not a spec of a
   // block, and a method is never in one. Decl.Merge lets the own scope of a
   // spec replace the scope of the block. That puts the block directly under
   // the declaration.
-  def blockDirectiveOfSpec() =
-    if kind == PackageLevel then blockDirective else NoDirective
+  def blockDirectiveOf(givenBlock: Directive) =
+    if kind == PackageLevel then givenBlock else NoDirective
+  def blockDirectiveOfSpec() = blockDirectiveOf(blockDirective)
 
   // The scope a directive states. If it states none, the scope from the next
   // level out.
@@ -92,26 +101,52 @@ spec BoundaryFix {
     else otherwise
 
   // The nearest level that states a scope decides it.
+  def scopeUnder(givenDefault: Scope, givenDecl: Directive, givenBlock: Directive,
+                 givenType: Directive, givenFile: Directive) =
+    scopeOr(givenDecl,
+      scopeOr(blockDirectiveOf(givenBlock),
+        scopeOr(containerDirectiveOf(givenType, givenBlock),
+          scopeOr(givenFile, defaultScopeUnder(givenDefault)))))
   def effectiveScope() =
-    scopeOr(declDirective,
-      scopeOr(blockDirectiveOfSpec(),
-        scopeOr(containerDirective(),
-          scopeOr(fileDirective, defaultScope()))))
+    scopeUnder(unexportedDefault, declDirective, blockDirective, typeDirective, fileDirective)
 
   // One line on purpose: spec/verify.sh compares the shared scope model up to
   // the line that names this def.
   def boundaryFires() = effectiveScope() == Private and referencedFrom == OtherNamespace
 
   // The directive of the nearest level that stated the scope, if any. The fix
-  // is withheld for every level, not only for the declaration. A directive
-  // inserted under an outer one leaves the outer one binding a declaration
-  // fewer. That can make it unused. The unused report would not exist before
-  // the fix ran, and -fix must never produce one. In the code this is the
-  // test `t.boundAt != boundAtDefault` in boundaryFinding.
+  // is withheld for every level, not only for the declaration. In the code
+  // this is the test `t.boundAt != boundAtDefault` in boundaryFinding.
   def statedDirective() =
     directiveOr(declDirective,
       directiveOr(blockDirectiveOfSpec(),
         directiveOr(containerDirective(), fileDirective)))
+
+  // --- binding, separate from the guard ---------------------------------------
+  // A directive binds this declaration when deleting it would change the
+  // scope of the declaration under some value of defaults.unexported. This is
+  // the loose binding test of unused_modes.fsl, for one declaration. It reads
+  // scopeUnder only, never statedDirective().
+  def declBinds() =
+    scopeUnder(Shared, declDirective, blockDirective, typeDirective, fileDirective)
+      != scopeUnder(Shared, NoDirective, blockDirective, typeDirective, fileDirective)
+    or scopeUnder(Private, declDirective, blockDirective, typeDirective, fileDirective)
+      != scopeUnder(Private, NoDirective, blockDirective, typeDirective, fileDirective)
+  def blockBinds() =
+    scopeUnder(Shared, declDirective, blockDirective, typeDirective, fileDirective)
+      != scopeUnder(Shared, declDirective, NoDirective, typeDirective, fileDirective)
+    or scopeUnder(Private, declDirective, blockDirective, typeDirective, fileDirective)
+      != scopeUnder(Private, declDirective, NoDirective, typeDirective, fileDirective)
+  def typeBinds() =
+    scopeUnder(Shared, declDirective, blockDirective, typeDirective, fileDirective)
+      != scopeUnder(Shared, declDirective, blockDirective, NoDirective, fileDirective)
+    or scopeUnder(Private, declDirective, blockDirective, typeDirective, fileDirective)
+      != scopeUnder(Private, declDirective, blockDirective, NoDirective, fileDirective)
+  def fileBinds() =
+    scopeUnder(Shared, declDirective, blockDirective, typeDirective, fileDirective)
+      != scopeUnder(Shared, declDirective, blockDirective, typeDirective, NoDirective)
+    or scopeUnder(Private, declDirective, blockDirective, typeDirective, fileDirective)
+      != scopeUnder(Private, declDirective, blockDirective, typeDirective, NoDirective)
 
   action reportWithoutFix() {
     requires configured
@@ -126,178 +161,29 @@ spec BoundaryFix {
     fixed = true
   }
 
-  // Auxiliary: a fix happens only after configuration. The directive it
-  // inserts records it. Together these make BoundaryFixSettles inductive.
-  invariant FixImpliesConfigured { fixed => configured }
-  invariant FixRecordsDirective  { fixed => declDirective == SharedDirective }
-  invariant BoundaryFixSettles   { fixed => not boundaryFires() }
+  // --- what the fix must keep -------------------------------------------------
+  // The fix settles the crossing it was written for.
+  invariant BoundaryFixSettles { fixed => not boundaryFires() }
 
-  // The guards are load-bearing. Without these, two defects would go
-  // unnoticed: a spurious fix, and a fix that overwrites the own directive
-  // of the author.
-  trans FixOnlyWhereNeeded {
-    not old(fixed) and fixed => old(boundaryFires())
-  }
-  trans FixNeverClobbersDirective {
-    not old(fixed) and fixed => old(statedDirective()) == NoDirective
-  }
-  // The same rule with each level spelled out. FixNeverClobbersDirective reads
-  // statedDirective(), so a level dropped from that def would pass it. This one
-  // names every level that reaches the kind. A block never reaches a method,
-  // and a type reaches only its members.
-  trans FixFindsEveryLevelUnstated {
+  // The inserted directive binds. Otherwise the fix would start an unused
+  // report on its own directive.
+  invariant InsertedDirectiveBinds { fixed => declBinds() }
+
+  // The reason for the guard. Every directive that bound this declaration
+  // before the fix still binds it after. The author's own directive is also
+  // still the one written. An outer directive that stops binding here may bind
+  // nothing at all. Then the fix has started an unused report.
+  //
+  // MODEL: binding is judged on this one declaration. An outer directive may
+  // also bind other declarations in its reach and stay used. The model does
+  // not hold them. So this is stricter than "no new unused report", and the
+  // guard is too.
+  trans FixKeepsEveryDirectiveBound {
     not old(fixed) and fixed =>
-      old(declDirective) == NoDirective
-      and old(fileDirective) == NoDirective
-      and (old(kind) == Method or old(blockDirective) == NoDirective)
-      and (old(kind) != Member or old(typeDirective) == NoDirective)
-  }
-
-  reachable BoundaryCanFire { configured and boundaryFires() }
-
-  // The FixWithheld* witnesses below are states where a boundary fires under
-  // a stated scope and no fix is written yet. They are reachable whether or
-  // not fixBoundary tests statedDirective(). So they do not pin the
-  // withholding themselves. FixNeverClobbersDirective does. These show that
-  // it is checked in the states where its guard decides.
-  reachable FixWithheldUnderTypeDirective {
-    configured
-    and kind == Member
-    and typeDirective == PrivateDirective
-    and declDirective == NoDirective
-    and boundaryFires()
-    and not fixed
-  }
-  // Every nearer level and the default are pinned. So only the file can make
-  // it cross.
-  reachable FixWithheldUnderFileDirective {
-    configured
-    and kind == PackageLevel
-    and fileDirective == PrivateDirective
-    and declDirective == NoDirective
-    and blockDirective == NoDirective
-    and typeDirective == NoDirective
-    and unexportedDefault == Shared
-    and not exported
-    and boundaryFires()
-    and not fixed
-  }
-  // The file directive reaches every kind. Each of these pins every nearer
-  // level and a shared default. So only the file can make it cross. Suppose
-  // the file reached only package-level declarations. Then a member and a
-  // method would have nothing to withhold.
-  reachable FixWithheldUnderFileDirectiveOnMember {
-    configured
-    and kind == Member
-    and fileDirective == PrivateDirective
-    and declDirective == NoDirective
-    and blockDirective == NoDirective
-    and typeDirective == NoDirective
-    and unexportedDefault == Shared
-    and not exported
-    and boundaryFires()
-    and not fixed
-  }
-  reachable FixWithheldUnderFileDirectiveOnMethod {
-    configured
-    and kind == Method
-    and fileDirective == PrivateDirective
-    and declDirective == NoDirective
-    and blockDirective == NoDirective
-    and typeDirective == NoDirective
-    and unexportedDefault == Shared
-    and not exported
-    and boundaryFires()
-    and not fixed
-  }
-  // Exportedness has to do work here too. Without these, the default could
-  // ignore exportedness and this spec would not notice. An exported
-  // declaration narrowed by its own directive does cross. The fix is
-  // withheld because the directive is the author's.
-  reachable ExportedNarrowedNeverFixed {
-    configured
-    and exported
-    and kind == PackageLevel
-    and declDirective == PrivateDirective
-    and referencedFrom == OtherNamespace
-    and boundaryFires()
-    and not fixed
-  }
-  reachable ExportedMemberWithheldUnderTypeDirective {
-    configured
-    and kind == Member
-    and exported
-    and typeDirective == PrivateDirective
-    and declDirective == NoDirective
-    and boundaryFires()
-    and not fixed
-  }
-  // A declaration that states its own scope is the one case the fix must
-  // refuse. Without a witness, FixNeverClobbersDirective is checked only in
-  // states that never test its guard.
-  reachable FixWithheldOverOwnDirective {
-    configured
-    and boundaryFires()
-    and declDirective == PrivateDirective
-    and not fixed
-  }
-  // defaults.unexported must reach this spec too, not only knobs. Under a
-  // shared default there is no crossing to fix in the first place. There is
-  // one witness per kind. Suppose one kind ignored defaults.unexported. A
-  // witness that left the kind free would still be satisfied.
-  reachable SharedDefaultLeavesNothingToFix {
-    configured
-    and kind == PackageLevel
-    and unexportedDefault == Shared
-    and statedDirective() == NoDirective
-    and not exported
-    and referencedFrom == OtherNamespace
-    and not boundaryFires()
-  }
-  reachable SharedDefaultLeavesNothingToFixOnMember {
-    configured
-    and kind == Member
-    and unexportedDefault == Shared
-    and statedDirective() == NoDirective
-    and not exported
-    and referencedFrom == OtherNamespace
-    and not boundaryFires()
-  }
-  reachable SharedDefaultLeavesNothingToFixOnMethod {
-    configured
-    and kind == Method
-    and unexportedDefault == Shared
-    and statedDirective() == NoDirective
-    and not exported
-    and referencedFrom == OtherNamespace
-    and not boundaryFires()
-  }
-
-  // The block level and exportedness must do work here too, not only in
-  // knobs. Without these, defaultScope() could ignore exportedness. And
-  // blockDirective could go unread. This spec would not notice either.
-  reachable BoundaryFromBlockDirectiveFires {
-    configured
-    and kind == PackageLevel
-    and blockDirective == PrivateDirective
-    and declDirective == NoDirective
-    and typeDirective == NoDirective
-    and fileDirective == NoDirective
-    and unexportedDefault == Shared
-    and referencedFrom == OtherNamespace
-    and boundaryFires()
-  }
-  reachable ExportedNeverCrossesByDefault {
-    configured
-    and exported
-    and kind == PackageLevel
-    and declDirective == NoDirective
-    and blockDirective == NoDirective
-    and typeDirective == NoDirective
-    and fileDirective == NoDirective
-    and unexportedDefault == Private
-    and referencedFrom == OtherNamespace
-    and not boundaryFires()
+      (old(declBinds()) => declBinds() and declDirective == old(declDirective))
+      and (old(blockBinds()) => blockBinds())
+      and (old(typeBinds()) => typeBinds())
+      and (old(fileBinds()) => fileBinds())
   }
 
   // The stall itself. Without these, nothing reads `stalled`. The assignment
@@ -318,4 +204,9 @@ spec BoundaryFix {
     helpful fixBoundary()
     decreases if boundaryFires() then 1 else 0
   }
+
+  // --- auxiliary ---------------------------------------------------------------
+  // A lemma, not a claim: a fix happens only after configuration. Induction
+  // needs it for InsertedDirectiveBinds.
+  invariant FixImpliesConfigured { fixed => configured }
 }

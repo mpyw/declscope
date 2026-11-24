@@ -44,7 +44,9 @@
 //   needs exactly a container and something it contains (modelling
 //   assumption).
 // ASSUME-2: scope resolution here is a reduced copy of the one in knobs.fsl.
-//   It has no var/const/type block level (modelling assumption). In the code
+//   It has no var/const/type block level (modelling assumption). spec/verify.sh
+//   does not compare the two. A change to the order of the levels or to
+//   defaultScopeUnder in knobs.fsl must be made here by hand. In the code
 //   the block of a type reaches its members through container.BeneathScope()
 //   in bindAtScopeSite. typeDirective does the same here. A block directive
 //   is a stated scope like typeDirective. It withholds both fixes the same
@@ -283,20 +285,6 @@ spec FixMembers {
   invariant TypeFixSettles   { typeFixed   => not typeCrossesAfter() }
   invariant MemberFixSettles { memberFixed => not memberCrossesAfter() }
 
-  // The guards are load-bearing. Without these, two defects would go
-  // unnoticed: a spurious insertion, and one written over the own directive of
-  // the author.
-  trans FixTypeOnlyWhereNeeded {
-    not old(typeFixed) and typeFixed => old(typeCrosses())
-  }
-  trans FixMemberOnlyWhereNeeded {
-    not old(memberFixed) and memberFixed => old(memberCrosses())
-  }
-  trans FixNeverClobbersDirective {
-    (not old(typeFixed) and typeFixed => old(typeStatedDirective()) == NoDirective)
-    and (not old(memberFixed) and memberFixed => old(memberStatedDirective()) == NoDirective)
-  }
-
   // The convergence itself. The guard has to survive this state. Both cross,
   // neither states a scope, and only the wider directive is written.
   reachable BothCross {
@@ -362,7 +350,7 @@ spec FixMembers {
   // A member whose type states its own scope is already withheld, by the rule
   // that boundary_fix.fsl proves. This witness shows such a state is
   // reachable. It is reachable even without that guard, so it does not pin
-  // it. FixNeverClobbersDirective does.
+  // it. The auxiliary MemberFixRecordsItsGuard carries the guard here.
   reachable MemberWithheldUnderTypeDirective {
     configured
     and typeDirective == PrivateDirective

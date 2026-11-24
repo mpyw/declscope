@@ -35,16 +35,16 @@ the binary.
 | `config_inherit.fsl` | `vocabulary` merges per namespace rather than the nearer map replacing the other, each namespace a nearer file leaves unstated keeps the value from above, and neither namespace can take the other's value: one namespace's result does not read the other's inputs. Both namespaces take the same type, so a rule that crossed them could be written | As above |
 | `filter_chain.fsl` | `only` intersects and `omit` unions down the chain, so **a config file can only ever shrink what is read** and an `omit` at the root holds everywhere below it | Every combination of which lists two levels state and which of two files matches each of the four |
 | `filter_chain.fsl` | Where the filter report fires, the nearest config states an `only`, and some file that level alone would keep is dropped by the `only` above alone and not by its `omit`. So the report never blames an `only` above for what an `omit` did. Witnesses show it fires when that cancellation leaves nothing to read, and stays quiet where a package reads nothing on purpose or still reads another file | As above. With two levels, the nearest config and the nearest one that states an `only` give the same verdicts, so the spec does not tell them apart |
-| `boundary_fix.fsl` | Inserting `//declscope:shared` always removes the boundary crossing, and is withheld wherever any level already stated a scope | Every combination of `defaults.unexported`, kind (package-level, member, method with a receiver), exportedness, where the declaration is referenced from (nowhere, its own namespace, another namespace), and the declaration, block, type and file directives |
-| `boundary_fix.fsl` | The fix is offered only where a crossing exists, and never overwrites the declaration's own directive | As above |
+| `boundary_fix.fsl` | Inserting `//declscope:shared` always removes the boundary crossing, and the inserted directive binds | Every combination of `defaults.unexported`, kind (package-level, member, method with a receiver), exportedness, where the declaration is referenced from (nowhere, its own namespace, another namespace), and the declaration, block, type and file directives |
+| `boundary_fix.fsl` | Every directive that bound the declaration before the fix still binds it after, and the author's own directive is never overwritten. This is why the fix is withheld wherever any level stated a scope. Binding is judged by a test of its own: deleting the directive would change the scope under some `defaults.unexported`. It is judged on the one declaration, not on everything the outer directive reaches | As above |
 | `fix_members.fsl` | Two directive insertions in one run never converge: no directive `-fix` writes binds nothing, and whichever of the two it writes settles the crossing | Every combination of `defaults.unexported`, the exportedness of a type and one of its members, where each is referenced from (nowhere, its own namespace, another namespace), whether the baseline absorbs the type's boundary finding, and the declaration, type and file directives. Two variants: whether the package has a test file, and whether the type's crossing is written only in one, which the non-test variant does not see. The block level is left out: it is a stated scope like the type's, and withholds both fixes alike |
 | `fix_members.fsl` | The narrower fix is subsumed, not disabled: a member whose type does not cross, or whose type's finding the baseline absorbs so that no fix is written on the type, still carries its own directive. The non-test variant does not fix a member whose type the test variant may widen, and the test variant still fixes the member where it does not widen the type | As above |
 | `knobs.fsl` | `defaults.unexported` and every directive level demonstrably change an outcome, for each kind of declaration the level reaches | Every combination of `defaults.unexported`, kind (package-level, member, method with a receiver), exportedness, where the declaration is referenced from (nowhere, its own namespace, another namespace), and the declaration, block, type and file directives |
-| `knobs.fsl` | The containing type's directive reaches its members and nothing else, witnessed by a package-level declaration and a method with a receiver that still fire | As above |
-| `knobs.fsl` | An exported declaration carries no boundary by default, for every kind | As above |
-| `knobs.fsl` | A directive narrows an exported declaration anyway, including a type's directive reaching an exported member | As above |
-| `knobs.fsl` | A reference from inside the namespace never crosses a boundary | As above |
-| `knobs.fsl` | A boundary is reported only for a private scope and only across a namespace, and on an exported declaration only where a directive narrowed it — each guard witnessed by an invariant its removal breaks | As above |
+| `knobs.fsl` | The scope does not read an input that does not reach the declaration. The containing type's directive is read only for a member, and the block's directive never for a method. An exported declaration never reads `defaults.unexported` | As above |
+| `knobs.fsl` | The nearest level that states a scope decides it alone: the farther levels and `defaults.unexported` go unread. For a member, the type's directive hides the block behind it | As above |
+| `knobs.fsl` | Setting any directive level, or `defaults.unexported`, to private never removes a boundary report | As above |
+| `knobs.fsl` | An exported declaration is reported only where a directive narrowed it, for every kind. A directive narrows it anyway, including a type's directive reaching an exported member | As above |
+| `knobs.fsl` | A private scope is reported only for a reference from another namespace. That `reportBoundary` reads `boundaryFires` is not claimed separately: it is the definition | As above |
 | `unused_modes.fsl` | Under `rules.unused: loose`, a scope directive is used when anything in its reach binds to it, and reported when nothing does. Binding is quantified over configurations *and* over enclosing directives. The `loose` verdict does not read `defaults.unexported` (`LooseIgnoresTheDefault`), and `//declscope:shared` under an enclosing `private` binds. Shadowing one more declaration never turns a reported directive into a used one (`ShadowingNeverMakesItUsed`) | Every combination of `rules.unused`, stated scope, next level out, `defaults.unexported`, target presence and exportedness, and two enclosed declarations by exportedness, shadowing and the scope the shadowing directive names. Also the five reasons the fix is withheld: a crossing, seen or named by a build-excluded file, that `boundary` reports under `private`; a widened owner; what `surplus` judges under `shared`; an outer directive that keeps its report; and unread in-package tests, which withhold every fix |
 | `unused_modes.fsl` | Under `strict` a scope directive is also reported when everything it reaches, shadowed or not, would have the scope it names without it under the configuration in force. `strict` reads `defaults.unexported` (`StrictReadsTheDefault`) and keeps every `loose` report (`StrictReportsWhatLooseReports`). `off` reports nothing | As above |
 | `unused_modes.fsl` | The fix that deletes the directive leaves every declaration's scope where it was, resolved again over the levels as written (`FixKeepsEveryScope`). Every nearer directive is reported after the fix exactly when it was before (`FixKeepsTheNearerJudgment`). The fix runs only where no taker had a boundary report (`FixMovesNoBoundaryReport`). A crossing under `//declscope:shared` or with `boundary: off`, and a `//declscope:private` that `surplus` depends on, change no report and do not withhold it | As above |
@@ -217,16 +217,20 @@ is a semantics that contradicts the documented one; each was run:
 
 | Wrong design | Result |
 | --- | --- |
-| The containing type's directive reaches every kind, not only its members | `reachable_failed` |
-| A `var`/`const`/`type` block's directive reaches every kind | `reachable_failed` |
+| The containing type's directive reaches every kind, not only its members | `violated` (`TypeDirectiveReachesOnlyMembers`) |
+| A `var`/`const`/`type` block's directive reaches a method | `violated` (`BlockDirectiveNeverReachesAMethod`) |
 | The block level is dropped | `reachable_failed` |
-| The file level outranks the declaration's own directive | `reachable_failed` |
-| The file level reaches package-level declarations only, not members or methods | `reachable_failed` (`FileDirBitesOnMember`; in `boundary_fix.fsl`, `FixWithheldUnderFileDirectiveOnMember`) |
-| A method ignores `defaults.unexported` and is always private | `reachable_failed` (`ConfigSilencesMethod`; in `boundary_fix.fsl`, `SharedDefaultLeavesNothingToFixOnMethod`) |
+| The file level outranks the declaration's own directive | `violated` (`DeclarationDirectiveDecidesAlone`) |
+| On a member, the block's directive outranks the type's | `violated` (`TypeDirectiveDecidesAloneOnAMember`) |
+| `defaults.unexported` outranks the file level on an unexported declaration | `violated` (`FileDirectiveDecidesAlone`) |
+| An exported declaration reads `defaults.unexported` | `violated` (`ExportedIgnoresTheDefault`, `ExportedFiresOnlyWhenStated`) |
+| A declaration's directive and its block's cancel out when they agree, so a private stated on the declaration can remove a report | `violated` (`DeclarationDirectiveDecidesAlone`; `PrivateNeverRemovesAReport` alone) |
+| The file level reaches package-level declarations only, not members or methods | `reachable_failed` (`FileDirBitesOnMember`). In `boundary_fix.fsl`, the scope-model diff in `verify.sh` |
+| A method ignores `defaults.unexported` and is always private | `reachable_failed` (`ConfigSilencesMethod`). In `boundary_fix.fsl`, the scope-model diff in `verify.sh` |
 | A method's own directive is ignored | `reachable_failed` (`DeclDirBitesOnMethod`) |
 | Exportedness is an exemption rather than a default, so a directive cannot narrow an exported declaration | `reachable_failed` |
-| A boundary is reported without a cross-namespace reference | `violated` |
-| A boundary is reported for a scope that is not private | `violated` |
+| A boundary is reported without a cross-namespace reference: from its own namespace, or with no reference at all | `reachable_failed` (`PrivateSilentInsideItsNamespace`, `PrivateSilentWithoutReference`) |
+| A boundary is reported for a scope that is not private | `violated` (`PrivateNeverRemovesAReport`) |
 | `rules.naming.exported` is ignored and exported names are always named | `reachable_failed` |
 | `rules.naming.exported` also gates on the namespace count | `reachable_failed` |
 | The naming rule reaches members | `reachable_failed` |
@@ -242,7 +246,7 @@ is a semantics that contradicts the documented one; each was run:
 | The binding test reads `defaults.unexported` instead of quantifying over it | `violated` (`LooseIgnoresTheDefault`) |
 | The binding test asks only whether the name is exported, ignoring an enclosing directive | `reachable_failed` (`ExportedSharedBindsUnderPrivateOuter`, `RestatingReportedUnderLoose`) |
 | A `var`/`const`/`type` block's directive does not reach the members of a type it holds | `reachable_failed` |
-| `boundary_fix.fsl` stops reading `blockDirective`, or stops discriminating exportedness | `reachable_failed` |
+| `boundary_fix.fsl` stops reading `blockDirective`, or stops discriminating exportedness | the scope-model diff in `verify.sh` fails |
 | `fair` is dropped from `fixBoundary` | `violated` (`leadsTo`); under induction, `unknown_cti` (`progress_action_not_fair`) |
 | A scope directive ignores a nearer directive that shadows it | `reachable_failed` (`ShadowedDisagreementKeepsIt`) |
 | A shadowed declaration counts as bound, as if the nearer directive depended on this one | `violated` (`ShadowingNeverMakesItUsed`) |
@@ -371,9 +375,10 @@ is a semantics that contradicts the documented one; each was run:
 | The filter report counts a file an `omit` removes as cancelled by an `only` above | `violated` (`WarnedOnlyWhereTheOuterOnlyDropsWhatTheNearerKeeps`) |
 | The filter report fires while the package still reads another file | `reachable_failed` (`CancelledBesideAReadFileStaysQuiet`) |
 | The filter report blames the nearest `only` for the files it narrows itself | `violated` (`WarnedOnlyWhereTheOuterOnlyDropsWhatTheNearerKeeps`) |
-| The file level does not reach a package-level declaration | `reachable_failed` (`FileDirBeatsConfig`; in `boundary_fix.fsl`, `FixWithheldUnderFileDirective`) |
+| The file level does not reach a package-level declaration | `reachable_failed` (`FileDirBeatsConfig`). In `boundary_fix.fsl`, the scope-model diff in `verify.sh` |
 | A `private` block directive is ignored | `reachable_failed` (`BlockDirBitesOnPkg`) |
-| The test that withholds the boundary fix skips one level: the declaration, the block, the containing type, the block behind a member's type, or the file (five controls) | `violated` (`FixFindsEveryLevelUnstated`) |
+| The test that withholds the boundary fix skips one level: the declaration, the block, the containing type, the block behind a member's type, or the file (five controls) | `violated` (`FixKeepsEveryDirectiveBound`; for the declaration, `InsertedDirectiveBinds`) |
+| The boundary fix is offered where nothing crosses | `violated` (`InsertedDirectiveBinds`) |
 | `qualify` is gated on `rules.surplus` being on, or being off | `violated` (`QualifyIgnoresSurplusOff`); with the invariant removed, `reachable_failed` (`NamingRuleAloneStillReports`, `QualifyFiresWhileSurplusOn`) |
 | `surplus` is gated on the naming rule | `reachable_failed` (`SurplusFiresWhileBoundaryOff`) |
 | `qualify` is gated on `rules.boundary: off` except under `always` | `violated` (`QualifyIgnoresBoundaryOff`) |
@@ -406,8 +411,8 @@ another reason — `ExportedSilentByDefault` pins the kind, the namespace, the c
 flag, the mode and the prefix, so exportedness is the only thing left doing the
 work. **Prefer a witness to a restatement.** An invariant that re-spells the
 definition it guards pins that definition but proves nothing about behaviour;
-`TypeDirInertOnPkg` and `TypeDirInertOnMethod` instead assert that the
-declaration still fires, which a leaking semantics cannot satisfy.
+`TypeDirectiveReachesOnlyMembers` instead compares the scope with the type's
+directive changed, which a leaking semantics cannot satisfy.
 
 A change here that makes every check pass unconditionally has stopped the check
 discriminating.
