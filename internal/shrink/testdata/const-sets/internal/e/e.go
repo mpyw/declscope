@@ -66,6 +66,19 @@ const (
 	HeldB // want: const HeldB is exported.*no fix: another value of its const block keeps its name
 )
 
+// Taken is held as Held is, and SPARE, outside the block, takes the name
+// Spare would lower to. Spare reads as taken, as the next run reads it once
+// SPARE is fixed.
+type Taken int // want: type Taken is exported.*no fix: an exported declaration that keeps its name hands it out
+
+const (
+	//declscope:ignore overexported // kept on purpose
+	TakenA Taken = iota
+	Spare // want: const Spare is exported.*\(no fix: the unexported name is taken or would be captured\)$
+)
+
+const SPARE = 9 // want: const SPARE is exported, but nothing outside \S+ uses it$
+
 // The type is silenced, so its set is left alone, and an ignore over a value
 // of it silences nothing.
 //
