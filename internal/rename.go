@@ -8,6 +8,8 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
+
+	"github.com/mpyw/declscope/internal/shrink/reach"
 )
 
 // renameBook is rename.go's half of the collection, embedded there.
@@ -56,6 +58,11 @@ type renameState struct {
 	// than walks every type of the package for each.
 	promoting map[*types.Named][]types.Type
 	embedding map[types.Object][]types.Type
+
+	// interfaced is every named type of the package whose name a value can
+	// carry into an interface (reflected).
+	interfaced     map[types.Object]bool
+	interfacedDone bool
 
 	// members holds, for each type a guard has asked about, every field and
 	// method name declared on it or on anything it embeds (addMemberNamesForRename).
@@ -187,6 +194,14 @@ func (c *collection) safeToRename(pass *analysis.Pass, t *target, newName string
 	if rs.reserved[newName] {
 		return false
 	}
+	// A type's name is visible at run time once a value of it is in an
+	// interface: xml.Marshal names the element after it, %T and %#v print
+	// it, %+v prints an embedded field by it, and gob registers it. The
+	// rename would compile and change the output (#405). An alias is not a
+	// name at run time, so it is not checked.
+	if tn, ok := t.obj.(*types.TypeName); ok && !tn.IsAlias() && rs.reflected(pass)[tn] {
+		return false
+	}
 	// A file of this package that this pass does not see may declare or name
 	// the target, and the fix does not rewrite it. An in-package test file
 	// withholds every rename, since the test variant sees every file and
@@ -201,6 +216,39 @@ func (c *collection) safeToRename(pass *analysis.Pass, t *target, newName string
 		return false
 	}
 	return !u.names[t.obj.Name()] && !u.names[newName] && !u.linknamed[t.obj.Name()]
+}
+
+// reflected returns every named type whose name reflection could read from
+// a value in an interface. The roots are each type the pass converts to an
+// interface, found as SSA's MakeInterface, so an implicit conversion at a
+// call, an assignment, a return, a composite literal or a send counts. An
+// instance of a generic in the package is built with its type arguments, and
+// one from another package, which has no body here, counts its type
+// arguments as converted. Outside package main, the type of every exported
+// declaration is a root too, since an importer can convert what it gets and
+// this pass cannot see that. From the roots, reach.Reflect follows every
+// field, embedded or not, element, key, pointee and method signature, as
+// fmt and encoding/xml do.
+//
+// declscope shrink's walk is reused. Its roots differ only in reading one
+// package rather than a module.
+func (rs *renameState) reflected(pass *analysis.Pass) map[types.Object]bool {
+	if rs.interfacedDone {
+		return rs.interfaced
+	}
+	rs.interfacedDone = true
+	roots := reach.PackageConversions(pass.Fset, pass.Pkg, pass.Files, pass.TypesInfo)
+	if pass.Pkg.Name() != "main" {
+		scope := pass.Pkg.Scope()
+		for _, name := range scope.Names() {
+			if obj := scope.Lookup(name); obj.Exported() {
+				roots = append(roots, obj.Type())
+			}
+		}
+	}
+	rs.interfaced = make(map[types.Object]bool)
+	reach.Reflect(roots, func(obj types.Object) { rs.interfaced[obj] = true })
+	return rs.interfaced
 }
 
 // reserveForRename records that a fix emitted in this pass renames something to name.

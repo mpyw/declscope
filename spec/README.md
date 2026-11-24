@@ -121,6 +121,12 @@ them, and a rename there can compile into a different selection or a different
 method set. `rename_reserved.fsl` covers the third: a fix that checks its
 target against the pre-fix names only lets two fixes take one name.
 
+None of them models what the program reads at run time. A type's name is also
+read through reflection, so a rename that keeps every reference in place can
+still change `%T` or an XML element name (#405). The guard for that is not
+modelled. [Why the rename fix withholds](../design/implementation.md#why-the-rename-fix-withholds)
+records it.
+
 That split is worth stating plainly, because the reach half went unmodelled at
 first and the one defect that could break a build lived exactly there: a file
 excluded by a `_GOOS` suffix or a `//go:build` line was in none of the guard's

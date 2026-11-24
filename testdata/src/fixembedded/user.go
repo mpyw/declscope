@@ -10,12 +10,12 @@ type userBase struct{ v int }
 // the type it denotes, so the rename rewrites the selection through it too.
 type view = userBase // want `type view does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" \(userView is one candidate, not necessarily the best\)`
 
-// User embeds all three. The embedding ident and every selection through it are
+// userAll embeds all three. The embedding ident and every selection through it are
 // spelled with the type's name, so the rename has to rewrite all of them.
-type User struct {
+type userAll struct {
 	count
 	*total
 	view
 }
 
-func (u *User) Sum() int { return u.count.n + u.total.sum + u.view.v }
+func (u *userAll) Sum() int { return u.count.n + u.total.sum + u.view.v }

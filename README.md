@@ -1069,6 +1069,17 @@ A rename is offered only when it provably changes nothing but the spelling. The 
 
 A method, or a type that is embedded, is renamed only when the new name is free on every type that holds it. A method is also not renamed when an interface of the package asks for its old or new name, since a type assertion would change its answer. An embedded type is not renamed when an interface of the package asks for its old name: the embedded field may hide a method of that name, and the rename would uncover it.
 
+A type is not renamed when a value of it can reach an interface: the type itself, a pointer to it, a slice, map or struct holding it, or a type embedding it. Reflection reads the type's name there, so the rename would compile and change the output.
+
+| Code | Before the rename of `point` | After |
+| --- | --- | --- |
+| `xml.Marshal(point{X: 1})` | `<point><X>1</X></point>` | `<userPoint><X>1</X></userPoint>` |
+| `fmt.Sprintf("%T", point{})` | `main.point` | `main.userPoint` |
+| `fmt.Sprintf("%+v", pair{})`, where `pair` embeds `point` | `{point:{X:0} Y:0}` | `{userPoint:{X:0} Y:0}` |
+| `gob.Register(point{})`, then decoding data written before | Decodes | `gob: name not registered for interface: "main.point"` |
+
+A conversion counts wherever the package makes it, implicit ones included, such as an argument to a parameter of type `any`, or a type argument of a generic function. Outside package main, a type that an exported declaration holds or hands out counts too, since an importer may convert it. `encoding/json` writes no type name, but the guard does not tell the encoders apart.
+
 A package that holds a non-Go source file, such as assembly (`.s`) for any architecture, gets no rename fix. Assembly names Go functions by text, which the rename cannot follow, and the build would fail at link time. Rename by hand, or add `//declscope:ignore qualify`.
 
 A declaration whose name the [baseline](#adopting-on-an-existing-codebase) records gets no rename either: its own entry under any rule, or, for a type, an entry of one of its members. The rename would leave the entry matching nothing, and the next run would report what it hid.

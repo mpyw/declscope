@@ -7,6 +7,8 @@
 package reach
 
 import (
+	"go/ast"
+	"go/token"
 	"go/types"
 	"strings"
 
@@ -34,6 +36,35 @@ import (
 func Conversions(pkgs []*packages.Package) []types.Type {
 	prog, _ := ssautil.Packages(pkgs, ssa.InstantiateGenerics)
 	prog.Build()
+	return conversionsIn(prog)
+}
+
+// PackageConversions is Conversions for the one package an analysis pass
+// holds: files and info are its syntax and type information. Every package
+// it imports, at any depth, has no syntax, as for a buildssa pass, so the
+// instances of their generics count by their type arguments.
+func PackageConversions(fset *token.FileSet, pkg *types.Package, files []*ast.File, info *types.Info) []types.Type {
+	prog := ssa.NewProgram(fset, ssa.InstantiateGenerics)
+	created := map[*types.Package]bool{}
+	var create func([]*types.Package)
+	create = func(imports []*types.Package) {
+		for _, p := range imports {
+			if created[p] {
+				continue
+			}
+			created[p] = true
+			prog.CreatePackage(p, nil, nil, true)
+			create(p.Imports())
+		}
+	}
+	create(pkg.Imports())
+	prog.CreatePackage(pkg, files, info, false)
+	prog.Build()
+	return conversionsIn(prog)
+}
+
+// conversionsIn returns what Conversions returns for a built program.
+func conversionsIn(prog *ssa.Program) []types.Type {
 	var out []types.Type
 	for fn := range ssautil.AllFunctions(prog) {
 		if fn.Blocks == nil {
