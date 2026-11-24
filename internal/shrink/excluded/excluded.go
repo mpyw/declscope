@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 // File is one build-excluded Go file.
@@ -28,6 +29,8 @@ type File struct {
 	// go build compiles it only when it is named, as a test does. So what it
 	// names is no use of the package, but a fix must not break it.
 	Skipped bool
+	// Test says whether it is a _test.go file.
+	Test bool
 
 	// imports maps the name each import is spelled with to its path. A dot
 	// import is recorded under ".", and one with no name of its own under "",
@@ -47,6 +50,7 @@ func Read(fset *token.FileSet, path string) (*File, error) {
 	}
 	f := &File{
 		Dir: filepath.Dir(path), Package: syntax.Name.Name, Syntax: syntax,
+		Test:    strings.HasSuffix(path, "_test.go"),
 		imports: map[string][]string{}, idents: map[string]bool{},
 		qualified: map[string]map[string]bool{},
 	}
