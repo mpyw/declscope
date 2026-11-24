@@ -273,7 +273,7 @@ baseline: .declscope-baseline.yaml
 | `rules.naming.qualify` | `always`, `never`, `ondemand` | `never` | When a name must carry its namespace. See [the naming rule](#when-it-applies) |
 | `rules.naming.exported` | `true`, `false` | `false` | Whether the naming rule also reaches exported declarations. The rename is never offered there |
 | `rules.naming.fix` | `true`, `false` | `false` | Whether `-fix` applies the naming rule's rename. Off because a rename can choose a name but not a place. See [the rename](#the-rename) |
-| `rules.naming.vocabulary` | Namespace to a list of words | None | Extra words that carry a namespace. See [what carries a namespace](#what-carries-a-namespace) |
+| `rules.naming.vocabulary` | Namespace to a list of words | None | Extra words that carry a namespace. A key is spelled as the file name or the namespace, in any case. See [what carries a namespace](#what-carries-a-namespace) |
 | `rules.boundary` | `off`, `on` | `on` | Whether the [`boundary`](#boundary) rule reports. See [reach without a boundary](#reach-without-a-boundary) |
 | `rules.surplus` | `off`, `loose`, `strict` | `strict` | How much the [`surplus`](#surplus) rule reports. See [strict](#strict) |
 | `rules.unused` | `off`, `loose`, `strict` | `strict` | How much the [`unused`](#unused-directives) rule reports. See [off, loose and strict](#off-loose-and-strict) |
@@ -1011,6 +1011,8 @@ rules:
       index: [indices]
       tracing: [trace]
 ```
+
+A key names a namespace the way a file name does, and case does not matter. For `user_id.go`, whose namespace is `userID`, the keys `user_id`, `userId`, `userid` and `userID` all work. Two keys in one file that name the same namespace are an error. Across config files they are one namespace, so the nearer file's list wins as usual.
 
 > [!WARNING]
 > The vocabulary is for the irregular few. A namespace that needs a long list is a sign that the file declares things it is not about. Splitting the file says more than listing them.

@@ -1,0 +1,7 @@
+# The namespace of user_id.go is userID. A key spelled as the file name,
+# user_id, names it too.
+rules:
+  naming:
+    qualify: always
+    vocabulary:
+      user_id: [member]

@@ -193,6 +193,16 @@ func TestVocabularyInherit(t *testing.T) {
 	}
 }
 
+// TestVocabularyKey checks that a vocabulary key is read as a namespace, the
+// way a file name is: userId and user_id both name the userID of user_id.go.
+func TestVocabularyKey(t *testing.T) {
+	for _, dir := range []string{"camel", "snake"} {
+		t.Run(dir, func(t *testing.T) {
+			analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "vocabularykey/"+dir)
+		})
+	}
+}
+
 // TestQualifyDefaultOff checks the built-in default: with no config, the
 // naming rule asks nothing even of a package with a second namespace, while
 // the boundary rule fires as it always did.

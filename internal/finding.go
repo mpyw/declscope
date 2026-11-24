@@ -221,7 +221,7 @@ func (c *collection) qualifyFinding(pass *analysis.Pass, opts Options, t *target
 	// A configured vocabulary word carries the namespace the way its own
 	// spelling would, under the same test: word boundary on the left, free
 	// right edge. It widens what counts as carrying, never what is asked.
-	if slices.ContainsFunc(opts.Vocabulary[t.file.ns], func(word string) bool { return namespace.Contains(name, word) }) {
+	if slices.ContainsFunc(opts.Vocabulary[namespace.Key(t.file.ns)], func(word string) bool { return namespace.Contains(name, word) }) {
 		return finding{}, false
 	}
 	// The merged rename can be taken where the plain prefix is not: in

@@ -10,6 +10,7 @@ import (
 	"github.com/mpyw/declscope/internal"
 	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/config"
+	"github.com/mpyw/declscope/internal/namespace"
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
@@ -728,6 +729,78 @@ func TestNestedEmptyVocabularyInherits(t *testing.T) {
 			}
 			if !slices.Equal(opts.Vocabulary["mouse"], c.want) {
 				t.Errorf("vocabulary[mouse] = %v, want %v", opts.Vocabulary["mouse"], c.want)
+			}
+		})
+	}
+}
+
+// TestVocabularyKeyNamesANamespace checks that a vocabulary key is read the
+// way a file name is, and case-folded, so every spelling of user_id.go's
+// namespace finds the words.
+func TestVocabularyKeyNamesANamespace(t *testing.T) {
+	for _, key := range []string{"userID", "userId", "userid", "user_id", "User-ID"} {
+		t.Run(key, func(t *testing.T) {
+			path := write(t, t.TempDir(), ".declscope.yaml", "rules:\n  naming:\n    vocabulary:\n      "+key+": [account]\n")
+			f, err := config.Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var opts internal.Options
+			if err := f.Apply(&opts); err != nil {
+				t.Fatal(err)
+			}
+			if got := opts.Vocabulary[namespace.Key("userID")]; !slices.Equal(got, []string{"account"}) {
+				t.Errorf("words for userID = %v, want [account] (vocabulary %v)", got, opts.Vocabulary)
+			}
+		})
+	}
+}
+
+// TestVocabularyKeysNamingOneNamespaceConflict checks that one file naming a
+// namespace by two spellings is an error naming both keys. Neither list can be
+// said to win.
+func TestVocabularyKeysNamingOneNamespaceConflict(t *testing.T) {
+	path := write(t, t.TempDir(), ".declscope.yaml",
+		"rules:\n  naming:\n    vocabulary:\n      userId: [account]\n      user_id: [member]\n")
+	f, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var opts internal.Options
+	err = f.Apply(&opts)
+	want := `rules.naming.vocabulary: keys "userId" and "user_id" name the same namespace (keep one)`
+	if err == nil || err.Error() != want {
+		t.Errorf("Apply error = %v, want %q", err, want)
+	}
+}
+
+// TestVocabularyKeysMergeAcrossSpellings checks that files of one chain
+// spelling a namespace differently still state the same namespace: a nearer
+// list replaces the outer one, and a nearer empty list inherits it.
+func TestVocabularyKeysMergeAcrossSpellings(t *testing.T) {
+	cases := []struct {
+		outer, near string
+		want        []string
+	}{
+		{"user_id: [member]", "userId: [account]", []string{"account"}},
+		{"userId: [account]", "user_id: []", []string{"account"}},
+	}
+	for _, c := range cases {
+		t.Run(c.near, func(t *testing.T) {
+			root := t.TempDir()
+			write(t, root, "go.mod", "module example.com/m\n")
+			write(t, root, ".declscope.yaml", "rules:\n  naming:\n    vocabulary:\n      "+c.outer+"\n")
+			sub := filepath.Join(root, "sub")
+			write(t, sub, ".declscope.yaml", "rules:\n  naming:\n    vocabulary:\n      "+c.near+"\n")
+			opts, _, err := config.Resolve(sub, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(opts.Vocabulary) != 1 {
+				t.Errorf("vocabulary = %v, want one namespace", opts.Vocabulary)
+			}
+			if got := opts.Vocabulary[namespace.Key("userID")]; !slices.Equal(got, c.want) {
+				t.Errorf("words for userID = %v, want %v", got, c.want)
 			}
 		})
 	}

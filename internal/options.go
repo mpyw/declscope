@@ -21,7 +21,8 @@ type Options struct {
 	// its own spelling would: irregular inflections and domain synonyms that
 	// no generated form reaches (mouse: wheel, index: indices). A word is
 	// matched exactly the way the namespace is — starting at a word boundary,
-	// with the right edge free — so it is a spelling, never a scope.
+	// with the right edge free — so it is a spelling, never a scope. The map
+	// is keyed by namespace.Key, so a lookup must go through it too.
 	Vocabulary map[string][]string
 
 	// Boundary says whether the boundary rule reports. The rule reports a
