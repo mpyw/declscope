@@ -69,8 +69,12 @@
 // reports the stale ignore itself. Out cannot keep an ignore this way. In
 // Out the constrained file is not loaded, so it shows no use.
 //
-// Two things must hold. One ignore passes both runs wherever either run
-// needs it. And one of the runs still reports a stale ignore.
+// One ignore must pass both runs wherever either run needs it. A stale
+// ignore is still reported by Out, which keeps nothing. Where the
+// constrained file cannot change what a run sees, the runs judge the ignore
+// alike. That is for a declaration other than a member, for one an
+// unconstrained file spells, and where no constrained file reaches the
+// package. An external test's name is no use in either run.
 //
 // ASSUME-1: one constrained file is enough, read by In and left out by Out.
 //   More constraints make more configurations. Each one is In or Out for
@@ -139,25 +143,29 @@ spec ShrinkIgnore {
   }
 
   // What each run sees as a use. A name an external test writes is not one
-  // in either run.
-  def seenIn() =
+  // in either run. The two kinds of constrained use are parameters of In's
+  // verdict, so that a property can ask whether it tells them apart.
+  def seenInWith(spelled: Bool, other: Bool) =
     spelledFree
-    or spelledConstrained
+    or spelled
     or otherUseFree
-    or otherUseConstrained
+    or other
     or carrierSpelledConstrained
+  def seenIn() = seenInWith(spelledConstrained, otherUseConstrained)
   def seenOut() =
     spelledFree
     or otherUseFree
     or (kind == Other and (spelledConstrained or otherUseConstrained or carrierSpelledConstrained))
   // In keeps the ignore (run.neededWithoutConstrained).
-  def inKeepsIgnore() = kind == Member and not spelledFree and constrainedReaches
+  def inKeepsWith(spelled: Bool, other: Bool) = kind == Member and not spelledFree and constrainedReaches
+  def inUnusedWith(spelled: Bool, other: Bool) =
+    seenInWith(spelled, other) and not inKeepsWith(spelled, other)
 
   fair action judgeIn() {
     requires phase == 1
     phase = 2
     wouldReportIn = not seenIn()
-    ignoreUnusedIn = seenIn() and not inKeepsIgnore()
+    ignoreUnusedIn = inUnusedWith(spelledConstrained, otherUseConstrained)
   }
   fair action judgeOut() {
     requires phase == 2
@@ -170,36 +178,52 @@ spec ShrinkIgnore {
   // is unused in a run only where that run gives it nothing to silence.
   def ignoreNeeded() = wouldReportIn or wouldReportOut
 
-  // --- the two properties -------------------------------------------------------
+  // --- properties -----------------------------------------------------------------
   // One ignore passes every configuration where any of them needs it.
   invariant OnePassesEvery {
     (phase == 3 and ignoreNeeded()) => not ignoreUnusedIn and not ignoreUnusedOut
   }
-  // An ignore no configuration needs is reported by one of them.
-  invariant StaleIsCaught { (phase == 3 and not ignoreNeeded()) => ignoreUnusedIn or ignoreUnusedOut }
-
-  // --- per run ------------------------------------------------------------------
-  invariant SilencingIsUseIn  { (phase >= 2 and wouldReportIn) => not ignoreUnusedIn }
-  invariant SilencingIsUseOut { (phase == 3 and wouldReportOut) => not ignoreUnusedOut }
-  // Out never keeps an ignore that silences nothing there.
-  invariant OutKeepsNothing   { phase == 3 => (ignoreUnusedOut == not wouldReportOut) }
-  // In keeps an ignore only for a member that no free use reaches, where a
-  // constrained file reaches the declaration. The condition is written out
-  // here, not taken from inKeepsIgnore(). A mutant of the guard then changes one
-  // side only, and the invariant can fail.
-  invariant InKeepsOnlyReachedMembers {
-    (phase >= 2 and not wouldReportIn and not ignoreUnusedIn)
-    => (kind == Member and not spelledFree and constrainedReaches)
+  // How a constrained file uses the declaration does not enter In's verdict
+  // on the ignore. A name it spells and an escape, satisfaction, exposure or
+  // pairing it makes are judged alike (#171).
+  invariant InIgnoresHowTheConstrainedFileUses {
+    (phase >= 1 and constrainedReaches)
+    => (inUnusedWith(true, false) == inUnusedWith(false, true)
+        and inUnusedWith(true, false) == inUnusedWith(true, true))
+  }
+  // A name an external test writes is no use in either run. So where the
+  // constrained file holds nothing else, both runs find the same.
+  invariant ExternalTestNameIsNoUseInEither {
+    (phase == 3
+     and not spelledConstrained
+     and not otherUseConstrained
+     and not carrierSpelledConstrained)
+    => wouldReportIn == wouldReportOut
+  }
+  // Out reads pkg.Name in the constrained file. So a declaration other than
+  // a member is judged alike in both runs.
+  invariant NonMemberJudgedAlike {
+    (phase == 3 and kind == Other) => ignoreUnusedIn == ignoreUnusedOut
+  }
+  // A name an unconstrained file spells is a use that both runs see. Then
+  // neither needs the ignore, and both report it.
+  invariant FreeSpellingJudgedAlike {
+    (phase == 3 and spelledFree) => ignoreUnusedIn == ignoreUnusedOut
+  }
+  // Where no constrained file reaches the package, both runs see the same.
+  invariant UnreachedJudgedAlike {
+    (phase == 3 and not constrainedReaches) => ignoreUnusedIn == ignoreUnusedOut
   }
 
-  // Auxiliary. Each run records its judgment. The inputs of that judgment
-  // are never assigned again.
+  // --- auxiliary ------------------------------------------------------------------
+  // Lemmas for induction, not claims. Each run records its judgment. The
+  // inputs of that judgment are never assigned again.
   invariant ConstrainedUseReaches {
     (spelledConstrained or otherUseConstrained or carrierSpelledConstrained or extTestSpelledConstrained) => constrainedReaches
   }
   invariant InRecordsItsJudgment {
     phase >= 2 => (wouldReportIn == not seenIn()
-                   and ignoreUnusedIn == (seenIn() and not inKeepsIgnore()))
+                   and ignoreUnusedIn == inUnusedWith(spelledConstrained, otherUseConstrained))
   }
   invariant OutRecordsItsJudgment {
     phase == 3 => (wouldReportOut == not seenOut()
