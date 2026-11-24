@@ -1,0 +1,5 @@
+# A non-empty list replaces the root's words for mouse.
+rules:
+  naming:
+    vocabulary:
+      mouse: [scroll]

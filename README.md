@@ -306,7 +306,7 @@ Every `.declscope.yaml` between the analyzed package and the module root is read
 | Key | Down the chain |
 | --- | --- |
 | `defaults.*`, `rules.*` except `vocabulary`, `baseline` | The nearest file that states the key wins. A key no file states takes the built-in default |
-| `rules.naming.vocabulary` | Merged per namespace. The nearer file wins the namespaces it states |
+| `rules.naming.vocabulary` | Merged per namespace. The nearer file wins the namespaces it states. An empty list or null (`mouse: []`, `mouse: ~`, a bare `mouse:`) states nothing, so the namespace keeps the words from above |
 | `filter.only` | **Intersected.** A file is read when it matches every stating file's list |
 | `filter.omit` | **Unioned.** A file matching any level's list is not read |
 

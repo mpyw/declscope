@@ -182,6 +182,17 @@ func TestQualifyVocabulary(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "vocabulary")
 }
 
+// TestVocabularyInherit checks that a nested file leaving a vocabulary
+// namespace empty or null keeps the words from above, as an empty filter.only
+// or a null qualify does. Only a non-empty list replaces them.
+func TestVocabularyInherit(t *testing.T) {
+	for _, dir := range []string{"empty", "null", "bare", "replace"} {
+		t.Run(dir, func(t *testing.T) {
+			analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "vocabularyinherit/"+dir)
+		})
+	}
+}
+
 // TestQualifyDefaultOff checks the built-in default: with no config, the
 // naming rule asks nothing even of a package with a second namespace, while
 // the boundary rule fires as it always did.

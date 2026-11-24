@@ -25,7 +25,8 @@ spec ConfigInherit {
   enum Mode   { Never, Always }
   // What one level says about a value key: nothing, or one of the values.
   enum Stated { Unset, AsNever, AsAlways }
-  // What one level says about one namespace's vocabulary entry. Both
+  // What one level says about one namespace's vocabulary entry. An empty
+  // list or null in the config is NoWord here, since it states nothing. Both
   // namespaces take the same type. So a rule that let one namespace take the
   // other's word could be written, and NamespaceANeverReadsB can catch it.
   enum Word   { NoWord, FirstWord, SecondWord }

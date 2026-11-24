@@ -1,0 +1,8 @@
+# The root lists wheel under mouse. Each subdirectory restates the namespace
+# in its own way: an empty list, null and a bare key all leave it unstated, so
+# wheel still carries mouse there. Only a non-empty list replaces the root's.
+rules:
+  naming:
+    qualify: always
+    vocabulary:
+      mouse: [wheel]

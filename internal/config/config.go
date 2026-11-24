@@ -444,11 +444,17 @@ func (f *File) Apply(opts *internal.Options) error {
 		opts.NamingFix = f.Rules.Naming.Fix.value
 	}
 	// The map merges per namespace rather than replacing: adding one word in a
-	// nested config should not cost restating every other.
+	// nested config should not cost restating every other. An empty list or
+	// null is unstated, as an empty filter.only is, so the namespace keeps
+	// the words from above.
 	if len(f.Rules.Naming.Vocabulary) > 0 {
 		merged := make(map[string][]string, len(opts.Vocabulary)+len(f.Rules.Naming.Vocabulary))
 		maps.Copy(merged, opts.Vocabulary)
-		maps.Copy(merged, f.Rules.Naming.Vocabulary)
+		for ns, words := range f.Rules.Naming.Vocabulary {
+			if len(words) > 0 {
+				merged[ns] = words
+			}
+		}
 		opts.Vocabulary = merged
 	}
 	if f.Rules.Boundary != "" {

@@ -1,0 +1,5 @@
+# mouse: ~ states nothing, so mouse keeps the root's words.
+rules:
+  naming:
+    vocabulary:
+      mouse: ~
