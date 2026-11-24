@@ -284,9 +284,10 @@ func TestSuggestedFixUnusedStrict(t *testing.T) {
 // rule's strict fix is withheld, with the report kept: a field whose type the
 // boundary fix widens (b.go), a spec whose block keeps a report the deletion
 // would change (d.go, and f.go where loose alone reports the block), and a
-// declaration a file the build excludes names (g.go). Only a.go and the
-// boundary fix in b.go take edits; an outer directive an ignore answers does
-// not withhold.
+// declaration a file the build excludes names (g.go), or a field it fills by
+// position through a named pointer or a named slice (h.go, i.go). Only a.go
+// and the boundary fix in b.go take edits; an outer directive an ignore
+// answers does not withhold.
 func TestSuggestedFixUnusedStrictWithheld(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixunusedstrictwithheld")
 }

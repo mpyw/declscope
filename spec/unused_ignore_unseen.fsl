@@ -42,7 +42,14 @@
 //                             package that an unkeyed literal fills the
 //                             field through. That is its struct, an alias
 //                             of it, a type defined over it, a named pointer
-//                             to it, or a constraint whose type set holds it
+//                             to it, a constraint whose type set holds it,
+//                             or a container (below)
+//   throughContainer          the type name written is a slice, array or map
+//                             type that holds the struct as an element or a
+//                             key, at any depth, behind a pointer or not. The
+//                             literal is written as Items{{1}}. The inner
+//                             literal leaves its type out and fills the field
+//                             by position. Only Items is written
 //   writesAnyName             the constrained file writes some name of the
 //                             package. Any name stands surplus down in Out
 //   surplusFires              In's surplus finding on the declaration fires
@@ -87,6 +94,7 @@ spec UnusedIgnoreUnseen {
     writesName: Bool = false,
     isField: Bool = false,
     writesTypeName: Bool = false,
+    throughContainer: Bool = false,
     writesAnyName: Bool = false,
     surplusFires: Bool = false,
     otherFires: Bool = false,
@@ -105,6 +113,7 @@ spec UnusedIgnoreUnseen {
                    givenWritesName: Bool,
                    givenIsField: Bool,
                    givenWritesTypeName: Bool,
+                   givenThroughContainer: Bool,
                    givenWritesAnyName: Bool,
                    givenSurplusFires: Bool,
                    givenOtherFires: Bool) {
@@ -113,6 +122,8 @@ spec UnusedIgnoreUnseen {
     // crossing fills a field, and writes one of the field's type names.
     requires not givenUnseenCrossingByName or givenWritesName
     requires not givenUnseenCrossingByPosition or (givenIsField and givenWritesTypeName)
+    // A container is one of the type names.
+    requires not givenThroughContainer or givenWritesTypeName
     // The declaration's name and its type names are names of the package.
     requires not givenWritesName or givenWritesAnyName
     requires not givenWritesTypeName or givenWritesAnyName
@@ -124,6 +135,7 @@ spec UnusedIgnoreUnseen {
     writesName = givenWritesName
     isField = givenIsField
     writesTypeName = givenWritesTypeName
+    throughContainer = givenThroughContainer
     writesAnyName = givenWritesAnyName
     surplusFires = givenSurplusFires
     otherFires = givenOtherFires
@@ -189,6 +201,7 @@ spec UnusedIgnoreUnseen {
   // assigned again.
   invariant UnseenNamedIsNamed { unseenCrossingByName => writesName }
   invariant UnseenUnkeyedIsAField { unseenCrossingByPosition => (isField and writesTypeName) }
+  invariant ContainerIsATypeName { throughContainer => writesTypeName }
   invariant WrittenNamesAreNames { (writesName or writesTypeName) => writesAnyName }
   invariant InRecordsItsJudgment {
     phase >= 2 => (silencedIn == inHasFinding() and unusedIn == not inHasFinding())
@@ -226,6 +239,19 @@ spec UnusedIgnoreUnseen {
     and silencedIn
     and not silencedOut
     and not unusedIn
+    and not unusedOut
+  }
+  // The same through a container. The file writes Items{{1}}, and the inner
+  // literal fills the field by position. Out keeps the ignore for In.
+  reachable ContainerCrossingKept {
+    phase == 3
+    and rule == Boundary
+    and not seenCrossing
+    and not unseenCrossingByName
+    and unseenCrossingByPosition
+    and throughContainer
+    and not writesName
+    and silencedIn
     and not unusedOut
   }
   // The constrained file writes a field's type in a keyed literal that sets

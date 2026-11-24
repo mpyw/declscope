@@ -327,6 +327,56 @@ func TestLeftOut(t *testing.T) {
 	}
 }
 
+// TestElided pins the structs an inner literal that leaves out its type
+// writes: through a slice, an array, a map's key and element, a pointer
+// element, a slice of a named slice, and a constraint whose type set is a
+// slice. A struct itself holds none, since a field's literal names its type,
+// and a type that refers to itself ends the walk.
+func TestElided(t *testing.T) {
+	src := `package p
+
+type S struct{ X int }
+type T struct{ Y int }
+type Items []S
+type Fixed [2]T
+type Keyed map[S]T
+type Grid [][]*S
+type Nested []Items
+type PItems *[]S
+type Self []Self
+type Ints []int
+type C interface{ ~[]S }
+`
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "p.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := (&types.Config{}).Check("example.com/p", fset, []*ast.File{f}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := func(ts []types.Type) string {
+		var out []string
+		for _, t := range ts {
+			out = append(out, t.(*types.Named).Obj().Name())
+		}
+		return strings.Join(out, ",")
+	}
+	var sets implicitfield.Sets
+	for name, want := range map[string]string{
+		"Items": "S", "Fixed": "T", "Keyed": "S,T", "Grid": "S", "Nested": "S",
+		"PItems": "", "Self": "", "Ints": "", "S": "",
+	} {
+		if got := names(sets.Elided(pkg.Scope().Lookup(name).Type())); got != want {
+			t.Errorf("Elided(%s) = %q, want %q", name, got, want)
+		}
+	}
+	if got := names(sets.ElidedConstrained(pkg.Scope().Lookup("C").Type())); got != "S" {
+		t.Errorf("ElidedConstrained(C) = %q, want %q", got, "S")
+	}
+}
+
 // BenchmarkSharedUnion reads the literals of 600 type parameters, three in
 // each of 200 functions, all constrained by one union of 99 structs (#339).
 // The set is computed once for the constraint, not once per type parameter,

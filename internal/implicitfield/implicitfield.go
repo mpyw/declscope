@@ -78,6 +78,61 @@ func (s *Sets) Constrained(constraint types.Type) ([]types.Type, bool) {
 	return s.Literal(types.NewTypeParam(types.NewTypeName(token.NoPos, nil, "P", nil), constraint))
 }
 
+// Elided returns the types whose fields an unkeyed literal writes when it
+// leaves out its own type inside a composite literal of type t. Go lets a
+// literal leave out the type of an element of a slice or an array, and of a
+// key or an element of a map: the inner literal of Items{{1}} has the type
+// Item, with type Items []Item, although only Items is written. Literal
+// reads each such element, so a pointer element or a type parameter is read
+// as it is there. An inner literal may hold another in turn, as in
+// [][]Item{{{1}}}, and the element of a pointer may be one too, since &T{...}
+// is left out with T, so the walk goes on through each.
+//
+// A type parameter is read through every type of its type set, with no core
+// type asked for. That can only list more types than a literal writes, and a
+// caller reads each as a possible use. Each type returned has a struct as its
+// underlying type.
+func (s *Sets) Elided(t types.Type) []types.Type {
+	var out []types.Type
+	seen := map[types.Type]bool{}
+	var walk func(types.Type)
+	walk = func(t types.Type) {
+		known := true
+		for _, x := range s.terms(t, &known) {
+			if seen[x] {
+				continue
+			}
+			seen[x] = true
+			var elems []types.Type
+			switch u := x.Underlying().(type) {
+			case *types.Slice:
+				elems = []types.Type{u.Elem()}
+			case *types.Array:
+				elems = []types.Type{u.Elem()}
+			case *types.Map:
+				elems = []types.Type{u.Key(), u.Elem()}
+			}
+			for _, e := range elems {
+				holders, _ := s.Literal(e)
+				out = append(out, holders...)
+				if ptr, ok := e.Underlying().(*types.Pointer); ok {
+					e = ptr.Elem()
+				}
+				walk(e)
+			}
+		}
+	}
+	walk(t)
+	return out
+}
+
+// ElidedConstrained returns what Elided returns for a type parameter
+// constrained by constraint, as Constrained does for Literal: a file that
+// writes P{{1}} names only the constraint.
+func (s *Sets) ElidedConstrained(constraint types.Type) []types.Type {
+	return s.Elided(types.NewTypeParam(types.NewTypeName(token.NoPos, nil, "P", nil), constraint))
+}
+
 // structCore returns the types of t's type set when their core type is a
 // struct, the way Literal reads the type a pointer points to: a literal leaves
 // out one pointer, never two.
