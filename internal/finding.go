@@ -238,6 +238,12 @@ func (c *collection) qualifyFinding(pass *analysis.Pass, opts Options, t *target
 			rename = prefixed
 		}
 	}
+	// A baseline entry holds the old name, so after the rename it would match
+	// nothing and its finding would be reported again. The name claimed above
+	// stays claimed, so no other rename depends on the baseline.
+	if fixed && renameBaselined(pass, opts, t) {
+		fixed = false
+	}
 	f := finding{
 		rule: rule.Qualify,
 		// The key names a method with its receiver, as the other rules do:

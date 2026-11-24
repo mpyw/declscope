@@ -1,0 +1,9 @@
+packages:
+  example.com/baselinerename/internal/conn:
+    overexported:
+      conn:
+        - Conn.Close
+        - Unrelated
+    qualify:
+      conn:
+        - Open

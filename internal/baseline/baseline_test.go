@@ -156,6 +156,46 @@ func TestNilSet(t *testing.T) {
 	if set.Len() != 0 {
 		t.Error("a nil set should be empty")
 	}
+	if set.RecordsDecl("a", "x") || set.RecordsMemberOf("a", "x") {
+		t.Error("a nil set should record no name")
+	}
+}
+
+// TestRecordsName checks the lookups a renaming fix asks: a declaration under
+// any rule and namespace, and a type through its members' entries, both only
+// within the package the entry is under.
+func TestRecordsName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".declscope-baseline.yaml")
+	keys := []baseline.Key{
+		{Package: "example.com/a", Rule: "boundary", Namespace: "user", Decl: "count"},
+		{Package: "example.com/a", Rule: "qualify", Namespace: "order", Decl: "item.help"},
+	}
+	if _, err := baseline.Save(path, keys); err != nil {
+		t.Fatal(err)
+	}
+	set, err := baseline.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		pkg, name    string
+		decl, member bool
+	}{
+		{"example.com/a", "count", true, false},
+		{"example.com/a", "item.help", true, false},
+		{"example.com/a", "item", false, true},
+		{"example.com/a", "help", false, false},
+		{"example.com/a", "userCount", false, false},
+		{"example.com/b", "count", false, false},
+		{"example.com/b", "item", false, false},
+	} {
+		if got := set.RecordsDecl(tc.pkg, tc.name); got != tc.decl {
+			t.Errorf("RecordsDecl(%s, %s) = %v, want %v", tc.pkg, tc.name, got, tc.decl)
+		}
+		if got := set.RecordsMemberOf(tc.pkg, tc.name); got != tc.member {
+			t.Errorf("RecordsMemberOf(%s, %s) = %v, want %v", tc.pkg, tc.name, got, tc.member)
+		}
+	}
 }
 
 // TestSaveEmpty checks that a run with nothing to record still writes a

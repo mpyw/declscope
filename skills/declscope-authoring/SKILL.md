@@ -356,6 +356,8 @@ With `rules.naming.fix: true`, `-fix` renames every reported name at once. Do no
 | 2 | Judge each rename by [naming.md](naming.md). Is the name accurate? Is the declaration in the right file? |
 | 3 | Take only the edits you accept. Name or move the rest yourself |
 
+`-fix` does not rename a declaration whose name the baseline records, or a type whose members it records. The rename would change the key, and the recorded findings would come back. Rename it yourself only when you can fix what comes back, as [Changing a package that has a baseline](#changing-a-package-that-has-a-baseline) says.
+
 The name the message suggests is one option, not the answer. Without the key, the report carries no fix, and you choose the name.
 
 ### Reading what shrink reports
@@ -369,6 +371,7 @@ The name the message suggests is one option, not the answer. Without the key, th
 | `... uses it` and nothing more | A name you added: unexport it. An existing name: unexport it when the request allows changing exported names. Otherwise keep it, as [When the request keeps the API](#when-the-request-keeps-the-api) says |
 | `... only the external tests of <pkg> use it` | Keep it exported. Add `//declscope:ignore overexported // <why>` when the tests use it on purpose |
 | `... (no fix: a build-excluded file of another package may use it)`, where that file uses it under another build tag | Keep it exported. Add `//declscope:ignore overexported // <file, behind which tag>`. One ignore passes every configuration |
+| `... (no fix: the baseline records it)` or `... (no fix: the baseline records a member of it)` | The baseline records the name, so unexporting it would bring back what it records. Keep it, unless you are [clearing the package's baseline](#clearing-one-packages-baseline). Then unexport it by hand and fix what comes back |
 | Any other `... (no fix: <reason>)` | A use may exist that `shrink` cannot prove, or the rename is unsafe. Read the reason. Do not unexport an existing name by hand: add `//declscope:ignore overexported // <the reason shown>`, and mention it. For a name you added, choose another unexported name yourself |
 
 `declscope shrink -fix <pkg>` unexports every report of the package at once, except those ignored. So write the ignores for the names you keep first, then run it.

@@ -1,0 +1,16 @@
+package fixbaselinerename
+
+// The baseline records count's crossing into order.go. Renamed, the entry
+// would match nothing, so the rename is withheld and the report stays.
+var count = 1 // want `var count does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" \(userCount is one candidate, not necessarily the best\)`
+
+// The baseline records item.help, a method of item. Renaming item would
+// change that key too, so the rename is withheld.
+//
+//declscope:shared // order.go declares a method on it
+type item struct{} // want `type item does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" \(userItem is one candidate, not necessarily the best\)`
+
+// The baseline records only a name nothing here spells, so helper is renamed.
+func helper() int { return 1 } // want `func helper does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" \(userHelper is one candidate, not necessarily the best\)`
+
+var _ = helper

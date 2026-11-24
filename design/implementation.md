@@ -495,6 +495,18 @@ Dependencies come from export data here too: `loadPackages` asks for no `NeedDep
 
 The `shrink` findings that `declscope baseline` records look up their target once per directory, not once per finding, and `config.Resolve` returns the config chain it applied, so `survey` and `inspect` no longer walk the directories a second time to report it.
 
+**A fix that renames a declaration is withheld while the baseline records its name** ([#404](https://github.com/mpyw/declscope/issues/404)). A key holds the declaration's name, and a member's holds its type's name too (`item.help`). With `boundary/user: count` and `qualify/order: item.help` recorded, `rules.naming.fix` renamed `count` to `userCount` and `item` to `userItem`, and the next run reported both findings again. `declscope shrink -fix` did the same with `Conn.Close` recorded: it unexported `Conn`, and the next run reported `Close` under `conn.Close`. That broke the rule that a fix converges in one pass without new reports. So the analyzer's rename (`renameBaselined` in `internal/rename.go`) and shrink's unexport (`renameBaselined` in `shrink.go`) ask the baseline that applies to the package whether any entry names the declaration (`Set.RecordsDecl`) or, for a type, a member of it (`Set.RecordsMemberOf`). Either answer withholds the fix and keeps the report. Shrink says why, `(no fix: the baseline records it)` or `(no fix: the baseline records a member of it)`, as it does for every withheld fix. The analyzer withholds silently, as it does for a rename its other guards refuse, and `names[].fixable` reads false.
+
+The lookup is deliberately wide:
+
+- **Any rule.** The analyzer's rename can change an `overexported` key, and shrink's unexport a `qualify` or `boundary` key. Each command records keys of the other.
+- **Any namespace.** A member's entry is under its type's file and a method's under its own file, so the type's namespace would miss some. An entry left from before a move matches nothing either way, and withholding for it costs one rename by hand.
+- **Stale entries count.** The analyzer cannot tell a stale entry from one only the other variant matches, which is also why it reports no unmatched entry.
+- **Only the declaring package.** A key is always under the package that declares the violation, and neither fix renames outside its package.
+- **The analyzer's rename still claims its name** in `reserved`. Releasing it would make another declaration's rename depend on the baseline, and a regeneration that drops the entry would then change two fixes.
+
+Two alternatives were rejected. Rewriting the baseline's keys along with the fix is out of reach: a suggested fix edits positions in the files the pass parsed, so the analyzer cannot write the baseline, and under `go vet` or golangci-lint nothing else runs to do it. Documenting "regenerate the baseline after a renaming `-fix`" leaves the broken convergence in place and asks every user to know it. `fixbaselinerename` and `internal/shrink/testdata/baseline-rename` pin the reports, and the convergence case "rename of a declaration the baseline records, or whose member it records" and `TestShrinkBaselineRename` apply the fixes and run again under the same baseline. The specs do not model the baseline.
+
 The analyzer deliberately does **not** report unmatched baseline entries. A package's test variant sees references the ordinary variant does not, so an entry that matched nothing in one pass is not evidence it is stale. Regeneration is what prunes, and its diff is the record of what was fixed.
 
 ## Testing

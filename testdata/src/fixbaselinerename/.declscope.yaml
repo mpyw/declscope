@@ -1,0 +1,6 @@
+# The rename is on, and the baseline beside this file records findings under
+# names the rename would change.
+rules:
+  naming:
+    qualify: always
+    fix: true
