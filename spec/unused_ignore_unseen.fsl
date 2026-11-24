@@ -40,16 +40,19 @@
 //   isField                   the declaration is a struct field
 //   writesTypeName            the constrained file writes a type name of the
 //                             package that an unkeyed literal fills the
-//                             field through. That is its struct, an alias
-//                             of it, a type defined over it, a named pointer
-//                             to it, a constraint whose type set holds it,
-//                             or a container (below)
-//   throughContainer          the type name written is a slice, array or map
-//                             type that holds the struct as an element or a
-//                             key, at any depth, behind a pointer or not. The
-//                             literal is written as Items{{1}}. The inner
-//                             literal leaves its type out and fills the field
-//                             by position. Only Items is written
+//                             field through directly. That is its struct, an
+//                             alias of it, a type defined over it, a named
+//                             pointer to it, or a constraint whose type set
+//                             holds it (implicitfield.Sets.Literal and
+//                             Sets.Constrained)
+//   writesContainerName       the constrained file writes a slice, array or
+//                             map type name that holds the struct as an
+//                             element or a key, at any depth, behind a
+//                             pointer or not. The literal is written as
+//                             Items{{1}}. The inner literal leaves its type
+//                             out and fills the field by position. Only
+//                             Items is written (implicitfield.Sets.Elided
+//                             and Sets.ElidedConstrained, #414)
 //   writesAnyName             the constrained file writes some name of the
 //                             package. Any name stands surplus down in Out
 //   surplusFires              In's surplus finding on the declaration fires
@@ -57,7 +60,8 @@
 //
 // Out keeps a Boundary ignore that the unseen file may answer
 // (collection.ignoreMayCrossUnseen). That is when the file writes the
-// declaration's name, or, for a field, one of those type names. In reads that
+// declaration's name, or, for a field, one of those type names or container
+// names (literalNames in internal/subject.go). In reads that
 // file, and may find there the crossing the ignore answers. Those names alone
 // decide. So a name written from the declaration's own namespace keeps the
 // ignore too. A keyed literal of the type keeps it as well. In reads every
@@ -73,8 +77,9 @@
 // this model.
 //
 // What must hold is the same as for shrink_ignore.fsl. One ignore passes both
-// runs where either run needs it. A stale ignore is still reported by one of
-// them.
+// runs where either run needs it. A stale ignore is still reported by In,
+// which reads every file. Where the constrained file writes no name of the
+// package, Out finds what In finds, for every rule.
 //
 // ASSUME-1: one constrained file is enough. In reads it, and Out leaves it
 //   out (modelling assumption)
@@ -94,7 +99,7 @@ spec UnusedIgnoreUnseen {
     writesName: Bool = false,
     isField: Bool = false,
     writesTypeName: Bool = false,
-    throughContainer: Bool = false,
+    writesContainerName: Bool = false,
     writesAnyName: Bool = false,
     surplusFires: Bool = false,
     otherFires: Bool = false,
@@ -113,20 +118,21 @@ spec UnusedIgnoreUnseen {
                    givenWritesName: Bool,
                    givenIsField: Bool,
                    givenWritesTypeName: Bool,
-                   givenThroughContainer: Bool,
+                   givenWritesContainerName: Bool,
                    givenWritesAnyName: Bool,
                    givenSurplusFires: Bool,
                    givenOtherFires: Bool) {
     requires phase == 0
     // A crossing by name writes the declaration's name there. An unkeyed
-    // crossing fills a field, and writes one of the field's type names.
+    // crossing fills a field. It writes one of the field's type names or
+    // container names.
     requires not givenUnseenCrossingByName or givenWritesName
-    requires not givenUnseenCrossingByPosition or (givenIsField and givenWritesTypeName)
-    // A container is one of the type names.
-    requires not givenThroughContainer or givenWritesTypeName
-    // The declaration's name and its type names are names of the package.
+    requires not givenUnseenCrossingByPosition or givenIsField
+    requires not givenUnseenCrossingByPosition or givenWritesTypeName or givenWritesContainerName
+    // Each of these is a name of the package.
     requires not givenWritesName or givenWritesAnyName
     requires not givenWritesTypeName or givenWritesAnyName
+    requires not givenWritesContainerName or givenWritesAnyName
     phase = 1
     rule = givenRule
     seenCrossing = givenSeenCrossing
@@ -135,7 +141,7 @@ spec UnusedIgnoreUnseen {
     writesName = givenWritesName
     isField = givenIsField
     writesTypeName = givenWritesTypeName
-    throughContainer = givenThroughContainer
+    writesContainerName = givenWritesContainerName
     writesAnyName = givenWritesAnyName
     surplusFires = givenSurplusFires
     otherFires = givenOtherFires
@@ -153,10 +159,15 @@ spec UnusedIgnoreUnseen {
     else if rule == Surplus then surplusFires and not writesAnyName
     else otherFires
   // Out keeps a Boundary ignore that the unseen file may answer, and a
-  // Surplus ignore while that file stands the rule down.
-  def outKeeps() =
-    (rule == Boundary and (writesName or (isField and writesTypeName)))
+  // Surplus ignore while that file stands the rule down. The type names a
+  // field is filled through are parameters, so that a property can ask
+  // whether the verdict reads them.
+  def outKeepsWith(typeName: Bool, containerName: Bool) =
+    (rule == Boundary and (writesName or (isField and (typeName or containerName))))
     or (rule == Surplus and writesAnyName)
+  def outKeeps() = outKeepsWith(writesTypeName, writesContainerName)
+  def outUnusedWith(typeName: Bool, containerName: Bool) =
+    not outHasFinding() and not outKeepsWith(typeName, containerName)
 
   fair action judgeIn() {
     requires phase == 1
@@ -173,36 +184,40 @@ spec UnusedIgnoreUnseen {
 
   def needed() = silencedIn or silencedOut
 
-  // --- the two properties -------------------------------------------------------
+  // --- properties -----------------------------------------------------------------
+  // One ignore passes both runs wherever either run needs it.
   invariant OnePassesEvery { (phase == 3 and needed()) => not unusedIn and not unusedOut }
-  invariant StaleIsCaught  { (phase == 3 and not needed()) => unusedIn or unusedOut }
-
-  // --- per run ------------------------------------------------------------------
-  invariant SilencingIsUseIn  { (phase >= 2 and silencedIn) => not unusedIn }
-  invariant SilencingIsUseOut { (phase == 3 and silencedOut) => not unusedOut }
-  // In reads every file. So it keeps nothing it does not silence.
-  invariant InKeepsNothing    { phase >= 2 => (unusedIn == not silencedIn) }
-  // Out keeps only a Boundary ignore whose declaration the unseen file names.
-  // For a field, it also keeps one whose type the file names. Besides those,
-  // it keeps only a Surplus ignore while the unseen file stands the rule
-  // down. Expanded, not routed through outKeeps(). Then a mutation of the
-  // guard moves one side only, and the invariant can fail.
-  invariant OutKeepsOnlyWrittenBoundary {
-    (phase == 3 and not silencedOut and not unusedOut)
-    => ((rule == Boundary and (writesName or (isField and writesTypeName)))
-        or (rule == Surplus and writesAnyName))
-  }
   // The rules judged on the declaration are judged alike in both runs.
   invariant OtherIsConfigurationFree {
     (phase == 3 and rule == Other) => (unusedIn == unusedOut)
   }
+  // Where the constrained file writes no name of the package, it holds
+  // nothing Out misses. So Out finds what In finds, and judges the ignore
+  // alike. Once for each rule that Out may keep an ignore of.
+  invariant SurplusAgreesWithoutNames {
+    (phase == 3 and rule == Surplus and not writesAnyName)
+    => (silencedIn == silencedOut and unusedIn == unusedOut)
+  }
+  invariant BoundaryAgreesWithoutNames {
+    (phase == 3 and rule == Boundary and not writesAnyName)
+    => (silencedIn == silencedOut and unusedIn == unusedOut)
+  }
+  // An unkeyed literal fills only a field. So for any other declaration,
+  // Out's verdict does not read the type names the file writes.
+  invariant TypeNamesMatterOnlyForAField {
+    (phase == 3 and not isField) => (outUnusedWith(true, true) == outUnusedWith(false, false))
+  }
 
-  // Auxiliary. Each run records its judgment of inputs that are never
-  // assigned again.
+  // --- auxiliary ------------------------------------------------------------------
+  // Lemmas for induction, not claims. Each run records its judgment of
+  // inputs that are never assigned again.
   invariant UnseenNamedIsNamed { unseenCrossingByName => writesName }
-  invariant UnseenUnkeyedIsAField { unseenCrossingByPosition => (isField and writesTypeName) }
-  invariant ContainerIsATypeName { throughContainer => writesTypeName }
-  invariant WrittenNamesAreNames { (writesName or writesTypeName) => writesAnyName }
+  invariant UnseenUnkeyedIsAField {
+    unseenCrossingByPosition => (isField and (writesTypeName or writesContainerName))
+  }
+  invariant WrittenNamesAreNames {
+    (writesName or writesTypeName or writesContainerName) => writesAnyName
+  }
   invariant InRecordsItsJudgment {
     phase >= 2 => (silencedIn == inHasFinding() and unusedIn == not inHasFinding())
   }
@@ -241,17 +256,20 @@ spec UnusedIgnoreUnseen {
     and not unusedIn
     and not unusedOut
   }
-  // The same through a container. The file writes Items{{1}}, and the inner
-  // literal fills the field by position. Out keeps the ignore for In.
+  // The same through a container (#414). The file writes Items{{1}}, and
+  // the inner literal fills the field by position. Only the container's name
+  // is written. Out keeps the ignore for In.
   reachable ContainerCrossingKept {
     phase == 3
     and rule == Boundary
     and not seenCrossing
     and not unseenCrossingByName
     and unseenCrossingByPosition
-    and throughContainer
+    and writesContainerName
+    and not writesTypeName
     and not writesName
     and silencedIn
+    and not unusedIn
     and not unusedOut
   }
   // The constrained file writes a field's type in a keyed literal that sets
@@ -287,6 +305,7 @@ spec UnusedIgnoreUnseen {
     and not seenCrossing
     and not writesName
     and not writesTypeName
+    and not writesContainerName
     and unusedIn
     and unusedOut
   }
