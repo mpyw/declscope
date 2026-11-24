@@ -106,6 +106,19 @@ var fixCases = []fixCase{
 		},
 	},
 	{
+		// The baseline records count's crossing and the method item.help.
+		// Renaming count or item would change those keys, and the next run
+		// would report both (#404). helper's name is recorded nowhere, so
+		// its rename is still made.
+		name:   "rename of a declaration the baseline records, or whose member it records",
+		config: "rules:\n  naming:\n    qualify: ondemand\n    fix: true\n",
+		files: map[string]string{
+			".declscope-baseline.yaml": "packages:\n  x:\n    boundary:\n      user:\n        - count\n    qualify:\n      order:\n        - item.help\n      user:\n        - unrelated\n",
+			"user.go":                  "package x\n\nvar count = 1\n\n//declscope:shared // order.go declares a method on it\ntype item struct{}\n\nfunc helper() int { return 1 }\n\nvar _ = helper\n",
+			"order.go":                 "package x\n\nfunc (item) help() int { return count }\n\nvar _ = item{}.help\n",
+		},
+	},
+	{
 		name: "method on a type belonging to another namespace",
 		files: map[string]string{
 			"user.go":  "package x\n\ntype User struct{ ID int }\n",

@@ -87,9 +87,9 @@ func (f Finding) Key() baseline.Key {
 	return baseline.Key{Package: f.Package, Rule: f.Rule, Namespace: f.Namespace, Decl: decl}
 }
 
-// Baselined reports whether the baseline that applies to the package in dir
-// records k.
-type Baselined func(dir string, k baseline.Key) bool
+// Baselines returns the baseline that applies to the package in dir, nil
+// when none does.
+type Baselines func(dir string) *baseline.Set
 
 // Edit replaces the bytes [Start, End) of a file.
 type Edit struct {
@@ -145,8 +145,9 @@ type Skipped struct {
 // A report baselined records is left out, and so is its fix, as a report an
 // ignore silences is. Both keep their names while the rest are judged. An
 // ignore is consulted first, as the analyzer does, so an ignore over a
-// baselined declaration still silences it. baselined may be nil.
-func Run(dir string, patterns []string, baselined Baselined) (Result, error) {
+// baselined declaration still silences it. A fix is withheld while the
+// baseline records an entry under the name it changes. baselines may be nil.
+func Run(dir string, patterns []string, baselines Baselines) (Result, error) {
 	// The patterns first: a pattern the go command rejects is the cheaper
 	// thing to find, and the one a reader should see.
 	named, err := pattern.Resolve(dir, patterns)
@@ -161,7 +162,7 @@ func Run(dir string, patterns []string, baselined Baselined) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	r := &run{mod: mod, ev: ev, facts: map[string]*renameFacts{}, usedIgnores: map[token.Pos]bool{}, baselined: baselined}
+	r := &run{mod: mod, ev: ev, facts: map[string]*renameFacts{}, usedIgnores: map[token.Pos]bool{}, baselines: baselines}
 	res := Result{Outside: named.Outside, Unmatched: named.Unmatched}
 	// A package of a main module that ./... leaves out, such as one under
 	// testdata named on its own, is not loaded, so none of its uses were
@@ -337,11 +338,11 @@ type run struct {
 	// exclusionCache holds what the build-excluded files say about each
 	// package, for exclusion.go. It is built on first use.
 	exclusionCache *exclusionCache
-	// baselined is how Run was asked what the baseline records, and
+	// baselines is how Run was asked what the baseline records, and
 	// namespaces caches each package's spelled namespace per file.
 	//
 	//declscope:private
-	baselined Baselined
+	baselines Baselines
 	//declscope:private
 	namespaces map[string]map[string]string
 }
@@ -464,7 +465,14 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 			v.base = r.withheld(c)
 		}
 		v.silenced = ignoreCovers(c)
-		v.baselined = !v.silenced && r.baselined != nil && r.baselined(filepath.Dir(v.f.Pos.Filename), v.f.Key())
+		var set *baseline.Set
+		if r.baselines != nil {
+			set = r.baselines(filepath.Dir(v.f.Pos.Filename))
+		}
+		v.baselined = !v.silenced && set.Has(v.f.Key())
+		if v.base == "" && !v.silenced && !v.baselined {
+			v.base = renameBaselined(set, c, v.f)
+		}
 		if v.base == "" && !v.silenced && !v.baselined {
 			v.plan, v.base = r.renamePlan(c)
 		}
@@ -526,6 +534,26 @@ func (r *run) judge(p *packages.Package, candidates []*candidate) []Finding {
 		}
 	}
 	return findings
+}
+
+// renameBaselined says why the fix is withheld when the baseline records an
+// entry under the name it changes, or returns "". The entry may be the
+// declaration's own under any rule, the analyzer's included, or, for a type,
+// one of a member, which is spelled with the type's name. Unexported, the
+// declaration would leave the entry matching nothing, and the next run would
+// report what it hid (#404).
+//
+// The rule and the namespace are not compared, as in the analyzer: a member's
+// entry is under its type's file or its own, and an entry left from before a
+// move costs only one rename by hand.
+func renameBaselined(set *baseline.Set, c *candidate, f Finding) string {
+	switch {
+	case set.RecordsDecl(f.Package, f.Key().Decl):
+		return "the baseline records it"
+	case c.kind == kindType && set.RecordsMemberOf(f.Package, f.Name):
+		return "the baseline records a member of it"
+	}
+	return ""
 }
 
 // judgeSets drops the verdicts of every const set left alone before the

@@ -93,6 +93,25 @@ func (c *collection) renameFix(pass *analysis.Pass, t *target, newName, message 
 	}, true
 }
 
+// renameBaselined reports whether the baseline that applies records an entry
+// under t's name: t's own entry under any rule, or, for a type, an entry of
+// one of its members, which is spelled with the type's name. A rename would
+// change those keys, and the next run would report what they hid (#404).
+//
+// The rule and the namespace are not compared. A member's entry is under the
+// namespace of its type's file, and a method's under its own file's, so the
+// type's namespace would miss some. An entry left from before a move matches
+// nothing either way, and withholding for it costs one rename by hand.
+//
+//declscope:shared // finding.go withholds the naming rule's rename by it
+func renameBaselined(pass *analysis.Pass, opts Options, t *target) bool {
+	pkg := pass.Pkg.Path()
+	if opts.Baseline.RecordsDecl(pkg, t.name()) {
+		return true
+	}
+	return t.kind == kindType && opts.Baseline.RecordsMemberOf(pkg, t.obj.Name())
+}
+
 // safeToRename reports whether renaming t to newName can be proven not to change
 // what the package computes, which is the only condition under which the fix
 // is offered. Every check is conservative: a doubt withholds the fix, never

@@ -1069,6 +1069,8 @@ A method, or a type that is embedded, is renamed only when the new name is free 
 
 A package that holds a non-Go source file, such as assembly (`.s`) for any architecture, gets no rename fix. Assembly names Go functions by text, which the rename cannot follow, and the build would fail at link time. Rename by hand, or add `//declscope:ignore qualify`.
 
+A declaration whose name the [baseline](#adopting-on-an-existing-codebase) records gets no rename either: its own entry under any rule, or, for a type, an entry of one of its members. The rename would leave the entry matching nothing, and the next run would report what it hid.
+
 ### `surplus`
 
 `surplus` is the converse of `boundary`. It reports shared scope that no visible use from another namespace needs.
@@ -1354,6 +1356,21 @@ var _ io.Closer = user.Open()
 
 </td>
 <td>Reported for <code>Conn.Close</code>: <code>(no fix: a build-excluded file of another package may use it)</code>. The file is not type-checked, and a method satisfies an interface without its name</td>
+</tr>
+<tr>
+<td>
+
+```yaml
+# .declscope-baseline.yaml
+packages:
+  example.com/app/internal/user:
+    overexported:
+      user:
+        - Conn.Close
+```
+
+</td>
+<td>Reported for <code>Conn</code>: <code>(no fix: the baseline records a member of it)</code>. Unexported, <code>Conn</code> would change the entry to <code>conn.Close</code>, and the next run would report <code>Close</code>. A declaration whose own entry the baseline holds under another rule says <code>(no fix: the baseline records it)</code></td>
 </tr>
 <tr>
 <td>
@@ -1751,6 +1768,15 @@ packages:
 | The [core namespace](#the-core-namespace) | `(core)` |
 
 An entry is keyed by package, rule, namespace and declaration, never by position. It survives code moving within its file. It does **not** survive a declaration moving to another namespace, since the same use then crosses a different boundary.
+
+**A fix that renames a declaration is withheld while the baseline records its name.** The key holds the name, so after the rename the entry matches nothing and the next run reports what it hid. This covers the declaration's own entry under any rule, and, for a type, the entries of its members, since `Type.member` holds the type's name. The report stays. It applies to the [naming rule's rename](#the-rename) and to [`declscope shrink -fix`](#unexporting-what-no-importer-uses), which says `(no fix: the baseline records it)` or `(no fix: the baseline records a member of it)`. To take the fix, rename by hand and regenerate the baseline, or clear the entries first.
+
+| Baseline entry | Fix | Withheld? |
+| --- | --- | --- |
+| `boundary`, `user`: `count` | Rename `count` to `userCount` | Yes, its own entry |
+| `qualify`, `order`: `item.help` | Rename the type `item` to `userItem` | Yes, the entry of its method |
+| `overexported`, `conn`: `Conn.Close` | Unexport `Conn` | Yes, the entry of its method |
+| `qualify`, `user`: `other` | Rename `helper` to `userHelper` | No |
 
 A baseline is regenerated, never edited.
 

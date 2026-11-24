@@ -49,7 +49,7 @@ func shrinkRun(args []string) {
 		shrinkFail(err)
 	}
 	baselines := &shrinkBaselines{explicit: *configPath, sets: map[string]*baseline.Set{}}
-	res, err := shrink.Run(dir, fs.Args(), baselines.has)
+	res, err := shrink.Run(dir, fs.Args(), baselines.of)
 	if err == nil {
 		err = baselines.err
 	}
@@ -87,7 +87,7 @@ func shrinkRun(args []string) {
 	}
 }
 
-// shrinkBaselines answers shrink.Baselined from the baseline that applies to
+// shrinkBaselines answers shrink.Baselines with the baseline that applies to
 // each package, found as the analyzer finds it: named by the nearest config
 // file, or the nearest default-named file. The first error resolving one
 // fails the run, as it fails the analyzer.
@@ -97,7 +97,7 @@ type shrinkBaselines struct {
 	err      error
 }
 
-func (b *shrinkBaselines) has(dir string, k baseline.Key) bool {
+func (b *shrinkBaselines) of(dir string) *baseline.Set {
 	set, ok := b.sets[dir]
 	if !ok {
 		opts, _, err := config.Resolve(dir, b.explicit)
@@ -107,7 +107,7 @@ func (b *shrinkBaselines) has(dir string, k baseline.Key) bool {
 		set = opts.Baseline
 		b.sets[dir] = set
 	}
-	return set.Has(k)
+	return set
 }
 
 func shrinkFail(err error) {

@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 
 	"gopkg.in/yaml.v3"
@@ -61,6 +62,33 @@ type Key struct {
 // Set is a loaded baseline.
 type Set struct {
 	keys map[Key]bool
+	// decls and owners index the entries by package, under any rule and
+	// namespace: decls by the declaration each names, and owners by the type
+	// a member's entry names before its dot. A fix that renames a
+	// declaration asks them, since the entries holding its name would stop
+	// matching.
+	decls, owners map[string]map[string]bool
+}
+
+// newSet builds a set over keys, with its indexes.
+func newSet(keys map[Key]bool) *Set {
+	s := &Set{keys: keys, decls: map[string]map[string]bool{}, owners: map[string]map[string]bool{}}
+	for k := range keys {
+		addToIndex(s.decls, k.Package, k.Decl)
+		if owner, _, ok := strings.Cut(k.Decl, "."); ok {
+			addToIndex(s.owners, k.Package, owner)
+		}
+	}
+	return s
+}
+
+func addToIndex(index map[string]map[string]bool, pkg, name string) {
+	names, ok := index[pkg]
+	if !ok {
+		names = map[string]bool{}
+		index[pkg] = names
+	}
+	names[name] = true
 }
 
 // Has reports whether the violation is already recorded.
@@ -69,6 +97,24 @@ func (s *Set) Has(k Key) bool {
 		return false
 	}
 	return s.keys[k]
+}
+
+// RecordsDecl reports whether an entry of pkg names decl, under any rule and
+// any namespace. decl is spelled as Key.Decl spells it.
+func (s *Set) RecordsDecl(pkg, decl string) bool {
+	if s == nil {
+		return false
+	}
+	return s.decls[pkg][decl]
+}
+
+// RecordsMemberOf reports whether an entry of pkg names a member or a method
+// of the type owner, under any rule and any namespace.
+func (s *Set) RecordsMemberOf(pkg, owner string) bool {
+	if s == nil {
+		return false
+	}
+	return s.owners[pkg][owner]
 }
 
 // Len returns the number of recorded violations.
@@ -132,7 +178,7 @@ func Load(path string) (*Set, error) {
 			loadedMu.Lock()
 			delete(loadedFiles, absBaselinePath(path))
 			loadedMu.Unlock()
-			return &Set{keys: map[Key]bool{}}, nil
+			return newSet(map[Key]bool{}), nil
 		}
 		return nil, err
 	}
@@ -225,17 +271,17 @@ func parse(path string, data []byte) (*Set, error) {
 		// fails to parse is answered the same way: generate it again.
 		return nil, &ParseError{Path: path, Err: err}
 	}
-	s := &Set{keys: map[Key]bool{}}
+	keys := map[Key]bool{}
 	for pkg, rules := range f.Packages {
 		for name, spaces := range rules {
 			for ns, decls := range spaces {
 				for _, decl := range decls {
-					s.keys[Key{Package: pkg, Rule: rule.Rule(name), Namespace: ns, Decl: decl}] = true
+					keys[Key{Package: pkg, Rule: rule.Rule(name), Namespace: ns, Decl: decl}] = true
 				}
 			}
 		}
 	}
-	return s, nil
+	return newSet(keys), nil
 }
 
 // Save writes keys to path, sorted so that regenerating an unchanged codebase

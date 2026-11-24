@@ -14,6 +14,7 @@ import (
 	"golang.org/x/mod/module"
 	modzip "golang.org/x/mod/zip"
 
+	"github.com/mpyw/declscope/internal/baseline"
 	"github.com/mpyw/declscope/internal/shrink"
 )
 
@@ -51,6 +52,12 @@ func shrinkWants(t *testing.T, dir string) map[string]*regexp.Regexp {
 
 func shrinkCheck(t *testing.T, dir string) []shrink.Finding {
 	t.Helper()
+	return shrinkCheckWith(t, dir, nil)
+}
+
+// shrinkCheckWith is shrinkCheck under the baselines given.
+func shrinkCheckWith(t *testing.T, dir string, baselines shrink.Baselines) []shrink.Finding {
+	t.Helper()
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -59,7 +66,7 @@ func shrinkCheck(t *testing.T, dir string) []shrink.Finding {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := shrink.Run(abs, nil, nil)
+	res, err := shrink.Run(abs, nil, baselines)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,6 +207,65 @@ func TestShrinkSkippedDirs(t *testing.T) {
 // other than the rename: build-excluded and generated files, example
 // functions, and -ldflags -X.
 func TestShrinkFixWithheld(t *testing.T) { shrinkCheck(t, "testdata/fix-withheld") }
+
+// TestShrinkBaselineRename pins that a fix is withheld while the baseline
+// records an entry under the name it changes: the declaration's own, under
+// any rule, or a member's (#404). The report stays. The fixes left are then
+// applied to a copy, and a second run under the same baseline reports only
+// what kept no fix.
+func TestShrinkBaselineRename(t *testing.T) {
+	const module = "testdata/baseline-rename"
+	shrinkCheckWith(t, module, shrinkBaselineOf(t, module))
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS(module)); err != nil {
+		t.Fatal(err)
+	}
+	dir, _ = filepath.EvalSymlinks(dir)
+	baselines := shrinkBaselineOf(t, dir)
+	res, err := shrink.Run(dir, nil, baselines)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := map[string]bool{}
+	fixed := 0
+	for _, f := range res.Findings {
+		if f.Fix != nil {
+			fixed++
+			continue
+		}
+		kept[f.Message()] = true
+	}
+	if fixed != 1 {
+		t.Fatalf("%d fixes offered, want 1, for Fresh alone", fixed)
+	}
+	if err := shrink.Apply(res.Findings); err != nil {
+		t.Fatal(err)
+	}
+	res, err = shrink.Run(dir, nil, baselines)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range res.Findings {
+		if !kept[f.Message()] {
+			t.Errorf("after the fix: %s", f.Message())
+		}
+		delete(kept, f.Message())
+	}
+	for msg := range kept {
+		t.Errorf("a report without a fix disappeared: %s", msg)
+	}
+}
+
+// shrinkBaselineOf answers every package with the baseline at the root of
+// the module in dir.
+func shrinkBaselineOf(t *testing.T, dir string) shrink.Baselines {
+	t.Helper()
+	set, err := baseline.Load(filepath.Join(dir, ".declscope-baseline.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return func(string) *baseline.Set { return set }
+}
 
 // TestShrinkRenameGuards pins what the rename rewrites and every guard that
 // withholds it.

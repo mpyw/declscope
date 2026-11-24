@@ -413,3 +413,14 @@ func TestSuggestedFixSurplusStrictUnusedStrict(t *testing.T) {
 func TestSuggestedFixLineDirective(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "linefix")
 }
+
+// TestSuggestedFixBaselineRename checks that a rename is withheld while the
+// baseline records an entry under the old name: the declaration's own, under
+// any rule, or a member's (#404). The report stays. An entry under another
+// name withholds nothing.
+func TestSuggestedFixBaselineRename(t *testing.T) {
+	results := analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixbaselinerename")
+	if got := qualifyFixCount(results); got != 1 {
+		t.Errorf("%d qualify fixes offered, want 1, for helper alone", got)
+	}
+}
