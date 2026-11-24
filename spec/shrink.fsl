@@ -22,7 +22,13 @@
 //   fix         It is never wrong. FixNeverBreaks says an unexport happens
 //               only where no use exists outside the package. That covers
 //               every path, seen or unseen. Also, nothing inside the
-//               package may stop the rename.
+//               package may stop the rename. That half is the guard
+//               itself, so a Withheld* witness pins each blocker instead.
+//
+// The report reads only uses. ReportReadsNoDoubt and
+// ReportReadsNoInsideBlocker say that a doubt, an unproven use or a blocker
+// never changes it. AUseNeverCreatesAReport says that a use the tool can
+// see never turns silence into a report.
 //
 // The tool reads only what it can see. What it cannot see is modelled as
 // truth that no guard reads:
@@ -249,17 +255,73 @@ spec Shrink {
   def satisfied() = kind == Method and staticSatisfaction
   // An escape is a use, like a static satisfaction.
   def escapes() = doubt == Escapes
+
+  // The two reports, with every input they might read as a parameter.
+  // fires() and testOnlyFires() pass the state. The properties below pass
+  // other values, to show what the reports do not read.
+  //   withOutside, withExposed, withSatisfaction and an escape in withDoubt
+  //   are the uses the tool can see.
+  //   The rest of withDoubt, withUnprovenUse and the four inside blockers
+  //   must not change a report.
   // Every condition for a report except the use from outside. The
   // declaration is still exported and sits in range. Nothing the tool sees
   // silences it.
-  def noSilencingReason() =
+  def noSilencingReasonWith(withExposed: Bool, withSatisfaction: Bool, withDoubt: Doubt) =
     exported
     and inRange()
-    and not exposed
-    and not satisfied()
-    and not escapes()
-  def fires() = noSilencingReason() and outside == None
-  def testOnlyFires() = noSilencingReason() and outside == ExternalTestOnly
+    and not withExposed
+    and not (kind == Method and withSatisfaction)
+    and withDoubt != Escapes
+  def firesWith(
+    withOutside: Outside,
+    withExposed: Bool,
+    withSatisfaction: Bool,
+    withDoubt: Doubt,
+    withUnprovenUse: Bool,
+    withExcludedFile: Bool,
+    withGeneratedRef: Bool,
+    withRenameUnsafe: Bool,
+    withKeptByAnExport: Bool
+  ) =
+    noSilencingReasonWith(withExposed, withSatisfaction, withDoubt)
+    and withOutside == None
+  def testOnlyFiresWith(
+    withOutside: Outside,
+    withExposed: Bool,
+    withSatisfaction: Bool,
+    withDoubt: Doubt,
+    withUnprovenUse: Bool,
+    withExcludedFile: Bool,
+    withGeneratedRef: Bool,
+    withRenameUnsafe: Bool,
+    withKeptByAnExport: Bool
+  ) =
+    noSilencingReasonWith(withExposed, withSatisfaction, withDoubt)
+    and withOutside == ExternalTestOnly
+  def fires() =
+    firesWith(
+      outside,
+      exposed,
+      staticSatisfaction,
+      doubt,
+      unprovenUse,
+      excludedFileInPackage,
+      generatedRef,
+      renameUnsafe,
+      keptByAnExport
+    )
+  def testOnlyFires() =
+    testOnlyFiresWith(
+      outside,
+      exposed,
+      staticSatisfaction,
+      doubt,
+      unprovenUse,
+      excludedFileInPackage,
+      generatedRef,
+      renameUnsafe,
+      keptByAnExport
+    )
   def fixBlocked() =
     doubt != NoDoubt
     or excludedFileInPackage
@@ -270,8 +332,6 @@ spec Shrink {
 
   // --- the truth the tool never reads -------------------------------------
   def usedOutside() = outside != None or hiddenUse or unprovenUse or satisfied()
-  def breaksInside() = excludedFileInPackage or generatedRef or renameUnsafe or keptByAnExport
-  def fixBreaks() = usedOutside() or breaksInside()
 
   fair action report() {
     requires configured()
@@ -294,65 +354,70 @@ spec Shrink {
     exported = false
   }
 
-  // Nothing is judged before the configuration is complete. A fix follows
-  // its report. These two make the invariants below inductive.
-  invariant JudgedOnlyOnceConfigured {
-    (reported or reportedTestOnly or fixed or idlePassRan) => configured()
-  }
-  invariant FixFollowsReport { fixed => reported }
-  // Each input keeps its initial value until its configure step sets it.
-  invariant PlacementUnsetBeforeItsStep {
-    phase == 0 => kind == Value
-                  and placement == Internal
-                  and not exposed
-                  and not hiddenUse
-  }
-  invariant UseUnsetBeforeItsStep {
-    phase <= 1 => outside == None
-                  and doubt == NoDoubt
-                  and not unprovenUse
-                  and not staticSatisfaction
-  }
-  invariant FixInputsUnsetBeforeTheirStep {
-    phase <= 2 => not excludedFileInPackage
-                  and not generatedRef
-                  and not renameUnsafe
-                  and not keptByAnExport
-  }
-  // The configuration keeps what configure required of it. Nothing hides an
-  // importer inside the range, and an unproven use leaves a trace.
-  invariant NothingHiddenInRangeUnlessSeen {
-    (phase >= 2 and hiddenUse) => placement != Internal or exposed or doubt == NestedBuild
-  }
-  invariant OnlyAMemberIsExposed { exposed => kind == Method or kind == Field }
-  invariant UnprovenUseLeavesATrace { unprovenUse => doubt != NoDoubt }
-  invariant OnlyAFieldOrTypeIsGuessed { doubt == Guessed => kind == Field or kind == Type }
-  invariant OnlyAMethodSatisfies { staticSatisfaction => kind == Method }
-  invariant UnexportedOnlyByTheFix { not exported => fixed }
-
   // The property the fix exists to keep. An unexport must never break a
-  // build or change what a program does.
-  invariant FixNeverBreaks { fixed => not fixBreaks() }
+  // build or change what a program does. No guard reads hiddenUse or
+  // unprovenUse, so this one is not the guard again.
+  invariant FixNeverBreaks { fixed => not usedOutside() }
 
-  // The report is never made of a declaration the loaded code shows in use.
-  invariant NeverReportsVisibleUse { reported => outside == None and not satisfied() }
-  // A value of the type reaches another module. Its methods and fields may
-  // be used there, so nothing is said.
-  invariant SilentWhenExposed { (reported or reportedTestOnly) => not exposed }
-  invariant TestOnlyMeansOnlyTests { reportedTestOnly => outside == ExternalTestOnly }
-  invariant NeverBothReports { not (reported and reportedTestOnly) }
-  // Outside the range, the absence of a use proves nothing. So nothing is
-  // said. This holds by definition, since fires() reads inRange(). With the
-  // Silent* witnesses below, it shows only one direction of the mapping:
-  // each placement other than Internal is silent. Which code conditions map
-  // to which placement is the claim of the Placement comment. This model
-  // does not check it.
-  invariant SilentOutsideRange {
-    (reported or reportedTestOnly or fixed) => placement == Internal
+  // A doubt keeps the report and withholds only the fix. So the report
+  // does not read a doubt or an unproven use. An escape is a use, not a
+  // doubt, so it is left out.
+  invariant ReportReadsNoDoubt {
+    forall withDoubt: Doubt {
+      forall withUnprovenUse: Bool {
+        withDoubt != Escapes => (
+          firesWith(outside, exposed, staticSatisfaction, withDoubt, withUnprovenUse, false, false, false, false)
+            == firesWith(outside, exposed, staticSatisfaction, NoDoubt, false, false, false, false, false)
+          and testOnlyFiresWith(outside, exposed, staticSatisfaction, withDoubt, withUnprovenUse, false, false, false, false)
+            == testOnlyFiresWith(outside, exposed, staticSatisfaction, NoDoubt, false, false, false, false, false)
+        )
+      }
+    }
   }
-  // A declaration that only tests use from outside keeps its name. The
-  // external test package would stop compiling otherwise.
-  invariant NoFixForTestOnly { not (fixed and reportedTestOnly) }
+  // What stops the rename inside the package withholds only the fix.
+  invariant ReportReadsNoInsideBlocker {
+    forall withExcludedFile: Bool {
+      forall withGeneratedRef: Bool {
+        forall withRenameUnsafe: Bool {
+          forall withKeptByAnExport: Bool {
+            firesWith(outside, exposed, staticSatisfaction, doubt, unprovenUse, withExcludedFile, withGeneratedRef, withRenameUnsafe, withKeptByAnExport)
+              == firesWith(outside, exposed, staticSatisfaction, doubt, unprovenUse, false, false, false, false)
+            and testOnlyFiresWith(outside, exposed, staticSatisfaction, doubt, unprovenUse, withExcludedFile, withGeneratedRef, withRenameUnsafe, withKeptByAnExport)
+              == testOnlyFiresWith(outside, exposed, staticSatisfaction, doubt, unprovenUse, false, false, false, false)
+          }
+        }
+      }
+    }
+  }
+
+  // Monotonicity. Add a use the tool can see to the current inputs, and
+  // no report appears where neither report fired. A use from outside adds
+  // to None, and a use that is not a test adds to an external test. An
+  // exposure, a static satisfaction or an escape adds too.
+  def anyReportWith(withOutside: Outside, withExposed: Bool, withSatisfaction: Bool, withDoubt: Doubt) =
+    firesWith(withOutside, withExposed, withSatisfaction, withDoubt, unprovenUse, excludedFileInPackage, generatedRef, renameUnsafe, keptByAnExport)
+    or testOnlyFiresWith(withOutside, withExposed, withSatisfaction, withDoubt, unprovenUse, excludedFileInPackage, generatedRef, renameUnsafe, keptByAnExport)
+  def addsToOutside(fewer: Outside, more: Outside) =
+    fewer == more
+    or fewer == None
+    or (fewer == ExternalTestOnly and more != None)
+  invariant AUseNeverCreatesAReport {
+    forall moreOutside: Outside {
+      forall moreExposed: Bool {
+        forall moreSatisfaction: Bool {
+          forall moreDoubt: Doubt {
+            (
+              addsToOutside(outside, moreOutside)
+              and (exposed => moreExposed)
+              and (staticSatisfaction => moreSatisfaction)
+              and (moreDoubt == doubt or moreDoubt == Escapes)
+              and anyReportWith(moreOutside, moreExposed, moreSatisfaction, moreDoubt)
+            ) => anyReportWith(outside, exposed, staticSatisfaction, doubt)
+          }
+        }
+      }
+    }
+  }
 
   // One pass converges. Once unexported, the declaration is out of the
   // rule, and no report starts after the fix.
@@ -360,9 +425,6 @@ spec Shrink {
   trans NoReportAfterFix {
     old(fixed) => (reported == old(reported) and reportedTestOnly == old(reportedTestOnly))
   }
-
-  trans ReportOnlyWhereItFires { not old(reported) and reported => old(fires()) }
-  trans FixOnlyWhereFixable { not old(fixed) and fixed => old(fixable()) }
 
   reachable Reported { reported }
   reachable Fixed { fixed }
@@ -373,9 +435,6 @@ spec Shrink {
   // The report is advisory where a use is possible. It can be wrong, and
   // the fix is what stays out.
   reachable ReportedDespiteAnUnprovenUse { reported and unprovenUse }
-
-  // An escape silences the report, as a use does.
-  invariant SilentOnEscape { (reported or reportedTestOnly) => not escapes() }
 
   // Each fix blocker withholds the fix and leaves the report. Each one is
   // witnessed alone, with every other one off.
@@ -478,6 +537,8 @@ spec Shrink {
     and staticSatisfaction
     and not fires()
   }
+  // A value of the type reaches another module. Its methods and fields may
+  // be used there, so nothing is said.
   reachable SilentWhenExposedAlone {
     configured()
     and inRange()
@@ -501,7 +562,12 @@ spec Shrink {
     and outside == ExcludedQualified
     and not fires()
   }
-  // A placement out of range, with no use that the loaded code shows.
+  // Outside the range, the absence of a use proves nothing. So nothing is
+  // said. These witnesses show only one direction of the mapping: each
+  // placement other than Internal can be silent. Which code conditions map
+  // to which placement is the claim of the Placement comment. This model
+  // does not check it. FixNeverBreaks is what fails if a placement out of
+  // range is judged, since a hidden use is possible there.
   def silentAt(outOfRange: Placement) =
     configured()
     and placement == outOfRange
@@ -523,14 +589,40 @@ spec Shrink {
 
   reachable PendingReportSurvivesAPass { idlePassRan and fires() and not reported }
 
-  leadsTo EventuallyReported {
-    configured() and fires() ~> reported
-    helpful report()
-    decreases if reported then 0 else 1
+  // --- auxiliary ----------------------------------------------------------
+  // Nothing is judged before the configuration is complete. A fix follows
+  // its report. These make the invariants above inductive.
+  invariant JudgedOnlyOnceConfigured {
+    (reported or reportedTestOnly or fixed or idlePassRan) => configured()
   }
-  leadsTo EventuallyFixed {
-    configured() and fixable() and reported ~> fixed
-    helpful fix()
-    decreases if fixed then 0 else 1
+  invariant FixFollowsReport { fixed => reported }
+  // Each input keeps its initial value until its configure step sets it.
+  invariant PlacementUnsetBeforeItsStep {
+    phase == 0 => kind == Value
+                  and placement == Internal
+                  and not exposed
+                  and not hiddenUse
   }
+  invariant UseUnsetBeforeItsStep {
+    phase <= 1 => outside == None
+                  and doubt == NoDoubt
+                  and not unprovenUse
+                  and not staticSatisfaction
+  }
+  invariant FixInputsUnsetBeforeTheirStep {
+    phase <= 2 => not excludedFileInPackage
+                  and not generatedRef
+                  and not renameUnsafe
+                  and not keptByAnExport
+  }
+  // The configuration keeps what configure required of it. Nothing hides an
+  // importer inside the range, and an unproven use leaves a trace.
+  invariant NothingHiddenInRangeUnlessSeen {
+    (phase >= 2 and hiddenUse) => placement != Internal or exposed or doubt == NestedBuild
+  }
+  invariant OnlyAMemberIsExposed { exposed => kind == Method or kind == Field }
+  invariant UnprovenUseLeavesATrace { unprovenUse => doubt != NoDoubt }
+  invariant OnlyAFieldOrTypeIsGuessed { doubt == Guessed => kind == Field or kind == Type }
+  invariant OnlyAMethodSatisfies { staticSatisfaction => kind == Method }
+  invariant UnexportedOnlyByTheFix { not exported => fixed }
 }
