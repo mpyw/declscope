@@ -561,6 +561,12 @@ func TestSurplusDefault(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusdefault", "surplusdefaultstrict")
 }
 
+// TestSurplusOff checks that rules.surplus: off reports nothing. The directive
+// is the one surplusdefault reports.
+func TestSurplusOff(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, "surplusallowed")
+}
+
 // TestSurplusBaseline checks that a recorded surplus finding is suppressed
 // while a new one is still reported, through the same lookup as every rule.
 func TestSurplusBaseline(t *testing.T) {

@@ -57,9 +57,7 @@ the binary.
 | `rename_selections.fsl` | The guard is no broader than it needs to be: a type embedded one level up, one whose old name is hidden today, one that uncovers a deeper method no interface asks for, and one beside an interface asking for its new name are each still renamed | As above |
 | `rename_reserved.fsl` | Two renames in one run never take the same name: each checks its target against the names earlier fixes claimed, and claims its own. Dropping either breaks it | Every pair of rename targets, in either order |
 | `rename_reserved.fsl` | Both fixes apply when their targets differ, and the second is withheld when they share one | As above |
-| `surplus.fsl` | `surplus` never reports a declaration reachable by any path: a spelled use, an interface satisfaction, an exported carrier, a struct conversion, an unkeyed literal through a guessed type set, a linkname, or exportedness | Every combination of the rule switch, the directive, the seven reach paths, and whether the pass read every file (an opaque source — generated, filtered-out, cgo, assembly or other non-Go files, unread tests, build-excluded files of the package — is that last input, not a reach path) |
-| `surplus.fsl` | A pass that did not read every file reports nothing, and each suppressor is witnessed alone, with every other one off | As above |
-| `surplus_strict.fsl` | Neither `surplus` finding is made of a declaration that another namespace reaches. The reach is an input that no guard reads. Configuration ties it to the paths the rule counts (those of `surplus.fsl` less exportedness, which `strict` never judges) or to a file the pass does not read | Every combination of `rules.surplus`, why the declaration has its scope (the enclosing directive, its own, exportedness, `defaults.unexported`, no enclosing directive), the level the directive is written at, the reach path, the shape of the entry (`main` in package `main` included), what else the directive reaches, and whether the pass read every file |
+| `surplus_strict.fsl` | Neither `surplus` finding is made of a declaration that another namespace reaches. The reach is an input that no guard reads. Configuration ties it to the paths the rule counts (those `reachesOutside` tests, less exportedness, which `strict` never judges) or to a file the pass does not read | Every combination of `rules.surplus`, why the declaration has its scope (the enclosing directive, its own, exportedness, `defaults.unexported`, no enclosing directive), the level the directive is written at, the reach path, the shape of the entry (`main` in package `main` included), what else the directive reaches, and whether the pass read every file |
 | `surplus_strict.fsl` | `strict` reports a superset of `loose`: each finding the rules make under `loose`, they also make under `strict` on the same inputs. Witnesses show that `strict` never lands on the declaration `loose` already covers, and that it reports only where an enclosing directive widened the declaration, at the file, block and type level alike. They also show it never reports a type whose narrowing would narrow a reached member, or `main` in package `main` | As above |
 | `surplus_strict.fsl` | The inserted `//declscope:private` changes the scope in force, so `unused` reports it under neither mode. `strict` run again over the fixed code reports nothing on the declaration. The fix starts no boundary report on the declaration and never makes `loose` fire. Witnesses show that the fix is withheld, and the report is not, where it would leave the enclosing directive or a member's own `//declscope:private` binding nothing. Under a directive that already binds nothing, the fix is withheld only where it would reword that directive's `unused` report | As above |
 | `type_fix_members.fsl` | A type's boundary fix converges in one pass with the edits it makes to the members. It leaves no boundary report on a member it was written for and narrows no member another namespace spells. Where the type's fix is withheld, the type's boundary report is still made. Witnesses show that the fix never writes over a member's own directive, and that it narrows a member `strict` would report | Every combination of `rules.unused`, `rules.surplus`, whether the pass read every file, whether an ignore or the baseline answers the type's report, and of a member's exportedness, own directive, reach path, entry and `surplus` ignore, plus a sibling member's exportedness and own directive |
@@ -74,34 +72,44 @@ the binary.
 | `shrink_settle.fsl` | One run of `-fix` settles the package. The spec applies the first run's fixes and settles again. The second run holds every type and const value the first withheld, and fixes nothing. Stopping the first run early, so that it leaves a carried type or one value of a held set fixable, fails this | As above, plus which declarations are values of one const set (#179) and whether its type is used |
 | `shrink_claim.fsl` | Claiming new names once the types settle ends: every round adds a loser or releases one for good. A ghost counter shows that no loser is released twice | Every combination of three fixes, which of them judging leaves fixable, which pairs lower to one name, and every fix set settling can leave standing |
 | `shrink_claim.fsl` | The spec applies the fixes that stand and claims again. No two applied fixes give one name to two declarations. A loser that was never released finds its name taken by an applied fix, so the second run reads its report the same and gives it no fix. A released loser that lost again may be fixed by the second run | As above |
-| `rename_sound.fsl` | **Fails** — models a guard that checks package scope only, and enumerates what a sound guard must check beyond it | Every binding environment at the reference site |
-| `rename_siblings.fsl` | **Fails** — models fixes that check their target against the pre-fix names only, and shows two of them converging on one name | Every pair of rename targets |
 
-## The two that fail
+No spec models `surplus` on its own terms beyond `surplus_strict.fsl`. The Go
+tests pin the rest:
 
-These are not regressions to repair in the spec. Each models a guard weaker than
-the one the implementation applies, and fails on purpose: the counterexamples are
-the specification of what a rename guard must check, and every condition they force
-is one of those listed under
-[Withheld renames](../README.md#withheld-renames).
+- An exported declaration keeps the directive it depends on (`TestSurplus`).
+- Each reach path keeps a directive alone: `TestSurplusUsedOutside`,
+  `TestSurplusSatisfies`, `TestSurplusCarrier`, `TestSurplusConversion`,
+  `TestSurplusLinkname`, and `TestSurplusCountsAGuessAsReach` in `internal`.
+- A pass that does not read every file reports nothing:
+  `TestSurplusSeesAllFiles`, `TestSurplusOpaqueSource` and
+  `TestSurplusExcludedOwnFile`.
+- A build-excluded file of another package does not count as unread
+  (`TestSurplusExcludedGenerator`, #253).
+- `rules.surplus: off` reports nothing (`TestSurplusOff`).
+- The directive-level report offers no fix (`c.go` in
+  `TestSuggestedFixUnusedStrictSurplus`, which has no golden file).
 
-`rename_sound.fsl` models Go's resolution order — local, then file (imports),
-then package, then the universe of predeclared names — and asks whether a rename
-leaves every reference pointing where it did. Strengthening the guard one
-condition at a time enumerates the minimum it must check:
+## What a rename guard must check
+
+Each condition below is one that
+[Withheld renames](../README.md#withheld-renames) lists.
+`rename_guarded.fsl` models Go's resolution order: local, then file (imports),
+then package, then the universe of predeclared names. It asks whether a rename
+leaves every reference pointing where it did. A copy of it with a weaker guard
+shows what each condition catches. Each row was run under `--engine induction`:
 
 | Guard | Result | What the counterexample finds |
 | --- | --- | --- |
-| Package scope only *(as modeled)* | Violated | A local variable at the reference site binds the new name — **compiles, silently changes behavior** |
-| + local scope | Violated | An import in some file binds the new name |
-| + file scope | Violated | The new name is predeclared (`len`, `error`, …) |
-| + universe | **Verified** | — |
+| Package scope only | `violated` (`RenameKeepsReferenceOnTarget`) | A local variable at the reference site binds the new name. It **compiles, and silently changes behavior** |
+| + local scope | `violated` (`RenameKeepsReferenceOnTarget`) | An import in some file binds the new name |
+| + file scope | `violated` (`RenameCapturesNothingElsewhere`) | The new name is predeclared (`len`, `error`, …) |
+| + universe (the guard `safeToRename` applies) | `proved` | — |
 
-The predeclared case is the indirect one. A package-level name legitimately
-shadows the universe, so the reference being renamed resolves correctly; the harm
-lands on every *other* reference that wanted the builtin. That shows up only once
-the spec also asks whether the rename captures references it was never meant to
-touch.
+The predeclared case is the indirect one. A package-level name may shadow the
+universe, so the reference being renamed still resolves correctly. The harm
+lands on every *other* reference that wanted the builtin. That shows up only
+because the spec also asks whether the rename captures references it was never
+meant to touch.
 
 Three causes are outside *this* model, because they concern the set of
 references, names resolved through types, and the set of fixes rather than scope
@@ -110,8 +118,8 @@ edits, and what it has to establish about the ones it does not, non-Go files and
 directive text included. `rename_selections.fsl` covers the second: a method's
 name and an embedded field's are selected through types, so no scope lookup sees
 them, and a rename there can compile into a different selection or a different
-method set. `rename_siblings.fsl` covers the third, and `rename_reserved.fsl` is
-its proved counterpart, the guard the implementation applies.
+method set. `rename_reserved.fsl` covers the third: a fix that checks its
+target against the pre-fix names only lets two fixes take one name.
 
 That split is worth stating plainly, because the reach half went unmodelled at
 first and the one defect that could break a build lived exactly there: a file
@@ -135,7 +143,7 @@ step and needs gigabytes for the same claims these prove in single-digit
 megabytes.
 
 ```console
-./spec/verify.sh     # what CI runs: twenty-two proved, two violated
+./spec/verify.sh     # what CI runs: twenty-one proved
 ```
 
 Or one at a time:
@@ -154,7 +162,6 @@ fslc verify rename_guarded.fsl   --depth 4
 fslc verify rename_reach.fsl     --depth 3
 fslc verify rename_selections.fsl --depth 3
 fslc verify rename_reserved.fsl  --depth 3
-fslc verify surplus.fsl         --depth 2
 fslc verify surplus_strict.fsl  --depth 5
 fslc verify type_fix_members.fsl --depth 4
 fslc verify unused_ignore.fsl   --depth 2
@@ -164,11 +171,9 @@ fslc verify shrink.fsl          --depth 6
 fslc verify shrink_settle.fsl   --depth 8
 fslc verify shrink_claim.fsl    --depth 8
 fslc verify shrink_ignore.fsl   --depth 3
-fslc verify rename_sound.fsl     --depth 2   # expected: violated
-fslc verify rename_siblings.fsl  --depth 3   # expected: violated
 ```
 
-`knobs.fsl`, `surplus.fsl` and `unused_ignore.fsl` configure once and then
+`knobs.fsl` and `unused_ignore.fsl` configure once and then
 have only the actions that record a report, so their reachables are witnessed at
 step 1 or 2; the others add a fix action and witness at step 2.
 `filter.fsl` decides in one step and then runs the other order in two, so it
@@ -191,12 +196,11 @@ also reports a vacuous antecedent — which is the guard working, and is stated 
 `NothingResolvedNewName` rather than left as a warning. `rename_selections.fsl`
 reports one the same way, stated as `NothingSelectedNewName`.
 
-The twenty-two that pass are `proved` under `--engine induction`, which is what
+All twenty-one are `proved` under `--engine induction`, which is what
 `verify.sh` and CI assert. Bounded verification alone would let an invariant be
 true to a depth without being inductive, and reading the exit code alone would
-let a spec that stopped parsing pass as "violated, as intended" — `fslc` exits
-non-zero for a parse error too. `verify.sh` reads the JSON verdict, pins each
-failing spec to the invariant it must break, and checks that `knobs.fsl` and
+not tell a violation from a parse error, since `fslc` exits non-zero for both.
+`verify.sh` reads the JSON verdict, and checks that `knobs.fsl` and
 `boundary_fix.fsl` still share one scope model.
 
 Each `leadsTo` carries a `decreases` measure, with `helpful` naming the fair
@@ -243,7 +247,7 @@ is a semantics that contradicts the documented one; each was run:
 | A scope directive ignores a nearer directive that shadows it | `reachable_failed` (`ShadowedDisagreementKeepsIt`) |
 | A shadowed declaration counts as bound, as if the nearer directive depended on this one | `violated` (`ShadowingNeverMakesItUsed`) |
 | An enclosed declaration never binds while a directive encloses the one that names its scope | `reachable_failed` (`UsedViaFirstEnclosedOnly`, `UsedViaSecondOnly`) |
-| Any one of the four scope checks in `safeToRename` is dropped | `violated` |
+| Any one of the four scope checks in `safeToRename` is dropped (four controls, on `rename_guarded.fsl`) | `violated`: `RenameKeepsReferenceOnTarget` without the package, import or local row, `RenameCapturesNothingElsewhere` without the universe row |
 | The build-excluded file is not consulted, so a rename disturbs a name only another configuration writes | `violated` |
 | An unseen in-package test file does not withhold the rename | `violated` |
 | A non-Go source file does not withhold the rename | `violated` (`NoStaleSpelling`) |
@@ -255,13 +259,12 @@ is a semantics that contradicts the documented one; each was run:
 | A method is renamed although an interface of the package asks for its old name, or for its new name | `violated` (`AssertionsUnchanged`), each |
 | An embedded type is renamed although an interface asks for its old name, which a deeper method may then answer, as before this spec | `violated` (`AssertionsUnchanged`) |
 | An interface asking for its new name withholds the rename of an embedded type | `reachable_failed` (`RenameEmbeddedDespiteAskedNewName`) |
-| A fix does not check its target against the names earlier fixes claimed | `violated` (`NamesStayDistinct`) |
+| A fix does not check its target against the names earlier fixes claimed (on `rename_reserved.fsl`) | `violated` (`NamesStayDistinct`) |
 | A fix does not claim its target, or claims its old name instead | `violated` (`RenamedNameIsReserved`; `NamesStayDistinct` without the helper invariants) |
 | Both directive insertions fire, so a member is fixed under a type fixed in the same run | `violated` (`InsertedMemberDirectiveBinds`) |
 | The narrower insertion wins, so the type's fix is dropped instead of the member's | `reachable_failed` (`OnlyTheWiderFixIsWritten`) |
 | The member's fix is dropped wherever the type crosses, even when the baseline absorbs the type's finding and no fix is written on it | `reachable_failed` (`MemberFixedWhereTypeIsBaselined`) |
 | The type's fix is written although the baseline absorbs its finding | `violated` (`TypeFixRecordsItsGuard`) |
-| `surplus` ignores one reach path: a spelled use, an interface satisfaction, an exported carrier, a struct conversion, an unkeyed literal through a guessed type set, a linkname, or exportedness (seven controls, one path each) | `violated` (`NeverReportsReachable`) |
 | `strict` reports without checking reach | `violated` (`NeverReportsReachable`) |
 | `strict` ignores one reach path: `Spelled`, `Satisfied`, `Carried`, `Converted`, `Guessed` or `Linknamed` (six controls, one path each) | `violated` (`NeverReportsReachable`) |
 | `strict` reports in a pass that does not read every file | `violated` (`NeverReportsReachable`) |

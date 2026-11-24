@@ -1,16 +1,13 @@
 // The rename guard against sibling fixes, as implemented, and a proof that
 // it is sound.
 //
-// rename_siblings.fsl is the negative control. It models fixes that check
-// their target against the pre-fix names only. It shows two of them
-// converging on one name. A control alone proves nothing about the code that
-// exists. Without a positive counterpart, internal/rename.go could lose the
-// reserved check, and no spec would change verdict.
+// A fix that checks its target against the pre-fix names only cannot see a
+// sibling fix aiming at the same name. So two fixes can converge on one name.
 //
-// This spec is that counterpart. Each fix also checks its target against the
-// names that earlier fixes in the pass claimed (renameState.reserved). Each
-// fix claims its own target when it is emitted (reserveForRename). Dropping
-// either step makes this spec violated.
+// Each fix here also checks its target against the names that earlier fixes
+// in the pass claimed (renameState.reserved). Each fix claims its own target
+// when it is emitted (reserveForRename). Dropping either step makes this spec
+// violated.
 //
 // ASSUME-1: two declarations are enough. A collision needs exactly two
 //   (modelling assumption).

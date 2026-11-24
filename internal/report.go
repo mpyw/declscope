@@ -24,7 +24,7 @@ type pendingReport struct {
 // already going to be written by the fix on its type, in the same run.
 //
 // Every fix is decided against the pre-fix source and none of them can see the
-// others, so two can converge — the shape spec/rename_siblings.fsl already
+// others, so two can converge — the shape spec/rename_reserved.fsl already
 // models for renames. A directive inserted on a type reaches the type's
 // members, which leaves a directive inserted on a member in the same run
 // binding nothing: the unused rule then reports what -fix just wrote, and a

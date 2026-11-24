@@ -1,7 +1,7 @@
 // Two directive insertions in one run must not converge.
 //
 // Every fix in a run is generated from the same pre-fix state. So no fix sees
-// what another is about to write. rename_siblings.fsl already holds this shape
+// what another is about to write. rename_reserved.fsl already holds this shape
 // for renames. The insertions converge in their own way. A directive written
 // on a type reaches the members of the type. A member fixed in the same run
 // is left with a directive that binds nothing. The `unused` rule then reports
