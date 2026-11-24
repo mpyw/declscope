@@ -6,8 +6,11 @@
 // one declaration.
 //
 // The property is surplus.fsl's. NeverReportsReachable says neither finding
-// is made of a declaration that another namespace reaches. Any path the rule
-// counts is a reach. Both modes ask one function, surplusState.reachesOutside.
+// is made of a declaration that another namespace reaches. That fact is the
+// input reachedFromOtherNamespace, and no guard reads it. configureReach ties
+// it to the paths below, as hiddenUse works in shrink.fsl. A reach shows on
+// one of the paths, or it comes from a source the analysis never reads.
+// Both modes ask one function, surplusState.reachesOutside.
 // So the paths are surplus.fsl's too, less exportedness. strict never judges
 // an exported declaration (source == Exported). Here the paths are one
 // variable, because no property reads two at once:
@@ -61,9 +64,14 @@
 // start no boundary report on the declaration or on a member it narrows. It
 // must never make loose fire. It must never leave the directive binding
 // nothing. It must never leave a member's own directive binding nothing
-// either (memberStatesPrivate, below). otherDecided is whether something else under the directive still
-// takes a scope it could not have had otherwise. Where nothing does, the fix
-// is withheld and the report is not.
+// either (memberStatesPrivate, below). otherDecided is whether something else
+// under the directive still takes a scope it could not have had otherwise.
+// Where nothing does, the fix is withheld and the report is not.
+//
+// The first two duties and loose are judged again on the code after the fix.
+// The boundary duty is stated for the declaration. The last two duties and a
+// narrowed member are each one guard of fixable. Any property over them would
+// restate that guard. So witnesses show them instead.
 //
 // One kind of directive binds nothing before the fix: restated. It names the
 // scope an enclosing directive already gives. So nothing under it takes a
@@ -98,7 +106,7 @@ spec SurplusStrict {
   // is one reason the enclosing directive did not widen it. They are one
   // variable and not four flags, for the same reason as Reach below.
   enum Source { Enclosed, OwnDirective, Exported, SharedDefault, NoEnclosing }
-  // The reach paths are one variable. Reach is a disjunction, so no property
+  // The reach paths are one variable. Reach is a disjunction, so no guard
   // reads two paths at once. Flags would multiply the states the checker
   // holds. An enum only adds to them.
   enum Reach { Unreached, Spelled, Satisfied, Carried, Converted, Guessed, Linknamed }
@@ -113,6 +121,9 @@ spec SurplusStrict {
     level: Level = OnFile,
     seesAllFiles: Bool = true,
     reach: Reach = Unreached,
+    // The ground truth: another namespace reaches the declaration. No guard
+    // reads it.
+    reachedFromOtherNamespace: Bool = false,
     shape: Shape = Plain,
     otherKeepsDirective: Bool = false,
     otherDecided: Bool = false,
@@ -139,14 +150,20 @@ spec SurplusStrict {
     level = givenLevel
     seesAllFiles = givenSeesAllFiles
   }
-  action configureReach(givenReach: Reach, givenShape: Shape) {
+  action configureReach(givenReach: Reach,
+                        givenReachedFromOtherNamespace: Bool,
+                        givenShape: Shape) {
     requires phase == 1
+    // Every reach shows on a path the rule counts, or comes from a source
+    // the analysis never reads. This is the model of the reach, not a guard.
+    requires givenReachedFromOtherNamespace => givenReach != Unreached or not seesAllFiles
     // main is a function with an unexported name. So no type's directive
     // reaches it, and exportedness never gives it its scope.
     requires givenShape == ToolchainNamed => level != OnType
     requires givenShape == ToolchainNamed => source != Exported
     phase = 2
     reach = givenReach
+    reachedFromOtherNamespace = givenReachedFromOtherNamespace
     shape = givenShape
   }
   action configureDirective(givenOtherKeepsDirective: Bool,
@@ -183,7 +200,6 @@ spec SurplusStrict {
   def configured() = phase == 3
 
   def exported() = source == Exported
-  def ownDirective() = source == OwnDirective
   def unexportedDefault() = if source == SharedDefault then Shared else Private
   def entryMixed() = shape == MixedEntry
   def carriesMembers() = shape == MembersQuiet or shape == MembersKeep
@@ -201,25 +217,31 @@ spec SurplusStrict {
   def usedOutside() = reach == Spelled
   def reachable() = reach != Unreached
 
+  // Once the fix has run, the declaration states its own //declscope:private.
+  def sourceAfter() = if fixed then OwnDirective else source
+
   // --- loose: the directive as a whole ------------------------------------
   // The declaration depends on the directive while it states no scope of its
   // own. It keeps the directive alive while it is reached or exported.
-  def dependsOnDirective() = enclosing() and not ownDirective()
+  def dependsOnDirectiveFrom(from: Source) = from != NoEnclosing and from != OwnDirective
+  def dependsOnDirective() = dependsOnDirectiveFrom(source)
   def keepsDirective() = dependsOnDirective() and (reachable() or exported())
   def looseWouldFire() =
     enclosing()
     and seesAllFiles
     and not otherKeepsDirective
     and not keepsDirective()
-  def looseFires() = mode != Off and looseWouldFire()
+  def looseFiresIn(given: Mode) = given != Off and looseWouldFire()
+  def looseFires() = looseFiresIn(mode)
 
   // --- strict: this one declaration ---------------------------------------
   // The enclosing directive made it shared. Without that directive, under
   // this configuration, the declaration would be private.
-  def widened() =
-    dependsOnDirective()
-    and not exported()
+  def widenedFrom(from: Source) =
+    dependsOnDirectiveFrom(from)
+    and from != Exported
     and unexportedDefault() == Private
+  def widened() = widenedFrom(source)
   // Every suppressor of the strict finding except where the scope came from.
   // The finding before the fix and the one after it share these.
   def strictUnsuppressed() =
@@ -230,10 +252,12 @@ spec SurplusStrict {
     and not ownerNarrowed()
     and not toolchainNamed()
     and not looseWouldFire()
-  def strictFires() =
-    mode == Strict
-    and widened()
+  def strictFiresOver(given: Mode, from: Source) =
+    given == Strict
+    and widenedFrom(from)
     and strictUnsuppressed()
+  def strictFiresIn(given: Mode) = strictFiresOver(given, source)
+  def strictFires() = strictFiresIn(mode)
   // The fix would leave a member's //declscope:private binding nothing, and
   // the unused rule would report it.
   def unbindsAMember() = memberStatesPrivate and unusedReports
@@ -267,24 +291,16 @@ spec SurplusStrict {
     else if dependsOnDirective() then Shared
     else if exported() then Shared
     else unexportedDefault()
-  // The binding test of unused_bind.fsl, over the fixed code. Here outerScope
-  // is the scope the declaration would take from outside its own directive.
-  // And outerFixed is whether that scope is the same under every
-  // configuration.
-  def outerFixed() = enclosing() or exported()
-  def outerScope() = if outerFixed() then Shared else unexportedDefault()
-  def insertedInert() = outerFixed() and Private == outerScope()
-
-  // Once narrowed, the declaration has its own directive. So the enclosing
-  // directive no longer widens it.
-  def widenedAfter() = widened() and not fixed
-  def strictAfter() =
-    mode == Strict
-    and widenedAfter()
-    and strictUnsuppressed()
+  // The scope the declaration takes from outside its own directive. Resolved
+  // here from the source, apart from widened. The model does not say which
+  // scope an own directive states. It may state private, so that case counts
+  // as private.
+  def scopeWithoutTheInsertion() =
+    if source == Enclosed then Shared
+    else if source == Exported then Shared
+    else if source == SharedDefault then Shared
+    else Private
   def crossesAfter() = scopeAfter() == Private and usedOutside()
-  // A member narrowed with the type crosses when it was reached.
-  def membersCrossAfter() = fixed and carriesMembers() and membersKeep()
   // Once narrowed, the declaration no longer depends on the directive. So it
   // no longer keeps the directive alive either.
   def looseAfter() =
@@ -292,64 +308,42 @@ spec SurplusStrict {
     and seesAllFiles
     and not otherKeepsDirective
     and (fixed or not keepsDirective())
-  def directiveBindsAfter() = otherDecided or not fixed
-  // The member's //declscope:private binds while the type is shared.
-  def memberUnboundAfter() = memberStatesPrivate and scopeAfter() == Private
 
   // --- what the rule may say ----------------------------------------------
-  // The property the rule exists to keep, for both findings.
+  // The property the rule exists to keep, for both findings. It reads the
+  // ground truth, which no guard reads.
   invariant NeverReportsReachable {
-    (strictReported => not reachable())
-    and (looseReported => not keepsDirective())
+    (strictReported => not reachedFromOtherNamespace)
+    and (looseReported => not (dependsOnDirective() and reachedFromOtherNamespace))
   }
 
-  // strict adds to loose and never repeats it.
-  invariant NeverTwiceOnOneDeclaration { not (looseReported and strictReported) }
-  invariant StrictOnlyUnderStrict { strictReported => mode == Strict }
-  invariant LooseUnderEitherMode  { looseReported => mode != Off }
-
-  // Only an enclosing directive may be the reason for a strict finding.
-  invariant StrictImpliesEnclosing          { strictReported => enclosing() }
-  invariant NeverReportsOwnDirective        { strictReported => not ownDirective() }
-  invariant NeverReportsExported            { strictReported => not exported() }
-  invariant NeverReportsUnderSharedDefault  { strictReported => unexportedDefault() == Private }
-  invariant NeverReportsMixedEntry          { strictReported => not entryMixed() }
-  invariant NeverNarrowsAReachedMember {
-    strictReported => not (carriesMembers() and membersKeep())
-  }
-  invariant NeverRepeatsTheOwnersFinding    { strictReported => not ownerNarrowed() }
-  invariant NeverReportsMain                { strictReported => not toolchainNamed() }
-
-  // A pass that did not read every file reports nothing.
-  invariant SilentWhenBlind { (strictReported or looseReported) => seesAllFiles }
-
-  // Auxiliary. Nothing assigns the inputs once configured. So each guard
-  // still holds of the state the action fired in.
-  invariant LooseRecordsItsGuard  { looseReported => configured() and looseFires() }
-  invariant StrictRecordsItsGuard { strictReported => configured() and strictFires() }
-  invariant FixRecordsItsGuard    { fixed => strictReported and fixable() }
-  invariant RestatedRecordsItsGuard {
-    (restated => configured() and level != OnFile and source != NoEnclosing and not otherDecided)
-    and (rewords => restated)
-    and (rewords => unusedReports)
+  // strict reports a superset of loose. Each finding under loose is also
+  // made under strict, on the same inputs.
+  invariant StrictKeepsEveryLooseFinding {
+    configured()
+      => (looseFiresIn(Loose) => looseFiresIn(Strict))
+      and (strictFiresIn(Loose) => strictFiresIn(Strict))
   }
 
   // --- what the fix leaves -------------------------------------------------
-  invariant InsertedDirectiveBinds     { fixed => not insertedInert() }
-  invariant FixSettlesTheReport        { fixed => not strictAfter() }
-  invariant FixStartsNoBoundary        { fixed => not crossesAfter() and not membersCrossAfter() }
-  invariant FixNeverFiresLoose         { fixed => not looseAfter() }
-  // A directive the fix leaves binding nothing bound nothing before it.
-  invariant FixKeepsTheDirectiveBound  { fixed => directiveBindsAfter() or restated }
-  invariant FixNeverRewordsUnused      { fixed => not rewords }
-  // The fix never leaves a member's own directive binding nothing while the
-  // unused rule would report it.
-  invariant FixLeavesMemberDirectivesBound {
-    fixed => not (unusedReports and memberUnboundAfter())
-  }
+  // The inserted //declscope:private changes the scope in force. So unused
+  // reports it under neither mode. This is unused_modes.fsl's strict test,
+  // copied by hand. Nothing links the two.
+  invariant InsertedDirectiveBinds { fixed => scopeWithoutTheInsertion() == Shared }
+  // strict run again over the fixed code finds nothing on the declaration.
+  invariant FixSettlesTheReport { fixed => not strictFiresOver(mode, sourceAfter()) }
+  invariant FixStartsNoBoundary { fixed => not crossesAfter() }
+  invariant FixNeverFiresLoose  { fixed => not looseAfter() }
 
-  trans StrictOnlyWhereItFires { not old(strictReported) and strictReported => old(strictFires()) }
-  trans FixOnlyWhereFixable    { not old(fixed) and fixed => old(fixable()) }
+  // --- auxiliary ------------------------------------------------------------
+  // Lemmas for induction, not claims. Nothing assigns the inputs once
+  // configured. So each guard still holds of the state the action fired in.
+  invariant ReachRecordsItsGuard {
+    (phase >= 2 and reachedFromOtherNamespace) => reach != Unreached or not seesAllFiles
+  }
+  invariant LooseRecordsItsGuard  { looseReported => configured() and looseFires() }
+  invariant StrictRecordsItsGuard { strictReported => configured() and strictFires() }
+  invariant FixRecordsItsGuard    { fixed => strictReported and fixable() }
 
   // --- witnesses ------------------------------------------------------------
   reachable LooseReported { looseReported and mode == Loose }
@@ -358,13 +352,15 @@ spec SurplusStrict {
   reachable StrictReportedOnBlock { strictReported and level == OnBlock }
   reachable StrictReportedOnType  { strictReported and level == OnType }
   reachable TypeNarrowedWithItsMembers { fixed and shape == MembersQuiet }
-  reachable Fixed { fixed and not strictAfter() }
+  reachable Fixed { fixed }
   // Narrowing would leave the directive binding nothing. There the fix is
   // withheld, and the report is not.
   reachable ReportedWithoutFix {
     strictReported
     and not otherDecided
     and not restated
+    and not memberStatesPrivate
+    and not fixable()
     and stalled
   }
   // Under a directive that already binds nothing, the fix is offered where
@@ -375,6 +371,8 @@ spec SurplusStrict {
     strictReported
     and restated
     and rewords
+    and not memberStatesPrivate
+    and not fixable()
     and stalled
   }
 
@@ -385,6 +383,7 @@ spec SurplusStrict {
     and memberStatesPrivate
     and unusedReports
     and otherDecided
+    and not fixable()
     and stalled
   }
   reachable FixedOverAMemberUnderUnusedOff {
@@ -486,6 +485,7 @@ spec SurplusStrict {
     and toolchainNamed()
     and not strictFires()
   }
+  // strict never lands on the declaration loose already covers.
   reachable SilentWhereLooseReports {
     configured()
     and mode == Strict
@@ -537,10 +537,7 @@ spec SurplusStrict {
   }
   reachable SilentUnderSharedDefault {
     strictArmed()
-    and enclosing()
-    and not ownDirective()
-    and not exported()
-    and unexportedDefault() == Shared
+    and source == SharedDefault
     and not reachable()
     and shape == Plain
     and not strictFires()
