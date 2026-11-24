@@ -100,9 +100,8 @@ jobs:
         with:
           install_args: packslip:github.com/ymm-oss/fsl/fslc
 
-      # Most specs must be proved; two must stay violated, since they hold the
-      # counterexamples for designs that are unsound. verify.sh holds the
-      # lists, and fails when a spec is in neither, so the count does not need
+      # Every spec must be proved under induction. verify.sh holds the list,
+      # and fails when a spec file is not in it, so the count does not need
       # restating here every time one is added.
       - name: Verify the specs
         run: ./spec/verify.sh
