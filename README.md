@@ -1542,6 +1542,9 @@ var _ = a.Mode{Flag: "gui"}
 | `declscope shrink ./...` | `app/gui.go` is left out and read for names only, so `Flag` would be reported with no fix. The ignore silences it |
 | `GOFLAGS=-tags=gui declscope shrink ./...` | `app/gui.go` uses `Flag`. The ignore is kept for the run without the tag |
 
+> [!NOTE]
+> `shrink` does not solve build constraints. Say `app/gui.go` (`//go:build gui`) and `app/nogui.go` (`//go:build !gui`) both use `Flag`. Then every configuration uses it, and the ignore is no longer needed. But each run sees the other file left out, so it keeps the ignore and does not report it unused. Delete such an ignore by hand.
+
 ## Measuring what is there
 
 Two subcommands report what the analyzer found. Neither decides anything. The exit status is zero whatever the counts say, since gating is what the analyzer and a baseline are for.

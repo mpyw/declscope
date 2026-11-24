@@ -78,7 +78,12 @@
 //
 // ASSUME-1: one constrained file is enough, read by In and left out by Out.
 //   More constraints make more configurations. Each one is In or Out for
-//   that file (modelling assumption).
+//   that file (modelling assumption). The model leaves out two files under
+//   opposite constraints, such as gui and !gui, that both use a member.
+//   Every configuration reads one of them, so the ignore is stale. But each
+//   run sees the other file left out, and keeps the ignore (#406). The
+//   tool does not solve constraints, so it cannot tell that the two files
+//   cover every configuration.
 // ASSUME-2: a constrained file that uses the declaration reaches its
 //   package, whether it uses it by name or not. So does an external test. A use is made through an
 //   import (modelling assumption, a requirement of configure).
