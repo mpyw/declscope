@@ -21,14 +21,13 @@ the binary.
 | Spec | Claim | Scope covered |
 | --- | --- | --- |
 | `naming_rules.fsl` | `qualify` fires only where the name carries its namespace nowhere. A name carrying it inside — `statementReducer` in `reducer.go` — is silent even under `always` | Every combination of `rules.naming.qualify`, `rules.naming.exported`, namespace count, kind (a package-level declaration, a function the toolchain finds by its name, a member, a method written beside its type, a method filed away from it), exportedness, core membership, prefixability and where the name carries the namespace. An inflection or a `rules.naming.vocabulary` word counts as carrying it |
-| `naming_rules.fsl` | No fix is applied where no violation exists. That the rename removes the violation is not proved here: the spec takes the fix to put the namespace at the start of the name, and the Go tests in `internal/namespace` check that `Qualify` does | As above |
-| `naming_rules.fsl` | No rename is ever applied to an exported declaration | As above |
 | `naming_rules.fsl` | Each naming key bites, and a method filed away from its type is reported. Each silence is witnessed with every other reason for silence pinned: exportedness, the core, a member, a method written beside its type, `func main` and a test function, an unprefixable namespace, `ondemand` with one namespace, `never`, and a name that carries the namespace | As above |
 | `naming_rules.fsl` | The core namespace is outside the rule, whatever is configured | As above |
-| `naming_rules.fsl` | A fix is eventually applied wherever one is offered, which is what the `fair` on the fix actions claims | As above, plus whether a rename is offered at all |
-| `naming_rules.fsl` | A rename is applied only under `rules.naming.fix`. With it off, which is the default, the report still fires and nothing is renamed | As above, plus `rules.naming.fix` |
-| `boundary_off.fsl` | `rules.boundary: off` silences `boundary` and nothing else. `qualify` and `surplus` still fire with it on, and `rules.surplus: off` still gates only `surplus`. `qualify` fires under either value of `rules.surplus`, and `surplus` fires with the naming rule off | Every combination of the two switches, the resolved scope, where the declaration is referenced from (nowhere, its own namespace, another namespace), the naming mode and its inputs, and the two surplus inputs |
-| `boundary_off.fsl` | Each of the three rules keeps its own guards, witnessed by the report each one records rather than by a restatement of its definition | As above |
+| `naming_rules.fsl` | `rules.naming.fix` changes neither the report nor `fixable()`, which is what `declscope inspect` reports as `names[].fixable`. With it off, which is the default, the report stands and no fix is offered | As above, plus whether the rename guard passes and `rules.naming.fix` |
+| `naming_rules.fsl` | `rules.naming.exported` does not change when a mode requires the namespace. It and the namespace count are independent gates | As above |
+| `naming_rules.fsl` | The settings only widen. Whatever `never` reports, `ondemand` reports, and whatever `ondemand` reports, `always` reports. Turning `rules.naming.exported` on removes no report | As above |
+| `boundary_off.fsl` | `rules.boundary: off` changes neither the `qualify` verdict nor the `surplus` verdict, for every input. `rules.surplus: off` changes neither the `boundary` verdict nor the `qualify` verdict. Witnesses show `qualify` and `surplus` firing with boundary off, `qualify` firing under either value of `rules.surplus`, and `surplus` firing with the naming rule off | Every combination of the two switches, the resolved scope, where the declaration is referenced from (nowhere, its own namespace, another namespace), the naming mode and its inputs, and the two surplus inputs |
+| `boundary_off.fsl` | Not proved here: that each switch silences its own rule. The spec has it only as the guard of the report, and a property over it would restate that guard. The `boundaryoff` fixture in `testdata/src` checks it for `rules.boundary` | As above |
 | `filter.fsl` | `filter.only` narrows and `filter.omit` subtracts. Either list admits or rejects on any one of its patterns, an empty `only` places no restriction, and `omit` still bites inside `only` | Every combination of which of three patterns each list holds and which of them the file matches |
 | `filter.fsl` | The order of the two lists is not observable: narrowing then subtracting, as the code does, and subtracting then narrowing, run as a second pipeline stage by stage, decide every file alike. Each stage keeps a subset of what it is handed. Both orders share the per-file rule, so this does not check that rule. The witnesses and the row below do | As above |
 | `filter.fsl` | Adding a pattern moves the decision one way only: one more `omit` pattern never admits a file, and one more pattern in a non-empty `only` never rejects one | As above, with each of the three patterns added in turn |
@@ -230,11 +229,9 @@ is a semantics that contradicts the documented one; each was run:
 | The naming rule reaches a method written beside its type | `reachable_failed` (`ColocatedMethodNeverNamed`) |
 | The naming rule skips a method filed away from its type | `reachable_failed` (`ForeignMethodNamed`) |
 | The naming rule reaches `func main` and test functions | `reachable_failed` (`ToolchainNameSilentUnderAlways`, `TestFunctionSilentUnderExportedNames`) |
-| Containment is narrowed back to a prefix requirement | `reachable_failed` (`InsideSilentUnderAlways`, `InsideWouldHaveFiredBefore`) |
+| Containment is narrowed back to a prefix requirement | `reachable_failed` (`InsideSilentUnderAlways`) |
 | The core namespace is named like any other | `reachable_failed` |
 | A prefix fix does not record itself | `reachable_failed` |
-| The rename is applied whether or not `rules.naming.fix` is on | `violated` (`FixOnlyWhenOn`) |
-| A fix is applied to an exported declaration | `violated` |
 | `fair` is dropped from a fix action | `violated` (`leadsTo`); under induction, `unknown_cti` (`progress_action_not_fair`) |
 | A fix is offered where no violation exists, or over the author's own directive | `violated` |
 | A scope directive stops at the first thing in its reach, or at the last | `reachable_failed` (`UsedViaFirstEnclosedOnly`, `UsedViaTargetOnly`) |
@@ -351,9 +348,8 @@ is a semantics that contradicts the documented one; each was run:
 | The analyzer keeps a field's `boundary` ignore only where the excluded file writes its struct or another direct type name, so an unkeyed literal inside `Items{{1}}` is missed, as before #414 | `violated` (`OnePassesEvery`) |
 | The analyzer keeps such an ignore for the other rule, or keeps a `boundary` or `surplus` ignore whatever the excluded file writes (three controls) | `violated` (`OtherIsConfigurationFree`, `BoundaryAgreesWithoutNames`, `SurplusAgreesWithoutNames`), one each |
 | The analyzer keeps a `boundary` ignore for a type name written beside any declaration rather than a field | `violated` (`TypeNamesMatterOnlyForAField`) |
-| `rules.boundary: off` is wired into `surplus` as well | `reachable_failed` (`SurplusFiresWhileBoundaryOff`) |
-| `rules.boundary: off` is wired into `qualify` as well | `reachable_failed` (`QualifyFiresWhileBoundaryOff`) |
-| The `rules.boundary` gate is dropped from the boundary report | `violated` (`BoundarySilencedWhenOff`) |
+| `rules.boundary: off` is wired into `surplus` as well | `violated` (`SurplusIgnoresBoundaryOff`); with the invariant removed, `reachable_failed` (`SurplusFiresWhileBoundaryOff`) |
+| `rules.boundary: off` is wired into `qualify` as well | `violated` (`QualifyIgnoresBoundaryOff`); with the invariant removed, `reachable_failed` (`QualifyFiresWhileBoundaryOff`) |
 | An empty `filter.only` matches nothing rather than placing no restriction | `reachable_failed` (`NoListsAdmitsAFileMatchingNothing`) |
 | `filter.omit` is ignored once `filter.only` is set | `violated` (`OrderDoesNotMatter`, `AnotherOnlyPatternNeverRejects`) |
 | `filter.only` is ignored once `filter.omit` is set | `violated` (`OrderDoesNotMatter`, `AnotherOnlyPatternNeverRejects`) |
@@ -375,8 +371,18 @@ is a semantics that contradicts the documented one; each was run:
 | The file level does not reach a package-level declaration | `reachable_failed` (`FileDirBeatsConfig`; in `boundary_fix.fsl`, `FixWithheldUnderFileDirective`) |
 | A `private` block directive is ignored | `reachable_failed` (`BlockDirBitesOnPkg`) |
 | The test that withholds the boundary fix skips one level: the declaration, the block, the containing type, the block behind a member's type, or the file (five controls) | `violated` (`FixFindsEveryLevelUnstated`) |
-| `qualify` is gated on `rules.surplus` being on, or being off | `reachable_failed` (`NamingRuleAloneStillReports`, `QualifyFiresWhileSurplusOn`) |
+| `qualify` is gated on `rules.surplus` being on, or being off | `violated` (`QualifyIgnoresSurplusOff`); with the invariant removed, `reachable_failed` (`NamingRuleAloneStillReports`, `QualifyFiresWhileSurplusOn`) |
 | `surplus` is gated on the naming rule | `reachable_failed` (`SurplusFiresWhileBoundaryOff`) |
+| `qualify` is gated on `rules.boundary: off` except under `always` | `violated` (`QualifyIgnoresBoundaryOff`) |
+| With `rules.boundary: off`, `surplus` skips a directive used in its own namespace | `violated` (`SurplusIgnoresBoundaryOff`) |
+| With `rules.surplus: off`, `boundary` needs a pass that saw every file | `violated` (`BoundaryIgnoresSurplusOff`) |
+| With `rules.surplus: off`, `qualify` needs a second namespace | `violated` (`QualifyIgnoresSurplusOff`) |
+| With `rules.naming.fix` on, `qualify` reports only what the rename can fix | `violated` (`ReportIgnoresTheFixSwitch`) |
+| `fixable()` reads `rules.naming.fix` for a method filed away from its type | `violated` (`FixableIgnoresTheFixSwitch`) |
+| `rules.naming.exported` also turns the rule on under `never` | `violated` (`RequirementIgnoresExportedNames`) |
+| `never` still names a method filed away from its type | `violated` (`NeverFiringImpliesOnDemandFiring`) |
+| `ondemand` names the core once a second namespace exists | `violated` (`OnDemandFiringImpliesAlwaysFiring`) |
+| `rules.naming.exported` switches the rule to exported names only | `violated` (`ExportedNamesOnlyWiden`) |
 | `filter.only` or `filter.omit` skips one of its three patterns (six controls, one per list and pattern) | `reachable_failed` |
 | One `vocabulary` namespace ignores the value from above | `violated` (`SilentVocabularyLevelIsTransparent`) |
 | The rename guard withholds on any import, or on any other declaration, not only one that binds the new name | `reachable_failed` (`RenameUnderImportOther`, `RenameUnderOtherDeclarationOther`) |

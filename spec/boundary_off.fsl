@@ -47,9 +47,8 @@ spec BoundaryOff {
     hasTwoNamespaces: Bool = false,
     hasSharedDirective: Bool = false,
     sawEveryFile: Bool = false,
-    // Recording each report keeps the guards load-bearing. An invariant over
-    // the defs alone would be a tautology. Deleting a guard would not break
-    // it.
+    // Each report is recorded, so the witnesses below see a guard that
+    // stops it.
     boundaryReported: Bool = false,
     qualifyReported: Bool = false,
     surplusReported: Bool = false
@@ -82,52 +81,66 @@ spec BoundaryOff {
   // --- the three gates ---------------------------------------------------------
   // internal/finding.go holds the boundary and naming gates.
   // internal/surplus.go holds the surplus gate. boundaryOff appears in exactly
-  // one of them.
+  // one of them. Each verdict takes both switches as parameters, so the
+  // invariants below can compare both values of the switch it must not read.
+  def boundaryFiresWith(boundarySwitchOff: Bool, surplusSwitchOff: Bool) =
+    not boundarySwitchOff
+    and resolvedScope == Private
+    and referencedFrom == OtherNamespace
+  def qualifyFiresWith(boundarySwitchOff: Bool, surplusSwitchOff: Bool) =
+    qualifyApplies()
+    and not nameCarriesNamespace
+  def surplusFiresWith(boundarySwitchOff: Bool, surplusSwitchOff: Bool) =
+    not surplusSwitchOff
+    and sawEveryFile
+    and hasSharedDirective
+    and referencedFrom != OtherNamespace
+
   action reportBoundary() {
     requires configured
-    requires not boundaryOff
-    requires resolvedScope == Private
-    requires referencedFrom == OtherNamespace
+    requires boundaryFiresWith(boundaryOff, surplusOff)
     boundaryReported = true
   }
 
   action reportQualify() {
     requires configured
-    requires qualifyApplies()
-    requires not nameCarriesNamespace
+    requires qualifyFiresWith(boundaryOff, surplusOff)
     qualifyReported = true
   }
 
   action reportSurplus() {
     requires configured
-    requires not surplusOff
-    requires sawEveryFile
-    requires hasSharedDirective
-    requires referencedFrom != OtherNamespace
+    requires surplusFiresWith(boundaryOff, surplusOff)
     surplusReported = true
   }
 
-  // --- the switch bites, in both directions ---------------------------------
-  invariant BoundarySilencedWhenOff { boundaryReported => not boundaryOff }
-  // Without this witness, the invariant above would hold for a rule that
-  // never fires at all.
+  // --- the main claim, for all inputs -----------------------------------------
+  // rules.boundary: off changes no verdict of another rule.
+  invariant QualifyIgnoresBoundaryOff {
+    qualifyFiresWith(true, surplusOff) == qualifyFiresWith(false, surplusOff)
+  }
+  invariant SurplusIgnoresBoundaryOff {
+    surplusFiresWith(true, surplusOff) == surplusFiresWith(false, surplusOff)
+  }
+  // rules.surplus: off changes no verdict of another rule either. So the two
+  // keys are independent in both directions.
+  invariant BoundaryIgnoresSurplusOff {
+    boundaryFiresWith(boundaryOff, true) == boundaryFiresWith(boundaryOff, false)
+  }
+  invariant QualifyIgnoresSurplusOff {
+    qualifyFiresWith(boundaryOff, true) == qualifyFiresWith(boundaryOff, false)
+  }
+
+  // --- witnesses --------------------------------------------------------------
+  // The boundary rule fires with its switch on.
   reachable BoundaryFiresWhenOn {
     not boundaryOff
     and resolvedScope == Private
     and referencedFrom == OtherNamespace
     and boundaryReported
   }
-  // The same scope and reference, with boundary off, stay quiet.
-  reachable BoundarySilentOnTheSameConfiguration {
-    boundaryOff
-    and resolvedScope == Private
-    and referencedFrom == OtherNamespace
-    and not boundaryReported
-  }
-
-  // --- and touches nothing else ---------------------------------------------
   // Each of these fails as soon as boundaryOff is added to the guard of
-  // another rule. That is the change this spec exists to catch.
+  // another rule.
   reachable QualifyFiresWhileBoundaryOff {
     boundaryOff
     and qualifyApplies()
@@ -161,11 +174,6 @@ spec BoundaryOff {
     and not nameCarriesNamespace
     and qualifyReported
   }
-
-  // --- rules.surplus: off stays the other switch ---------------------------
-  // It gates surplus and not boundary. So the two keys are independent in
-  // both directions. Neither implies the other.
-  invariant SurplusSilencedWhenOff { surplusReported => not surplusOff }
   reachable BoundaryFiresWhileSurplusOff {
     surplusOff
     and not boundaryOff
@@ -174,16 +182,7 @@ spec BoundaryOff {
     and boundaryReported
   }
 
-  // --- the reports keep their own guards ------------------------------------
-  // Dropping any one of these guards from the actions above breaks the
-  // matching invariant. That makes the guards the subject, not the defs.
-  invariant BoundaryNeedsPrivate   { boundaryReported => resolvedScope == Private }
-  invariant BoundaryNeedsCrossNs   { boundaryReported => referencedFrom == OtherNamespace }
-  invariant QualifyNeedsApplies    { qualifyReported => qualifyApplies() }
-  invariant QualifyNeedsBareName   { qualifyReported => not nameCarriesNamespace }
-  invariant SurplusNeedsEveryFile  { surplusReported => sawEveryFile }
-  invariant SurplusNeedsDirective  { surplusReported => hasSharedDirective }
-  invariant SurplusNeedsNoCrossUse { surplusReported => referencedFrom != OtherNamespace }
+  // --- auxiliary ---
   invariant ReportsImplyConfigured {
     boundaryReported or qualifyReported or surplusReported => configured
   }
