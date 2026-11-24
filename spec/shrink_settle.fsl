@@ -154,6 +154,14 @@ spec ShrinkSettle {
       (judgedFixable[candidate] and not fixable[candidate]) => takenOut(candidate)
     }
   }
+  // Once settled, no value of a used type is left fixable. Tight and the
+  // guard of finish both read droppedWithType. This one spells it out. So it
+  // fails if that def is changed.
+  invariant DroppedWithUsedType {
+    phase == 2 => forall d: Decl {
+      (inConstSet[d] and setTypeUsed) => not fixable[d]
+    }
+  }
   invariant Whole {
     phase == 2 => forall a: Decl { forall b: Decl {
       (inConstSet[a] and inConstSet[b]) => fixable[a] == fixable[b]

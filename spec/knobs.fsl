@@ -311,10 +311,13 @@ spec Knobs {
     and referencedFrom == OtherNamespace
     and not boundaryFires()
   }
+  // The block is pinned too. A private block would otherwise decide it, and
+  // the file could go unread on a package-level declaration.
   reachable FileDirBeatsConfig {
     configured
     and kind == PackageLevel
     and declDirective == NoDirective
+    and blockDirective == NoDirective
     and typeDirective == NoDirective
     and fileDirective == PrivateDirective
     and unexportedDefault == Shared
@@ -330,6 +333,18 @@ spec Knobs {
     and kind == PackageLevel
     and declDirective == PrivateDirective
     and blockDirective == SharedDirective
+    and not exported
+    and referencedFrom == OtherNamespace
+    and boundaryFires()
+  }
+  // A private block alone decides a package-level spec. The default says
+  // shared. So a block private that went unread would leave it silent.
+  reachable BlockDirBitesOnPkg {
+    configured
+    and kind == PackageLevel
+    and blockDirective == PrivateDirective
+    and nothingStatedButBlock()
+    and unexportedDefault == Shared
     and not exported
     and referencedFrom == OtherNamespace
     and boundaryFires()

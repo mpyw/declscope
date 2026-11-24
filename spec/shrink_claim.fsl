@@ -124,6 +124,14 @@ spec ShrinkClaim {
     phase == 0 => forall d: Decl { not standing[d] and not lost[d] and not released[d] }
   }
   invariant LostOnlyWhenEligible { forall d: Decl { lost[d] => eligible[d] } }
+  // A fix loses its name only to a fix it clashes with, and that fix was
+  // eligible to stand. Honest and NoClashWhenDone restate the guards of
+  // finish. This one fails if lose drops either guard on its winner.
+  invariant LostOnlyOnAClash {
+    forall d: Decl {
+      lost[d] => exists winner: Decl { eligible[winner] and clashing(d, winner) }
+    }
+  }
   invariant ReleasedOnlyWhenEligible { forall d: Decl { released[d] => eligible[d] } }
   invariant LoserNeverStands { phase >= 2 => forall d: Decl { standing[d] => not lost[d] } }
   invariant StandsOnlyWhenEligible { forall d: Decl { standing[d] => eligible[d] } }

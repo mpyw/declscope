@@ -134,8 +134,11 @@ spec BoundaryOff {
     and not nameCarriesNamespace
     and qualifyReported
   }
+  // The naming rule is off here too. So surplus is shown to need neither
+  // the boundary rule nor the naming rule.
   reachable SurplusFiresWhileBoundaryOff {
     boundaryOff
+    and namingMode == Never
     and sawEveryFile
     and hasSharedDirective
     and referencedFrom != OtherNamespace
@@ -143,10 +146,19 @@ spec BoundaryOff {
   }
   // Boundary is off, boundary is silent, and the naming rule reports. The
   // README describes this state for a repository that takes the naming rule
-  // and nothing else.
+  // and nothing else. So surplus is off as well.
   reachable NamingRuleAloneStillReports {
     boundaryOff
+    and surplusOff
     and not boundaryReported
+    and qualifyReported
+  }
+  // The naming rule also reports with surplus on. So neither value of
+  // rules.surplus gates it.
+  reachable QualifyFiresWhileSurplusOn {
+    not surplusOff
+    and qualifyApplies()
+    and not nameCarriesNamespace
     and qualifyReported
   }
 

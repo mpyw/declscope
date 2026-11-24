@@ -209,15 +209,28 @@ spec Filter {
     and not fileMatches2
   }
   // Any of them is enough. The file matches the second pattern and not the
-  // first, and it is still in.
+  // first, and it is still in. The third pattern is not listed. So the second
+  // pattern is what admits it.
   reachable OnlyMatchesAnyOfSeveral {
     decided
     and admitted
     and omitEmpty()
     and onlyHolds0
     and onlyHolds1
+    and not onlyHolds2
     and not fileMatches0
     and fileMatches1
+  }
+  // The third pattern alone admits the file. Each pattern has a witness where
+  // it is the one that decides. So an "any" that skipped one would be caught.
+  reachable OnlyPatternTwoAloneAdmits {
+    decided
+    and admitted
+    and omitEmpty()
+    and not onlyHolds0
+    and not onlyHolds1
+    and onlyHolds2
+    and fileMatches2
   }
   // A listed pattern the file does not match decides nothing on its own.
   reachable UnmatchedOnlyPatternDoesNotAdmit {
@@ -235,6 +248,8 @@ spec Filter {
     decided
     and not admitted
     and onlyEmpty()
+    and not omitHolds0
+    and not omitHolds1
     and omitHolds2
     and fileMatches2
   }
@@ -251,6 +266,7 @@ spec Filter {
     and onlyEmpty()
     and omitHolds0
     and omitHolds1
+    and not omitHolds2
     and not fileMatches0
     and fileMatches1
   }
@@ -258,23 +274,29 @@ spec Filter {
   // --- both lists: omit still bites inside only, and only still narrows -----
   // The pair stops one list from swallowing the other. Both lists are set in
   // each. In the first, omit rejects the file. In the second, only is meant to
-  // reject it.
+  // reject it. The patterns that play no part are left out of both lists.
   reachable OmitStillBitesInsideOnly {
     decided
     and not admitted
     and onlyHolds0
     and fileMatches0
     and omitHolds0
+    and not omitHolds1
+    and not omitHolds2
   }
   reachable OnlyStillNarrowsAlongsideOmit {
     decided
     and not admitted
     and onlyHolds0
     and omitHolds1
+    and not onlyHolds2
+    and not omitHolds2
     and not fileMatches0
     and not fileMatches1
     and fileMatches2
   }
+  // The third pattern is in neither list. So the first pattern is what
+  // admits the file.
   reachable BothListsAdmitWhatSurvivesBoth {
     decided
     and admitted
@@ -282,6 +304,8 @@ spec Filter {
     and fileMatches0
     and omitHolds1
     and not fileMatches1
+    and not onlyHolds2
+    and not omitHolds2
   }
 
   // --- omit is the stronger of the two --------------------------------------

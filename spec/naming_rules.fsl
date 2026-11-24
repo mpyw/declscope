@@ -102,10 +102,16 @@ spec NamingRules {
     // renameGuardPasses stands for everything safeToRename in
     // internal/rename.go withholds beyond exportedness:
     //   - a collision in any scope, or on a type that holds the method
+    //   - an interface of the package that asks for the method's old or new
+    //     name
+    //   - a reference from a file the pass did not collect, such as a
+    //     generated file or one the filter leaves out
     //   - a name a directive spells as text
     //   - an assembly or cgo file anywhere in the package
     //   - a file of the package the pass does not see
     //   - a name another fix has already taken
+    // renameFix also withholds the fix when no collected file spells the
+    // name, or when the new name is the old one.
     // The violation is reported either way. Only the fix is withheld.
     renameGuardPasses: Bool = true,
     // reportedWithoutFix records a pass that reported without fixing. The

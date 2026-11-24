@@ -51,7 +51,11 @@ spec RenameGuarded {
     // What a second site elsewhere in the package resolved NewName to before
     // the rename. The rename records it, so the spec can check that the
     // rename does not capture that site.
-    elsewhereResolvedBefore: Resolution = Unresolved
+    elsewhereResolvedBefore: Resolution = Unresolved,
+    // Where the reference to the declaration resolved before the rename. The
+    // rename records it, so the spec can check that the rename moves the
+    // reference nowhere.
+    referenceResolvedBefore: Resolution = Unresolved
   }
 
   action configure(local: Binding, imported: Binding, otherDeclaration: Binding,
@@ -106,11 +110,18 @@ spec RenameGuarded {
     renamed = true
     // Reads the state before the rename.
     elsewhereResolvedBefore = resolveElsewhere()
+    referenceResolvedBefore = resolveAtReference(OldName)
   }
 
   // Soundness, part one: the reference to the declaration must still reach it.
   invariant RenameKeepsReferenceOnTarget {
     renamed => resolveAtReference(NewName) == ToDeclaration
+  }
+  // The reference resolves after the rename where it resolved before. A
+  // rename of a reference that a local already caught would move it onto the
+  // declaration. That is also a change in what the package computes.
+  invariant RenameKeepsReferenceWhereItWas {
+    renamed => resolveAtReference(NewName) == referenceResolvedBefore
   }
 
   // Soundness, part two: the renamed declaration must not capture a reference
@@ -142,5 +153,15 @@ spec RenameGuarded {
   reachable RenameUnderLocalOther {
     renamed
       and localBinding == BindsOther
+  }
+  // The same for an import and for another declaration. Each binds a name
+  // that is neither old nor new, and the rename still happens.
+  reachable RenameUnderImportOther {
+    renamed
+      and importBinding == BindsOther
+  }
+  reachable RenameUnderOtherDeclarationOther {
+    renamed
+      and otherDeclarationBinding == BindsOther
   }
 }
