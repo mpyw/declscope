@@ -702,6 +702,37 @@ func TestNestedConfigInheritsAndOverrides(t *testing.T) {
 	}
 }
 
+// TestNestedEmptyVocabularyInherits checks that an empty list, null or a bare
+// key for a namespace states nothing, so the namespace keeps the words from
+// above, while a non-empty list still replaces them.
+func TestNestedEmptyVocabularyInherits(t *testing.T) {
+	cases := []struct {
+		near string
+		want []string
+	}{
+		{"mouse: []", []string{"wheel"}},
+		{"mouse: ~", []string{"wheel"}},
+		{"mouse:", []string{"wheel"}},
+		{"mouse: [scroll]", []string{"scroll"}},
+	}
+	for _, c := range cases {
+		t.Run(c.near, func(t *testing.T) {
+			root := t.TempDir()
+			write(t, root, "go.mod", "module example.com/m\n")
+			write(t, root, ".declscope.yaml", "rules:\n  naming:\n    vocabulary:\n      mouse: [wheel]\n")
+			sub := filepath.Join(root, "sub")
+			write(t, sub, ".declscope.yaml", "rules:\n  naming:\n    vocabulary:\n      "+c.near+"\n")
+			opts, _, err := config.Resolve(sub, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(opts.Vocabulary["mouse"], c.want) {
+				t.Errorf("vocabulary[mouse] = %v, want %v", opts.Vocabulary["mouse"], c.want)
+			}
+		})
+	}
+}
+
 // TestSurplusModeComposes checks that rules.surplus composes like every other
 // key: a nested file that states it wins, one that is silent keeps the
 // root's, and it moves no other switch.
