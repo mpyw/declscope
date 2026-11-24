@@ -23,7 +23,11 @@
 // An ignore that answers another's report has done a job, so it is used. The
 // answer is taken over the ignores that silenced nothing, before any answer
 // is counted. So the result does not depend on which ignore is judged first.
-// Two ignores that answer each other are both used.
+// Two ignores that answer each other are both used. The model judges every
+// ignore in one step, so it has no order to vary. Swapping I and J is the
+// closest claim it can make, and IgnoresJudgedSymmetrically states it.
+//
+// The verdict is the same under loose and strict. Only off differs.
 //
 // A file-level ignore that covers the unused rule also answers another
 // report. That is the report of an ignore on a declaration in its file (F
@@ -110,41 +114,54 @@ spec UnusedIgnore {
   // Whether an ignore whose rule list says `says` answers another ignore's
   // unused report at this level.
   def answersAt(says: Names) = if level == File then says != OtherRules else says == Unused
-  // I answers J's report. That report exists only when J silenced nothing.
-  def ignoreAnswersOther() = otherPresent and not otherSilenced and answersAt(ignoreNames)
-  def otherAnswersIgnore() = otherPresent and not ignoreSilenced and answersAt(otherNames)
+  // An ignore that says answererNames answers the other ignore's report. That
+  // report exists only when the other ignore silenced nothing.
+  def answers(answererNames: Names, answeredSilenced: Bool) =
+    otherPresent
+    and not answeredSilenced
+    and answersAt(answererNames)
   // F answers every report of I or J. Like the answers between I and J, this
   // is taken over the ignores that silenced nothing.
-  def fileIgnoreAnswers() =
+  def fileIgnoreAnswersOf(firstSilenced: Bool, secondSilenced: Bool) =
     fileIgnorePresent
-    and (not ignoreSilenced or (otherPresent and not otherSilenced))
+    and (not firstSilenced or (otherPresent and not secondSilenced))
+
+  // The verdicts take the mode and the two ignores as parameters. So a
+  // property can ask what the rule gives under another mode, or with I and J
+  // swapped.
+  def ignoreVerdict(judgedMode: Mode,
+                    firstNames: Names,
+                    firstSilenced: Bool,
+                    secondNames: Names,
+                    secondSilenced: Bool) =
+    judgedMode != Off
+    and not firstSilenced
+    and not answers(firstNames, secondSilenced)
+    and not answers(secondNames, firstSilenced)
+    and not fileIgnorePresent
+  def otherVerdict(judgedMode: Mode,
+                   firstNames: Names,
+                   firstSilenced: Bool,
+                   secondNames: Names,
+                   secondSilenced: Bool) =
+    judgedMode != Off
+    and otherPresent
+    and not secondSilenced
+    and not answers(secondNames, firstSilenced)
+    and not answers(firstNames, secondSilenced)
+    and not fileIgnorePresent
+  def fileIgnoreVerdict(judgedMode: Mode, firstSilenced: Bool, secondSilenced: Bool) =
+    judgedMode != Off
+    and fileIgnorePresent
+    and not fileIgnoreSilenced
+    and not fileIgnoreAnswersOf(firstSilenced, secondSilenced)
 
   fair action judge() {
     requires phase == 1
     phase = 2
-    ignoreReported =
-      mode != Off
-      and not ignoreSilenced
-      and not ignoreAnswersOther()
-      and not otherAnswersIgnore()
-      and not fileIgnorePresent
-    otherReported =
-      mode != Off
-      and otherPresent
-      and not otherSilenced
-      and not otherAnswersIgnore()
-      and not ignoreAnswersOther()
-      and not fileIgnorePresent
-    fileIgnoreReported =
-      mode != Off
-      and fileIgnorePresent
-      and not fileIgnoreSilenced
-      and not fileIgnoreAnswers()
-  }
-
-  // --- off says nothing ----------------------------------------------------------
-  invariant OffReportsNothing {
-    mode == Off => not ignoreReported and not otherReported and not fileIgnoreReported
+    ignoreReported = ignoreVerdict(mode, ignoreNames, ignoreSilenced, otherNames, otherSilenced)
+    otherReported = otherVerdict(mode, ignoreNames, ignoreSilenced, otherNames, otherSilenced)
+    fileIgnoreReported = fileIgnoreVerdict(mode, ignoreSilenced, otherSilenced)
   }
 
   // --- no ignore exempts itself --------------------------------------------------
@@ -155,32 +172,46 @@ spec UnusedIgnore {
     (phase == 2 and not otherPresent and not fileIgnorePresent)
     => (ignoreReported == (mode != Off and not ignoreSilenced))
   }
-  // F alone, with nothing to answer, is reported like any lone ignore.
-  invariant FileNeverExemptsItself {
-    (phase == 2 and fileIgnorePresent and ignoreSilenced and not otherPresent)
-    => (fileIgnoreReported == (mode != Off and not fileIgnoreSilenced))
-  }
-  // Silencing something is always a use.
-  invariant SilencingIsUse { ignoreSilenced => not ignoreReported }
 
-  // --- answering another is a use, and the answered report is gone -------------
-  invariant AnsweringIsUse  { (phase == 2 and ignoreAnswersOther()) => not ignoreReported }
-  invariant AnsweredIsQuiet { (phase == 2 and ignoreAnswersOther()) => not otherReported }
-  // On a declaration, only an ignore that names unused answers.
-  invariant DeclAnswersByName {
-    (level == Declaration and ignoreAnswersOther()) => ignoreNames == Unused
+  // --- the order of I and J does not matter ----------------------------------------
+  // Swapping I and J swaps their verdicts, and F's verdict stays. An answer
+  // taken one way and not the other would break this.
+  invariant IgnoresJudgedSymmetrically {
+    (phase == 2 and otherPresent)
+    => (ignoreReported == otherVerdict(mode, otherNames, otherSilenced, ignoreNames, ignoreSilenced)
+        and otherReported == ignoreVerdict(mode, otherNames, otherSilenced, ignoreNames, ignoreSilenced)
+        and fileIgnoreReported == fileIgnoreVerdict(mode, otherSilenced, ignoreSilenced))
   }
-  // A file-level ignore that covers unused answers a declaration's ignore.
-  invariant FileAnswersDecl {
-    (phase == 2 and fileIgnorePresent) => (not ignoreReported and not otherReported)
-  }
-  invariant FileAnsweringIsUse {
-    (phase == 2 and fileIgnorePresent and not ignoreSilenced) => not fileIgnoreReported
-  }
-  // Two ignores at one level never both name the bare set.
-  invariant NoBarePair { (otherPresent and ignoreNames == Bare) => otherNames != Bare }
 
-  // Auxiliary.
+  // --- two ignores that answer each other are both used ----------------------------
+  // The antecedent reads the inputs, not answersAt. Neither ignore silenced
+  // anything, and each covers unused in the way its level asks. A rule that
+  // refused mutual answers, so that a group could not exempt one another,
+  // would report both.
+  invariant MutualAnswersAreBothUsed {
+    (phase == 2
+     and otherPresent
+     and not ignoreSilenced
+     and not otherSilenced
+     and ((level == Declaration and ignoreNames == Unused and otherNames == Unused)
+          or (level == File and ignoreNames != OtherRules and otherNames != OtherRules)))
+    => (not ignoreReported and not otherReported)
+  }
+
+  // --- loose and strict agree ----------------------------------------------------
+  // The mode only switches the rule off. Loose and strict judge an ignore the
+  // same way.
+  invariant LooseAndStrictAgree {
+    (phase == 2 and mode != Off)
+    => (ignoreReported == ignoreVerdict(Loose, ignoreNames, ignoreSilenced, otherNames, otherSilenced)
+        and ignoreReported == ignoreVerdict(Strict, ignoreNames, ignoreSilenced, otherNames, otherSilenced)
+        and otherReported == otherVerdict(Loose, ignoreNames, ignoreSilenced, otherNames, otherSilenced)
+        and otherReported == otherVerdict(Strict, ignoreNames, ignoreSilenced, otherNames, otherSilenced)
+        and fileIgnoreReported == fileIgnoreVerdict(Loose, ignoreSilenced, otherSilenced)
+        and fileIgnoreReported == fileIgnoreVerdict(Strict, ignoreSilenced, otherSilenced))
+  }
+
+  // --- auxiliary ---
   invariant JudgedLast   { (ignoreReported or otherReported or fileIgnoreReported) => phase == 2 }
   invariant JOnlyWhenPresent { otherReported => otherPresent }
   invariant FOnlyWhenPresent { fileIgnoreReported => fileIgnorePresent }
@@ -286,6 +317,31 @@ spec UnusedIgnore {
     and fileIgnorePresent
     and not fileIgnoreSilenced
     and fileIgnoreReported
+  }
+  // Two ignores on a declaration that both name unused and silenced nothing.
+  // Each answers the other, so neither is reported.
+  reachable MutualAnswersOnADeclaration {
+    phase == 2
+    and mode == Loose
+    and level == Declaration
+    and ignoreNames == Unused
+    and not ignoreSilenced
+    and otherPresent
+    and otherNames == Unused
+    and not otherSilenced
+    and not fileIgnorePresent
+    and not ignoreReported
+    and not otherReported
+  }
+  // F with nothing to answer is reported under loose, and not under off.
+  reachable OffSilencesTheFileIgnore {
+    phase == 2
+    and mode == Off
+    and ignoreSilenced
+    and not otherPresent
+    and fileIgnorePresent
+    and not fileIgnoreSilenced
+    and not fileIgnoreReported
   }
   reachable OffIsSilent {
     phase == 2

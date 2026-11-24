@@ -25,11 +25,10 @@ spec ConfigInherit {
   enum Mode   { Never, Always }
   // What one level says about a value key: nothing, or one of the values.
   enum Stated { Unset, AsNever, AsAlways }
-  // What one level says about one namespace's vocabulary entry. Namespace A
-  // needs two words, so the two levels can disagree. Namespace B only has to
-  // be present or absent.
-  enum Word     { NoWord, FirstWord, SecondWord }
-  enum Presence { Absent, Present }
+  // What one level says about one namespace's vocabulary entry. Both
+  // namespaces take the same type. So a rule that let one namespace take the
+  // other's word could be written, and NamespaceANeverReadsB can catch it.
+  enum Word   { NoWord, FirstWord, SecondWord }
   // Which level supplied the value that took effect.
   enum Level  { Builtin, Outer, Mid, Near }
 
@@ -44,15 +43,15 @@ spec ConfigInherit {
     // Two levels are enough to see it.
     vocabularyAAtOuter: Word = NoWord,
     vocabularyAAtNear: Word = NoWord,
-    vocabularyBAtOuter: Presence = Absent,
-    vocabularyBAtNear: Presence = Absent,
-    // The resolution is recorded, and that keeps the chain load-bearing. An
-    // invariant over the defs alone would hold however resolve() was written.
+    vocabularyBAtOuter: Word = NoWord,
+    vocabularyBAtNear: Word = NoWord,
+    // The resolution is recorded. Each property compares this record with
+    // the rule evaluated on other inputs.
     resolved: Bool = false,
     resolvedQualify: Mode = Never,
     resolvedQualifyFrom: Level = Builtin,
     resolvedVocabularyA: Word = NoWord,
-    resolvedVocabularyB: Presence = Absent
+    resolvedVocabularyB: Word = NoWord
   }
 
   action configure(givenQualifyAtOuter: Stated,
@@ -60,8 +59,8 @@ spec ConfigInherit {
                    givenQualifyAtNear: Stated,
                    givenVocabularyAAtOuter: Word,
                    givenVocabularyAAtNear: Word,
-                   givenVocabularyBAtOuter: Presence,
-                   givenVocabularyBAtNear: Presence) {
+                   givenVocabularyBAtOuter: Word,
+                   givenVocabularyBAtNear: Word) {
     requires not configured
     configured = true
     qualifyAtOuter = givenQualifyAtOuter
@@ -83,65 +82,78 @@ spec ConfigInherit {
     if stated != Unset then here else otherwise
 
   // The nearest level that states the key wins. No level nearer than that
-  // states it. The built-in default is Never.
-  def effectiveQualify() =
-    modeOr(qualifyAtNear,
-           modeOr(qualifyAtMid,
-                  modeOr(qualifyAtOuter, Never)))
-  def effectiveQualifySource() =
-    sourceOr(qualifyAtNear, Near,
-             sourceOr(qualifyAtMid, Mid,
-                      sourceOr(qualifyAtOuter, Outer, Builtin)))
+  // states it. The built-in default is Never. The levels are parameters, so
+  // a property can ask what the rule gives for other inputs.
+  def qualifyOf(outer: Stated, mid: Stated, near: Stated) =
+    modeOr(near,
+           modeOr(mid,
+                  modeOr(outer, Never)))
+  def qualifySourceOf(outer: Stated, mid: Stated, near: Stated) =
+    sourceOr(near, Near,
+             sourceOr(mid, Mid,
+                      sourceOr(outer, Outer, Builtin)))
+
+  // What a level states, read by its name. Only the properties read it.
+  def statedAt(level: Level) =
+    if level == Near then qualifyAtNear
+    else if level == Mid then qualifyAtMid
+    else if level == Outer then qualifyAtOuter
+    else Unset
 
   // A map merges per key. The nearer file wins the keys it states. The keys
   // it does not state keep the value from above. If the whole map were
-  // replaced, adding one word would mean restating every other word.
-  def mergedVocabularyA() =
-    if vocabularyAAtNear != NoWord then vocabularyAAtNear else vocabularyAAtOuter
-  def mergedVocabularyB() =
-    if vocabularyBAtNear != Absent then vocabularyBAtNear else vocabularyBAtOuter
+  // replaced, adding one word would mean restating every other word. Each
+  // def takes both namespaces' inputs, so a rule that reads the other
+  // namespace can be written and caught.
+  def vocabularyAOf(aOuter: Word, aNear: Word, bOuter: Word, bNear: Word) =
+    if aNear != NoWord then aNear else aOuter
+  def vocabularyBOf(aOuter: Word, aNear: Word, bOuter: Word, bNear: Word) =
+    if bNear != NoWord then bNear else bOuter
 
   action resolve() {
     requires configured
     requires not resolved
     resolved = true
-    resolvedQualify = effectiveQualify()
-    resolvedQualifyFrom = effectiveQualifySource()
-    resolvedVocabularyA = mergedVocabularyA()
-    resolvedVocabularyB = mergedVocabularyB()
+    resolvedQualify = qualifyOf(qualifyAtOuter, qualifyAtMid, qualifyAtNear)
+    resolvedQualifyFrom = qualifySourceOf(qualifyAtOuter, qualifyAtMid, qualifyAtNear)
+    resolvedVocabularyA = vocabularyAOf(vocabularyAAtOuter, vocabularyAAtNear, vocabularyBAtOuter, vocabularyBAtNear)
+    resolvedVocabularyB = vocabularyBOf(vocabularyAAtOuter, vocabularyAAtNear, vocabularyBAtOuter, vocabularyBAtNear)
   }
 
-  invariant ResolutionNeedsConfig { resolved => configured }
+  // --- the value and its source agree ------------------------------------------
+  // The value and the source come from two separate defs. The level named as
+  // the source states the key, and the value is what that level states. With
+  // no level stating it, the source is the builtin and the value is Never.
+  invariant ValueComesFromItsSource {
+    resolved
+      => (if resolvedQualifyFrom == Builtin
+          then resolvedQualify == Never
+          else statedAt(resolvedQualifyFrom) != Unset
+               and resolvedQualify == modeOf(statedAt(resolvedQualifyFrom)))
+  }
 
-  // --- a stated key wins over everything above it ---------------------------
-  invariant NearestStatedWins {
+  // --- a silent level is transparent ---------------------------------------------
+  // The claim the rejected lookup got wrong. A file that does not state the
+  // key changes nothing. So the result is the same as for the stack with that
+  // level removed. The model has three levels, so removing one leaves two.
+  // Those two are put at Mid and Near, with Outer silent.
+  invariant SilentLevelIsTransparent {
+    resolved
+      => (qualifyAtNear == Unset
+          => resolvedQualify == qualifyOf(Unset, qualifyAtOuter, qualifyAtMid))
+         and (qualifyAtMid == Unset
+              => resolvedQualify == qualifyOf(Unset, qualifyAtOuter, qualifyAtNear))
+  }
+
+  // --- a stated key wins over everything above it -------------------------------
+  // When Near states the key, the result does not read Mid or Outer.
+  invariant StatedNearIgnoresTheLevelsAbove {
     resolved and qualifyAtNear != Unset
-      => resolvedQualify == modeOf(qualifyAtNear)
-         and resolvedQualifyFrom == Near
-  }
-  invariant MidWinsWhenNearIsSilent {
-    resolved and qualifyAtNear == Unset and qualifyAtMid != Unset
-      => resolvedQualify == modeOf(qualifyAtMid)
-         and resolvedQualifyFrom == Mid
-  }
-  // The claim the rejected lookup got wrong. The two nearer files do not
-  // state a key. The key still comes from the root. It is not dropped just
-  // because a nearer file exists.
-  invariant OuterSurvivesTwoSilentLevels {
-    resolved
-    and qualifyAtNear == Unset
-    and qualifyAtMid == Unset
-    and qualifyAtOuter != Unset
-      => resolvedQualify == modeOf(qualifyAtOuter)
-         and resolvedQualifyFrom == Outer
-  }
-  invariant AllSilentTakesTheBuiltin {
-    resolved
-    and qualifyAtNear == Unset
-    and qualifyAtMid == Unset
-    and qualifyAtOuter == Unset
-      => resolvedQualify == Never
-         and resolvedQualifyFrom == Builtin
+      => (forall otherOuter: Stated {
+            forall otherMid: Stated {
+              resolvedQualify == qualifyOf(otherOuter, otherMid, qualifyAtNear)
+            }
+          })
   }
 
   // Each level is witnessed supplying the value while the others differ. So
@@ -183,16 +195,45 @@ spec ConfigInherit {
   }
 
   // --- the map merges and is not replaced ------------------------------------
+  // A namespace's result does not read the other namespace's inputs. So
+  // neither namespace can take the other's word. A nearer map that replaced
+  // the whole map would also fail here: whether Near states B would decide A.
+  invariant NamespaceANeverReadsB {
+    resolved
+      => (forall otherOuter: Word {
+            forall otherNear: Word {
+              resolvedVocabularyA == vocabularyAOf(vocabularyAAtOuter, vocabularyAAtNear, otherOuter, otherNear)
+            }
+          })
+  }
+  invariant NamespaceBNeverReadsA {
+    resolved
+      => (forall otherOuter: Word {
+            forall otherNear: Word {
+              resolvedVocabularyB == vocabularyBOf(otherOuter, otherNear, vocabularyBAtOuter, vocabularyBAtNear)
+            }
+          })
+  }
+  // A namespace a nearer file leaves unstated keeps the value from above. As
+  // for qualify, the result is the same with the silent level removed.
+  invariant SilentVocabularyLevelIsTransparent {
+    resolved
+      => (vocabularyAAtNear == NoWord
+          => resolvedVocabularyA == vocabularyAOf(NoWord, vocabularyAAtOuter, vocabularyBAtOuter, vocabularyBAtNear))
+         and (vocabularyBAtNear == NoWord
+              => resolvedVocabularyB == vocabularyBOf(vocabularyAAtOuter, vocabularyAAtNear, NoWord, vocabularyBAtOuter))
+  }
+
   // The case that matters. The root states namespace A, and the nested file
   // states namespace B. Both survive. A map that was replaced would lose A.
   reachable BothNamespacesSurvive {
     resolved
     and vocabularyAAtOuter == FirstWord
     and vocabularyAAtNear == NoWord
-    and vocabularyBAtOuter == Absent
-    and vocabularyBAtNear == Present
+    and vocabularyBAtOuter == NoWord
+    and vocabularyBAtNear == SecondWord
     and resolvedVocabularyA == FirstWord
-    and resolvedVocabularyB == Present
+    and resolvedVocabularyB == SecondWord
   }
   // On the one key both files state, the nearer file wins.
   reachable NearerWinsTheSharedKey {
@@ -201,37 +242,14 @@ spec ConfigInherit {
     and vocabularyAAtNear == SecondWord
     and resolvedVocabularyA == SecondWord
   }
-  invariant StatedNearOwnsItsKey {
-    resolved and vocabularyAAtNear != NoWord
-      => resolvedVocabularyA == vocabularyAAtNear
-  }
-  invariant UnstatedNearInheritsItsKey {
-    resolved and vocabularyAAtNear == NoWord
-      => resolvedVocabularyA == vocabularyAAtOuter
-  }
-  // Namespace B inherits the same way. Without this, B could ignore the
-  // outer level and no property here would change.
-  invariant UnstatedNearInheritsNamespaceB {
-    resolved and vocabularyBAtNear == Absent
-      => resolvedVocabularyB == vocabularyBAtOuter
-  }
   // The root states B, the nested file does not, and B survives.
   reachable NamespaceBInheritedFromOuter {
     resolved
-    and vocabularyBAtOuter == Present
-    and vocabularyBAtNear == Absent
-    and resolvedVocabularyB == Present
+    and vocabularyBAtOuter == FirstWord
+    and vocabularyBAtNear == NoWord
+    and resolvedVocabularyB == FirstWord
   }
-  // What this checks: each namespace's result is the value of one of its own
-  // two levels. What it does not check: that one namespace cannot take the
-  // other's value. A holds a Word and B holds a Presence. So the types
-  // already keep them apart, and that half holds by typing alone. Issue #407
-  // tracks the README claim this is cited for.
-  invariant NamespacesDoNotBleed {
-    resolved
-      => (resolvedVocabularyA == vocabularyAAtNear
-          or resolvedVocabularyA == vocabularyAAtOuter)
-         and (resolvedVocabularyB == vocabularyBAtNear
-              or resolvedVocabularyB == vocabularyBAtOuter)
-  }
+
+  // --- auxiliary ---
+  invariant ResolutionNeedsConfig { resolved => configured }
 }
