@@ -425,7 +425,7 @@ There is no equivalent for a `var`/`const`/`type` block. A fix is anchored on th
 
 The guard still runs with the switch off, and still claims its name in `reserved`. That keeps the names claimed, and so every other rename's answer, the same either way. `inspect`'s `names[].fixable` reports the guard's answer (`finding.renamable`), not the switch, so a repository can see what opting in would rename before it does.
 
-Two alternatives were rejected. An analyzer flag such as `-rename` does not reach golangci-lint, and under `go vet -vettool` it would have to be on every command line. A config key reaches every driver through `.declscope.yaml`. Keeping the fix on by default makes `-fix` over a whole package write a prefix on every reported name, which is the bulk rename the adoption skill warns against. `spec/naming_rules.fsl` models the switch (`namingFixOn`, `FixOnlyWhenOn`), and `testdata/src/qualifyfixoptin` pins the default and a nearer config turning it on and off.
+Two alternatives were rejected. An analyzer flag such as `-rename` does not reach golangci-lint, and under `go vet -vettool` it would have to be on every command line. A config key reaches every driver through `.declscope.yaml`. Keeping the fix on by default makes `-fix` over a whole package write a prefix on every reported name, which is the bulk rename the adoption skill warns against. `spec/naming_rules.fsl` models the switch (`namingFixOn`) and shows that neither the report nor `fixable()` reads it (`ReportIgnoresTheFixSwitch`, `FixableIgnoresTheFixSwitch`). `testdata/src/qualifyfixoptin` pins that the fix needs the switch: the default, and a nearer config turning it on and off.
 
 ### Why the rename fix withholds
 

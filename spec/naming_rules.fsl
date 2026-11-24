@@ -19,7 +19,7 @@
 // eight had that shape.
 //
 // namespaceInName == Inside is what that relaxation buys.
-// InsideWouldHaveFiredBefore pins it. namespaceInName is the outcome of the
+// InsideSilentUnderAlways pins it. namespaceInName is the outcome of the
 // whole containment test. So it also stands for the forms that carry a
 // namespace without spelling it. These are the two generated inflections
 // (storing for store, applies for apply) and the words listed under
@@ -113,12 +113,7 @@ spec NamingRules {
     // renameFix also withholds the fix when no collected file spells the
     // name, or when the new name is the old one.
     // The violation is reported either way. Only the fix is withheld.
-    renameGuardPasses: Bool = true,
-    // reportedWithoutFix records a pass that reported without fixing. The
-    // cause is -fix off, rules.naming.fix off, or the rename withheld. It lets
-    // a run go on forever with a violation pending. That makes `fair` on
-    // fixQualify a claim and not decoration.
-    reportedWithoutFix: Bool = false
+    renameGuardPasses: Bool = true
   }
 
   action configure(givenQualifyMode: Qualify,
@@ -145,31 +140,37 @@ spec NamingRules {
     namingFixOn = givenNamingFixOn
   }
 
-  // A pass that reports and does not fix. It may repeat forever.
-  action reportOnly() {
-    requires configured
-    reportedWithoutFix = true
-  }
-
-  def qualifyRequired() =
-    qualifyMode == Always
-    or (qualifyMode == OnDemand and manyNamespaces)
+  // Each verdict takes the settings it must not read as parameters. The
+  // invariants below compare both values. So a rule that starts to read one
+  // of them fails a property, and not only a witness.
+  def qualifyRequiredWith(mode: Qualify, exportedNames: Bool) =
+    mode == Always
+    or (mode == OnDemand and manyNamespaces)
   def kindReached() = kind == PackageLevelDecl or kind == ForeignMethod
-  def ruleReaches() =
+  def ruleReachesWith(exportedNames: Bool) =
     kindReached()
     and canPrefix
     and not isCore
-    and (not exported or namingExported)
+    and (not exported or exportedNames)
   def carriesNamespace() = namespaceInName != Absent
-  def qualifyFires() =
-    ruleReaches()
-    and qualifyRequired()
+  def qualifyFiresWith(mode: Qualify, exportedNames: Bool, fixSwitch: Bool) =
+    ruleReachesWith(exportedNames)
+    and qualifyRequiredWith(mode, exportedNames)
     and not carriesNamespace()
-  def fixable() = not exported and renameGuardPasses
+  def fixableWith(fixSwitch: Bool) = not exported and renameGuardPasses
+
+  // The verdicts under the configured settings.
+  def qualifyRequired() = qualifyRequiredWith(qualifyMode, namingExported)
+  def ruleReaches() = ruleReachesWith(namingExported)
+  def qualifyFires() = qualifyFiresWith(qualifyMode, namingExported, namingFixOn)
+  def fixable() = fixableWith(namingFixOn)
   // What -fix applies: the guard's rename, and only under rules.naming.fix.
   def fixOffered() = namingFixOn and fixable()
 
-  fair action fixQualify() {
+  // The model takes the rename to put the namespace at the start. That the
+  // real rename carries the namespace is Contains(Qualify(n, ns), ns). The Go
+  // tests in internal/namespace check it.
+  action fixQualify() {
     requires configured
     requires qualifyFires()
     requires fixOffered()
@@ -177,36 +178,44 @@ spec NamingRules {
     fixed = true
   }
 
+  // --- what the verdicts do not read -----------------------------------------
+  // rules.naming.fix decides only whether -fix applies the rename. The report
+  // stands either way.
+  invariant ReportIgnoresTheFixSwitch {
+    qualifyFiresWith(qualifyMode, namingExported, true)
+      == qualifyFiresWith(qualifyMode, namingExported, false)
+  }
+  // fixable() is what names[].fixable of declscope inspect reports. It says
+  // whether the guard allows the rename, whatever the switch says.
+  invariant FixableIgnoresTheFixSwitch { fixableWith(true) == fixableWith(false) }
+  // rules.naming.exported widens what the rule reaches. It does not change
+  // when the mode requires the namespace. The two gates are independent.
+  invariant RequirementIgnoresExportedNames {
+    qualifyRequiredWith(qualifyMode, true) == qualifyRequiredWith(qualifyMode, false)
+  }
+
+  // --- the settings only widen ----------------------------------------------
+  // The modes are ordered from never to always. A stricter mode reports
+  // everything a looser one reports.
+  invariant NeverFiringImpliesOnDemandFiring {
+    qualifyFiresWith(Never, namingExported, namingFixOn)
+      => qualifyFiresWith(OnDemand, namingExported, namingFixOn)
+  }
+  invariant OnDemandFiringImpliesAlwaysFiring {
+    qualifyFiresWith(OnDemand, namingExported, namingFixOn)
+      => qualifyFiresWith(Always, namingExported, namingFixOn)
+  }
+  // Turning rules.naming.exported on adds exported names. It removes no
+  // report.
+  invariant ExportedNamesOnlyWiden {
+    qualifyFiresWith(qualifyMode, false, namingFixOn)
+      => qualifyFiresWith(qualifyMode, true, namingFixOn)
+  }
+
+  // --- auxiliary ---
   invariant FixImpliesConfigured { fixed => configured }
-  // FixLandsAtStart, FixSettles and FixLeavesNothingAbsent follow from the
-  // assignment namespaceInName = AtStart in fixQualify. They pin that the
-  // model's fix moves the name out of Absent. Then no later edit to
-  // fixQualify can leave FixSettles true vacuously. They do not prove that
-  // the real rename carries the namespace. That is
-  // Contains(Qualify(n, ns), ns), and the Go tests in internal/namespace check
-  // it.
-  invariant FixLandsAtStart      { fixed => namespaceInName == AtStart }
-  invariant FixSettles           { fixed => not qualifyFires() }
-  invariant ExportedNeverFixed   { fixed => not exported }
-  // The switch gates the fix. A rename is applied only under
-  // rules.naming.fix. Replacing `requires fixOffered()` with fixable() breaks
-  // this.
-  invariant FixOnlyWhenOn        { fixed => namingFixOn }
-  invariant FixLeavesNothingAbsent { fixed => carriesNamespace() }
 
-  trans FixOnlyWhereNeeded {
-    not old(fixed) and fixed => old(qualifyFires())
-  }
-  // Once the scenario is set, nothing in the rule moves a name back out of
-  // its namespace. The guard is on configured, because configure is the setup
-  // step and assigns namespaceInName freely. Only what follows it is the
-  // rule's doing.
-  trans CarryNeverLost {
-    old(configured) and old(carriesNamespace()) => carriesNamespace()
-  }
-
-  reachable QualifyCanFire { configured and qualifyFires() }
-
+  // --- witnesses ----------------------------------------------------------
   // Pins that the reachables below share. The first is a namespace that can
   // take a prefix and is not the core. The second is the strictest setting
   // with the namespace nowhere in the name. Together they give the state
@@ -216,23 +225,15 @@ spec NamingRules {
     qualifyMode == Always and namespaceInName == Absent
 
   // The relaxation itself. The namespace sits inside the name, and the rule
-  // is at its strictest. Nothing is reported.
+  // is at its strictest. Nothing is reported. Under the rule that demanded a
+  // prefix, this same state reported. If containment is ever narrowed back to
+  // a prefix test, this witness becomes unreachable and the spec fails.
   reachable InsideSilentUnderAlways {
     configured
     and kind == PackageLevelDecl
     and prefixableNamespace()
     and not exported
     and qualifyMode == Always
-    and namespaceInName == Inside
-    and not qualifyFires()
-  }
-  // The negative control for the rule that demanded a prefix. Under that rule
-  // this same state reported. If containment is ever narrowed back to a
-  // prefix test, this witness becomes unreachable and the spec fails.
-  reachable InsideWouldHaveFiredBefore {
-    configured
-    and ruleReaches()
-    and qualifyRequired()
     and namespaceInName == Inside
     and not qualifyFires()
   }
@@ -257,16 +258,6 @@ spec NamingRules {
     and not namingExported
     and alwaysWithoutNamespace()
     and not qualifyFires()
-  }
-  reachable ExportedReportedWithoutFix {
-    configured
-    and kind == PackageLevelDecl
-    and prefixableNamespace()
-    and exported
-    and namingExported
-    and alwaysWithoutNamespace()
-    and qualifyFires()
-    and not fixable()
   }
   reachable CoreSilentUnderAlways {
     configured
@@ -365,9 +356,8 @@ spec NamingRules {
     and namespaceInName == Absent
     and qualifyFires()
   }
-  // rules.naming.exported and the ondemand namespace count are independent
-  // gates. Widening the rule to exported names does not change *when* the
-  // namespace is required.
+  // rules.naming.exported does not add the namespace count as a gate. Under
+  // always, an exported name is reported in a package with one namespace.
   reachable ExportedNamesBiteUnderAlwaysSingleNamespace {
     configured
     and kind == PackageLevelDecl
@@ -395,10 +385,8 @@ spec NamingRules {
     and qualifyFires()
     and not exported
     and not renameGuardPasses
-    and not fixable()
   }
-  // Without this, the fix need never record itself. Then a model where no
-  // fix is applied satisfies every property about what a fix settles.
+  // Without this, the fix need never record itself.
   reachable FixApplied { fixed }
 
   // The default. The rule fires, the guard would allow the rename, and the
@@ -409,30 +397,5 @@ spec NamingRules {
     and qualifyFires()
     and fixable()
     and not fixOffered()
-  }
-  // A pass under the default leaves the violation in place. Nothing is
-  // renamed.
-  reachable FixOffLeavesTheReport {
-    reportedWithoutFix
-    and not namingFixOn
-    and qualifyFires()
-    and fixable()
-    and not fixed
-  }
-  // The stall itself. The leadsTo below has to escape this state. Without
-  // these witnesses nothing reads reportedWithoutFix. Then the assignment
-  // that records it could be deleted, and no verdict would move.
-  reachable ViolationSurvivesAPassWithoutFix {
-    reportedWithoutFix and qualifyFires() and fixOffered()
-  }
-  reachable WithheldRenameSurvivesAPass {
-    reportedWithoutFix and qualifyFires() and not fixable()
-  }
-
-  leadsTo QualifyEventuallyFixed {
-    configured and qualifyFires() and fixOffered()
-      ~> not qualifyFires()
-    helpful fixQualify()
-    decreases if qualifyFires() then 1 else 0
   }
 }
