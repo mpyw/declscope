@@ -19,7 +19,7 @@
 // crossing is reported. So nothing withholds the deletion, and the fix is
 // offered. The fix follows the reports it could change. No report is being
 // silenced. unused_modes.fsl models the withholding. It takes the crossing as
-// its input aCrosses, which is false under boundary off. This spec models
+// its input takerCrosses, which is false under boundary off. This spec models
 // reports only.
 //
 // Scope resolution is the subject of knobs.fsl and is not repeated here. This

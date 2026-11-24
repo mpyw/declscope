@@ -223,7 +223,7 @@ spec FixMembers {
   // The scope the member takes from the levels outside its own directive. And
   // whether that scope is the same under every configuration. It is not when
   // defaults.unexported decides it. This is the binding test of
-  // unused_bind.fsl. It reads the source the run leaves behind, not the
+  // unused_modes.fsl. It reads the source the run leaves behind, not the
   // source the run read.
   def memberOuterScopeIsConfigIndependent() =
     typeDirectiveAfter() != NoDirective

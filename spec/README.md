@@ -46,10 +46,9 @@ the binary.
 | `knobs.fsl` | A directive narrows an exported declaration anyway, including a type's directive reaching an exported member | As above |
 | `knobs.fsl` | A reference from inside the namespace never crosses a boundary | As above |
 | `knobs.fsl` | A boundary is reported only for a private scope and only across a namespace, and on an exported declaration only where a directive narrowed it — each guard witnessed by an invariant its removal breaks | As above |
-| `unused_bind.fsl` | Under `rules.unused: loose`, a scope directive is used when anything in its reach binds to it, and reported when nothing does | Every combination of stated scope, enclosing directive, `defaults.unexported`, target presence and exportedness, and two enclosed declarations by exportedness and shadowing |
-| `unused_bind.fsl` | Binding is quantified over configurations *and* over enclosing directives. Restating the default of the day never counts, and `//declscope:shared` under an enclosing `private` always does. `strict` reads the configuration in force, in `unused_modes.fsl` | As above |
-| `unused_modes.fsl` | Under `rules.unused: strict` a scope directive is also reported when everything it reaches, shadowed or not, would have the scope it names without it under the configuration in force. `loose` reports exactly what `unused_bind.fsl` does, `strict` keeps every `loose` report, and `off` reports nothing | Every combination of `rules.unused`, stated scope, `defaults.unexported`, a declaration taking the directive's scope and one a nearer directive shadows, each by exportedness and next level out, and the five reasons the fix is withheld: a crossing, seen or named by a build-excluded file, that `boundary` reports under `private`; a widened owner; what `surplus` judges under `shared`; an outer directive that keeps its report; and unread in-package tests, which withhold every fix |
-| `unused_modes.fsl` | The fix that deletes the directive leaves the declaration's scope where it was, and leaves the nearer directive judged against the scope it was judged against. It is offered only under `strict`, and never where it would change another report. A crossing under `//declscope:shared` or with `boundary: off`, and a `//declscope:private` that `surplus` depends on, change no report and do not withhold it | As above |
+| `unused_modes.fsl` | Under `rules.unused: loose`, a scope directive is used when anything in its reach binds to it, and reported when nothing does. Binding is quantified over configurations *and* over enclosing directives. The `loose` verdict does not read `defaults.unexported` (`LooseIgnoresTheDefault`), and `//declscope:shared` under an enclosing `private` binds. Shadowing one more declaration never turns a reported directive into a used one (`ShadowingNeverMakesItUsed`) | Every combination of `rules.unused`, stated scope, next level out, `defaults.unexported`, target presence and exportedness, and two enclosed declarations by exportedness, shadowing and the scope the shadowing directive names. Also the five reasons the fix is withheld: a crossing, seen or named by a build-excluded file, that `boundary` reports under `private`; a widened owner; what `surplus` judges under `shared`; an outer directive that keeps its report; and unread in-package tests, which withhold every fix |
+| `unused_modes.fsl` | Under `strict` a scope directive is also reported when everything it reaches, shadowed or not, would have the scope it names without it under the configuration in force. `strict` reads `defaults.unexported` (`StrictReadsTheDefault`) and keeps every `loose` report (`StrictReportsWhatLooseReports`). `off` reports nothing | As above |
+| `unused_modes.fsl` | The fix that deletes the directive leaves every declaration's scope where it was, resolved again over the levels as written (`FixKeepsEveryScope`). Every nearer directive is reported after the fix exactly when it was before (`FixKeepsTheNearerJudgment`). The fix runs only where no taker had a boundary report (`FixMovesNoBoundaryReport`). A crossing under `//declscope:shared` or with `boundary: off`, and a `//declscope:private` that `surplus` depends on, change no report and do not withhold it | As above |
 | `unused_ignore.fsl` | No ignore answers the report that it is itself unused, whatever it names, `unused` and bare included. An ignore answers another's report and is then used: on a declaration only when it names `unused`, at the file level also when bare. Two ignores that answer each other are both used. Swapping the two ignores swaps their verdicts, so no answer is taken one way only. A file-level ignore covering `unused` also answers the report of an ignore on a declaration in its file. `loose` and `strict` judge every ignore alike, and `off` reports nothing, the file-level ignore included. Not modeled: a second ignore naming the same rules on one binding or one file, which is the `directive` rule's duplicate and is dropped (#211, #242), and an ignore naming a module-wide rule or answering one's report, which `shrink_ignore.fsl` covers | Every combination of `rules.unused`, the level, what two ignores at that level name and silence, short of two bare ones, and a file-level ignore beside two on a declaration |
 | `unused_ignore_unseen.fsl` | Over a run that reads a constrained file and one that leaves it out (#168, #172, #414), one ignore on a declaration passes both wherever either needs it. The run that leaves the file out keeps a `boundary` ignore whose declaration that file names. For a field, it also keeps one where that file writes a type name an unkeyed literal fills the field through: its struct, an alias, a defined type, a named pointer, a constraint, or a slice, array or map type that holds it. Such a literal crosses into the field by position. A type name keeps nothing for a declaration other than a field. Where the file writes no name of the package, both runs find the same for `boundary` and for `surplus`. An ignore of a rule judged on the declaration is judged alike in both | Every combination of the rule the ignore names, a crossing every run sees, a crossing only the constrained file makes by name or by position, whether that file names the declaration, a field's type or a container of it, and whether the other rule's finding fires |
 | `rename_guarded.fsl` | The guard `safeToRename` applies — every scope Go resolves through — makes the rename sound, and dropping any one of the four checks breaks it. The reference resolves after the rename where it resolved before, and a local, import or declaration that binds an unrelated name does not withhold the rename | Every binding environment at the reference site |
@@ -136,7 +135,7 @@ step and needs gigabytes for the same claims these prove in single-digit
 megabytes.
 
 ```console
-./spec/verify.sh     # what CI runs: twenty-three proved, two violated
+./spec/verify.sh     # what CI runs: twenty-two proved, two violated
 ```
 
 Or one at a time:
@@ -158,10 +157,9 @@ fslc verify rename_reserved.fsl  --depth 3
 fslc verify surplus.fsl         --depth 2
 fslc verify surplus_strict.fsl  --depth 5
 fslc verify type_fix_members.fsl --depth 4
-fslc verify unused_bind.fsl     --depth 4
 fslc verify unused_ignore.fsl   --depth 2
 fslc verify unused_ignore_unseen.fsl --depth 3
-fslc verify unused_modes.fsl    --depth 6
+fslc verify unused_modes.fsl    --depth 5
 fslc verify shrink.fsl          --depth 6
 fslc verify shrink_settle.fsl   --depth 8
 fslc verify shrink_claim.fsl    --depth 8
@@ -170,7 +168,7 @@ fslc verify rename_sound.fsl     --depth 2   # expected: violated
 fslc verify rename_siblings.fsl  --depth 3   # expected: violated
 ```
 
-`knobs.fsl`, `unused_bind.fsl`, `surplus.fsl` and `unused_ignore.fsl` configure once and then
+`knobs.fsl`, `surplus.fsl` and `unused_ignore.fsl` configure once and then
 have only the actions that record a report, so their reachables are witnessed at
 step 1 or 2; the others add a fix action and witness at step 2.
 `filter.fsl` decides in one step and then runs the other order in two, so it
@@ -180,8 +178,8 @@ product of every parameter, reports and fixes, so it witnesses by step 5. `type_
 configures in two steps and witnesses at step 3; it runs to depth 4 so that
 the bounded check also holds a run that writes both the type's fix and the
 member's. `unused_modes.fsl`
-configures in four steps for the same reason, judges, and fixes, so it witnesses
-by step 6. `shrink.fsl` configures in three steps, reports, and fixes, so it
+configures in three steps for the same reason, judges, and fixes, so it witnesses
+by step 5. `shrink.fsl` configures in three steps, reports, and fixes, so it
 witnesses by step 5. `shrink_ignore.fsl` and `unused_ignore_unseen.fsl`
 configure once and judge the two runs one after the other, so they witness at
 step 3. `rename_selections.fsl` configures the members and the interfaces in two
@@ -192,7 +190,7 @@ also reports a vacuous antecedent — which is the guard working, and is stated 
 `NothingResolvedNewName` rather than left as a warning. `rename_selections.fsl`
 reports one the same way, stated as `NothingSelectedNewName`.
 
-The twenty-three that pass are `proved` under `--engine induction`, which is what
+The twenty-two that pass are `proved` under `--engine induction`, which is what
 `verify.sh` and CI assert. Bounded verification alone would let an invariant be
 true to a depth without being inductive, and reading the exit code alone would
 let a spec that stopped parsing pass as "violated, as intended" — `fslc` exits
@@ -237,14 +235,15 @@ is a semantics that contradicts the documented one; each was run:
 | A fix is applied to an exported declaration | `violated` |
 | `fair` is dropped from a fix action | `violated` (`leadsTo`); under induction, `unknown_cti` (`progress_action_not_fair`) |
 | A fix is offered where no violation exists, or over the author's own directive | `violated` |
-| A scope directive stops at the first thing in its reach, or at the last | `violated` (`UsedExactlyWhenSomethingBinds`) |
-| The binding test reads `defaults.unexported` instead of quantifying over it | `reachable_failed` (`UnexportedBindsPrivateUnderPrivateDefault`) |
-| The binding test asks only whether the name is exported, ignoring an enclosing directive | `violated` (`UsedExactlyWhenSomethingBinds`) |
+| A scope directive stops at the first thing in its reach, or at the last | `reachable_failed` (`UsedViaFirstEnclosedOnly`, `UsedViaTargetOnly`) |
+| The binding test reads `defaults.unexported` instead of quantifying over it | `violated` (`LooseIgnoresTheDefault`) |
+| The binding test asks only whether the name is exported, ignoring an enclosing directive | `reachable_failed` (`ExportedSharedBindsUnderPrivateOuter`, `RestatingReportedUnderLoose`) |
 | A `var`/`const`/`type` block's directive does not reach the members of a type it holds | `reachable_failed` |
 | `boundary_fix.fsl` stops reading `blockDirective`, or stops discriminating exportedness | `reachable_failed` |
 | `fair` is dropped from `fixBoundary` | `violated` (`leadsTo`); under induction, `unknown_cti` (`progress_action_not_fair`) |
-| A scope directive ignores a nearer directive that shadows it | `violated` (`UsedExactlyWhenSomethingBinds`) |
-| An enclosed declaration never binds while a directive encloses the one that names its scope | `violated` (`UsedExactlyWhenSomethingBinds`) |
+| A scope directive ignores a nearer directive that shadows it | `reachable_failed` (`ShadowedDisagreementKeepsIt`) |
+| A shadowed declaration counts as bound, as if the nearer directive depended on this one | `violated` (`ShadowingNeverMakesItUsed`) |
+| An enclosed declaration never binds while a directive encloses the one that names its scope | `reachable_failed` (`UsedViaFirstEnclosedOnly`, `UsedViaSecondOnly`) |
 | Any one of the four scope checks in `safeToRename` is dropped | `violated` |
 | The build-excluded file is not consulted, so a rename disturbs a name only another configuration writes | `violated` |
 | An unseen in-package test file does not withhold the rename | `violated` |
@@ -280,11 +279,14 @@ is a semantics that contradicts the documented one; each was run:
 | The `strict` fix is offered where it would leave the directive binding nothing | `reachable_failed` (`ReportedWithoutFix`, `WithheldWhereItWouldReword`) |
 | The `strict` fix is offered under a restated directive whose `unused` report it would reword | `reachable_failed` (`WithheldWhereItWouldReword`) |
 | The `strict` fix narrows a type over a member's own `//declscope:private` while `unused` is on | `reachable_failed` (`WithheldOverAMemberThatStatesPrivate`) |
-| `strict` ignores the declarations a nearer directive shadows | `violated` (`StrictAddsOnlyRedundant`) |
-| The `strict` fix is offered on a declaration another namespace uses | `violated` (`FixKeepsOtherReports`) |
-| The `strict` fix is offered by a pass that does not read every file | `violated` (`FixKeepsOtherReports`) |
+| `strict` ignores the declarations a nearer directive shadows | `violated` (`FixKeepsTheNearerJudgment`) |
+| `strict` judges against exportedness and the default, skipping the next level out | `violated` (`FixKeepsEveryScope`) |
+| `strict` takes the default to be `private` whatever `defaults.unexported` says | `violated` (`FixKeepsEveryScope`) |
+| The `strict` fix is offered under `loose` too | `violated` (`FixKeepsTheNearerJudgment`) |
+| The `strict` fix is offered on a declaration another namespace uses | `violated` (`FixMovesNoBoundaryReport`) |
+| The `strict` fix is offered by a pass that does not read every file | `violated` (`FixMovesNoBoundaryReport`) |
 | The `strict` fix is withheld for any crossing, whatever the scope and with `boundary: off` | `reachable_failed` (`CrossingUnderSharedFixes`, `CrossingWithBoundaryOffFixes`, `ExcludedNameUnderSharedFixes`) |
-| A name in a build-excluded file does not count as a crossing for the `strict` fix | `violated` (`FixKeepsOtherReports`) |
+| A name in a build-excluded file does not count as a crossing for the `strict` fix | `violated` (`FixMovesNoBoundaryReport`) |
 | A name in a build-excluded file withholds the `strict` fix whatever the scope, as unread tests do | `reachable_failed` (`CrossingWithBoundaryOffFixes`, `ExcludedNameUnderSharedFixes`) |
 | Unread in-package tests withhold the `strict` fix only for a `private` taker | `reachable_failed` (`TestsUnseenWithholds`) |
 | `surplus` withholds the `strict` fix of a `//declscope:private` | `reachable_failed` (`SurplusIgnoresPrivate`) |
@@ -319,10 +321,10 @@ is a semantics that contradicts the documented one; each was run:
 | Settling stops while a value of a const set is still held by a sibling that keeps its name | `violated` (`Whole`) |
 | Claiming names stops while a loser that was never released is free to claim | `violated` (`Honest`) |
 | A released loser that loses again is released again | `unknown_cti` under `--engine induction` (`Terminates`); bounded depth 8 misses it |
-| `strict` keeps `loose`'s quantifier over configurations | `reachable_failed` |
-| `strict` reports under `loose` | `violated` (`LooseIsUnusedBind`) |
-| `strict` drops the reports `loose` makes | `violated` (`LooseIsUnusedBind`) |
-| `rules.unused: off` still reports | `violated` (`OffReportsNothing`) |
+| `strict` keeps `loose`'s quantifier over configurations | `reachable_failed` (`StrictReadsTheDefault`) |
+| `strict` reports under `loose` | `violated` (`LooseIgnoresTheDefault`) |
+| `strict` drops the reports `loose` makes | `violated` (`StrictReportsWhatLooseReports`) |
+| `rules.unused: off` still reports | `reachable_failed` (`RestatingSilentUnderOff`) |
 | An ignore covering `unused` answers its own unused report | `violated` (`NeverExemptsItself`) |
 | A bare ignore on a declaration answers a sibling's unused report | `reachable_failed` (`BareSiblingDoesNotAnswer`) |
 | A bare file-level ignore does not answer another's unused report | `reachable_failed` (`BareFileIgnoreAnswers`) |
