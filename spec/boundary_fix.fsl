@@ -125,7 +125,7 @@ spec BoundaryFix {
   // --- binding, separate from the guard ---------------------------------------
   // A directive binds this declaration when deleting it would change the
   // scope of the declaration under some value of defaults.unexported. This is
-  // the loose binding test of unused_bind.fsl, for one declaration. It reads
+  // the loose binding test of unused_modes.fsl, for one declaration. It reads
   // scopeUnder only, never statedDirective().
   def declBinds() =
     scopeUnder(Shared, declDirective, blockDirective, typeDirective, fileDirective)
