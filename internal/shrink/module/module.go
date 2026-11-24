@@ -1038,16 +1038,22 @@ func ErrorLine(pkg *packages.Package, cwd string) string {
 // build configuration compiles.
 //
 // So is a file under a directory ./... skips (go help packages): one named
-// testdata, one starting with . or _, or one an ignore directive in the
-// module's go.mod names. ./... and the load leave it out, but it belongs to
-// the module, and go build ./x/testdata/prog compiles it, so it may import
-// an internal package. It is read and marked Skipped, so that what it names
-// withholds a fix without counting as a use, as an external test's use
-// does. A file there that does not parse is passed over: no build compiles
-// it, and testdata holds such files on purpose. An assembly file there is
-// marked the same way. Only two kinds of directory are not read: a vendor
-// directory, since nothing may import a path through one, and a nested
-// module, which is another module.
+// testdata or vendor, one starting with . or _, or one an ignore directive
+// in the module's go.mod names. ./... and the load leave it out, but it
+// belongs to the module, and go build ./x/testdata/prog compiles it, so it
+// may import an internal package. It is read and marked Skipped, so that
+// what it names withholds a fix without counting as a use, as an external
+// test's use does. A file there that does not parse is passed over: no
+// build compiles it, and testdata holds such files on purpose. An assembly
+// file there is marked the same way. Only two kinds of directory are not
+// read: the vendor directory at a module's root, and a nested module, which
+// is another module. The go command uses no other vendor directory, and it
+// builds no package in that one: go build ./vendor/x says "is not a package
+// listed in vendor/modules.txt", or, in a workspace or with -mod=mod, "has
+// no package path". A workspace's vendor directory beside its go.work is
+// that one when the go.work sits at a module's root. Anywhere else in a
+// module's tree, go build ./tools/vendor/x compiles it as an ordinary
+// package, so it is read like any other vendor directory.
 //
 // The walk itself goes everywhere but .git, since it is also looking for
 // go.mod files. A nested module in testdata/tools or _tools/gen is no part
@@ -1111,9 +1117,9 @@ func (m *Module) walkTree(root string, compiled map[string]bool, fset *token.Fil
 			}
 			rel, _ := filepath.Rel(root, path)
 			switch {
-			case name == "vendor":
+			case name == "vendor" && filepath.Dir(path) == root:
 				unread = append(unread, path)
-			case name == "testdata" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") || ignored.matches(rel):
+			case name == "vendor" || name == "testdata" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") || ignored.matches(rel):
 				skipped = append(skipped, path)
 			}
 			return nil

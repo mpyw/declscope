@@ -242,21 +242,17 @@ func TestShrinkModuleUnderInternal(t *testing.T) {
 }
 
 // TestShrinkSkipsWhatGoSkips pins that the walk for build-excluded files
-// skips a vendor directory, as ./... does: nothing may import a path through
-// one. Other directories ./... skips are read, and
-// internal/shrink/testdata/skipped-dirs pins them.
+// skips the vendor directory at the module root: the go command builds no
+// package there. Other directories ./... skips, a vendor directory below the
+// root among them, are read, and internal/shrink/testdata/skipped-dirs pins
+// them.
 func TestShrinkSkipsWhatGoSkips(t *testing.T) {
 	root := shrinkModule(t)
 	// ignore directives, one for a directory at the root only and one for a
 	// directory of that name anywhere, as go help go.mod describes them.
 	writeTree(t, root, "go.mod", testModule+"\nignore (\n\t./gen\n\tstatic\n)\n")
-	for _, dir := range []string{
-		"vendor/example.com/v",
-		// ./... skips a vendor directory at any depth.
-		"internal/a/vendor/w",
-	} {
-		writeTree(t, root, dir+"/x.go", "//go:build never\n\npackage x\n\nimport \"example.com/declscopetest/internal/a\"\n\nvar _ = a.Lonely\n")
-	}
+	writeTree(t, root, "vendor/modules.txt", "")
+	writeTree(t, root, "vendor/example.com/v/x.go", "package x\n\nimport \"example.com/declscopetest/internal/a\"\n\nvar _ = a.Lonely\n")
 	// A file that does not parse in a directory ./... skips refuses nothing,
 	// as it does not for go vet: no build compiles it.
 	writeTree(t, root, "gen/broken.go", "package gen\n\nthis is not Go\n")
@@ -264,11 +260,35 @@ func TestShrinkSkipsWhatGoSkips(t *testing.T) {
 	// ./gen names the root's gen only, so this one is read as usual.
 	writeTree(t, root, "internal/gen/x.go", "//go:build never\n\npackage gen\n\nimport \"example.com/declscopetest/internal/a\"\n\nvar _ = a.Taken\n")
 	out, code := runIn(t, bin, root, "shrink")
-	if code != 3 || !strings.Contains(out, "func Lonely is exported, but nothing outside") {
-		t.Fatalf("exit %d, want Lonely still reported:\n%s", code, out)
+	if code != 3 || !strings.Contains(out, "func Lonely is exported, but nothing outside example.com/declscopetest/internal/a uses it\n") {
+		t.Fatalf("exit %d, want Lonely still reported with its fix:\n%s", code, out)
 	}
 	if strings.Contains(out, "Taken") {
 		t.Fatalf("a.Taken is named by a build-excluded file outside every ignored directory, but was reported:\n%s", out)
+	}
+}
+
+// TestShrinkSkipsWorkspaceVendor pins the same in a workspace: the vendor
+// directory beside the go.work, which go work vendor fills, and a member's
+// own vendor directory at its root, which the go command ignores in a
+// workspace. Neither builds a package, so a.Lonely keeps its fix.
+func TestShrinkSkipsWorkspaceVendor(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, "go.mod", "module example.com/root\n\ngo 1.25\n")
+	writeTree(t, root, "internal/a/a.go", "package a\n\nfunc Used() {}\n\nfunc Lonely() {}\n")
+	writeTree(t, root, "tool/go.mod", "module example.com/root/tool\n\ngo 1.25\n")
+	writeTree(t, root, "tool/main.go", "package main\n\nimport \"example.com/root/internal/a\"\n\nfunc main() { a.Used() }\n")
+	writeTree(t, root, "go.work", "go 1.25\n\nuse (\n\t.\n\t./tool\n)\n")
+	writeTree(t, root, "vendor/modules.txt", "## workspace\n")
+	lonely := "package main\n\nimport \"example.com/root/internal/a\"\n\nfunc main() { a.Lonely() }\n"
+	writeTree(t, root, "vendor/example.com/v/main.go", lonely)
+	writeTree(t, root, "tool/vendor/x/main.go", lonely)
+	out, code := runIn(t, bin, root, "shrink")
+	if code != 3 || !strings.Contains(out, "func Lonely is exported, but nothing outside example.com/root/internal/a uses it\n") {
+		t.Fatalf("exit %d, want Lonely reported with its fix:\n%s", code, out)
+	}
+	if strings.Contains(out, "Used is exported") {
+		t.Errorf("tool uses a.Used and is loaded with the workspace:\n%s", out)
 	}
 }
 

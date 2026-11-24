@@ -169,9 +169,11 @@ func TestShrinkAssemblyUnreadable(t *testing.T) {
 }
 
 // TestShrinkSkippedDirs pins that a package in a directory ./... skips
-// (testdata, one starting with . or _, one an ignore directive names) still
-// uses what it names: go build compiles it when it is named. go vet ./...
-// does not, so the fixes are applied to a copy and each one is built.
+// (testdata, vendor below the module root, one starting with . or _, one an
+// ignore directive names) still uses what it names: go build compiles it
+// when it is named. go vet ./... does not, so the fixes are applied to a
+// copy and each one is built. The vendor directory at the root builds no
+// package, so the name only it uses is fixed.
 func TestShrinkSkippedDirs(t *testing.T) {
 	findings := shrinkCheck(t, "testdata/skipped-dirs")
 	dir := t.TempDir()
@@ -189,7 +191,7 @@ func TestShrinkSkippedDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 	// gen/broken.go does not parse, so gen is left out: no build compiles it.
-	build := exec.Command("go", "build", "-o", os.DevNull, "./internal/a/testdata/prog", "./internal/a/testdata/asmprog", "./internal/a/.hidden", "./internal/a/_skipped", "./web/static")
+	build := exec.Command("go", "build", "-o", os.DevNull, "./internal/a/testdata/prog", "./internal/a/testdata/asmprog", "./internal/a/.hidden", "./internal/a/_skipped", "./internal/a/vendor/w", "./web/static")
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("go build after the fix: %v\n%s", err, out)
