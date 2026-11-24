@@ -226,6 +226,15 @@ func of(path string) string {
 	return camel(base)
 }
 
+// Key returns the lookup key for a namespace written in config.
+// rules.naming.vocabulary names a namespace by a file name or by the
+// namespace itself, so user_id, userId, userid and userID all give the key of
+// the namespace of user_id.go. The spelling goes through camel, as a file
+// stem does, and is then case-folded, as Contains matches.
+func Key(spelling string) string {
+	return strings.ToLower(camel(spelling))
+}
+
 // camel converts a file stem to lowerCamelCase.
 //
 // Every run of characters that could not appear in an identifier is a

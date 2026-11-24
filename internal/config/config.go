@@ -23,7 +23,8 @@
 // rules.unused reads an rule.UnusedMode;
 // rules.naming.exported and rules.naming.fix are true/false;
 // rules.naming.vocabulary maps a namespace to the extra words that satisfy the
-// naming rule for it.
+// naming rule for it. A key is spelled as a file name or as the namespace
+// (user_id or userID), and case does not matter.
 //
 // Unknown keys are an error, and the message names the key and the keys the
 // section does take.
@@ -47,6 +48,7 @@ import (
 
 	"github.com/mpyw/declscope/internal"
 	"github.com/mpyw/declscope/internal/baseline"
+	"github.com/mpyw/declscope/internal/namespace"
 	"github.com/mpyw/declscope/internal/rule"
 	"github.com/mpyw/declscope/internal/scope"
 )
@@ -444,15 +446,21 @@ func (f *File) Apply(opts *internal.Options) error {
 		opts.NamingFix = f.Rules.Naming.Fix.value
 	}
 	// The map merges per namespace rather than replacing: adding one word in a
-	// nested config should not cost restating every other. An empty list or
+	// nested config should not cost restating every other. A key is read as
+	// the namespace a file of that name would get, so user_id, userId and
+	// userID are one namespace in every file of the chain. An empty list or
 	// null is unstated, as an empty filter.only is, so the namespace keeps
 	// the words from above.
 	if len(f.Rules.Naming.Vocabulary) > 0 {
-		merged := make(map[string][]string, len(opts.Vocabulary)+len(f.Rules.Naming.Vocabulary))
+		stated, err := vocabularyByNamespace(f.Rules.Naming.Vocabulary)
+		if err != nil {
+			return err
+		}
+		merged := make(map[string][]string, len(opts.Vocabulary)+len(stated))
 		maps.Copy(merged, opts.Vocabulary)
-		for ns, words := range f.Rules.Naming.Vocabulary {
+		for key, words := range stated {
 			if len(words) > 0 {
-				merged[ns] = words
+				merged[key] = words
 			}
 		}
 		opts.Vocabulary = merged
@@ -492,6 +500,23 @@ func (f *File) Apply(opts *internal.Options) error {
 		opts.BaselinePath = f.BaselinePath()
 	}
 	return nil
+}
+
+// vocabularyByNamespace keys one file's vocabulary by namespace.Key. Two keys
+// that name the same namespace are an error, since neither list can be said
+// to win over the other.
+func vocabularyByNamespace(vocabulary map[string][]string) (map[string][]string, error) {
+	out := make(map[string][]string, len(vocabulary))
+	spelled := make(map[string]string, len(vocabulary))
+	for _, written := range slices.Sorted(maps.Keys(vocabulary)) {
+		key := namespace.Key(written)
+		if first, ok := spelled[key]; ok {
+			return nil, fmt.Errorf("rules.naming.vocabulary: keys %q and %q name the same namespace (keep one)", first, written)
+		}
+		spelled[key] = written
+		out[key] = vocabulary[written]
+	}
+	return out, nil
 }
 
 // patternsIn pairs each pattern with the directory it was written in, which

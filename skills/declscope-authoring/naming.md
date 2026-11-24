@@ -92,6 +92,8 @@ rules:
       index: [indices]
 ```
 
+A key names a namespace the way a file name does, in any case: for `user_id.go`, `user_id` and `userID` both work. Write only one of them in a file, or the config is an error.
+
 Use it for a word that names what the namespace names: another form of it, or the domain's word for part of it (`mouse: [wheel]`). For those, the rename the message suggests would stutter (`tracingTraceValue`).
 
 | The name | Do this |
