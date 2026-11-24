@@ -55,7 +55,7 @@ func TestSuggestedFixQualifyFixturesOptIn(t *testing.T) {
 	for _, pkg := range []string{
 		"fixqualify", "fixembedded", "fixembeddedgeneric", "fixcapture", "fixforeignmethod",
 		"fixembedder", "fixembeddedsurface", "fixsiblings", "fixoutside", "fixlinkname",
-		"fixtestvariant", "fixexcluded", "fixexcludedlinkname", "fixtestexcluded",
+		"fixtestvariant", "fixexcluded", "fixexcludedlinkname", "fixtestexcluded", "fixreflect",
 	} {
 		results := analysistest.Run(t, analysistest.TestData(), declscope.Analyzer, pkg)
 		if qualifyFixCount(results) == 0 {
@@ -152,6 +152,17 @@ func TestSuggestedFixOutside(t *testing.T) {
 // //go:linkname directive, which a rename cannot follow, is not renamed.
 func TestSuggestedFixLinkname(t *testing.T) {
 	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixlinkname")
+}
+
+// TestSuggestedFixReflect checks that a type is not renamed when a value of
+// it can reach an interface, where reflection reads its name: encoding/xml,
+// %T and gob do (#405). That holds for the type itself, a pointer to it, a
+// slice of it, a type embedding it, a value converted implicitly at an
+// assignment, a return or a send, a type argument of a generic that converts
+// it, and a type an exported function hands out. A type that never reaches
+// an interface is still renamed.
+func TestSuggestedFixReflect(t *testing.T) {
+	analysistest.RunWithSuggestedFixes(t, analysistest.TestData(), declscope.Analyzer, "fixreflect")
 }
 
 // TestSuggestedFixAssembly checks that a package holding assembly offers no

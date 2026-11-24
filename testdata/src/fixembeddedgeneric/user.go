@@ -4,22 +4,22 @@ import "strings"
 
 type box[T any] struct{ v T } // want `type box does not carry namespace "user" anywhere in its name; move it to the file it belongs to, or give it a name that carries "user" \(userBox is one candidate, not necessarily the best\)`
 
-// UserList embeds an instantiation that mentions its type parameter. Uses holds
+// userList embeds an instantiation that mentions its type parameter. Uses holds
 // the instantiated field for u.box, which origin maps back to the declared one.
-type UserList[T any] struct {
+type userList[T any] struct {
 	box[T]
 	*strings.Builder
 }
 
-func (u *UserList[T]) Get() T { return u.box.v }
+func (u *userList[T]) Get() T { return u.box.v }
 
-// UserInts embeds a plain instantiation. Its field is not a target, but the
+// userInts embeds a plain instantiation. Its field is not a target, but the
 // selection through it is spelled with the type's name.
-type UserInts struct{ box[int] }
+type userInts struct{ box[int] }
 
-func (u UserInts) Get() int {
+func (u userInts) Get() int {
 	box := u.box.v // a local that shares the name is not rewritten
 	return box
 }
 
-func UserLen(u *UserList[int]) int { return u.Builder.Len() }
+func userLen(u *userList[int]) int { return u.Builder.Len() }
