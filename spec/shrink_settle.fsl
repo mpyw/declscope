@@ -12,15 +12,20 @@
 //
 // keepForCarrier takes one type out of the fix set when a declaration
 // outside the set carries it. That declaration is never the type itself.
-// keepForCarrier is the only move, so the fix set only shrinks, and the loop ends (Settles). Once
-// no move is enabled, the judgment is done, and two properties hold:
+// keepForCarrier is the only move, so the fix set only shrinks, and the
+// loop ends (Settles). Once no move is enabled, the judgment is done. Then
+// no fixed declaration is carried by one that keeps its name. So no
+// exported declaration is left handing out an unexported type. That is
+// the guard of finish read back, so it is not stated as a claim. The
+// claims are these:
 //
-//   Sound  No fixed declaration is carried by one that keeps its name. So
-//          no exported declaration is left handing out an unexported type.
-//   Tight  Every declaration judged fixable but not fixed has a carrier that
-//          keeps its name. A second run, after the fixes, finds the same
-//          carrier and holds the type again. So one run of -fix settles the
-//          package.
+//   Tight                  Every declaration judged fixable but not fixed
+//                          has a carrier that keeps its name.
+//   SecondRunFixesNothing  applyFixes unexports what the first run fixed,
+//                          and settling runs again. The second run finds
+//                          the same carriers and holds the same types. It
+//                          fixes nothing. So one run of -fix settles the
+//                          package.
 //
 // A carrier is never fixable. So a type that carries itself keeps nothing,
 // and the model needs no rule against it (SelfCarryKeepsNothing).
@@ -33,11 +38,9 @@
 //   holdForSibling    It takes a value out when another value of its set
 //                     keeps its name.
 //
-// Both only take fixes away, like keepForCarrier. So the loop still ends, and one
-// more property holds:
-//
-//   Whole  A set is fixed whole or kept whole. It is never split between
-//          exported and unexported values.
+// Both only take fixes away, like keepForCarrier. So the loop still ends.
+// A set is then fixed whole or kept whole. That too is the guard of finish
+// read back.
 //
 // Tight widens to the two new reasons. The next run holds a value for its
 // sibling again, since the sibling still keeps its name. Whether the type is
@@ -50,6 +53,7 @@
 fsl 5
 spec ShrinkSettle {
   type Decl = 0..2
+  type Order = 0..3
 
   state {
     phase: 0..2 = 0,
@@ -57,13 +61,22 @@ spec ShrinkSettle {
     carries: relation Decl -> Decl = Set {},
     inConstSet: Map<Decl, Bool>,
     setTypeUsed: Bool = false,
-    fixable: Map<Decl, Bool>
+    fixable: Map<Decl, Bool>,
+    // false once applyFixes unexports the declaration.
+    exported: Map<Decl, Bool>,
+    secondRun: Bool = false,
+    // Ghosts for induction. The first run numbers each declaration it
+    // takes out, from 1. 0 means not taken out.
+    withheldOrder: Map<Decl, Order>,
+    removals: Order = 0
   }
 
   init {
     forall d: Decl { judgedFixable[d] = false }
     forall d: Decl { fixable[d] = false }
     forall d: Decl { inConstSet[d] = false }
+    forall d: Decl { exported[d] = true }
+    forall d: Decl { withheldOrder[d] = 0 }
   }
 
   // The judgment of each declaration on its own, and what carries what. A
@@ -90,11 +103,13 @@ spec ShrinkSettle {
     phase = 1
   }
 
+  // An unexported declaration hands out nothing, so it keeps nothing.
+  def keepsItsName(d: Decl) = exported[d] and not fixable[d]
   def carriedByAKeeper(candidate: Decl) =
-    exists d: Decl { carries.contains(d, candidate) and not fixable[d] }
+    exists d: Decl { carries.contains(d, candidate) and keepsItsName(d) }
 
   def heldBySibling(candidate: Decl) =
-    inConstSet[candidate] and exists d: Decl { inConstSet[d] and not fixable[d] }
+    inConstSet[candidate] and exists d: Decl { inConstSet[d] and keepsItsName(d) }
   def droppedWithType(candidate: Decl) = inConstSet[candidate] and setTypeUsed
   def takenOut(candidate: Decl) = carriedByAKeeper(candidate) or heldBySibling(candidate) or droppedWithType(candidate)
 
@@ -103,18 +118,24 @@ spec ShrinkSettle {
     requires fixable[candidate]
     requires carriedByAKeeper(candidate)
     fixable[candidate] = false
+    withheldOrder[candidate] = if secondRun then withheldOrder[candidate] else removals + 1
+    removals = if secondRun then removals else removals + 1
   }
   fair action holdForSibling(candidate: Decl) {
     requires phase == 1
     requires fixable[candidate]
     requires heldBySibling(candidate)
     fixable[candidate] = false
+    withheldOrder[candidate] = if secondRun then withheldOrder[candidate] else removals + 1
+    removals = if secondRun then removals else removals + 1
   }
   fair action dropWithUsedType(candidate: Decl) {
     requires phase == 1
     requires fixable[candidate]
     requires droppedWithType(candidate)
     fixable[candidate] = false
+    withheldOrder[candidate] = if secondRun then withheldOrder[candidate] else removals + 1
+    removals = if secondRun then removals else removals + 1
   }
   fair action finish() {
     requires phase == 1
@@ -122,50 +143,32 @@ spec ShrinkSettle {
     phase = 2
   }
 
-  terminal { phase == 2 }
-
-  invariant FixedOnlyWhenJudged { forall d: Decl { fixable[d] => judgedFixable[d] } }
-  // Before settling starts, the fix set is the judgment itself.
-  invariant UnsettledBeforeStart {
-    phase == 0 => forall d: Decl { fixable[d] == judgedFixable[d] }
+  // The second run. The first run's fixes are applied, so each fixed
+  // declaration is unexported and leaves the rule. A declaration the first
+  // run withheld is judged fixable on its own again. Nothing else changes.
+  // A fix changes no reference (ASSUME-1 of shrink.fsl).
+  action applyFixes() {
+    requires phase == 2
+    requires not secondRun
+    forall d: Decl { exported[d] = exported[d] and not fixable[d] }
+    forall d: Decl { judgedFixable[d] = judgedFixable[d] and not fixable[d] }
+    forall d: Decl { fixable[d] = judgedFixable[d] and not fixable[d] }
+    secondRun = true
+    phase = 1
   }
 
-  // Once settling starts, the fix set only shrinks.
-  trans FixesOnlyShrink {
-    old(phase) >= 1 => forall d: Decl { fixable[d] => old(fixable[d]) }
-  }
-  trans SetFrozen {
-    old(phase) >= 1 => setTypeUsed == old(setTypeUsed)
-                       and forall d: Decl { inConstSet[d] == old(inConstSet[d]) }
-  }
-  trans CarriesFrozen {
-    old(phase) >= 1 => forall a: Decl { forall b: Decl {
-      carries.contains(a, b) == old(carries.contains(a, b))
-    } }
+  terminal { phase == 2 and secondRun }
+
+  // The second run fixes nothing. The guard of finish checks only that
+  // nothing fixable is taken out. So this is not that guard again.
+  invariant SecondRunFixesNothing {
+    (secondRun and phase == 2) => forall d: Decl { not fixable[d] }
   }
 
-  invariant Sound {
-    phase == 2 => forall candidate: Decl { fixable[candidate] => forall d: Decl {
-      carries.contains(d, candidate) => fixable[d]
-    } }
-  }
   invariant Tight {
     phase >= 1 => forall candidate: Decl {
       (judgedFixable[candidate] and not fixable[candidate]) => takenOut(candidate)
     }
-  }
-  // Once settled, no value of a used type is left fixable. Tight and the
-  // guard of finish both read droppedWithType. This one spells it out. So it
-  // fails if that def is changed.
-  invariant DroppedWithUsedType {
-    phase == 2 => forall d: Decl {
-      (inConstSet[d] and setTypeUsed) => not fixable[d]
-    }
-  }
-  invariant Whole {
-    phase == 2 => forall a: Decl { forall b: Decl {
-      (inConstSet[a] and inConstSet[b]) => fixable[a] == fixable[b]
-    } }
   }
 
   // The fix set counts down, and finish ends it.
@@ -215,14 +218,19 @@ spec ShrinkSettle {
     and fixable[0]
     and fixable[1]
   }
-  // The values of a used type go with it.
+  // The values of a used type go with it. Nothing else holds value 0 here.
+  // A declaration outside the set stays fixable.
   reachable SetDroppedWithType {
     phase == 2
     and inConstSet[0]
-    and inConstSet[1]
+    and not inConstSet[1]
     and judgedFixable[0]
+    and not carries.contains(1, 0)
     and setTypeUsed
     and not fixable[0]
+    and not inConstSet[2]
+    and judgedFixable[2]
+    and fixable[2]
   }
   // A type that returns itself keeps nothing.
   reachable SelfCarryKeepsNothing {
@@ -230,5 +238,69 @@ spec ShrinkSettle {
     and judgedFixable[0]
     and carries.contains(0, 0)
     and fixable[0]
+  }
+  // The first run withholds a type, and the second holds it again.
+  reachable SecondRunHoldsTheType {
+    secondRun
+    and phase == 2
+    and judgedFixable[1]
+    and not fixable[1]
+  }
+
+  // --- auxiliary ----------------------------------------------------------
+  invariant FixedOnlyWhenJudged { forall d: Decl { fixable[d] => judgedFixable[d] } }
+  // Before settling starts, the fix set is the judgment itself.
+  invariant UnsettledBeforeStart {
+    phase == 0 => forall d: Decl { fixable[d] == judgedFixable[d] }
+  }
+  // Within one run, the fix set only shrinks.
+  trans FixesOnlyShrink {
+    (old(phase) >= 1 and secondRun == old(secondRun)) => forall d: Decl { fixable[d] => old(fixable[d]) }
+  }
+  trans SetFrozen {
+    old(phase) >= 1 => setTypeUsed == old(setTypeUsed)
+                       and forall d: Decl { inConstSet[d] == old(inConstSet[d]) }
+  }
+  trans CarriesFrozen {
+    old(phase) >= 1 => forall a: Decl { forall b: Decl {
+      carries.contains(a, b) == old(carries.contains(a, b))
+    } }
+  }
+  // Lemmas for SecondRunFixesNothing, not claims. The first run numbers
+  // what it takes out. Each one has a reason that comes earlier: a used
+  // type, or a keeper that was never fixable or was taken out before it.
+  // That order is why the second run takes everything out again.
+  invariant OrderedBeforeTheCount { forall d: Decl { withheldOrder[d] <= removals } }
+  invariant CountsEachOnce { removals == count(d: Decl where withheldOrder[d] > 0) }
+  invariant NothingBeforeStart { phase == 0 => removals == 0 and not secondRun }
+  invariant FirstRunNumbersWhatItTakesOut {
+    (phase >= 1 and not secondRun) => forall d: Decl {
+      (withheldOrder[d] > 0) == (judgedFixable[d] and not fixable[d])
+    }
+  }
+  invariant EveryoneExportedInTheFirstRun {
+    not secondRun => forall d: Decl { exported[d] }
+  }
+  // An earlier keeper of a candidate: one that keeps its name and was never
+  // judged fixable, or one taken out before the candidate.
+  def earlierKeeper(keeper: Decl, candidate: Decl) =
+    exported[keeper]
+    and (
+      (withheldOrder[keeper] == 0 and not judgedFixable[keeper])
+      or (withheldOrder[keeper] > 0 and withheldOrder[keeper] < withheldOrder[candidate])
+    )
+  invariant TakenOutForAnEarlierReason {
+    forall candidate: Decl {
+      withheldOrder[candidate] > 0 => (
+        droppedWithType(candidate)
+        or exists keeper: Decl {
+          earlierKeeper(keeper, candidate)
+          and (carries.contains(keeper, candidate) or (inConstSet[keeper] and inConstSet[candidate]))
+        }
+      )
+    }
+  }
+  invariant SecondRunJudgesWhatTheFirstTookOut {
+    secondRun => forall d: Decl { judgedFixable[d] == (withheldOrder[d] > 0) }
   }
 }

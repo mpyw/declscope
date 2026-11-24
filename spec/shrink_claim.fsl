@@ -12,17 +12,25 @@
 // a name that no fix takes. Such a loser is released. It claims first from
 // then on, and settling starts again. Each loser is released once.
 //
-//   Terminates  Every round adds a loser or releases one for good.
-//   Honest      Once it ends, take a loser that is still withheld and was
-//               never released. A fix that stands has taken its name. So
-//               its report reads true. The next run, with the fix applied,
-//               reads it the same.
+//   Terminates             Every round adds a loser or releases one for
+//                          good.
+//   ReleasedAtMostOnce     No loser is released twice.
+//   AppliedFixesNeverShareAName
+//                          The fixes applied give no two declarations one
+//                          name.
+//   SecondRunKeepsLosers   applyFixes applies the fixes that stand, and
+//                          claiming runs again. A loser that was never
+//                          released finds its name taken by an applied
+//                          fix. So its report reads the same, and it gets
+//                          no fix.
 //
 // A released loser that loses again stays withheld, true or not. Releasing
-// it twice would let two clashing fixes take turns without end.
+// it twice would let two clashing fixes take turns without end. The second
+// run may then fix it, so SecondRunKeepsLosers leaves it out.
 fsl 5
 spec ShrinkClaim {
   type Decl = 0..2
+  type ReleaseCount = 0..2
 
   state {
     phase: 0..3 = 0,
@@ -34,7 +42,14 @@ spec ShrinkClaim {
     clash1and2: Bool = false,
     standing: Map<Decl, Bool>,
     lost: Map<Decl, Bool>,
-    released: Map<Decl, Bool>
+    released: Map<Decl, Bool>,
+    // Ghost: how many times each loser was released.
+    releaseCount: Map<Decl, ReleaseCount>,
+    secondRun: Bool = false,
+    // The first run's losers that were never released.
+    keptLoser: Map<Decl, Bool>,
+    // The first run's fixes that applyFixes applied.
+    applied: Map<Decl, Bool>
   }
 
   init {
@@ -42,6 +57,9 @@ spec ShrinkClaim {
     forall d: Decl { standing[d] = false }
     forall d: Decl { lost[d] = false }
     forall d: Decl { released[d] = false }
+    forall d: Decl { releaseCount[d] = 0 }
+    forall d: Decl { keptLoser[d] = false }
+    forall d: Decl { applied[d] = false }
   }
 
   // One step sets what judging leaves fixable and which fixes clash. So the
@@ -108,6 +126,7 @@ spec ShrinkClaim {
     requires releasable(d)
     lost[d] = false
     released[d] = true
+    releaseCount[d] = releaseCount[d] + 1
     phase = 1
   }
   fair action finish() {
@@ -117,29 +136,39 @@ spec ShrinkClaim {
     phase = 3
   }
 
-  terminal { phase == 3 }
+  // The second run. The fixes that stand are applied, and their
+  // declarations leave the rule. A loser is judged on its own again. Its
+  // fix is eligible only where no applied fix took its name. Otherwise the
+  // rename guard withholds it as a collision. Every other declaration is
+  // left out, since shrink_settle.fsl holds what settling keeps.
+  action applyFixes() {
+    requires phase == 3
+    requires not secondRun
+    forall d: Decl { eligible[d] = lost[d] and nameFree(d) }
+    forall d: Decl { keptLoser[d] = lost[d] and not released[d] }
+    forall d: Decl { applied[d] = standing[d] }
+    forall d: Decl { standing[d] = false }
+    forall d: Decl { lost[d] = false }
+    forall d: Decl { released[d] = false }
+    forall d: Decl { releaseCount[d] = 0 }
+    secondRun = true
+    phase = 1
+  }
 
-  // Nothing is claimed before judging configures the package.
-  invariant NothingBeforeStart {
-    phase == 0 => forall d: Decl { not standing[d] and not lost[d] and not released[d] }
+  terminal { phase == 3 and secondRun }
+
+  // Each loser is released once. release reads released, and this counts
+  // the releases, so it is not that guard read back.
+  invariant ReleasedAtMostOnce { forall d: Decl { releaseCount[d] <= 1 } }
+  // No two applied fixes give one name to two declarations. The build
+  // would break otherwise. This is checked on the state after the fixes.
+  // Unfolded, it is the clash guard of finish, but nothing else pins it.
+  invariant AppliedFixesNeverShareAName {
+    forall a: Decl { forall b: Decl { (applied[a] and applied[b]) => not clashing(a, b) } }
   }
-  invariant LostOnlyWhenEligible { forall d: Decl { lost[d] => eligible[d] } }
-  // A fix loses its name only to a fix it clashes with, and that fix was
-  // eligible to stand. Honest and NoClashWhenDone restate the guards of
-  // finish. This one fails if lose drops either guard on its winner.
-  invariant LostOnlyOnAClash {
-    forall d: Decl {
-      lost[d] => exists winner: Decl { eligible[winner] and clashing(d, winner) }
-    }
-  }
-  invariant ReleasedOnlyWhenEligible { forall d: Decl { released[d] => eligible[d] } }
-  invariant LoserNeverStands { phase >= 2 => forall d: Decl { standing[d] => not lost[d] } }
-  invariant StandsOnlyWhenEligible { forall d: Decl { standing[d] => eligible[d] } }
-  invariant NoClashWhenDone { phase == 3 => not anyStandingClash() }
-  invariant Honest {
-    phase == 3 => forall d: Decl {
-      (lost[d] and not released[d]) => exists winner: Decl { standing[winner] and clashing(d, winner) }
-    }
+  // The second run gives no fix to a loser the first run never released.
+  invariant SecondRunKeepsLosers {
+    secondRun => forall d: Decl { keptLoser[d] => not standing[d] }
   }
 
   // Each settle counts one down. Each round adds a loser or releases one
@@ -164,4 +193,36 @@ spec ShrinkClaim {
   reachable OneOfTwoStands {
     phase == 3 and clashing(0, 1) and standing[0] and lost[1]
   }
+
+  // --- auxiliary ----------------------------------------------------------
+  // Nothing is claimed before judging configures the package.
+  invariant NothingBeforeStart {
+    phase == 0 => (
+      not secondRun
+      and forall d: Decl {
+        not standing[d]
+        and not lost[d]
+        and not released[d]
+        and not applied[d]
+      }
+    )
+  }
+  invariant LostOnlyWhenEligible { forall d: Decl { lost[d] => eligible[d] } }
+  invariant ReleasedOnlyWhenEligible { forall d: Decl { released[d] => eligible[d] } }
+  invariant LoserNeverStands { phase >= 2 => forall d: Decl { standing[d] => not lost[d] } }
+  invariant StandsOnlyWhenEligible { forall d: Decl { standing[d] => eligible[d] } }
+  invariant CountedOnlyOnceReleased { forall d: Decl { releaseCount[d] >= 1 => released[d] } }
+  // Once claiming ends, a loser never released has its name taken by a fix
+  // that stands. This is the guard of finish read back. It is a lemma for
+  // the second run, not a claim.
+  invariant Honest {
+    phase == 3 => forall d: Decl {
+      (lost[d] and not released[d]) => exists winner: Decl { standing[winner] and clashing(d, winner) }
+    }
+  }
+  // No two standing fixes clash once claiming ends. This is the guard of
+  // finish read back. It is a lemma for AppliedFixesNeverShareAName.
+  invariant NoClashWhenDone { phase == 3 => not anyStandingClash() }
+  // A loser the first run kept is not eligible in the second. A lemma.
+  invariant KeptLoserIneligible { secondRun => forall d: Decl { keptLoser[d] => not eligible[d] } }
 }
