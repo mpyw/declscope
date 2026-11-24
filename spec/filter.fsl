@@ -78,21 +78,38 @@ spec Filter {
   // An empty only list places no restriction. This is the one asymmetry
   // worth stating. An empty omit list subtracts nothing, and that follows
   // from "any". An empty only list admitting everything does not follow.
-  def onlyEmpty() = not onlyHolds0 and not onlyHolds1 and not onlyHolds2
-  def omitEmpty() = not omitHolds0 and not omitHolds1 and not omitHolds2
+  // Each def below takes a list as three flags, one per pattern. Then the
+  // monotonicity claims can ask about a list with one more pattern in it.
+  def listEmpty(holds0: Bool, holds1: Bool, holds2: Bool) =
+    not holds0 and not holds1 and not holds2
 
   // Any pattern is enough, in both lists.
-  def fileMatchesOnly() =
-    (onlyHolds0 and fileMatches0)
-    or (onlyHolds1 and fileMatches1)
-    or (onlyHolds2 and fileMatches2)
-  def fileMatchesOmit() =
-    (omitHolds0 and fileMatches0)
-    or (omitHolds1 and fileMatches1)
-    or (omitHolds2 and fileMatches2)
+  def fileMatchesList(holds0: Bool, holds1: Bool, holds2: Bool) =
+    (holds0 and fileMatches0)
+    or (holds1 and fileMatches1)
+    or (holds2 and fileMatches2)
 
-  def passesOnly() = onlyEmpty() or fileMatchesOnly()
-  def filterKeeps() = passesOnly() and not fileMatchesOmit()
+  def passesOnlyList(only0: Bool, only1: Bool, only2: Bool) =
+    listEmpty(only0, only1, only2) or fileMatchesList(only0, only1, only2)
+  def keeps(only0: Bool, only1: Bool, only2: Bool,
+            omit0: Bool, omit1: Bool, omit2: Bool) =
+    passesOnlyList(only0, only1, only2)
+    and not fileMatchesList(omit0, omit1, omit2)
+
+  // The same rule applied to the configured lists.
+  def onlyEmpty() = listEmpty(onlyHolds0, onlyHolds1, onlyHolds2)
+  def omitEmpty() = listEmpty(omitHolds0, omitHolds1, omitHolds2)
+  def fileMatchesOnly() = fileMatchesList(onlyHolds0, onlyHolds1, onlyHolds2)
+  def fileMatchesOmit() = fileMatchesList(omitHolds0, omitHolds1, omitHolds2)
+  def passesOnly() = passesOnlyList(onlyHolds0, onlyHolds1, onlyHolds2)
+  def filterKeeps() =
+    keeps(onlyHolds0, onlyHolds1, onlyHolds2,
+          omitHolds0, omitHolds1, omitHolds2)
+
+  // Each stage takes what the stage before it handed on, and asks only about
+  // this file.
+  def narrowStage(handed: Bool) = handed and passesOnly()
+  def subtractStage(handed: Bool) = handed and not fileMatchesOmit()
 
   // --- the two tests, as the implementation applies them --------------------
   // The two tests are two guards on one action, not one expression. Then
@@ -127,7 +144,7 @@ spec Filter {
     requires configured
     requires not omitStageRan
     omitStageRan = true
-    survivesOmit = not fileMatchesOmit()
+    survivesOmit = subtractStage(true)
   }
   // The second stage runs after the implementation's order has decided.
   // Then the step that records it can be compared with that decision.
@@ -136,29 +153,57 @@ spec Filter {
     requires decided
     requires not narrowStageRan
     narrowStageRan = true
-    reorderedAdmitted = survivesOmit and passesOnly()
+    reorderedAdmitted = narrowStage(survivesOmit)
   }
 
-  invariant DecisionMatchesTheRule { decided => (admitted == filterKeeps()) }
-  invariant AdmittedPassedOnly     { decided and admitted => passesOnly() }
-  invariant AdmittedEscapedOmit    { decided and admitted => not fileMatchesOmit() }
-  invariant DecisionNeedsConfig    { decided => configured }
-
-  // What the first stage of the other order recorded. Induction needs it to
-  // prove OrderDoesNotMatter. Without it, induction does not rule out a state
-  // where survivesOmit disagrees with the omit list.
-  invariant OmitStageRecordsOmit {
-    omitStageRan => configured and (survivesOmit == not fileMatchesOmit())
+  // Each stage keeps a subset of what it is handed. A file the stage before
+  // dropped stays dropped. A stage that admitted a file it was not handed
+  // could undo the other list, and the order would then matter.
+  invariant EachStageKeepsASubset {
+    configured
+      => not narrowStage(false)
+         and not subtractStage(false)
   }
+
   // Order is not a degree of freedom. Two pipelines decide the file alike.
-  // One subtracts omit from the only set. The other narrows what omit left to
-  // the only set. Different actions record the two sides. So this compares
-  // two computations and does not re-spell filterKeeps(). It is a trans,
-  // checked on the step that finishes the second pipeline. By then the first
-  // pipeline's decision is settled, and nothing assigns either record again.
+  // One is the implementation's two guards. The other subtracts omit first
+  // and then narrows what is left to only. Different actions record the two
+  // sides. It is a trans, checked on the step that finishes the second
+  // pipeline. By then the first decision is settled.
+  //
+  // What it shows: the guards on admit and reject compose like the stages.
+  // Dropping a guard, or a stage that ignores what it is handed, breaks it.
+  // What it does not show: that the per-file rule is right. Both sides call
+  // passesOnly() and fileMatchesOmit(). So a wrong match def passes it. The
+  // monotonicity claims and the witnesses below check those defs.
   trans OrderDoesNotMatter {
     not old(narrowStageRan) and narrowStageRan => (reorderedAdmitted == admitted)
   }
+
+  // --- adding a pattern moves the decision one way only ---------------------
+  // A rejected file stays rejected with any one more omit pattern.
+  invariant AnotherOmitPatternNeverAdmits {
+    decided and not admitted
+      => not keeps(onlyHolds0, onlyHolds1, onlyHolds2,
+                   true, omitHolds1, omitHolds2)
+         and not keeps(onlyHolds0, onlyHolds1, onlyHolds2,
+                       omitHolds0, true, omitHolds2)
+         and not keeps(onlyHolds0, onlyHolds1, onlyHolds2,
+                       omitHolds0, omitHolds1, true)
+  }
+  // An admitted file stays admitted with any one more only pattern. This
+  // needs a non-empty only. An empty only admits everything, so its first
+  // pattern can reject a file.
+  invariant AnotherOnlyPatternNeverRejects {
+    decided and admitted and not onlyEmpty()
+      => keeps(true, onlyHolds1, onlyHolds2,
+               omitHolds0, omitHolds1, omitHolds2)
+         and keeps(onlyHolds0, true, onlyHolds2,
+                   omitHolds0, omitHolds1, omitHolds2)
+         and keeps(onlyHolds0, onlyHolds1, true,
+                   omitHolds0, omitHolds1, omitHolds2)
+  }
+
   // Both orders run to a decision on files of every kind, so the comparison
   // is not vacuous. One file only admits. Omit removes the other from inside
   // only.
@@ -308,6 +353,16 @@ spec Filter {
     and not omitHolds2
   }
 
-  // --- omit is the stronger of the two --------------------------------------
-  invariant OmitAlwaysWins { decided and fileMatchesOmit() => not admitted }
+  // --- auxiliary ------------------------------------------------------------
+  invariant DecisionNeedsConfig { decided => configured }
+  // Lemma, not a claim: it restates the guards so that induction can prove
+  // the monotonicity claims.
+  invariant DecisionFollowsTheRule { decided => (admitted == filterKeeps()) }
+  // Lemma, not a claim: it restates subtractFirst so that induction can prove
+  // OrderDoesNotMatter.
+  invariant OmitStageRecordsOmit {
+    omitStageRan
+      => configured
+         and survivesOmit == subtractStage(true)
+  }
 }

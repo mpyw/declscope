@@ -136,7 +136,6 @@ spec RenameGuarded {
   }
 
   invariant RenameImpliesConfigured { renamed => configured }
-  invariant RenameRecordsNewName    { renamed => declarationName == NewName }
   // Under the full guard, nothing elsewhere ever resolved the new name. The
   // guard removes the states that would exercise
   // RenameCapturesNothingElsewhere. So fslc reports a vacuous antecedent for
@@ -164,4 +163,8 @@ spec RenameGuarded {
     renamed
       and otherDeclarationBinding == BindsOther
   }
+
+  // --- auxiliary ------------------------------------------------------------
+  // Bookkeeping, not a claim: it restates what rename assigns.
+  invariant RenameRecordsNewName { renamed => declarationName == NewName }
 }

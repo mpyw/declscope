@@ -101,11 +101,25 @@ spec FilterChain {
   // against the outer only, the outer omit, the nearer only and the nearer
   // omit. The forms ending in 1 and 2 apply it to the two files.
 
-  // One level's verdict on one file. This is the rule of filter.fsl.
+  // One level's verdict on one file, as if no other level existed. This is
+  // filterKeeps() of filter.fsl, copied by hand with each list reduced to
+  // the one match result. Nothing checks that the two copies agree.
   def outerKeeps(outerOnly: Bool, outerOmit: Bool) =
     (outerOnlyEmpty or outerOnly) and not outerOmit
   def outerKeeps1() = outerKeeps(file1MatchesOuterOnly, file1MatchesOuterOmit)
   def outerKeeps2() = outerKeeps(file2MatchesOuterOnly, file2MatchesOuterOmit)
+  def nearerKeeps(nearerOnly: Bool, nearerOmit: Bool) =
+    (nearerOnlyEmpty or nearerOnly) and not nearerOmit
+  def nearerKeeps1() = nearerKeeps(file1MatchesNearerOnly, file1MatchesNearerOmit)
+  def nearerKeeps2() = nearerKeeps(file2MatchesNearerOnly, file2MatchesNearerOmit)
+  // The outer only alone drops the file, and the outer omit does not.
+  def droppedByTheOuterOnly(outerOnly: Bool, outerOmit: Bool) =
+    not (outerOnlyEmpty or outerOnly)
+    and not outerOmit
+  def droppedByTheOuterOnly1() =
+    droppedByTheOuterOnly(file1MatchesOuterOnly, file1MatchesOuterOmit)
+  def droppedByTheOuterOnly2() =
+    droppedByTheOuterOnly(file2MatchesOuterOnly, file2MatchesOuterOmit)
 
   // The chain: only intersects, omit unions.
   def chainPassesOnly(outerOnly: Bool, nearerOnly: Bool) =
@@ -140,16 +154,6 @@ spec FilterChain {
     cancelled(file2MatchesOuterOnly, file2MatchesOuterOmit,
               file2MatchesNearerOnly, file2MatchesNearerOmit)
 
-  // The cause the report names, spelled from the inputs and not through
-  // cancelled(). The nearer only admits the file, the outer only does not,
-  // and neither omit removes it.
-  def removedByTheOnlyAbove(outerOnly: Bool, outerOmit: Bool,
-                            nearerOnly: Bool, nearerOmit: Bool) =
-    nearerOnly
-    and not outerOnly
-    and not outerOmit
-    and not nearerOmit
-
   action decide() {
     requires configured
     requires not decided
@@ -166,8 +170,6 @@ spec FilterChain {
              and not chainKeeps2()
              and (cancelled1() or cancelled2())
   }
-
-  invariant DecisionNeedsConfig { decided => configured }
 
   // --- the property the whole design is for ---------------------------------
   // A nested config cannot widen. Take a file the outer level alone would
@@ -214,35 +216,17 @@ spec FilterChain {
     and file1Kept
   }
 
-  // --- the two levels are anchored separately -------------------------------
-  // The same line in two files names two directories. So matching one says
-  // nothing about the other. Both asymmetries are reachable.
-  reachable MatchesOuterPatternOnly {
-    decided and file1MatchesOuterOnly and not file1MatchesNearerOnly
-  }
-  reachable MatchesNearerPatternOnly {
-    decided and file1MatchesNearerOnly and not file1MatchesOuterOnly
-  }
-
   // --- the warning ----------------------------------------------------------
-  // Intersecting two only lists that do not overlap leaves nothing to read.
-  invariant WarnedExactlyWhenTheNearestOnlyIsCancelled {
-    decided => (warned == (not file1Kept
-                           and not file2Kept
-                           and (cancelled1() or cancelled2())))
-  }
-  // The report's message is true. Where it fires, an only above the nearest
-  // config that states an only removed a file. That config's only admits the
-  // file, and no omit removes it.
-  invariant WarnedOnlyWhereAnOnlyAboveRemoves {
-    decided and warned => not outerOnlyEmpty and (
-      removedByTheOnlyAbove(file1MatchesOuterOnly, file1MatchesOuterOmit,
-                            file1MatchesNearerOnly, file1MatchesNearerOmit) or
-      removedByTheOnlyAbove(file2MatchesOuterOnly, file2MatchesOuterOmit,
-                            file2MatchesNearerOnly, file2MatchesNearerOmit))
-  }
-  invariant ReadingSomethingNeverWarns {
-    decided and (file1Kept or file2Kept) => not warned
+  // The report's message is true, read against each level alone. Where it
+  // fires, the nearest config that states an only states one. Some file that
+  // level alone would keep is one the outer only alone drops, and the outer
+  // omit does not. The defs it reads are single-level verdicts. They do not
+  // go through cancelled() or the chain.
+  invariant WarnedOnlyWhereTheOuterOnlyDropsWhatTheNearerKeeps {
+    decided and warned
+      => not nearerOnlyEmpty
+         and ((nearerKeeps1() and droppedByTheOuterOnly1())
+              or (nearerKeeps2() and droppedByTheOuterOnly2()))
   }
   reachable NearestOnlyCancelledByTheOneAbove {
     decided
@@ -278,6 +262,20 @@ spec FilterChain {
     and not warned
   }
   reachable ReadsSomethingAndDoesNotWarn { decided and file1Kept and not warned }
+  // The only above cancels the nearest only for one file, but the package
+  // still reads the other. The report is about a package left with nothing.
+  // So it stays quiet.
+  reachable CancelledBesideAReadFileStaysQuiet {
+    decided
+    and not outerOnlyEmpty
+    and not nearerOnlyEmpty
+    and file1MatchesNearerOnly
+    and not file1MatchesOuterOnly
+    and not file1MatchesNearerOmit
+    and not file1MatchesOuterOmit
+    and file2Kept
+    and not warned
+  }
   // The nearest config that states an only has an omit. That omit removes
   // what its only matches. No only above is the cause, so nothing is
   // reported. This holds even where an only above would also have removed
@@ -308,4 +306,7 @@ spec FilterChain {
     and file2MatchesNearerOmit
     and warned
   }
+
+  // --- auxiliary ------------------------------------------------------------
+  invariant DecisionNeedsConfig { decided => configured }
 }
